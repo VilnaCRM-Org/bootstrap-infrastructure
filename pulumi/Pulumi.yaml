@@ -1,0 +1,4 @@
+name: infrastructure-template
+runtime:
+  name: python
+description: Base Pulumi stack for the infrastructure template project.

@@ -1,0 +1,4 @@
+-r ../pulumi/requirements.txt
+pytest>=8.0,<9
+mutmut>=2.4,<4
+pyyaml>=6.0,<7

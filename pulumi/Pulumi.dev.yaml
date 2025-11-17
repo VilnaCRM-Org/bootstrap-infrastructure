@@ -1,0 +1,3 @@
+config:
+  infrastructure-template:environment: dev
+  infrastructure-template:serviceName: infrastructure-template

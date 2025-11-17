@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "infrastructure-template"
+version = "0.1.0"
+description = "Pulumi-based infrastructure template"
+authors = ["Infrastructure Team <infra@example.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.12"
+pulumi = ">=3.138,<4"
+pulumi-aws = ">=7.0,<8"
+pyyaml = ">=6,<7"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0"
+mutmut = "^2.4"
+black = "^24.0"
+flake8 = "^7.0"
+pre-commit = "^3.0"
+
+[build-system]
+requires = ["poetry-core>=1.8.0"]
+build-backend = "poetry.core.masonry.api"
