@@ -1,0 +1,31 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
+        USERNAME: "${USER:-appuser}"
+    volumes:
+      - type: bind
+        source: ./pulumi
+        target: /home/${USER}/project
+        read_only: true
+        bind:
+          create_host_path: true
+    working_dir: /home/${USER}/project
+    environment:
+      - USER
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+    tty: true
+    stdin_open: true
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

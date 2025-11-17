@@ -1,0 +1,43 @@
+name: Template Sync with PAT
+
+on:
+  schedule:
+    - cron: "0 0 1 * *"
+  workflow_dispatch:
+jobs:
+  repo-sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Check for updates
+        id: check_updates
+        env:
+          TEMPLATE_PAT: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Template repository is fixed for this project.
+          git fetch --quiet "https://x-access-token:${TEMPLATE_PAT}@github.com/VilnaCRM-Org/infrastructure-template.git" main:template-main
+
+          if git diff --quiet template-main HEAD; then
+            echo "needs_sync=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_sync=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: actions-template-sync
+        if: steps.check_updates.outputs.needs_sync == 'true'
+        uses: AndreasAugustin/actions-template-sync@v2
+        with:
+          github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          source_repo_path: VilnaCRM-Org/infrastructure-template
+          upstream_branch: main
+          pr_labels: template_sync

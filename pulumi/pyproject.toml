@@ -1,0 +1,18 @@
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool]
+[tool.poetry]
+name = "infrastructure-template"
+package-mode = false
+version = "0.1.0"
+[tool.poetry.dependencies]
+pulumi = "^3.138"
+pulumi-aws = "^6.58"
+python = "^3.9"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.10.0"
+flake8 = "^7.1.1"
+pre-commit = "^4.0.1"

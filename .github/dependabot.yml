@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "pulumi"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps(pulumi)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "pulumi"
+    reviewers:
+      - "Kravalg"
+    versioning-strategy: increase-if-necessary
+    open-pull-requests-limit: 5
