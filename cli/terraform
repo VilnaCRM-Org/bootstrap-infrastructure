@@ -1,0 +1,4 @@
+#!/bin/bash
+
+cd terraform || exit
+docker compose -f ../docker/docker-compose.yml run --rm terraform "$1"
