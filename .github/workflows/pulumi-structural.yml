@@ -1,0 +1,29 @@
+name: Pulumi Structural Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  structural:
+    name: Structural
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements/dev.txt
+
+      - name: Run structural suite
+        env:
+          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+          PYTHONUNBUFFERED: "1"
+        run: make test-pulumi

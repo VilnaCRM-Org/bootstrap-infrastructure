@@ -1,0 +1,8 @@
+config:
+  aws:region: eu-central-1
+  bootstrap-infrastructure:githubOrg: VilnaCRM-Org
+  bootstrap-infrastructure:repoSlug: bootstrap-infrastructure
+  bootstrap-infrastructure:environment: prod
+  bootstrap-infrastructure:owner: platform
+  bootstrap-infrastructure:costCenter: core
+  bootstrap-infrastructure:githubBranch: main

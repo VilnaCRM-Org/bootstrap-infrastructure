@@ -1,0 +1,71 @@
+name: pulumi
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Pulumi stack to deploy (test or prod)"
+        type: choice
+        options:
+          - test
+          - prod
+        default: test
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: eu-central-1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select stack
+        id: stack
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            STACK="${{ github.event.inputs.environment }}"
+          else
+            STACK="test"
+          fi
+          echo "stack=$STACK" >> "$GITHUB_OUTPUT"
+          if [ "$STACK" = "prod" ]; then
+            echo "role=${{ vars.PULUMI_PROD_ROLE_ARN }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "role=${{ vars.PULUMI_TEST_ROLE_ARN }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r pulumi/requirements.txt
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ steps.stack.outputs.role }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Pulumi up
+        working-directory: pulumi
+        env:
+          PULUMI_STACK: ${{ steps.stack.outputs.stack }}
+          PULUMI_BACKEND_URL: s3://pulumi-bootstrap-infrastructure-state/state/${{ steps.stack.outputs.stack }}
+        run: |
+          source ../venv/bin/activate
+          pulumi stack select "$PULUMI_STACK" --create
+          pulumi up --yes --skip-preview

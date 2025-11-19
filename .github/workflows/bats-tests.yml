@@ -1,0 +1,21 @@
+name: CLI testing
+
+on:
+  pull_request:
+    branches: ['main']
+
+jobs:
+  bats_tests:
+    runs-on: ubuntu-latest
+    name: Run Bats Tests
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Ensure .env is available for make targets
+        run: cp -n .env.empty .env
+
+      - name: Run Bats suite
+        uses: bats-core/bats-action@2.0.0
+        with:
+          test-path: tests/unit
