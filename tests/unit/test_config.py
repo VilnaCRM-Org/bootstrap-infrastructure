@@ -1,7 +1,10 @@
+import os
 import sys
 from pathlib import Path
 
 import pytest
+
+os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / "pulumi"))
 

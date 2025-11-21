@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass
 import re
 
@@ -15,10 +16,20 @@ class RepoSettings:
 
 
 cfg = pulumi.Config()
+_ALLOW_TEST_DEFAULTS = os.getenv("PULUMI_ALLOW_TEST_DEFAULTS") == "1"
+
+
+def _require_config_value(key: str, fallback: str) -> str:
+  value = cfg.get(key)
+  if value is None:
+    if _ALLOW_TEST_DEFAULTS:
+      return fallback
+    raise pulumi.ConfigMissingError(f"Missing required config value '{key}'.")
+  return value
 
 settings = RepoSettings(
-  org=cfg.require("githubOrg"),
-  repo=cfg.require("repoSlug"),
+  org=_require_config_value("githubOrg", "test-org"),
+  repo=_require_config_value("repoSlug", "test-repo"),
   environment=cfg.get("environment") or pulumi.get_stack(),
   owner=cfg.get("owner") or "platform",
   cost_center=cfg.get("costCenter") or "core",
