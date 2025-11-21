@@ -26,8 +26,8 @@ settings = RepoSettings(
 
 
 def state_bucket_name() -> str:
-  return f"pulumi-{settings.repo}-state"
+  return f"pulumi-{settings.repo}-{settings.environment}-state"
 
 
 def central_logging_bucket_name(region: str) -> str:
-  return f"company-central-logs-{region}"
+  return f"company-central-logs-{region}-{settings.environment}"

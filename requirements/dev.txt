@@ -1,4 +1,6 @@
 -r ../pulumi/requirements.txt
 pytest>=8.0,<9
 mutmut>=2.4,<4
-pyyaml>=6.0,<7
+black>=24.0,<25
+flake8>=7.0,<8
+pre-commit>=3.0,<4

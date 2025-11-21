@@ -16,6 +16,6 @@ jobs:
         run: cp -n .env.empty .env
 
       - name: Run Bats suite
-        uses: bats-core/bats-action@2.0.0
+        uses: bats-core/bats-action@v3.0.1
         with:
           test-path: tests/unit

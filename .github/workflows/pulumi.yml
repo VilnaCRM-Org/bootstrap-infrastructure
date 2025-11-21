@@ -49,10 +49,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m venv venv
-          source venv/bin/activate
-          pip install --upgrade pip
-          pip install -r pulumi/requirements.txt
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          poetry install --no-root --no-interaction
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -61,11 +60,9 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Pulumi up
-        working-directory: pulumi
         env:
           PULUMI_STACK: ${{ steps.stack.outputs.stack }}
-          PULUMI_BACKEND_URL: s3://pulumi-bootstrap-infrastructure-state/state/${{ steps.stack.outputs.stack }}
+          PULUMI_BACKEND_URL: s3://pulumi-bootstrap-infrastructure-${{ steps.stack.outputs.stack }}-state/state/${{ steps.stack.outputs.stack }}
         run: |
-          source ../venv/bin/activate
-          pulumi stack select "$PULUMI_STACK" --create
-          pulumi up --yes --skip-preview
+          poetry run pulumi -C pulumi stack select "$PULUMI_STACK" --create
+          poetry run pulumi -C pulumi up --yes --skip-preview
