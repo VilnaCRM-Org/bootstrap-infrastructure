@@ -1,7 +1,16 @@
+from __future__ import annotations
+
+from typing import Dict
+
 import pulumi
 import pulumi_aws as aws
 
-from ..config import settings, state_bucket_name
+from ..config import (
+  managed_repositories,
+  settings,
+  state_bucket_name_for_repo,
+  _sanitize_bucket_component,
+)
 
 
 provider = aws.iam.OpenIdConnectProvider(
@@ -14,18 +23,25 @@ provider = aws.iam.OpenIdConnectProvider(
   url="https://token.actions.githubusercontent.com",
 )
 
-bucket_arn = pulumi.Output.concat("arn:aws:s3:::", state_bucket_name())
-objects_arn = pulumi.Output.concat(bucket_arn, "/state/*")
+role_arns: Dict[str, pulumi.Output[str]] = {}
 
-assume_role_policy = pulumi.Output.all(provider.arn).apply(
-  lambda values: f"""
+for repo in managed_repositories():
+  bucket_name = state_bucket_name_for_repo(repo.name)
+  bucket_arn = pulumi.Output.from_input(f"arn:aws:s3:::{bucket_name}")
+  objects_arn = pulumi.Output.from_input(f"arn:aws:s3:::{bucket_name}/state/*")
+  branch = settings.github_branch or repo.default_branch or "main"
+
+  repo_suffix = _sanitize_bucket_component(repo.name, "repoSlug").replace(".", "-")
+
+  assume_role_policy = provider.arn.apply(
+    lambda arn, repo_name=repo.name: f"""
 {{
   "Version": "2012-10-17",
   "Statement": [
     {{
       "Effect": "Allow",
       "Principal": {{
-        "Federated": "{values[0]}"
+        "Federated": "{arn}"
       }},
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {{
@@ -33,23 +49,23 @@ assume_role_policy = pulumi.Output.all(provider.arn).apply(
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         }},
         "StringLike": {{
-          "token.actions.githubusercontent.com:sub": "repo:{settings.org}/{settings.repo}:ref:refs/heads/{settings.github_branch}"
+          "token.actions.githubusercontent.com:sub": "repo:{settings.org}/{repo_name}:ref:refs/heads/{branch}"
         }}
       }}
     }}
   ]
 }}
 """
-)
+  )
 
-deploy_role = aws.iam.Role(
-  "pulumiDeployRole",
-  name=f"PulumiDeploy-{settings.repo}",
-  assume_role_policy=assume_role_policy,
-)
+  role = aws.iam.Role(
+    f"pulumiDeployRole-{repo_suffix}",
+    name=f"PulumiDeploy-{repo_suffix}",
+    assume_role_policy=assume_role_policy,
+  )
 
-policy = pulumi.Output.all(bucket_arn, objects_arn).apply(
-  lambda values: f"""
+  policy = pulumi.Output.all(bucket_arn, objects_arn).apply(
+    lambda values: f"""
 {{
   "Version": "2012-10-17",
   "Statement": [
@@ -72,12 +88,14 @@ policy = pulumi.Output.all(bucket_arn, objects_arn).apply(
   ]
 }}
 """
-)
+  )
 
-aws.iam.RolePolicy(
-  "pulumiDeployPolicy",
-  role=deploy_role.id,
-  policy=policy,
-)
+  aws.iam.RolePolicy(
+    f"pulumiDeployPolicy-{repo_suffix}",
+    role=role.id,
+    policy=policy,
+  )
 
-pulumi.export("deployRoleArn", deploy_role.arn)
+  role_arns[repo.name] = role.arn
+
+pulumi.export("deployRoleArns", role_arns)

@@ -8,12 +8,7 @@ os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / "pulumi"))
 
-from infra.config import (  # noqa: E402
-  _sanitize_bucket_component,
-  central_logging_bucket_name,
-  state_bucket_name,
-  settings,
-)
+from infra.config import _sanitize_bucket_component, central_logging_bucket_name, settings, state_bucket_name_for_repo  # noqa: E402
 
 
 def test_sanitize_bucket_component_normalizes_case_and_invalid_chars():
@@ -46,13 +41,13 @@ def test_sanitize_bucket_component_rejects_ipv6():
 
 
 def test_state_bucket_name_length_guard(monkeypatch):
-  monkeypatch.setattr(settings, "repo", "r" * 40)
   monkeypatch.setattr(settings, "environment", "e" * 40)
   with pytest.raises(ValueError):
-    state_bucket_name()
+    state_bucket_name_for_repo("r" * 40)
 
 
 def test_central_logging_bucket_length_guard(monkeypatch):
+  monkeypatch.setattr(settings, "logging_prefix", "x" * 50)
   monkeypatch.setattr(settings, "environment", "e" * 40)
   with pytest.raises(ValueError):
     central_logging_bucket_name("regionname")
