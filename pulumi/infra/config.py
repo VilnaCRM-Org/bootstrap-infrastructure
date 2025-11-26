@@ -65,7 +65,14 @@ _IPV6_PATTERN = re.compile(r"^[0-9a-f:]+$")
 
 
 def _sanitize_bucket_component(value: str, label: str) -> str:
-  candidate = value.strip().lower()
+  normalized = value.strip().lower()
+
+  if _IPV4_PATTERN.match(normalized):
+    raise ValueError(f"{label} cannot be an IPv4 address.")
+  if ":" in normalized and _IPV6_PATTERN.match(normalized):
+    raise ValueError(f"{label} cannot be an IPv6 address.")
+
+  candidate = normalized
   candidate = _VALID_CHARS_PATTERN.sub("-", candidate)
   candidate = _SEQUENTIAL_DOTS.sub(".", candidate)
   candidate = _SEQUENTIAL_HYPHENS.sub("-", candidate)
@@ -75,10 +82,6 @@ def _sanitize_bucket_component(value: str, label: str) -> str:
     raise ValueError(f"{label} cannot be fully sanitized; please use a different value.")
   if len(candidate) < 3 or len(candidate) > 63:
     raise ValueError(f"{label} must resolve to between 3 and 63 characters for S3 buckets.")
-  if _IPV4_PATTERN.match(candidate):
-    raise ValueError(f"{label} cannot be an IPv4 address.")
-  if _IPV6_PATTERN.match(candidate) and ":" in candidate:
-    raise ValueError(f"{label} cannot be an IPv6 address.")
 
   return candidate
 
