@@ -5,23 +5,21 @@ from typing import Dict
 import pulumi
 import pulumi_aws as aws
 
-from ..config import (
-  managed_repositories,
-  settings,
-  state_bucket_name_for_repo,
-  _sanitize_bucket_component,
-)
+from ..config import managed_repositories, settings, state_bucket_name_for_repo, _sanitize_bucket_component
 
 
-provider = aws.iam.OpenIdConnectProvider(
-  "githubOidcProvider",
-  client_id_list=["sts.amazonaws.com"],
-  thumbprint_list=[
-    "6938fd4d98bab03faadb97b34396831e3780aea1",
-    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
-  ],
-  url="https://token.actions.githubusercontent.com",
-)
+if settings.github_oidc_provider_arn:
+  provider = aws.iam.OpenIdConnectProvider.get("githubOidcProvider", settings.github_oidc_provider_arn)
+else:
+  provider = aws.iam.OpenIdConnectProvider(
+    "githubOidcProvider",
+    client_id_lists=["sts.amazonaws.com"],
+    thumbprint_lists=[
+      "6938fd4d98bab03faadb97b34396831e3780aea1",
+      "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
+    ],
+    url="https://token.actions.githubusercontent.com",
+  )
 
 role_arns: Dict[str, pulumi.Output[str]] = {}
 

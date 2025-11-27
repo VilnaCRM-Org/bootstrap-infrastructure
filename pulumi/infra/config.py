@@ -1,12 +1,8 @@
-import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 import re
-from typing import List, Optional
-from urllib import error as urllib_error
-from urllib import parse as urllib_parse
-from urllib import request as urllib_request
+from typing import Any, List, Optional
 
 import pulumi
 
@@ -19,9 +15,10 @@ class RepoSettings:
   owner: str
   cost_center: str
   github_branch: Optional[str]
-  managed_topic: str
   logging_prefix: str
   github_token: Optional[str]
+  github_oidc_provider_arn: Optional[str]
+  managed_repo_overrides: Optional[List["ManagedRepository"]] = field(default=None)
 
 
 @dataclass
@@ -50,9 +47,10 @@ settings = RepoSettings(
   owner=cfg.get("owner") or "platform",
   cost_center=cfg.get("costCenter") or "core",
   github_branch=cfg.get("githubBranch"),
-  managed_topic=cfg.get("managedTopic") or "pulumi-state",
   logging_prefix=cfg.get("loggingPrefix") or "company",
   github_token=cfg.get_secret("githubToken"),
+  github_oidc_provider_arn=cfg.get("githubOidcProviderArn"),
+  managed_repo_overrides=None,
 )
 
 
@@ -62,6 +60,34 @@ _SEQUENTIAL_HYPHENS = re.compile(r"-{2,}")
 _LEADING_TRAILING_NON_ALNUM = re.compile(r"^[^a-z0-9]+|[^a-z0-9]+$")
 _IPV4_PATTERN = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
 _IPV6_PATTERN = re.compile(r"^[0-9a-f:]+$")
+
+
+def _load_managed_repo_overrides(raw: Any) -> Optional[List[ManagedRepository]]:
+  if raw is None:
+    return None
+  if not isinstance(raw, list):
+    raise ValueError("managedRepositories config must be a list of repository names or objects.")
+  overrides: List[ManagedRepository] = []
+  for item in raw:
+    if isinstance(item, str):
+      name = item
+      default_branch = "main"
+    elif isinstance(item, dict):
+      name = item.get("name")
+      default_branch = item.get("defaultBranch") or "main"
+    else:
+      raise ValueError("Each managedRepositories entry must be a string or an object with 'name'.")
+    if not isinstance(name, str) or not name.strip():
+      raise ValueError("Each managedRepositories entry must include a non-empty 'name'.")
+    if not isinstance(default_branch, str) or not default_branch.strip():
+      raise ValueError("managedRepositories defaultBranch values must be non-empty strings.")
+    overrides.append(ManagedRepository(name=name.strip(), default_branch=default_branch.strip()))
+  if not overrides:
+    raise ValueError("managedRepositories config cannot be empty.")
+  return overrides
+
+
+settings.managed_repo_overrides = _load_managed_repo_overrides(cfg.get_object("managedRepositories"))
 
 
 def _sanitize_bucket_component(value: str, label: str) -> str:
@@ -115,42 +141,11 @@ def central_logging_bucket_name(region: str) -> str:
 
 @lru_cache(maxsize=1)
 def managed_repositories() -> List[ManagedRepository]:
-  topic = settings.managed_topic
-  query = f"topic:{topic}+org:{settings.org}"
-  headers = {
-    "Accept": "application/vnd.github+json",
-    "User-Agent": "bootstrap-infrastructure/1.0",
-  }
-  if settings.github_token:
-    headers["Authorization"] = f"Bearer {settings.github_token}"
-
-  repos: List[ManagedRepository] = []
-  page = 1
-  while True:
-    params = urllib_parse.urlencode({"q": query, "per_page": 100, "page": page})
-    url = f"https://api.github.com/search/repositories?{params}"
-    req = urllib_request.Request(url, headers=headers, method="GET")
-    try:
-      with urllib_request.urlopen(req, timeout=30) as resp:
-        data = json.load(resp)
-    except urllib_error.HTTPError as http_err:
-      if http_err.code == 403 and http_err.headers and http_err.headers.get("X-RateLimit-Remaining") == "0":
-        raise RuntimeError(
-          "GitHub API rate limit exceeded while fetching repositories. "
-          "Provide a githubToken config value to raise the limit."
-        ) from http_err
-      raise RuntimeError(f"Failed to fetch repositories from GitHub API: {http_err}") from http_err
-
-    items = data.get("items", [])
-    for item in items:
-      repos.append(ManagedRepository(name=item["name"], default_branch=item.get("default_branch") or "main"))
-    if len(repos) >= data.get("total_count", 0) or not items:
-      break
-    page += 1
-
-  if not repos:
-    raise ValueError(
-      f"No repositories in org '{settings.org}' are tagged with topic '{topic}'. "
-      "Add the topic to application repositories that need managed Pulumi state."
-    )
-  return repos
+  if settings.managed_repo_overrides:
+    return settings.managed_repo_overrides
+  if settings.repo:
+    return [ManagedRepository(name=settings.repo, default_branch=settings.github_branch or "main")]
+  raise ValueError(
+    "No managed repositories specified. Set bootstrap-infrastructure:managedRepositories "
+    "to a list of repo names (optionally with defaultBranch)."
+  )

@@ -1,0 +1,13 @@
+encryptionsalt: v1:c6UiG69Zow4=:v1:4ZfHB+fbIVSIU0Cc:MWS3ND4vcauMLKF7CRf26wrM0w9wig==
+config:
+  aws:region: eu-central-1
+  bootstrap-infrastructure:githubOrg: VilnaCRM-Org
+  bootstrap-infrastructure:repoSlug: bootstrap-infrastructure
+  bootstrap-infrastructure:environment: test
+  bootstrap-infrastructure:owner: platform
+  bootstrap-infrastructure:costCenter: core
+  bootstrap-infrastructure:githubBranch: main
+  bootstrap-infrastructure:managedRepositories:
+    - name: bootstrap-infrastructure
+      defaultBranch: main
+  bootstrap-infrastructure:githubOidcProviderArn: arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com

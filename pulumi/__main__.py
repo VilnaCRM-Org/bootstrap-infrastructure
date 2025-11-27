@@ -7,5 +7,5 @@ deployments. Additional resources can be layered into the ``infra`` package
 without changing this file.
 """
 
-from infra import logging_bucket, pulumi_state  # noqa: F401
+from infra import backup, logging_bucket, pulumi_state  # noqa: F401
 from infra.iam import github_oidc, task_roles  # noqa: F401
