@@ -42,7 +42,9 @@ backup_plan = aws.backup.Plan(
       rule_name="daily",
       target_vault_name=backup_vault.name,
       schedule="cron(0 5 * * ? *)",
-      lifecycle=aws.backup.PlanRuleLifecycleArgs(cold_storage_after=0, delete_after=90),
+      lifecycle=aws.backup.PlanRuleLifecycleArgs(
+        delete_after=90
+      ),
       recovery_point_tags=base_tags({"Purpose": "s3-backup"}),
     )
   ],
