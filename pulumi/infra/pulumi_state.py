@@ -6,6 +6,7 @@ import json
 from typing import Dict, Sequence
 
 import pulumi
+import pulumi.errors as pulumi_errors
 import pulumi_aws as aws
 
 from .config import ManagedRepository, managed_repositories, state_bucket_name_for_repo, _sanitize_bucket_component
@@ -17,7 +18,7 @@ def _bucket_exists(name: str) -> bool:
   try:
     aws.s3.get_bucket(bucket=name)
     return True
-  except Exception as exc:  # noqa: BLE001
+  except pulumi_errors.RunError as exc:
     message = str(exc)
     if "NotFound" in message or "NoSuchBucket" in message or "404" in message:
       return False
