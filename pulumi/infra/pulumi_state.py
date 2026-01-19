@@ -17,12 +17,13 @@ def _bucket_exists(name: str) -> bool:
   """Return True when the S3 bucket already exists."""
   try:
     aws.s3.get_bucket(bucket=name)
-    return True
   except pulumi_errors.RunError as exc:
     message = str(exc)
     if "NotFound" in message or "NoSuchBucket" in message or "404" in message:
       return False
     raise
+  else:
+    return True
 
 
 def _resource_suffix(repo_name: str) -> str:
