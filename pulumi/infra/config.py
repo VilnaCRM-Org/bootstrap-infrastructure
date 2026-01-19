@@ -53,7 +53,7 @@ settings = RepoSettings(
   cost_center=cfg.get("costCenter") or "core",
   github_branch=cfg.get("githubBranch"),
   logging_prefix=cfg.get("loggingPrefix") or "company",
-  github_token=cfg.get_secret("githubToken"),
+  github_token=cfg.get("githubToken"),
   github_oidc_provider_arn=cfg.get("githubOidcProviderArn"),
   managed_repo_overrides=None,
 )
