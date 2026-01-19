@@ -87,6 +87,9 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         aws.s3.BucketLifecycleRuleArgs(
           id="logs-lifecycle",
           enabled=True,
+          abort_incomplete_multipart_upload=aws.s3.BucketLifecycleRuleAbortIncompleteMultipartUploadArgs(
+            days_after_initiation=7
+          ),
           transitions=[
             aws.s3.BucketLifecycleRuleTransitionArgs(
               days=30,
@@ -168,6 +171,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
           }
         )
       ),
+      tags=base_tags({"Purpose": "central-logs-replication"}),
       opts=base_opts,
     )
 

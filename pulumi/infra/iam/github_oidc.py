@@ -8,6 +8,7 @@ import pulumi
 import pulumi_aws as aws
 
 from ..config import ManagedRepository, managed_repositories, settings, state_bucket_name_for_repo, _sanitize_bucket_component
+from ..utils.tags import base_tags
 
 
 def _assume_role_policy(arn: str, org: str, repo_name: str, branch_name: str) -> str:
@@ -119,6 +120,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         f"{name}-role-{repo_suffix}",
         name=f"PulumiDeploy-{repo_suffix}",
         assume_role_policy=assume_role_policy,
+        tags=base_tags({"Purpose": "pulumi-deploy", "Repository": repo.name, "App": repo.name}),
         opts=pulumi.ResourceOptions(parent=self),
       )
 

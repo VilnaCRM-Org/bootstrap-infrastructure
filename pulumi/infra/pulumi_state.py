@@ -42,7 +42,7 @@ def _bucket_policy(arn: str) -> str:
       "Effect": "Deny",
       "Principal": "*",
       "Action": "s3:*",
-      "Resource": ["{arn}", "{arn}/state/*"],
+      "Resource": ["{arn}", "{arn}/*"],
       "Condition": {{
         "Bool": {{"aws:SecureTransport": "false"}}
       }}
@@ -95,6 +95,9 @@ class PulumiStateBuckets(pulumi.ComponentResource):
           aws.s3.BucketLifecycleRuleArgs(
             id="expire-old-versions",
             enabled=True,
+            abort_incomplete_multipart_upload=aws.s3.BucketLifecycleRuleAbortIncompleteMultipartUploadArgs(
+              days_after_initiation=7
+            ),
             noncurrent_version_expiration=aws.s3.BucketLifecycleRuleNoncurrentVersionExpirationArgs(
               days=365
             ),
@@ -118,6 +121,13 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         block_public_policy=True,
         ignore_public_acls=True,
         restrict_public_buckets=True,
+        opts=pulumi.ResourceOptions(parent=self),
+      )
+
+      aws.s3.BucketOwnershipControls(
+        f"{name}-ownership-{suffix}",
+        bucket=bucket.id,
+        rule=aws.s3.BucketOwnershipControlsRuleArgs(object_ownership="BucketOwnerEnforced"),
         opts=pulumi.ResourceOptions(parent=self),
       )
 
@@ -153,6 +163,13 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         opts=pulumi.ResourceOptions(parent=self, provider=replica_provider),
       )
 
+      aws.s3.BucketOwnershipControls(
+        f"{name}-replica-ownership-{suffix}",
+        bucket=replica_bucket.id,
+        rule=aws.s3.BucketOwnershipControlsRuleArgs(object_ownership="BucketOwnerEnforced"),
+        opts=pulumi.ResourceOptions(parent=self, provider=replica_provider),
+      )
+
       replication_role = aws.iam.Role(
         f"{name}-replication-role-{suffix}",
         assume_role_policy=bucket.arn.apply(
@@ -170,6 +187,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             }
           )
         ),
+        tags=base_tags({"Purpose": "pulumi-state-replication", "Repository": repo.name, "App": repo.name}),
         opts=pulumi.ResourceOptions(parent=self),
       )
 
