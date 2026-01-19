@@ -3,9 +3,9 @@
 # Infrastructure template for modern DevOps applications
 
 ## Possibilities
-- Modern stack for services: [Terraform](https://www.terraform.io/), [Terraspace](https://terraspace.cloud/)
-- Built-in docker environment and convenient `make` cli command
-- A lot of CI checks to ensure the highest code quality that can be ([checkov](https://www.checkov.io/), [infracost](https://www.infracost.io/), [inframap](https://github.com/cycloidio/inframap), [terrascan](https://runterrascan.io/) and other terraform related checks)
+- Pulumi-based AWS infrastructure for per-repo state, logging, and IAM
+- Built-in Docker environment and convenient `make` CLI commands
+- CI checks for Pulumi unit, integration, structural, and mutation testing
 - Configured testing tools
 - Much more!
 
@@ -18,32 +18,69 @@ We decided to simplify this exhausting process and create a public template for 
 This software is distributed under the [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/deed) license. Please read [LICENSE](https://github.com/VilnaCRM-Org/infrastructure-template/blob/main/LICENSE) for information on the software availability and distribution.
 
 ### Minimal installation
-You can clone this repository locally or use Github functionality "Use this template"
+You can clone this repository locally or use GitHub's "Use this template" feature.
 
-Install the latest [docker](https://docs.docker.com/engine/install/) and [docker compose](https://docs.docker.com/compose/install/)
+Install the latest [docker](https://docs.docker.com/engine/install/) and [docker compose](https://docs.docker.com/compose/install/).
 
-Use `make` command to check all commands that you will need for creating own project
-> make start
+Use `make` to see available commands and start the Pulumi container:
+```
+make start
+```
 
-Check [Getting started](https://terraspace.cloud/getting-started/) section to manage your infrastructure
+### Pulumi onboarding (per repository)
+Each repository gets its own state bucket named `pulumi-<repo>-<env>-state`.
+Configure the stack values either via `pulumi config set` or by copying the example files in `pulumi/`.
 
-That's it. You should now be ready to use infrastructure template!
+Required config values (namespace `bootstrap-infrastructure`):
+- `githubOrg`: GitHub organization name (e.g. `VilnaCRM-Org`)
+- `repoSlug`: Repository name (e.g. `bootstrap-infrastructure`)
+- `environment`: Stack environment (e.g. `test`, `prod`)
+- `owner`: Ownership tag (e.g. `platform`)
+- `costCenter`: Cost center tag (e.g. `core`)
+- `loggingPrefix`: Prefix for central logging buckets
+
+Optional config values:
+- `githubBranch`: Branch allowed for OIDC (defaults to repo default branch)
+- `managedRepositories`: List of repositories and default branches when managing multiple repos
+- `githubOidcProviderArn`: Pre-existing OIDC provider ARN (if you don't want Pulumi to create one)
+
+Example stack config (file: `pulumi/Pulumi.test.yaml`):
+```
+config:
+  aws:region: eu-central-1
+  bootstrap-infrastructure:githubOrg: VilnaCRM-Org
+  bootstrap-infrastructure:repoSlug: bootstrap-infrastructure
+  bootstrap-infrastructure:environment: test
+  bootstrap-infrastructure:owner: platform
+  bootstrap-infrastructure:costCenter: core
+  bootstrap-infrastructure:githubBranch: main
+  bootstrap-infrastructure:managedRepositories:
+    - name: bootstrap-infrastructure
+      defaultBranch: main
+  bootstrap-infrastructure:githubOidcProviderArn: arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com
+```
+
+Backend URL format:
+```
+s3://pulumi-<repo>-<env>-state/state/<stack>
+```
+
+### Running Pulumi
+Common commands (inside the Docker container via `make`):
+```
+make pulumi-preview
+make pulumi-up
+make pulumi-refresh
+make pulumi-destroy
+```
 
 ## Using
-You can use `make` command to easily control and work with project locally.
+You can use `make` to control and work with the project locally.
 
 Execute `make` or `make help` to see the full list of project commands.
 
-The list of the `make` possibilities:
-
-```
- start  Docker container with terraspace and terraform
-```
-
 ## Documentation
 Start reading at the [GitHub wiki](https://github.com/VilnaCRM-Org/infrastructure-template/wiki). If you're having trouble, head for [the troubleshooting guide](https://github.com/VilnaCRM-Org/infrastructure-template/wiki/Troubleshooting) as it's frequently updated.
-
-If the documentation doesn't cover what you need, search the [many questions on Stack Overflow](http://stackoverflow.com/questions/tagged/vilnacrm), and before you ask a question, [read the troubleshooting guide](https://github.com/VilnaCRM-Org/infrastructure-template/wiki/Troubleshooting).
 
 ## Tests
 [Test status](https://github.com/VilnaCRM-Org/infrastructure-template/actions)

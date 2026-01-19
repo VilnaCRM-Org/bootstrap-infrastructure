@@ -1,1 +1,5 @@
-from . import github_oidc, task_roles  # noqa: F401
+"""IAM component exports for Pulumi stacks."""
+
+from .github_oidc import GitHubOidcRoles
+
+__all__ = ("GitHubOidcRoles",)
