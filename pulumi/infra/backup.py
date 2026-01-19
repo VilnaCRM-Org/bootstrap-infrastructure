@@ -19,6 +19,7 @@ class S3BackupPlan(pulumi.ComponentResource):
     backup_target_arns: Sequence[pulumi.Input[str]],
     opts: pulumi.ResourceOptions | None = None,
   ) -> None:
+    """Initialize the AWS Backup plan for S3 resources."""
     super().__init__("bootstrap:backup:S3BackupPlan", name, None, opts)
 
     base_opts = pulumi.ResourceOptions(parent=self)

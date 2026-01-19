@@ -74,6 +74,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
     repositories: Sequence[ManagedRepository] | None = None,
     opts: pulumi.ResourceOptions | None = None,
   ) -> None:
+    """Initialize OIDC provider and deploy roles for repositories."""
     super().__init__("bootstrap:iam:GitHubOidcRoles", name, None, opts)
 
     repos = list(repositories) if repositories is not None else managed_repositories()

@@ -63,6 +63,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
     replication_region: str = "us-east-1",
     opts: pulumi.ResourceOptions | None = None,
   ) -> None:
+    """Initialize state buckets for all managed repositories."""
     super().__init__("bootstrap:pulumi:PulumiStateBuckets", name, None, opts)
 
     repos = list(repositories) if repositories is not None else managed_repositories()

@@ -63,6 +63,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
     replication_region: str = "us-east-1",
     opts: pulumi.ResourceOptions | None = None,
   ) -> None:
+    """Initialize the central logging buckets component."""
     super().__init__("bootstrap:logging:CentralLoggingBuckets", name, None, opts)
 
     region = aws.get_region()
