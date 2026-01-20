@@ -112,6 +112,7 @@ jobs:
         env:
           PULUMI_STACK: ${{ steps.stack.outputs.stack }}
           PULUMI_BACKEND_URL: ${{ steps.backend.outputs.backend_url }}
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
         run: |
           poetry run pulumi -C pulumi stack select "$PULUMI_STACK" --create
           poetry run pulumi -C pulumi up --yes --skip-preview
