@@ -50,16 +50,12 @@ RUN curl --fail --silent --show-error --location \
     && rm -rf /tmp/pulumi.tar.gz /tmp/pulumi.tar.gz.sha256
 
 # Install AWS CLI v2
-RUN curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
-        "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip" \
-        --output "/tmp/awscliv2.zip" \
-    && curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
-        "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip.sig" \
-        --output "/tmp/awscliv2.zip.sig" \
-    && mkdir -p /tmp/aws-cli-keyring \
-    && cat > /tmp/aws-cli-keyring/awscli-public-key.asc <<'EOF'
+RUN <<EOF
+set -e
+curl --fail --silent --show-error --location     --retry 5 --retry-delay 5 --retry-all-errors     "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip"     --output "/tmp/awscliv2.zip"
+curl --fail --silent --show-error --location     --retry 5 --retry-delay 5 --retry-all-errors     "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip.sig"     --output "/tmp/awscliv2.zip.sig"
+mkdir -p /tmp/aws-cli-keyring
+cat > /tmp/aws-cli-keyring/awscli-public-key.asc <<'KEY'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
 
 mQINBF2Cr7UBEADJZHcgusOJl7ENSyumXh85z0TRV0xJorM2B/JL0kHOyigQluUG
@@ -89,12 +85,13 @@ V2OWSjbne99A5EPEySzryFTKbMGwaTlAwMCwYevt4YT6eb7NmFhTx0Fis4TalUs+
 j+c7Kg92pDx2uQ==
 =OBAt
 -----END PGP PUBLIC KEY BLOCK-----
+KEY
+GNUPGHOME=/tmp/aws-cli-keyring gpg --batch --import /tmp/aws-cli-keyring/awscli-public-key.asc
+GNUPGHOME=/tmp/aws-cli-keyring gpg --batch --verify /tmp/awscliv2.zip.sig /tmp/awscliv2.zip
+unzip /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
+rm -rf /tmp/aws /tmp/awscliv2.zip /tmp/awscliv2.zip.sig /tmp/aws-cli-keyring
 EOF
-    && GNUPGHOME=/tmp/aws-cli-keyring gpg --batch --import /tmp/aws-cli-keyring/awscli-public-key.asc \
-    && GNUPGHOME=/tmp/aws-cli-keyring gpg --batch --verify /tmp/awscliv2.zip.sig /tmp/awscliv2.zip \
-    && unzip /tmp/awscliv2.zip -d /tmp \
-    && /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli \
-    && rm -rf /tmp/aws /tmp/awscliv2.zip /tmp/awscliv2.zip.sig /tmp/aws-cli-keyring
 
 # Install Poetry
 ENV POETRY_HOME=/opt/poetry
