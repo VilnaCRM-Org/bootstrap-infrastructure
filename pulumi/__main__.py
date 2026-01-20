@@ -15,7 +15,7 @@ logging = CentralLoggingBuckets("central-logging")
 state = PulumiStateBuckets("pulumi-state")
 oidc = GitHubOidcRoles("github-oidc")
 
-backup_targets = [logging.bucket.arn] + list(state.bucket_arns.values())
+backup_targets = [logging.bucket.arn, *state.bucket_arns.values()]
 S3BackupPlan("s3-backup", backup_target_arns=backup_targets)
 
 pulumi.export("centralLogBucket", logging.bucket.bucket)

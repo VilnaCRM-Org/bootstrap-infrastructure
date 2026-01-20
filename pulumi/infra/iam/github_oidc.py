@@ -7,7 +7,7 @@ from typing import Dict, Sequence
 import pulumi
 import pulumi_aws as aws
 
-from ..config import ManagedRepository, managed_repositories, settings, state_bucket_name_for_repo, _sanitize_bucket_component
+from ..config import ManagedRepository, managed_repositories, settings, state_bucket_name_for_repo, sanitize_bucket_component
 from ..utils.tags import base_tags
 
 
@@ -106,7 +106,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
       objects_arn = pulumi.Output.from_input(f"arn:aws:s3:::{bucket_name}/state/*")
       branch = settings.github_branch or repo.default_branch or "main"
 
-      repo_suffix = _sanitize_bucket_component(repo.name, "repoSlug").replace(".", "-")
+      repo_suffix = sanitize_bucket_component(repo.name, "repoSlug").replace(".", "-")
 
       assume_role_policy = provider.arn.apply(
         lambda arn, repo_name=repo.name, branch_name=branch: _assume_role_policy(

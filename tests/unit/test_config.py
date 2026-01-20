@@ -10,7 +10,7 @@ os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / "pulumi"))
 
-from infra.config import _sanitize_bucket_component, central_logging_bucket_name, settings, state_bucket_name_for_repo  # noqa: E402
+from infra.config import _sanitize_bucket_component, central_logging_bucket_name, settings, state_bucket_name_for_repo
 
 
 def test_sanitize_bucket_component_normalizes_case_and_invalid_chars():
@@ -40,6 +40,12 @@ def test_sanitize_bucket_component_rejects_ipv4():
   """Sanitizer should reject IPv4 addresses."""
   with pytest.raises(ValueError):
     _sanitize_bucket_component("192.168.0.1", "repoSlug")
+
+
+def test_sanitize_bucket_component_rejects_ipv4_after_sanitize():
+  """Sanitizer should reject IPv4 addresses after normalization."""
+  with pytest.raises(ValueError):
+    _sanitize_bucket_component("192.168.0.1-", "repoSlug")
 
 
 def test_sanitize_bucket_component_rejects_ipv6():

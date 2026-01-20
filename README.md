@@ -23,7 +23,7 @@ You can clone this repository locally or use GitHub's "Use this template" featur
 Install the latest [docker](https://docs.docker.com/engine/install/) and [docker compose](https://docs.docker.com/compose/install/).
 
 Use `make` to see available commands and start the Pulumi container:
-```
+```bash
 make start
 ```
 
@@ -45,7 +45,7 @@ Optional config values:
 - `githubOidcProviderArn`: Pre-existing OIDC provider ARN (if you don't want Pulumi to create one)
 
 Example stack config (file: `pulumi/Pulumi.test.yaml`):
-```
+```yaml
 config:
   aws:region: eu-central-1
   bootstrap-infrastructure:githubOrg: VilnaCRM-Org
@@ -61,13 +61,16 @@ config:
 ```
 
 Backend URL format:
-```
+```text
 s3://pulumi-<repo>-<env>-state/state/<stack>
 ```
 
+CI requires setting the `PULUMI_STATE_BUCKET` repository variable to the bucket name that matches the
+configured repo/environment naming (for example: `pulumi-bootstrap-infrastructure-test-state`).
+
 ### Running Pulumi
 Common commands (inside the Docker container via `make`):
-```
+```bash
 make pulumi-preview
 make pulumi-up
 make pulumi-refresh

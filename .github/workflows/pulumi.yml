@@ -1,4 +1,4 @@
-name: pulumi
+name: Pulumi Deploy
 
 on:
   push:
@@ -42,16 +42,34 @@ jobs:
             echo "role=${{ vars.PULUMI_TEST_ROLE_ARN }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve backend bucket
+        id: backend
+        run: |
+          if [ -z "${{ vars.PULUMI_STATE_BUCKET }}" ]; then
+            echo "PULUMI_STATE_BUCKET repository variable must be set." >&2
+            exit 1
+          fi
+          echo "bucket=${{ vars.PULUMI_STATE_BUCKET }}" >> "$GITHUB_OUTPUT"
+          echo "backend_url=s3://${{ vars.PULUMI_STATE_BUCKET }}/state/${{ steps.stack.outputs.stack }}" >> "$GITHUB_OUTPUT"
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+      - name: Install Poetry
+        uses: snok/install-poetry@v1.4.1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: false
+
       - name: Install dependencies
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          poetry install --no-root --no-interaction
+        run: poetry install --no-root --no-interaction
+
+      - name: Install Pulumi CLI
+        uses: pulumi/actions@v6
+        with:
+          pulumi-version: "3.138.0"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -59,10 +77,28 @@ jobs:
           role-to-assume: ${{ steps.stack.outputs.role }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Ensure Pulumi backend bucket exists
+        env:
+          BUCKET_NAME: ${{ steps.backend.outputs.bucket }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+        run: |
+          if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+            echo "Pulumi backend bucket exists."
+          else
+            echo "Creating Pulumi backend bucket $BUCKET_NAME in $AWS_REGION."
+            if [ "$AWS_REGION" = "us-east-1" ]; then
+              aws s3api create-bucket --bucket "$BUCKET_NAME"
+            else
+              aws s3api create-bucket --bucket "$BUCKET_NAME" \
+                --region "$AWS_REGION" \
+                --create-bucket-configuration "LocationConstraint=$AWS_REGION"
+            fi
+          fi
+
       - name: Pulumi up
         env:
           PULUMI_STACK: ${{ steps.stack.outputs.stack }}
-          PULUMI_BACKEND_URL: s3://pulumi-bootstrap-infrastructure-${{ steps.stack.outputs.stack }}-state/state/${{ steps.stack.outputs.stack }}
+          PULUMI_BACKEND_URL: ${{ steps.backend.outputs.backend_url }}
         run: |
           poetry run pulumi -C pulumi stack select "$PULUMI_STACK" --create
           poetry run pulumi -C pulumi up --yes --skip-preview

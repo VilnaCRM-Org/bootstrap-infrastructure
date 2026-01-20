@@ -17,16 +17,19 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install Poetry
+        uses: snok/install-poetry@v1.4.1
+        with:
+          version: "1.8.4"
+          virtualenvs-create: false
+
       - name: Install dependencies
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-          poetry install --with dev --no-root --no-interaction
+        run: poetry install --with dev --no-root --no-interaction
 
       - name: Install Pulumi CLI
-        run: |
-          curl -fsSL https://get.pulumi.com | sh
-          echo "$HOME/.pulumi/bin" >> "$GITHUB_PATH"
+        uses: pulumi/actions@v6
+        with:
+          pulumi-version: "3.138.0"
 
       - name: Prepare local Pulumi backend
         run: mkdir -p "${{ runner.temp }}/pulumi-backend"

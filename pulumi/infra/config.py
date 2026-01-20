@@ -111,12 +111,20 @@ def _sanitize_bucket_component(value: str, label: str) -> str:
   candidate = _SEQUENTIAL_HYPHENS.sub("-", candidate)
   candidate = _LEADING_TRAILING_NON_ALNUM.sub("", candidate)
 
+  if _IPV4_PATTERN.match(candidate):
+    raise ValueError(f"{label} cannot be an IPv4 address.")
+
   if not candidate:
     raise ValueError(f"{label} cannot be fully sanitized; please use a different value.")
   if len(candidate) < 3 or len(candidate) > 63:
     raise ValueError(f"{label} must resolve to between 3 and 63 characters for S3 buckets.")
 
   return candidate
+
+
+def sanitize_bucket_component(value: str, label: str) -> str:
+  """Public wrapper for bucket component sanitization."""
+  return _sanitize_bucket_component(value, label)
 
 
 def state_bucket_name_for_repo(repo_name: str) -> str:

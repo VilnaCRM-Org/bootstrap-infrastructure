@@ -19,8 +19,6 @@ services:
     env_file:
       - path: .env
         required: false
-      - path: .env.empty
-        required: false
     environment:
       - PULUMI_ACCESS_TOKEN
       - AWS_ACCESS_KEY_ID

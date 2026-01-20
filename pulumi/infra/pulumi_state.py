@@ -9,7 +9,7 @@ import pulumi
 import pulumi.errors as pulumi_errors
 import pulumi_aws as aws
 
-from .config import ManagedRepository, managed_repositories, state_bucket_name_for_repo, _sanitize_bucket_component
+from .config import ManagedRepository, managed_repositories, state_bucket_name_for_repo, sanitize_bucket_component
 from .utils.tags import base_tags
 
 
@@ -28,7 +28,7 @@ def _bucket_exists(name: str) -> bool:
 
 def _resource_suffix(repo_name: str) -> str:
   """Convert a repo name into a safe Pulumi resource suffix."""
-  return _sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+  return sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
 
 
 def _bucket_policy(arn: str) -> str:
@@ -71,6 +71,12 @@ class PulumiStateBuckets(pulumi.ComponentResource):
     self.backend_urls: Dict[str, pulumi.Output[str]] = {}
     self.bucket_resources: Dict[str, aws.s3.Bucket] = {}
     self.bucket_arns: Dict[str, pulumi.Output[str]] = {}
+
+    primary_region = aws.get_region().name
+    if replication_region == primary_region:
+      raise ValueError(
+        f"replication_region must differ from primary region ({primary_region})."
+      )
 
     replica_provider = aws.Provider(
       f"{name}-replica-provider",
@@ -139,9 +145,15 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         opts=pulumi.ResourceOptions(parent=self),
       )
 
+      replica_bucket_name = f"{bucket_name}-replication"
+      if len(replica_bucket_name) > 63:
+        raise ValueError(
+          f"Replica bucket name '{replica_bucket_name}' exceeds 63 characters."
+        )
+
       replica_bucket = aws.s3.Bucket(
         f"{name}-replica-{suffix}",
-        bucket=f"{bucket_name}-replication",
+        bucket=replica_bucket_name,
         versioning=aws.s3.BucketVersioningArgs(enabled=True),
         server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
           rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
@@ -168,6 +180,13 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         f"{name}-replica-ownership-{suffix}",
         bucket=replica_bucket.id,
         rule=aws.s3.BucketOwnershipControlsRuleArgs(object_ownership="BucketOwnerEnforced"),
+        opts=pulumi.ResourceOptions(parent=self, provider=replica_provider),
+      )
+
+      aws.s3.BucketPolicy(
+        f"{name}-replica-policy-{suffix}",
+        bucket=replica_bucket.id,
+        policy=replica_bucket.arn.apply(_bucket_policy),
         opts=pulumi.ResourceOptions(parent=self, provider=replica_provider),
       )
 

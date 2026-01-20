@@ -29,7 +29,7 @@ def _log_bucket_policy(bucket_arn: str, account_id: str) -> str:
       "Sid": "AllowCloudTrailWrites",
       "Effect": "Allow",
       "Principal": {{"Service": "cloudtrail.amazonaws.com"}},
-      "Action": "s3:PutObject",
+      "Action": ["s3:GetBucketAcl", "s3:PutObject"],
       "Resource": "{bucket_arn}/cloudtrail/AWSLogs/{account_id}/*",
       "Condition": {{
         "StringEquals": {{"s3:x-amz-acl": "bucket-owner-full-control"}}
@@ -76,6 +76,8 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
 
     primary_bucket_name = central_logging_bucket_name(region.name)
     replica_bucket_name = f"{primary_bucket_name}-replication"
+    if len(replica_bucket_name) > 63:
+      raise ValueError("Replica logging bucket name exceeds S3 63-character limit.")
 
     base_opts = pulumi.ResourceOptions(parent=self)
     replica_opts = pulumi.ResourceOptions(parent=self, provider=replica_provider)
@@ -115,6 +117,15 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
       f"{name}-replica",
       bucket=replica_bucket_name,
       versioning=aws.s3.BucketVersioningArgs(enabled=True),
+      lifecycle_rules=[
+        aws.s3.BucketLifecycleRuleArgs(
+          id="replica-lifecycle",
+          enabled=True,
+          abort_incomplete_multipart_upload=aws.s3.BucketLifecycleRuleAbortIncompleteMultipartUploadArgs(
+            days_after_initiation=7
+          ),
+        )
+      ],
       server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
         rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
           apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
@@ -153,6 +164,15 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         lambda values: _log_bucket_policy(values[0], values[1])
       ),
       opts=base_opts,
+    )
+
+    aws.s3.BucketPolicy(
+      f"{name}-replica-policy",
+      bucket=replica_bucket.id,
+      policy=pulumi.Output.all(replica_bucket.arn, account.account_id).apply(
+        lambda values: _log_bucket_policy(values[0], values[1])
+      ),
+      opts=replica_opts,
     )
 
     replication_role = aws.iam.Role(
