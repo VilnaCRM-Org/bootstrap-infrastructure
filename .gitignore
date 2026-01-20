@@ -6,4 +6,6 @@ __pycache__
 .pytest_cache
 dist
 build
+.env
+.env.*
 .pulumi-backend

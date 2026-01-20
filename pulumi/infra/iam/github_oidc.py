@@ -45,7 +45,7 @@ def _deploy_policy(bucket_arn: str, objects_arn: str) -> str:
   "Statement": [
     {{
       "Effect": "Allow",
-      "Action": ["s3:ListBucket"],
+      "Action": ["s3:ListBucket", "s3:CreateBucket"],
       "Resource": "{bucket_arn}"
     }},
     {{

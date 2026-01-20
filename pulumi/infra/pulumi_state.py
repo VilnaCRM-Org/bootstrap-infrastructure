@@ -155,6 +155,18 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         f"{name}-replica-{suffix}",
         bucket=replica_bucket_name,
         versioning=aws.s3.BucketVersioningArgs(enabled=True),
+        lifecycle_rules=[
+          aws.s3.BucketLifecycleRuleArgs(
+            id="replica-expire-old-versions",
+            enabled=True,
+            abort_incomplete_multipart_upload=aws.s3.BucketLifecycleRuleAbortIncompleteMultipartUploadArgs(
+              days_after_initiation=7
+            ),
+            noncurrent_version_expiration=aws.s3.BucketLifecycleRuleNoncurrentVersionExpirationArgs(
+              days=365
+            ),
+          )
+        ],
         server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
           rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
             apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(

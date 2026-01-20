@@ -75,6 +75,7 @@ test: ## Run the complete Pulumi-focused test battery.
 	$(MAKE) test-pulumi
 	$(MAKE) test-unit
 	$(MAKE) test-integration
+	$(MAKE) test-mutation
 
 clean: ## Remove Docker Compose artifacts, Python caches, and build artifacts.
 	$(DOCKER_COMPOSE) down -v 2>/dev/null || true

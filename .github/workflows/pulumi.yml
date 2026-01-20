@@ -82,16 +82,29 @@ jobs:
           BUCKET_NAME: ${{ steps.backend.outputs.bucket }}
           AWS_REGION: ${{ env.AWS_REGION }}
         run: |
-          if aws s3api head-bucket --bucket "$BUCKET_NAME" 2>/dev/null; then
+          head_output=$(aws s3api head-bucket --bucket "$BUCKET_NAME" 2>&1) && exists=true || exists=false
+          if [ "$exists" = true ]; then
             echo "Pulumi backend bucket exists."
           else
+            if echo "$head_output" | grep -qiE "AccessDenied|Forbidden|403"; then
+              echo "Permission denied checking Pulumi backend bucket $BUCKET_NAME." >&2
+              echo "$head_output" >&2
+              exit 1
+            fi
             echo "Creating Pulumi backend bucket $BUCKET_NAME in $AWS_REGION."
             if [ "$AWS_REGION" = "us-east-1" ]; then
-              aws s3api create-bucket --bucket "$BUCKET_NAME"
+              create_output=$(aws s3api create-bucket --bucket "$BUCKET_NAME" 2>&1) || create_status=$?
             else
-              aws s3api create-bucket --bucket "$BUCKET_NAME" \
+              create_output=$(aws s3api create-bucket --bucket "$BUCKET_NAME" \
                 --region "$AWS_REGION" \
-                --create-bucket-configuration "LocationConstraint=$AWS_REGION"
+                --create-bucket-configuration "LocationConstraint=$AWS_REGION" 2>&1) || create_status=$?
+            fi
+            if [ -n "${create_status:-}" ]; then
+              if echo "$create_output" | grep -qiE "AccessDenied|Forbidden|403"; then
+                echo "Permission denied creating Pulumi backend bucket $BUCKET_NAME." >&2
+              fi
+              echo "$create_output" >&2
+              exit "$create_status"
             fi
           fi
 

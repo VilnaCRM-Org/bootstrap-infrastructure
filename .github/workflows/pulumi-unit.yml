@@ -13,5 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Build test container
+        run: docker compose build pulumi
+
       - name: Run unit suite
         run: make test-unit
