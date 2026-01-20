@@ -54,6 +54,14 @@ def test_sanitize_bucket_component_rejects_ipv6():
     _sanitize_bucket_component("2001:0db8:85a3:0000:0000:8a2e:0370:7334", "repoSlug")
 
 
+def test_sanitize_bucket_component_rejects_dot_hyphen_adjacency():
+  """Sanitizer should reject dot-hyphen adjacency in DNS labels."""
+  with pytest.raises(ValueError):
+    _sanitize_bucket_component("my-.repo", "repoSlug")
+  with pytest.raises(ValueError):
+    _sanitize_bucket_component("my.-repo", "repoSlug")
+
+
 def test_state_bucket_name_length_guard(monkeypatch):
   """Repo + environment should not exceed S3 length limits."""
   monkeypatch.setattr(settings, "environment", "e" * 40)
