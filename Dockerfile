@@ -36,18 +36,18 @@ RUN groupadd --gid "${GID}" "${USERNAME}" \
 # Install Pulumi CLI once and expose it on the PATH for all users
 RUN curl --fail --silent --show-error --location \
         --retry 5 --retry-delay 5 --retry-all-errors \
-        "https://get.pulumi.com/releases/sdk/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
-        --output /tmp/pulumi.tar.gz \
+        "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
+        --output "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
     && curl --fail --silent --show-error --location \
         --retry 5 --retry-delay 5 --retry-all-errors \
-        "https://get.pulumi.com/releases/sdk/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz.sha256" \
-        --output /tmp/pulumi.tar.gz.sha256 \
-    && expected_sha="$(awk '{print $1}' /tmp/pulumi.tar.gz.sha256)" \
-    && echo "${expected_sha}  /tmp/pulumi.tar.gz" | sha256sum -c - \
+        "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-${PULUMI_VERSION}-checksums.txt" \
+        --output /tmp/pulumi-checksums.txt \
+    && cd /tmp \
+    && grep "pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" pulumi-checksums.txt | sha256sum -c - \
     && mkdir -p /opt/pulumi \
-    && tar --extract --gzip --file /tmp/pulumi.tar.gz --strip-components=1 --directory /opt/pulumi \
+    && tar --extract --gzip --file "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" --strip-components=1 --directory /opt/pulumi \
     && ln -sf /opt/pulumi/pulumi /usr/local/bin/pulumi \
-    && rm -rf /tmp/pulumi.tar.gz /tmp/pulumi.tar.gz.sha256
+    && rm -rf "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt
 
 # Install AWS CLI v2
 RUN <<EOF
