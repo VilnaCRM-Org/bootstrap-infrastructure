@@ -9,3 +9,5 @@ build
 .env
 .env.*
 .pulumi-backend
+.coverage
+.coverage.*

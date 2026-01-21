@@ -17,7 +17,8 @@ export USER
 DOCKER_COMPOSE    = docker compose
 COMPOSE_ENV_FLAG  = $(if $(EFFECTIVE_ENV_FILE),--env-file $(EFFECTIVE_ENV_FILE),)
 COMPOSE           = $(DOCKER_COMPOSE) $(COMPOSE_ENV_FLAG)
-PYTEST_COV_OPTS   = --cov=./pulumi --cov-report=term-missing --cov-fail-under=100
+PYTEST_COV_OPTS_UNIT = --cov=./pulumi --cov-report=term-missing --cov-fail-under=100
+PYTEST_COV_OPTS_INT  = --cov=./pulumi --cov-report=term-missing --cov-fail-under=100
 
 # Misc
 .DEFAULT_GOAL     = help
@@ -61,10 +62,10 @@ fi
 endef
 
 test-unit: ## Execute fast unit tests for the Pulumi application layer (if present).
-	$(call run_or_skip,tests/unit,poetry run pytest -q tests/unit $(PYTEST_COV_OPTS),"unit tests")
+	$(call run_or_skip,tests/unit,bash -c "COVERAGE_FILE=.coverage.unit poetry run pytest -q tests/unit $(PYTEST_COV_OPTS_UNIT)","unit tests")
 
 test-integration: ## Execute Pulumi automation-based integration tests (if present).
-	$(call run_or_skip,tests/integration,poetry run pytest -q tests/integration,"integration tests")
+	$(call run_or_skip,tests/integration,bash -c "COVERAGE_FILE=.coverage.integration poetry run pytest -q tests/integration tests/unit $(PYTEST_COV_OPTS_INT)","integration tests")
 
 test-pulumi: ## Perform structural checks on Pulumi project configuration (if present).
 	$(call run_or_skip,tests/pulumi,poetry run pytest -q tests/pulumi,"Pulumi structural tests")
