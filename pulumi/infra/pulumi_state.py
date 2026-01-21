@@ -60,7 +60,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
     name: str,
     *,
     repositories: Sequence[ManagedRepository] | None = None,
-    replication_region: str = "us-east-1",
+    replication_region: str | None = None,
     opts: pulumi.ResourceOptions | None = None,
   ) -> None:
     """Initialize state buckets for all managed repositories."""
@@ -72,7 +72,11 @@ class PulumiStateBuckets(pulumi.ComponentResource):
     self.bucket_resources: Dict[str, aws.s3.Bucket] = {}
     self.bucket_arns: Dict[str, pulumi.Output[str]] = {}
 
-    resolved_region = replication_region or settings.replication_region or "us-east-1"
+    resolved_region = (
+      replication_region
+      if replication_region
+      else (settings.replication_region or "us-east-1")
+    )
 
     replica_provider = aws.Provider(
       f"{name}-replica-provider",

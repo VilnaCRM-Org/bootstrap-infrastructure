@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from typing import Dict, Sequence
 
 import pulumi
@@ -9,6 +10,23 @@ import pulumi_aws as aws
 
 from ..config import ManagedRepository, managed_repositories, settings, state_bucket_name_for_repo, sanitize_bucket_component
 from ..utils.tags import base_tags
+
+_ROLE_NAME_PREFIX = "PulumiDeploy-"
+_MAX_IAM_ROLE_NAME_LENGTH = 64
+
+
+def _truncate_role_suffix(repo_suffix: str) -> str:
+  max_suffix_len = _MAX_IAM_ROLE_NAME_LENGTH - len(_ROLE_NAME_PREFIX)
+  if len(repo_suffix) <= max_suffix_len:
+    return repo_suffix
+  digest = hashlib.sha256(repo_suffix.encode("utf-8")).hexdigest()[:8]
+  truncated_len = max_suffix_len - len(digest) - 1
+  truncated_len = max(truncated_len, 1)
+  return f"{repo_suffix[:truncated_len]}-{digest}"
+
+
+def _role_name_for_suffix(repo_suffix: str) -> str:
+  return f"{_ROLE_NAME_PREFIX}{_truncate_role_suffix(repo_suffix)}"
 
 
 def _assume_role_policy(arn: str, org: str, repo_name: str, branch_name: str) -> str:
@@ -107,6 +125,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
       branch = settings.github_branch or repo.default_branch or "main"
 
       repo_suffix = sanitize_bucket_component(repo.name, "repoSlug").replace(".", "-")
+      role_name = _role_name_for_suffix(repo_suffix)
 
       assume_role_policy = provider.arn.apply(
         lambda arn, repo_name=repo.name, branch_name=branch: _assume_role_policy(
@@ -119,7 +138,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
 
       role = aws.iam.Role(
         f"{name}-role-{repo_suffix}",
-        name=f"PulumiDeploy-{repo_suffix}",
+        name=role_name,
         assume_role_policy=assume_role_policy,
         tags=base_tags({"Purpose": "pulumi-deploy", "Repository": repo.name, "App": repo.name}),
         opts=pulumi.ResourceOptions(parent=self),

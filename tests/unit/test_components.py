@@ -48,6 +48,26 @@ def test_github_oidc_roles_with_existing_provider(monkeypatch):
   assert roles.deploy_role_arns  # nosec B101
 
 
+def test_github_oidc_role_name_limits_length():
+  long_suffix = "a" * 70
+  role_name = github_oidc._role_name_for_suffix(long_suffix)
+  assert role_name.startswith(github_oidc._ROLE_NAME_PREFIX)  # nosec B101
+  assert len(role_name) <= github_oidc._MAX_IAM_ROLE_NAME_LENGTH  # nosec B101
+
+
+def test_truncate_role_suffix_keeps_short():
+  short_suffix = "repo-short"
+  assert github_oidc._truncate_role_suffix(short_suffix) == short_suffix  # nosec B101
+
+
+def test_truncate_role_suffix_truncates_long():
+  long_suffix = "a" * 70
+  truncated = github_oidc._truncate_role_suffix(long_suffix)
+  assert truncated != long_suffix  # nosec B101
+  max_suffix_len = github_oidc._MAX_IAM_ROLE_NAME_LENGTH - len(github_oidc._ROLE_NAME_PREFIX)
+  assert len(truncated) <= max_suffix_len  # nosec B101
+
+
 def test_task_roles_module_has_no_exports():
   from infra.iam import task_roles
 
