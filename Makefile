@@ -49,7 +49,7 @@ sh: ## Open a shell inside the Pulumi container.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) sh
 
 down: ## Stop the Docker Compose environment.
-	$(DOCKER_COMPOSE) down
+	$(COMPOSE) down
 
 define run_or_skip
 @if [ -d "$(1)" ]; then \
@@ -78,7 +78,7 @@ test: ## Run the complete Pulumi-focused test battery.
 	$(MAKE) test-mutation
 
 clean: ## Remove Docker Compose artifacts, Python caches, and build artifacts.
-	$(DOCKER_COMPOSE) down -v 2>/dev/null || true
+	$(COMPOSE) down -v 2>/dev/null || true
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	rm -rf .venv dist build *.egg-info 2>/dev/null || true

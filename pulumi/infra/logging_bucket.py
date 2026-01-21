@@ -33,7 +33,7 @@ def _log_bucket_policy(bucket_arn: str, account_id: str) -> str:
       "Resource": "{bucket_arn}"
     }},
     {{
-      "Sid": "AllowCloudTrailWrites",
+      "Sid": "AllowCloudTrailPutObject",
       "Effect": "Allow",
       "Principal": {{"Service": "cloudtrail.amazonaws.com"}},
       "Action": "s3:PutObject",
