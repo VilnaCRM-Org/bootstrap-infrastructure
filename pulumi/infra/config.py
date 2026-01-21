@@ -19,6 +19,7 @@ class RepoSettings:
   cost_center: str
   github_branch: Optional[str]
   logging_prefix: str
+  replication_region: Optional[str]
   github_token: Optional[str]
   github_oidc_provider_arn: Optional[str]
   managed_repo_overrides: Optional[List["ManagedRepository"]] = field(default=None)
@@ -53,6 +54,7 @@ settings = RepoSettings(
   cost_center=cfg.get("costCenter") or "core",
   github_branch=cfg.get("githubBranch"),
   logging_prefix=cfg.get("loggingPrefix") or "company",
+  replication_region=cfg.get("replicationRegion"),
   github_token=cfg.get("githubToken"),
   github_oidc_provider_arn=cfg.get("githubOidcProviderArn"),
   managed_repo_overrides=None,

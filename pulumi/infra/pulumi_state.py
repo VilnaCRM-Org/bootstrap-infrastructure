@@ -73,14 +73,11 @@ class PulumiStateBuckets(pulumi.ComponentResource):
     self.bucket_arns: Dict[str, pulumi.Output[str]] = {}
 
     primary_region = aws.get_region().name
-    if replication_region == primary_region:
-      raise ValueError(
-        f"replication_region must differ from primary region ({primary_region})."
-      )
+    resolved_region = replication_region or settings.replication_region or "us-east-1"
 
     replica_provider = aws.Provider(
       f"{name}-replica-provider",
-      region=replication_region,
+      region=resolved_region,
       opts=pulumi.ResourceOptions(parent=self),
     )
 
