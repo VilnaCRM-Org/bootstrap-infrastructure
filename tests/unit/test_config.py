@@ -4,12 +4,14 @@ import os
 import sys
 from pathlib import Path
 
+import pulumi
 import pytest
 
 os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / "pulumi"))
 
+from infra import config
 from infra.config import _sanitize_bucket_component, central_logging_bucket_name, settings, state_bucket_name_for_repo
 
 
@@ -60,6 +62,104 @@ def test_sanitize_bucket_component_rejects_dot_hyphen_adjacency():
     _sanitize_bucket_component("my-.repo", "repoSlug")
   with pytest.raises(ValueError):
     _sanitize_bucket_component("my.-repo", "repoSlug")
+
+
+def test_require_config_value_fallback(monkeypatch):
+  """Fallbacks are used when test defaults are allowed."""
+  class DummyCfg:
+    def get(self, key):
+      return None
+
+  monkeypatch.setattr(config, "cfg", DummyCfg())
+  monkeypatch.setattr(config, "_ALLOW_TEST_DEFAULTS", True)
+  assert config._require_config_value("missing", "fallback") == "fallback"
+
+
+def test_require_config_value_raises(monkeypatch):
+  """Missing values raise when defaults are not allowed."""
+  class DummyCfg:
+    def get(self, key):
+      return None
+
+  monkeypatch.setattr(config, "cfg", DummyCfg())
+  monkeypatch.setattr(config, "_ALLOW_TEST_DEFAULTS", False)
+  with pytest.raises(pulumi.ConfigMissingError):
+    config._require_config_value("missing", "fallback")
+
+
+def test_require_config_value_returns_value(monkeypatch):
+  """Provided config values are returned unchanged."""
+  class DummyCfg:
+    def get(self, key):
+      return "value"
+
+  monkeypatch.setattr(config, "cfg", DummyCfg())
+  monkeypatch.setattr(config, "_ALLOW_TEST_DEFAULTS", False)
+  assert config._require_config_value("present", "fallback") == "value"
+
+
+def test_load_managed_repo_overrides_validation():
+  """managedRepositories input validation enforces structure."""
+  assert config._load_managed_repo_overrides(None) is None
+  with pytest.raises(ValueError):
+    config._load_managed_repo_overrides([])
+  with pytest.raises(ValueError):
+    config._load_managed_repo_overrides("not-a-list")
+  with pytest.raises(ValueError):
+    config._load_managed_repo_overrides([123])
+  with pytest.raises(ValueError):
+    config._load_managed_repo_overrides([{"defaultBranch": "main"}])
+  with pytest.raises(ValueError):
+    config._load_managed_repo_overrides([{"name": ""}])
+  with pytest.raises(ValueError):
+    config._load_managed_repo_overrides([{"name": "repo", "defaultBranch": " "}])
+
+
+def test_load_managed_repo_overrides_success():
+  """Valid managedRepositories values are normalized."""
+  overrides = config._load_managed_repo_overrides(["repo", {"name": "repo2", "defaultBranch": "dev"}])
+  assert overrides[0].name == "repo"
+  assert overrides[0].default_branch == "main"
+  assert overrides[1].name == "repo2"
+  assert overrides[1].default_branch == "dev"
+
+
+def test_state_bucket_name_requires_repo(monkeypatch):
+  """state_bucket_name requires repoSlug when no overrides exist."""
+  config.managed_repositories.cache_clear()
+  monkeypatch.setattr(settings, "repo", None)
+  monkeypatch.setattr(settings, "managed_repo_overrides", None)
+  with pytest.raises(ValueError):
+    config.state_bucket_name()
+
+
+def test_state_bucket_name_success(monkeypatch):
+  """state_bucket_name uses repoSlug when configured."""
+  config.managed_repositories.cache_clear()
+  monkeypatch.setattr(settings, "repo", "service")
+  monkeypatch.setattr(settings, "environment", "dev")
+  assert config.state_bucket_name() == "pulumi-service-dev-state"
+
+
+def test_managed_repositories_fallbacks(monkeypatch):
+  """managed_repositories follows overrides then repoSlug."""
+  config.managed_repositories.cache_clear()
+  overrides = [config.ManagedRepository(name="example", default_branch="main")]
+  monkeypatch.setattr(settings, "managed_repo_overrides", overrides)
+  assert config.managed_repositories() == overrides
+
+  config.managed_repositories.cache_clear()
+  monkeypatch.setattr(settings, "managed_repo_overrides", None)
+  monkeypatch.setattr(settings, "repo", "repo")
+  monkeypatch.setattr(settings, "github_branch", None)
+  repos = config.managed_repositories()
+  assert repos[0].name == "repo"
+  assert repos[0].default_branch == "main"
+
+  config.managed_repositories.cache_clear()
+  monkeypatch.setattr(settings, "repo", None)
+  with pytest.raises(ValueError):
+    config.managed_repositories()
 
 
 def test_state_bucket_name_length_guard(monkeypatch):

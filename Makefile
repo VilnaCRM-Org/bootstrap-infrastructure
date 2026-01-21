@@ -17,6 +17,7 @@ export USER
 DOCKER_COMPOSE    = docker compose
 COMPOSE_ENV_FLAG  = $(if $(EFFECTIVE_ENV_FILE),--env-file $(EFFECTIVE_ENV_FILE),)
 COMPOSE           = $(DOCKER_COMPOSE) $(COMPOSE_ENV_FLAG)
+PYTEST_COV_OPTS   = --cov=./pulumi --cov-report=term-missing --cov-fail-under=100
 
 # Misc
 .DEFAULT_GOAL     = help
@@ -60,7 +61,7 @@ fi
 endef
 
 test-unit: ## Execute fast unit tests for the Pulumi application layer (if present).
-	$(call run_or_skip,tests/unit,poetry run pytest -q tests/unit,"unit tests")
+	$(call run_or_skip,tests/unit,poetry run pytest -q tests/unit $(PYTEST_COV_OPTS),"unit tests")
 
 test-integration: ## Execute Pulumi automation-based integration tests (if present).
 	$(call run_or_skip,tests/integration,poetry run pytest -q tests/integration,"integration tests")

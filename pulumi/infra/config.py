@@ -42,7 +42,7 @@ def _require_config_value(key: str, fallback: str) -> str:
   if value is None:
     if _ALLOW_TEST_DEFAULTS:
       return fallback
-    raise pulumi.ConfigMissingError(f"Missing required config value '{key}'.")
+    raise pulumi.ConfigMissingError(key, False)
   return value
 
 

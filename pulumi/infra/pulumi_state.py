@@ -9,7 +9,7 @@ import pulumi
 import pulumi.errors as pulumi_errors
 import pulumi_aws as aws
 
-from .config import ManagedRepository, managed_repositories, state_bucket_name_for_repo, sanitize_bucket_component
+from .config import ManagedRepository, managed_repositories, settings, state_bucket_name_for_repo, sanitize_bucket_component
 from .utils.tags import base_tags
 
 
@@ -99,9 +99,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
           aws.s3.BucketLifecycleRuleArgs(
             id="expire-old-versions",
             enabled=True,
-            abort_incomplete_multipart_upload=aws.s3.BucketLifecycleRuleAbortIncompleteMultipartUploadArgs(
-              days_after_initiation=7
-            ),
+            abort_incomplete_multipart_upload_days=7,
             noncurrent_version_expiration=aws.s3.BucketLifecycleRuleNoncurrentVersionExpirationArgs(
               days=365
             ),
@@ -156,9 +154,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
           aws.s3.BucketLifecycleRuleArgs(
             id="replica-expire-old-versions",
             enabled=True,
-            abort_incomplete_multipart_upload=aws.s3.BucketLifecycleRuleAbortIncompleteMultipartUploadArgs(
-              days_after_initiation=7
-            ),
+            abort_incomplete_multipart_upload_days=7,
             noncurrent_version_expiration=aws.s3.BucketLifecycleRuleNoncurrentVersionExpirationArgs(
               days=365
             ),
