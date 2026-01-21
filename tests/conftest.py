@@ -38,11 +38,11 @@ class TestMocks(pulumi.runtime.Mocks):
   def call(self, args):
     token = args.token
     payload = args.args
-    if token == "aws:index/getRegion:getRegion":
+    if token == "aws:index/getRegion:getRegion":  # nosec B105
       return {"name": "us-east-1"}
-    if token == "aws:index/getCallerIdentity:getCallerIdentity":
+    if token == "aws:index/getCallerIdentity:getCallerIdentity":  # nosec B105
       return {"accountId": "123456789012"}
-    if token == "aws:s3/getBucket:getBucket":
+    if token == "aws:s3/getBucket:getBucket":  # nosec B105
       return {"id": payload.get("bucket")}
     return {}
 

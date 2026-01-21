@@ -72,7 +72,6 @@ class PulumiStateBuckets(pulumi.ComponentResource):
     self.bucket_resources: Dict[str, aws.s3.Bucket] = {}
     self.bucket_arns: Dict[str, pulumi.Output[str]] = {}
 
-    primary_region = aws.get_region().name
     resolved_region = replication_region or settings.replication_region or "us-east-1"
 
     replica_provider = aws.Provider(

@@ -7,7 +7,7 @@ from infra import pulumi_state
 
 def test_bucket_exists_true(monkeypatch):
   monkeypatch.setattr(pulumi_state.aws.s3, "get_bucket", lambda bucket: {"id": bucket})
-  assert pulumi_state._bucket_exists("bucket") is True
+  assert pulumi_state._bucket_exists("bucket") is True  # nosec B101
 
 
 def test_bucket_exists_not_found(monkeypatch):
@@ -15,7 +15,7 @@ def test_bucket_exists_not_found(monkeypatch):
     raise pulumi_errors.RunError("NotFound")
 
   monkeypatch.setattr(pulumi_state.aws.s3, "get_bucket", raise_not_found)
-  assert pulumi_state._bucket_exists("missing") is False
+  assert pulumi_state._bucket_exists("missing") is False  # nosec B101
 
 
 def test_bucket_exists_raises_unexpected(monkeypatch):
@@ -28,7 +28,7 @@ def test_bucket_exists_raises_unexpected(monkeypatch):
 
 
 def test_resource_suffix_sanitizes():
-  assert pulumi_state._resource_suffix("Repo.Name") == "repo-name"
+  assert pulumi_state._resource_suffix("Repo.Name") == "repo-name"  # nosec B101
 
 
 def test_replica_bucket_name_length_guard(monkeypatch):

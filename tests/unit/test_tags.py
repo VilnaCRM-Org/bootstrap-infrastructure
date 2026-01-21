@@ -9,11 +9,11 @@ def test_base_tags_with_app(monkeypatch):
   monkeypatch.setattr(settings, "repo", "app")
 
   tags = base_tags({"Extra": "value"})
-  assert tags["Environment"] == "test"
-  assert tags["Owner"] == "owner"
-  assert tags["CostCenter"] == "cost"
-  assert tags["App"] == "app"
-  assert tags["Extra"] == "value"
+  assert tags["Environment"] == "test"  # nosec B101
+  assert tags["Owner"] == "owner"  # nosec B101
+  assert tags["CostCenter"] == "cost"  # nosec B101
+  assert tags["App"] == "app"  # nosec B101
+  assert tags["Extra"] == "value"  # nosec B101
 
 
 def test_base_tags_without_app(monkeypatch):
@@ -23,4 +23,4 @@ def test_base_tags_without_app(monkeypatch):
   monkeypatch.setattr(settings, "repo", None)
 
   tags = base_tags()
-  assert "App" not in tags
+  assert "App" not in tags  # nosec B101

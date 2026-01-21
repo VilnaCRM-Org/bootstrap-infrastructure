@@ -64,7 +64,6 @@ settings = RepoSettings(
 _VALID_CHARS_PATTERN = re.compile(r"[^a-z0-9.-]")
 _SEQUENTIAL_DOTS = re.compile(r"\.{2,}")
 _SEQUENTIAL_HYPHENS = re.compile(r"-{2,}")
-_LEADING_TRAILING_NON_ALNUM = re.compile(r"^[^a-z0-9]+|[^a-z0-9]+$")
 _DOT_HYPHEN_ADJACENT = re.compile(r"\.-|-\.")  # S3 labels cannot start/end with hyphens.
 _IPV4_PATTERN = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
 _IPV6_PATTERN = re.compile(r"^[0-9a-f:]+$")
@@ -112,7 +111,7 @@ def _sanitize_bucket_component(value: str, label: str) -> str:
   candidate = _VALID_CHARS_PATTERN.sub("-", candidate)
   candidate = _SEQUENTIAL_DOTS.sub(".", candidate)
   candidate = _SEQUENTIAL_HYPHENS.sub("-", candidate)
-  candidate = _LEADING_TRAILING_NON_ALNUM.sub("", candidate)
+  candidate = candidate.strip(".-")
 
   if _DOT_HYPHEN_ADJACENT.search(candidate):
     raise ValueError(f"{label} cannot contain dot-hyphen adjacency for S3 buckets.")

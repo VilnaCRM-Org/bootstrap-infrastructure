@@ -31,9 +31,9 @@ def test_components_build(pulumi_mocks, monkeypatch):
   oidc = GitHubOidcRoles("github-oidc", repositories=repos)
   S3BackupPlan("backup", backup_target_arns=[logging.bucket.arn, *state.bucket_arns.values()])
 
-  assert logging.bucket is not None
-  assert state.backend_urls
-  assert oidc.deploy_role_arns
+  assert logging.bucket is not None  # nosec B101
+  assert state.backend_urls  # nosec B101
+  assert oidc.deploy_role_arns  # nosec B101
 
 
 def test_github_oidc_roles_with_existing_provider(monkeypatch):
@@ -45,13 +45,13 @@ def test_github_oidc_roles_with_existing_provider(monkeypatch):
 
   repos = [config.ManagedRepository(name="repo2", default_branch="main")]
   roles = GitHubOidcRoles("github-oidc-existing", repositories=repos)
-  assert roles.deploy_role_arns
+  assert roles.deploy_role_arns  # nosec B101
 
 
 def test_task_roles_module_has_no_exports():
   from infra.iam import task_roles
 
-  assert task_roles.__all__ == []
+  assert task_roles.__all__ == []  # nosec B101
 
 
 def test_stack_main_executes(monkeypatch):

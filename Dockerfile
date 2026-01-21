@@ -22,38 +22,43 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/ap
     && apt-get install -y --no-install-recommends \
         ca-certificates="${CA_CERTIFICATES_VERSION}" \
         curl="${CURL_VERSION}" \
-        unzip="${UNZIP_VERSION}" \
+        git="${GIT_VERSION}" \
+        gnupg \
         groff="${GROFF_VERSION}" \
         less="${LESS_VERSION}" \
-        gnupg \
-        git="${GIT_VERSION}" \
+        unzip="${UNZIP_VERSION}" \
+    && groupadd --gid "${GID}" "${USERNAME}" \
+    && useradd --uid "${UID}" --gid "${GID}" --create-home "${USERNAME}" \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user that mirrors the host developer UID/GID
-RUN groupadd --gid "${GID}" "${USERNAME}" \
-    && useradd --uid "${UID}" --gid "${GID}" --create-home "${USERNAME}"
+WORKDIR /tmp
+
+ADD https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz /tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz
+ADD https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-${PULUMI_VERSION}-checksums.txt /tmp/pulumi-checksums.txt
 
 # Install Pulumi CLI once and expose it on the PATH for all users
-RUN curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
-        "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
-        --output "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
-    && curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
-        "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-${PULUMI_VERSION}-checksums.txt" \
-        --output /tmp/pulumi-checksums.txt \
-    && cd /tmp \
-    && grep "pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" pulumi-checksums.txt | sha256sum -c - \
-    && mkdir -p /opt/pulumi \
-    && tar --extract --gzip --file "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" --strip-components=1 --directory /opt/pulumi \
-    && ln -sf /opt/pulumi/pulumi /usr/local/bin/pulumi \
-    && rm -rf "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt
-
 # Install AWS CLI v2
 RUN <<EOF
 set -e
-curl --fail --silent --show-error --location     --retry 5 --retry-delay 5 --retry-all-errors     "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip"     --output "/tmp/awscliv2.zip"
-curl --fail --silent --show-error --location     --retry 5 --retry-delay 5 --retry-all-errors     "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip.sig"     --output "/tmp/awscliv2.zip.sig"
+grep "pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt \
+  > /tmp/pulumi-checksums.sha256
+sha256sum -c /tmp/pulumi-checksums.sha256
+mkdir -p /opt/pulumi
+tar --extract --gzip \
+  --file "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
+  --strip-components=1 \
+  --directory /opt/pulumi
+ln -sf /opt/pulumi/pulumi /usr/local/bin/pulumi
+rm -rf "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt /tmp/pulumi-checksums.sha256
+
+curl --fail --silent --show-error --location \
+  --retry 5 --retry-delay 5 --retry-all-errors \
+  "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip" \
+  --output "/tmp/awscliv2.zip"
+curl --fail --silent --show-error --location \
+  --retry 5 --retry-delay 5 --retry-all-errors \
+  "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip.sig" \
+  --output "/tmp/awscliv2.zip.sig"
 mkdir -p /tmp/aws-cli-keyring
 cat > /tmp/aws-cli-keyring/awscli-public-key.asc <<'KEY'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
@@ -98,28 +103,29 @@ ENV POETRY_HOME=/opt/poetry
 ENV PATH="/opt/pulumi:${POETRY_HOME}/bin:/home/${USERNAME}/.local/bin:/home/${USERNAME}/.pulumi/bin:${PATH}"
 ARG POETRY_VERSION=1.8.4
 ARG POETRY_INSTALLER_SHA256=963d56703976ce9cdc6ff460c44a4f8fbad64c110dc447b86eeabb4a47ec2160
-RUN curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
-        https://install.python-poetry.org \
-        --output /tmp/poetry-installer.py \
-    && echo "${POETRY_INSTALLER_SHA256}  /tmp/poetry-installer.py" | sha256sum -c - \
+ADD https://install.python-poetry.org /tmp/poetry-installer.py
+RUN echo "${POETRY_INSTALLER_SHA256}  /tmp/poetry-installer.py" \
+        > /tmp/poetry-installer.sha256 \
+    && sha256sum -c /tmp/poetry-installer.sha256 \
     && python /tmp/poetry-installer.py --version "${POETRY_VERSION}" \
-    && rm -f /tmp/poetry-installer.py
+    && rm -f /tmp/poetry-installer.py /tmp/poetry-installer.sha256
 ENV POETRY_VIRTUALENVS_CREATE=false
 ENV POETRY_HTTP_TIMEOUT=60
 
+WORKDIR /workspace
 COPY --chown=${USERNAME}:${GID} pyproject.toml poetry.lock /workspace/
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/pypoetry \
-    cd /workspace \
-    && poetry config installer.max-workers 4 \
+    poetry config installer.max-workers 4 \
     && poetry install --no-root --no-interaction --no-ansi --with dev
 
 USER "${USERNAME}"
-WORKDIR /workspace
 
 # Pulumi CLI caches a few files under the user's home directory
 ENV HOME=/home/${USERNAME}
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["python", "-V"]
 
 CMD ["bash"]

@@ -17,13 +17,13 @@ from infra.config import _sanitize_bucket_component, central_logging_bucket_name
 
 def test_sanitize_bucket_component_normalizes_case_and_invalid_chars():
   """Sanitizer should lowercase and replace invalid characters."""
-  assert _sanitize_bucket_component("My_App.repo", "repoSlug") == "my-app.repo"
+  assert _sanitize_bucket_component("My_App.repo", "repoSlug") == "my-app.repo"  # nosec B101
 
 
 def test_sanitize_bucket_component_collapses_sequences_and_trims():
   """Sanitizer should collapse repeated separators and trim edges."""
   dirty = "..My--Repo__Name.."
-  assert _sanitize_bucket_component(dirty, "repoSlug") == "my-repo-name"
+  assert _sanitize_bucket_component(dirty, "repoSlug") == "my-repo-name"  # nosec B101
 
 
 def test_sanitize_bucket_component_rejects_empty_result():
@@ -72,7 +72,7 @@ def test_require_config_value_fallback(monkeypatch):
 
   monkeypatch.setattr(config, "cfg", DummyCfg())
   monkeypatch.setattr(config, "_ALLOW_TEST_DEFAULTS", True)
-  assert config._require_config_value("missing", "fallback") == "fallback"
+  assert config._require_config_value("missing", "fallback") == "fallback"  # nosec B101
 
 
 def test_require_config_value_raises(monkeypatch):
@@ -95,12 +95,12 @@ def test_require_config_value_returns_value(monkeypatch):
 
   monkeypatch.setattr(config, "cfg", DummyCfg())
   monkeypatch.setattr(config, "_ALLOW_TEST_DEFAULTS", False)
-  assert config._require_config_value("present", "fallback") == "value"
+  assert config._require_config_value("present", "fallback") == "value"  # nosec B101
 
 
 def test_load_managed_repo_overrides_validation():
   """managedRepositories input validation enforces structure."""
-  assert config._load_managed_repo_overrides(None) is None
+  assert config._load_managed_repo_overrides(None) is None  # nosec B101
   with pytest.raises(ValueError):
     config._load_managed_repo_overrides([])
   with pytest.raises(ValueError):
@@ -118,10 +118,10 @@ def test_load_managed_repo_overrides_validation():
 def test_load_managed_repo_overrides_success():
   """Valid managedRepositories values are normalized."""
   overrides = config._load_managed_repo_overrides(["repo", {"name": "repo2", "defaultBranch": "dev"}])
-  assert overrides[0].name == "repo"
-  assert overrides[0].default_branch == "main"
-  assert overrides[1].name == "repo2"
-  assert overrides[1].default_branch == "dev"
+  assert overrides[0].name == "repo"  # nosec B101
+  assert overrides[0].default_branch == "main"  # nosec B101
+  assert overrides[1].name == "repo2"  # nosec B101
+  assert overrides[1].default_branch == "dev"  # nosec B101
 
 
 def test_state_bucket_name_requires_repo(monkeypatch):
@@ -138,7 +138,7 @@ def test_state_bucket_name_success(monkeypatch):
   config.managed_repositories.cache_clear()
   monkeypatch.setattr(settings, "repo", "service")
   monkeypatch.setattr(settings, "environment", "dev")
-  assert config.state_bucket_name() == "pulumi-service-dev-state"
+  assert config.state_bucket_name() == "pulumi-service-dev-state"  # nosec B101
 
 
 def test_managed_repositories_fallbacks(monkeypatch):
@@ -146,15 +146,15 @@ def test_managed_repositories_fallbacks(monkeypatch):
   config.managed_repositories.cache_clear()
   overrides = [config.ManagedRepository(name="example", default_branch="main")]
   monkeypatch.setattr(settings, "managed_repo_overrides", overrides)
-  assert config.managed_repositories() == overrides
+  assert config.managed_repositories() == overrides  # nosec B101
 
   config.managed_repositories.cache_clear()
   monkeypatch.setattr(settings, "managed_repo_overrides", None)
   monkeypatch.setattr(settings, "repo", "repo")
   monkeypatch.setattr(settings, "github_branch", None)
   repos = config.managed_repositories()
-  assert repos[0].name == "repo"
-  assert repos[0].default_branch == "main"
+  assert repos[0].name == "repo"  # nosec B101
+  assert repos[0].default_branch == "main"  # nosec B101
 
   config.managed_repositories.cache_clear()
   monkeypatch.setattr(settings, "repo", None)
