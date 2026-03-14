@@ -4,18 +4,25 @@
 # glibc-based Linux distributions.
 FROM python:3.11.9-slim-bookworm@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317 AS tooling-builder
 
+ARG TARGETARCH=amd64
 ARG PULUMI_VERSION=3.138.0
+ARG PULUMI_SHA256_AMD64=00245ee263285ee05ff33ec96c889aa4d1171e0c8eb0366a64205b45eafd6ed8
+ARG PULUMI_SHA256_ARM64=905106b80be34963361737b6c4d471b45d77461c3455b137cefd66b2c470566c
 ARG AWSCLI_VERSION=2.16.9
-ARG AWSCLI_ARCH=linux-x86_64
-ARG CURL_VERSION=7.88.1-10+deb12u14
-ARG GNUPG_VERSION=2.2.40-1.1+deb12u2
+ARG AWSCLI_SHA256_AMD64=8c09f0aa7743fb04a28ac7a6f3c2822d6ffcc58bcace2beaf55258ee0f67c4cb
+ARG AWSCLI_SHA256_ARM64=82636f7ec20c57beeed19a14f8684113e0edfb30e79f1a615809de2dfb482712
+ARG CA_CERTIFICATES_VERSION=20230311
 ARG UNZIP_VERSION=6.0-28
+ARG CURL_VERSION=7.88.1-10+deb12u14
 ARG UV_VERSION=0.9.21
-ARG UV_SHA256=0a1ab27383c28ef1c041f85cbbc609d8e3752dfb4b238d2ad97b208a52232baf
+ARG UV_SHA256_AMD64=0a1ab27383c28ef1c041f85cbbc609d8e3752dfb4b238d2ad97b208a52232baf
+ARG UV_SHA256_ARM64=416984484783a357170c43f98e7d2d203f1fb595d6b3b95131513c53e50986ef
 ARG TYPOS_VERSION=1.44.0
-ARG TYPOS_SHA256=1b788b7d764e2f20fe089487428a3944ed218d1fb6fcd8eac4230b5893a38779
+ARG TYPOS_SHA256_AMD64=1b788b7d764e2f20fe089487428a3944ed218d1fb6fcd8eac4230b5893a38779
+ARG TYPOS_SHA256_ARM64=132c20fc5e3c9ba540ec55a0a468dcb9c1504625a405df1c237b10dd4f2ec433
 ARG TAPLO_VERSION=0.10.0
-ARG TAPLO_SHA256=8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156
+ARG TAPLO_SHA256_AMD64=8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156
+ARG TAPLO_SHA256_ARM64=033681d01eec8376c3fd38fa3703c79316f5e14bb013d859943b60a07bccdcc3
 ENV DEBIAN_FRONTEND=noninteractive
 ENV UV_PROJECT_ENVIRONMENT=/opt/uv-env
 ENV UV_LINK_MODE=copy
@@ -24,129 +31,103 @@ ENV UV_PYTHON_DOWNLOADS=never
 RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/99retries \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
+        ca-certificates="${CA_CERTIFICATES_VERSION}" \
         curl="${CURL_VERSION}" \
-        gnupg="${GNUPG_VERSION}" \
         unzip="${UNZIP_VERSION}" \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /tmp
 
-# Install Pulumi CLI, AWS CLI v2, uv, and repository tooling in a throwaway
-# stage so the final runtime image only carries the binaries and virtualenv.
-RUN <<EOF
-set -eu
+# Install Pulumi CLI, AWS CLI, and the repo-local Rust tooling in one builder
+# step so the final image stays small and the quality gates see a single layer.
+RUN bash -o pipefail <<'EOF'
+set -euo pipefail
 
-download() {
-  curl --fail --silent --show-error --location \
+case "${TARGETARCH}" in
+    amd64)
+        pulumi_arch="x64"
+        pulumi_sha256="${PULUMI_SHA256_AMD64}"
+        awscli_arch="linux-x86_64"
+        awscli_sha256="${AWSCLI_SHA256_AMD64}"
+        uv_arch="x86_64-unknown-linux-gnu"
+        uv_sha256="${UV_SHA256_AMD64}"
+        typos_arch="x86_64-unknown-linux-musl"
+        typos_sha256="${TYPOS_SHA256_AMD64}"
+        taplo_arch="x86_64"
+        taplo_sha256="${TAPLO_SHA256_AMD64}"
+        ;;
+    arm64)
+        pulumi_arch="arm64"
+        pulumi_sha256="${PULUMI_SHA256_ARM64}"
+        awscli_arch="linux-aarch64"
+        awscli_sha256="${AWSCLI_SHA256_ARM64}"
+        uv_arch="aarch64-unknown-linux-gnu"
+        uv_sha256="${UV_SHA256_ARM64}"
+        typos_arch="aarch64-unknown-linux-musl"
+        typos_sha256="${TYPOS_SHA256_ARM64}"
+        taplo_arch="aarch64"
+        taplo_sha256="${TAPLO_SHA256_ARM64}"
+        ;;
+    *)
+        echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2
+        exit 1
+        ;;
+esac
+
+# qlty-ignore(>radarlint-iac:docker:S7026): remote ADD cannot express the
+# TARGETARCH-to-upstream-name mapping here without downloading both archives.
+curl --fail --silent --show-error --location \
     --retry 5 --retry-delay 5 --retry-all-errors \
-    "$1" --output "$2"
-}
-
-verify_sha256() {
-  checksum_file=/tmp/asset.sha256
-  printf '%s  %s\n' "$1" "$2" > "$checksum_file"
-  sha256sum -c "$checksum_file"
-  rm -f "$checksum_file"
-}
-
-download \
-  "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
-  "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz"
-download \
-  "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-${PULUMI_VERSION}-checksums.txt" \
-  /tmp/pulumi-checksums.txt
-grep "pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt > /tmp/pulumi-checksums.sha256
-sha256sum -c /tmp/pulumi-checksums.sha256
+    "https://get.pulumi.com/releases/sdk/pulumi-v${PULUMI_VERSION}-linux-${pulumi_arch}.tar.gz" \
+    --output /tmp/pulumi.tar.gz
+echo "${pulumi_sha256}  /tmp/pulumi.tar.gz" | sha256sum -c -
 mkdir -p /opt/pulumi
-tar --extract --gzip \
-  --file "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
-  --strip-components=1 \
-  --directory /opt/pulumi
+tar --extract --gzip --file /tmp/pulumi.tar.gz --strip-components=1 --directory /opt/pulumi
+rm -f \
+    /opt/pulumi/pulumi-language-dotnet \
+    /opt/pulumi/pulumi-language-go \
+    /opt/pulumi/pulumi-language-java \
+    /opt/pulumi/pulumi-language-nodejs \
+    /opt/pulumi/pulumi-language-yaml \
+    /opt/pulumi/pulumi-resource-pulumi-nodejs \
+    /opt/pulumi/pulumi-watch \
+    /tmp/pulumi.tar.gz
 
-download \
-  "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip" \
-  /tmp/awscliv2.zip
-download \
-  "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip.sig" \
-  /tmp/awscliv2.zip.sig
-mkdir -p /tmp/aws-cli-keyring
-cat > /tmp/aws-cli-keyring/awscli-public-key.asc <<'KEY'
------BEGIN PGP PUBLIC KEY BLOCK-----
-
-mQINBF2Cr7UBEADJZHcgusOJl7ENSyumXh85z0TRV0xJorM2B/JL0kHOyigQluUG
-ZMLhENaG0bYatdrKP+3H91lvK050pXwnO/R7fB/FSTouki4ciIx5OuLlnJZIxSzx
-PqGl0mkxImLNbGWoi6Lto0LYxqHN2iQtzlwTVmq9733zd3XfcXrZ3+LblHAgEt5G
-TfNxEKJ8soPLyWmwDH6HWCnjZ/aIQRBTIQ05uVeEoYxSh6wOai7ss/KveoSNBbYz
-gbdzoqI2Y8cgH2nbfgp3DSasaLZEdCSsIsK1u05CinE7k2qZ7KgKAUIcT/cR/grk
-C6VwsnDU0OUCideXcQ8WeHutqvgZH1JgKDbznoIzeQHJD238GEu+eKhRHcz8/jeG
-94zkcgJOz3KbZGYMiTh277Fvj9zzvZsbMBCedV1BTg3TqgvdX4bdkhf5cH+7NtWO
-lrFj6UwAsGukBTAOxC0l/dnSmZhJ7Z1KmEWilro/gOrjtOxqRQutlIqG22TaqoPG
-fYVN+en3Zwbt97kcgZDwqbuykNt64oZWc4XKCa3mprEGC3IbJTBFqglXmZ7l9ywG
-EEUJYOlb2XrSuPWml39beWdKM8kzr1OjnlOm6+lpTRCBfo0wa9F8YZRhHPAkwKkX
-XDeOGpWRj4ohOx0d2GWkyV5xyN14p2tQOCdOODmz80yUTgRpPVQUtOEhXQARAQAB
-tCFBV1MgQ0xJIFRlYW0gPGF3cy1jbGlAYW1hem9uLmNvbT6JAlQEEwEIAD4CGwMF
-CwkIBwIGFQoJCAsCBBYCAwECHgECF4AWIQT7Xbd/1cEYuAURraimMQrMRnJHXAUC
-aGveYQUJDMpiLAAKCRCmMQrMRnJHXKBYD/9Ab0qQdGiO5hObchG8xh8Rpb4Mjyf6
-0JrVo6m8GNjNj6BHkSc8fuTQJ/FaEhaQxj3pjZ3GXPrXjIIVChmICLlFuRXYzrXc
-Pw0lniybypsZEVai5kO0tCNBCCFuMN9RsmmRG8mf7lC4FSTbUDmxG/QlYK+0IV/l
-uJkzxWa+rySkdpm0JdqumjegNRgObdXHAQDWlubWQHWyZyIQ2B4U7AxqSpcdJp6I
-S4Zds4wVLd1WE5pquYQ8vS2cNlDm4QNg8wTj58e3lKN47hXHMIb6CHxRnb947oJa
-pg189LLPR5koh+EorNkA1wu5mAJtJvy5YMsppy2y/kIjp3lyY6AmPT1posgGk70Z
-CmToEZ5rbd7ARExtlh76A0cabMDFlEHDIK8RNUOSRr7L64+KxOUegKBfQHb9dADY
-qqiKqpCbKgvtWlds909Ms74JBgr2KwZCSY1HaOxnIr4CY43QRqAq5YHOay/mU+6w
-hhmdF18vpyK0vfkvvGresWtSXbag7Hkt3XjaEw76BzxQH21EBDqU8WJVjHgU6ru+
-DJTs+SxgJbaT3hb/vyjlw0lK+hFfhWKRwgOXH8vqducF95NRSUxtS4fpqxWVaw3Q
-V2OWSjbne99A5EPEySzryFTKbMGwaTlAwMCwYevt4YT6eb7NmFhTx0Fis4TalUs+
-j+c7Kg92pDx2uQ==
-=OBAt
------END PGP PUBLIC KEY BLOCK-----
-KEY
-GNUPGHOME=/tmp/aws-cli-keyring gpg --batch --import /tmp/aws-cli-keyring/awscli-public-key.asc
-GNUPGHOME=/tmp/aws-cli-keyring gpg --batch --verify /tmp/awscliv2.zip.sig /tmp/awscliv2.zip
+curl --fail --silent --show-error --location \
+    --retry 5 --retry-delay 5 --retry-all-errors \
+    "https://awscli.amazonaws.com/awscli-exe-${awscli_arch}-${AWSCLI_VERSION}.zip" \
+    --output /tmp/awscliv2.zip
+echo "${awscli_sha256}  /tmp/awscliv2.zip" | sha256sum -c -
 unzip /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
+rm -rf /usr/local/aws-cli/v2/current/dist/awscli/examples /tmp/aws /tmp/awscliv2.zip
 
-download \
-  "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
-  /tmp/uv.tar.gz
-verify_sha256 "${UV_SHA256}" /tmp/uv.tar.gz
+curl --fail --silent --show-error --location \
+    --retry 5 --retry-delay 5 --retry-all-errors \
+    "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${uv_arch}.tar.gz" \
+    --output /tmp/uv.tar.gz
+echo "${uv_sha256}  /tmp/uv.tar.gz" | sha256sum -c -
 tar --extract --gzip --file /tmp/uv.tar.gz --directory /tmp
-install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv
+install -m 0755 "/tmp/uv-${uv_arch}/uv" /usr/local/bin/uv
+rm -rf /tmp/uv.tar.gz "/tmp/uv-${uv_arch}"
 
-download \
-  "https://github.com/crate-ci/typos/releases/download/v${TYPOS_VERSION}/typos-v${TYPOS_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
-  /tmp/typos.tar.gz
-verify_sha256 "${TYPOS_SHA256}" /tmp/typos.tar.gz
+curl --fail --silent --show-error --location \
+    --retry 5 --retry-delay 5 --retry-all-errors \
+    "https://github.com/crate-ci/typos/releases/download/v${TYPOS_VERSION}/typos-v${TYPOS_VERSION}-${typos_arch}.tar.gz" \
+    --output /tmp/typos.tar.gz
+echo "${typos_sha256}  /tmp/typos.tar.gz" | sha256sum -c -
 tar --extract --gzip --file /tmp/typos.tar.gz --directory /tmp
 install -m 0755 /tmp/typos /usr/local/bin/typos
+rm -rf /tmp/typos /tmp/typos.tar.gz
 
-download \
-  "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-x86_64.gz" \
-  /tmp/taplo.gz
-verify_sha256 "${TAPLO_SHA256}" /tmp/taplo.gz
-python - <<'PY'
-import gzip
-import shutil
-
-with gzip.open("/tmp/taplo.gz", "rb") as source, open("/tmp/taplo", "wb") as target:
-    shutil.copyfileobj(source, target)
-PY
+curl --fail --silent --show-error --location \
+    --retry 5 --retry-delay 5 --retry-all-errors \
+    "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-${taplo_arch}.gz" \
+    --output /tmp/taplo.gz
+echo "${taplo_sha256}  /tmp/taplo.gz" | sha256sum -c -
+python -c "import gzip, shutil; source = gzip.open('/tmp/taplo.gz', 'rb'); target = open('/tmp/taplo', 'wb'); shutil.copyfileobj(source, target); source.close(); target.close()"
 install -m 0755 /tmp/taplo /usr/local/bin/taplo
-
-rm -rf \
-  /tmp/aws \
-  /tmp/aws-cli-keyring \
-  /tmp/awscliv2.zip \
-  /tmp/awscliv2.zip.sig \
-  "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
-  /tmp/pulumi-checksums.txt \
-  /tmp/pulumi-checksums.sha256 \
-  /tmp/taplo \
-  /tmp/taplo.gz \
-  /tmp/typos \
-  /tmp/typos.tar.gz \
-  /tmp/uv.tar.gz \
-  /tmp/uv-x86_64-unknown-linux-gnu
+rm -rf /tmp/taplo /tmp/taplo.gz
 EOF
 
 WORKDIR /workspace
