@@ -9,6 +9,7 @@ assert_output_contains() {
   run make help
   [ "$status" -eq 0 ]
   assert_output_contains "check-format"
+  assert_output_contains "check-qlty"
   assert_output_contains "check-ty"
   assert_output_contains "pulumi-preview"
   assert_output_contains "test-cost"
@@ -185,6 +186,12 @@ assert_output_contains() {
   assert_output_contains "python -m compileall"
 }
 
+@test "make check-qlty runs the repo-local Qlty scan" {
+  run make -n check-qlty
+  [ "$status" -eq 0 ]
+  assert_output_contains "qlty check --all --summary --no-progress --level note --fail-level note"
+}
+
 @test "make check-bandit runs Bandit over pulumi sources" {
   run make -n check-bandit
   [ "$status" -eq 0 ]
@@ -257,6 +264,7 @@ assert_output_contains() {
   assert_output_contains "make check-docker"
   assert_output_contains "make check-shell"
   assert_output_contains "make check-iac"
+  assert_output_contains "make check-qlty"
 }
 
 @test "make ci runs the full local CI aggregate" {

@@ -19,6 +19,7 @@ YAML_LINT_PATHS     = .github/workflows pulumi/Pulumi.yaml pulumi/Pulumi.test.ya
 SHELLCHECK_PATHS    = /work/scripts/run_mutation_tests.sh
 SPELLCHECK_PATHS    = .
 TOML_LINT_PATHS     = pyproject.toml
+QLTY ?= qlty
 
 export COMPOSE_ENV_FILE := $(EFFECTIVE_ENV_FILE)
 UID ?= $(shell id -u 2>/dev/null || echo 1000)
@@ -43,7 +44,7 @@ COVERAGE_DIR ?= $(if $(CI),/tmp,.)
 .RECIPEPREFIX    +=
 .PHONY: all help start pulumi-preview pulumi-up pulumi-refresh pulumi-destroy \
         pulumi-stack-select pulumi-stack-migrate-secrets sh down clean \
-        check-format check-lint check-spelling check-toml check-types check-ty check-package \
+        check-format check-lint check-spelling check-toml check-types check-ty check-package check-qlty \
         check-bandit check-deps check-sbom check-yaml check-actionlint \
         check-docker check-shell check-iac check-static check-security ci \
         test-unit test-integration test-pulumi test-mutation test-e2e \
@@ -144,6 +145,10 @@ check-ty: ## Run Astral Ty static analysis across Pulumi and test code.
 check-package: ## Validate the uv lockfile, synced environment, and Python bytecode compilation.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "uv lock --check && uv sync --check --frozen --all-groups --no-install-project --no-editable && pycache_dir=\$$(mktemp -d \"\$$HOME/pycache.XXXXXX\") && trap 'rm -rf \"\$$pycache_dir\"' EXIT && PYTHONPYCACHEPREFIX=\$$pycache_dir python -m compileall -q $(PYTHON_FORMAT_PATHS)"
 
+check-qlty: ## Run the repo-local Qlty code health configuration.
+	@command -v $(QLTY) >/dev/null 2>&1 || { echo "qlty CLI is required. Install it from https://qlty.sh" >&2; exit 1; }
+	$(QLTY) check --all --summary --no-progress --level note --fail-level note
+
 check-bandit: ## Run Bandit security checks on Pulumi Python sources.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) bandit -q -r pulumi -c pyproject.toml
 
@@ -186,6 +191,7 @@ check-security: ## Run security and policy checks for code, manifests, and build
 	$(MAKE) check-docker
 	$(MAKE) check-shell
 	$(MAKE) check-iac
+	$(MAKE) check-qlty
 
 test-cost: ## Execute cost and governance guardrail tests for the Pulumi stack.
 	$(call run_or_skip,tests/cost,$(UV_RUN) pytest -q tests/cost,"cost guardrail tests")

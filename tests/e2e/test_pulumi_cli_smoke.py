@@ -1,5 +1,5 @@
 import os
-import subprocess
+import subprocess  # nosec B404 - the e2e suite intentionally drives the Pulumi CLI.
 from pathlib import Path
 
 import pytest
@@ -10,9 +10,10 @@ HAS_E2E_PROVIDER = bool(os.getenv("PULUMI_E2E_SECRETS_PROVIDER"))
 def _run(
     cmd: list[str], *, cwd: Path, env: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
+    # The command list is assembled from fixed literals and pytest temp paths.
     return subprocess.run(
         cmd, cwd=cwd, env=env, text=True, capture_output=True, check=False
-    )
+    )  # nosec B603
 
 
 @pytest.mark.skipif(

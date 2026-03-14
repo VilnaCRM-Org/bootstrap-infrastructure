@@ -29,9 +29,22 @@ The `devsecops-guardrails.yml` workflow adds defensive checks that are cheap to 
 - `make check-docker`
 - `make check-shell`
 - `make check-iac`
+- `make check-qlty`
 - `make test-cost`
 
-This combination covers application security, dependency risk, SBOM generation, workflow hygiene, Dockerfile hygiene, shell hygiene, IaC policy scanning, and low-cost resource governance.
+This combination covers application security, dependency risk, SBOM generation, workflow hygiene, Dockerfile hygiene, shell hygiene, IaC policy scanning, low-cost resource governance, and a repo-local mirror of the Qlty cloud scan.
+
+## Qlty Parity
+
+The repository now commits its Qlty configuration in [`.qlty/qlty.toml`](/home/kravtsov/Projects/bootstrap-infrastructure/.qlty/qlty.toml) so the external `qlty check` status is reproducible from the workspace.
+
+Local command:
+```bash
+make check-qlty
+```
+
+This runs `qlty check --all --summary --no-progress --level note --fail-level note` and fails on any reported issue.
+The companion GitHub Actions job installs the official Qlty CLI and executes the same Make target, so local and CI behavior stay aligned.
 
 ## Deployment Workflows
 

@@ -27,6 +27,7 @@ def test_makefile_exposes_full_test_matrix():
     assert "check-types" in makefile  # nosec B101
     assert "check-ty" in makefile  # nosec B101
     assert "check-package" in makefile  # nosec B101
+    assert "check-qlty" in makefile  # nosec B101
     assert "check-bandit" in makefile  # nosec B101
     assert "check-deps" in makefile  # nosec B101
     assert "check-sbom" in makefile  # nosec B101
@@ -91,6 +92,7 @@ def test_ci_workflows_cover_local_test_targets():
     assert "check-docker" in guardrails  # nosec B101
     assert "check-shell" in guardrails  # nosec B101
     assert "check-iac" in guardrails  # nosec B101
+    assert "check-qlty" in guardrails  # nosec B101
     assert "test-cost" in guardrails  # nosec B101
     assert "make test-pulumi" in structural  # nosec B101
     assert "docker compose build pulumi" in structural  # nosec B101
@@ -124,13 +126,23 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     assert "pulumi-bootstrap-kms.md" in docs_index  # nosec B101
     assert "Python Quality Checks" in ci_doc  # nosec B101
     assert "DevSecOps Guardrails" in ci_doc  # nosec B101
+    assert "Qlty" in ci_doc  # nosec B101
     assert "uv" in ci_doc  # nosec B101
     assert "Ruff" in testing_doc  # nosec B101
     assert "Typos" in testing_doc  # nosec B101
     assert "Taplo" in testing_doc  # nosec B101
     assert "Ty" in testing_doc  # nosec B101
+    assert "Qlty" in testing_doc  # nosec B101
     assert "Structural" in testing_doc  # nosec B101
     assert "Cost Guardrails" in testing_doc  # nosec B101
     assert "Mutation" in testing_doc  # nosec B101
     assert "Stage-0" in kms_doc  # nosec B101
     assert "pulumiSecretsProviderUrls" in kms_doc  # nosec B101
+
+
+def test_repository_tracks_qlty_configuration():
+    qlty_dir = ROOT / ".qlty"
+    assert (qlty_dir / "qlty.toml").exists()  # nosec B101
+    assert (qlty_dir / ".gitignore").exists()  # nosec B101
+    assert (qlty_dir / "configs" / ".hadolint.yaml").exists()  # nosec B101
+    assert (qlty_dir / "configs" / ".shellcheckrc").exists()  # nosec B101

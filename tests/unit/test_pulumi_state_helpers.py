@@ -4,6 +4,10 @@ import pytest
 from infra import config, pulumi_state
 
 
+class BucketLookupNotFoundError(RuntimeError):
+    """Test double for provider lookup failures that map to bucket absence."""
+
+
 def test_bucket_exists_true(monkeypatch):
     monkeypatch.setattr(
         pulumi_state.aws.s3, "get_bucket", lambda bucket: {"id": bucket}
@@ -21,7 +25,7 @@ def test_bucket_exists_not_found(monkeypatch):
 
 def test_bucket_exists_handles_invoke_not_found(monkeypatch):
     def raise_not_found(*_args, **_kwargs):
-        raise Exception("couldn't find resource")  # noqa: TRY002
+        raise BucketLookupNotFoundError("couldn't find resource")
 
     monkeypatch.setattr(pulumi_state.aws.s3, "get_bucket", raise_not_found)
     assert pulumi_state._bucket_exists("missing") is False  # nosec B101

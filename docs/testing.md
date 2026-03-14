@@ -16,6 +16,7 @@ make check-toml
 make check-types
 make check-ty
 make check-package
+make check-qlty
 ```
 
 Coverage:
@@ -28,6 +29,7 @@ Coverage:
 - `uv lock --check`
 - `uv sync --check`
 - Python bytecode compilation
+- Qlty repo-local code health scan parity with the external Qlty status
 
 ## Security and Supply Chain
 
@@ -54,6 +56,7 @@ Coverage:
 - hadolint on the Dockerfile
 - ShellCheck on repository shell scripts
 - Checkov policy scanning for GitHub Actions and Dockerfile definitions
+- Qlty multi-tool code health/security scan using the committed `.qlty/` config
 
 ## Structural
 
@@ -169,7 +172,7 @@ Coverage:
 
 GitHub Actions mirrors the local targets:
 - `python-quality.yml` -> `make check-format`, `make check-lint`, `make check-spelling`, `make check-toml`, `make check-types`, `make check-ty`, `make check-package`
-- `devsecops-guardrails.yml` -> `make check-bandit`, `make check-deps`, `make check-sbom`, `make check-yaml`, `make check-actionlint`, `make check-docker`, `make check-shell`, `make check-iac`, `make test-cost`
+- `devsecops-guardrails.yml` -> `make check-bandit`, `make check-deps`, `make check-sbom`, `make check-yaml`, `make check-actionlint`, `make check-docker`, `make check-shell`, `make check-iac`, `make check-qlty`, `make test-cost`
 - `pulumi-structural.yml` -> `make test-pulumi`
 - `pulumi-unit.yml` -> `make test-unit`
 - `pulumi-integration.yml` -> `make test-integration`
