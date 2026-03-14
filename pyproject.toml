@@ -18,6 +18,7 @@ dev = [
   "mypy>=1.18,<2",
   "mutmut>=2.4,<3",
   "pip-audit>=2.9,<3",
+  "pulumi-policy>=1.20,<2",
   "pre-commit>=3.0,<4",
   "pytest-cov>=5.0,<6",
   "pytest>=8.0,<9",
@@ -34,9 +35,15 @@ default-groups = ["dev"]
 
 [tool.ruff]
 line-length = 88
-src = ["pulumi", "tests"]
+src = ["pulumi", "policy_pack", "scripts", "tests"]
 target-version = "py311"
-extend-exclude = ["pulumi/venv", "pulumi/__pycache__", "tests/__pycache__"]
+extend-exclude = [
+  "pulumi/venv",
+  "pulumi/__pycache__",
+  "policy_pack/__pycache__",
+  "scripts/__pycache__",
+  "tests/__pycache__",
+]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "UP", "W"]
@@ -47,7 +54,7 @@ known-first-party = ["infra"]
 [tool.mypy]
 python_version = "3.11"
 mypy_path = "pulumi"
-files = ["pulumi/__main__.py", "pulumi/infra"]
+files = ["pulumi/__main__.py", "pulumi/infra", "policy_pack", "scripts/*.py"]
 pretty = true
 show_error_codes = true
 warn_unused_configs = true
@@ -56,16 +63,32 @@ warn_unused_ignores = true
 warn_return_any = true
 check_untyped_defs = true
 no_implicit_optional = true
-exclude = ["^pulumi/venv/", "^pulumi/__pycache__/"]
+exclude = ["^pulumi/venv/", "^pulumi/__pycache__/", "^policy_pack/__pycache__/"]
+
+[[tool.mypy.overrides]]
+module = ["pulumi_policy", "pulumi_policy.*"]
+ignore_missing_imports = true
 
 [tool.ty.environment]
 python-version = "3.11"
-root = ["./pulumi"]
+root = ["./pulumi", "./policy_pack", "./scripts"]
 
 [tool.ty.src]
-include = ["pulumi", "tests"]
-exclude = ["pulumi/venv", "pulumi/__pycache__", "tests/__pycache__"]
+include = ["pulumi", "policy_pack", "scripts", "tests"]
+exclude = [
+  "pulumi/venv",
+  "pulumi/__pycache__",
+  "policy_pack/__pycache__",
+  "scripts/__pycache__",
+  "tests/__pycache__",
+]
 
 [tool.bandit]
-exclude_dirs = ["pulumi/venv", "pulumi/__pycache__", "tests", ".venv"]
-targets = ["pulumi"]
+exclude_dirs = [
+  "pulumi/venv",
+  "pulumi/__pycache__",
+  "policy_pack/__pycache__",
+  "tests",
+  ".venv",
+]
+targets = ["pulumi", "policy_pack", "scripts"]

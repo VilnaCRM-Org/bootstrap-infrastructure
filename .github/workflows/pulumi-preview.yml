@@ -1,0 +1,176 @@
+name: Pulumi Preview Guardrails
+
+on:
+  pull_request:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: pulumi-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Preview
+    runs-on: ubuntu-latest
+    environment: test
+    env:
+      AWS_REGION: eu-central-1
+      PULUMI_STACK: ${{ vars.PULUMI_PREVIEW_STACK != '' && vars.PULUMI_PREVIEW_STACK || 'test' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect infrastructure changes
+        id: changes
+        run: |
+          mkdir -p out
+          infra_pattern='^(pulumi/|policy_pack/|scripts/|Makefile|Dockerfile|docker-compose\.yml|pyproject\.toml|uv\.lock|\.github/workflows/)'
+          files="$(git diff --name-only '${{ github.event.pull_request.base.sha }}' '${{ github.event.pull_request.head.sha }}')"
+          printf '%s\n' "${files}" > out/changed-files.txt
+          if printf '%s\n' "${files}" | grep -Eq "${infra_pattern}"; then
+            echo "needs_guardrails=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_guardrails=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Pulumi Preview Summary"
+              echo
+              echo "No infrastructure-related files changed in this pull request."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Reject forked infrastructure pull requests
+        if: >-
+          steps.changes.outputs.needs_guardrails == 'true' &&
+          github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "Pulumi preview is disabled for forked pull requests because it requires AWS OIDC credentials." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Verify preview configuration
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        run: |
+          test -n '${{ vars.PULUMI_TEST_ROLE_ARN }}'
+          test -n '${{ vars.PULUMI_TEST_SECRETS_PROVIDER }}'
+          test -n '${{ vars.PULUMI_STATE_BUCKET }}'
+
+      - name: Configure AWS credentials
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.PULUMI_TEST_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify Pulumi backend bucket exists
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        run: aws s3api head-bucket --bucket '${{ vars.PULUMI_STATE_BUCKET }}'
+
+      - name: Build preview container
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        run: docker compose build pulumi
+
+      - name: Run Pulumi preview
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        run: |
+          set -o pipefail
+          docker compose run --rm \
+            -e AWS_REGION="${AWS_REGION}" \
+            -e AWS_DEFAULT_REGION="${AWS_REGION}" \
+            -e PULUMI_STACK="${PULUMI_STACK}" \
+            -e PULUMI_DIR="pulumi" \
+            -e PULUMI_BACKEND_URL="s3://${{ vars.PULUMI_STATE_BUCKET }}/state/${PULUMI_STACK}" \
+            -e PULUMI_SECRETS_PROVIDER='${{ vars.PULUMI_TEST_SECRETS_PROVIDER }}' \
+            -e PULUMI_REQUIRE_EXISTING_STACK="true" \
+            -e PULUMI_PREVIEW_JSON_PATH="/workspace/out/pulumi-preview.json" \
+            -e PULUMI_SKIP_UPDATE_CHECK="true" \
+            pulumi \
+            bash -lc "./scripts/run_pulumi_command.sh plan" 2>&1 | tee out/pulumi-preview.log
+
+      - name: Enforce destructive diff gate
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        env:
+          ALLOW_DESTRUCTIVE_CHANGES: ${{ contains(join(github.event.pull_request.labels.*.name, ','), 'pulumi-allow-destructive') }}
+        run: |
+          allow_args=()
+          if [ "${ALLOW_DESTRUCTIVE_CHANGES}" = "true" ]; then
+            allow_args+=(--allow-destructive-override)
+          fi
+          docker compose run --rm pulumi \
+            bash -lc "
+              uv run --frozen --no-sync python scripts/analyze_pulumi_preview.py \
+                --preview-file /workspace/out/pulumi-preview.json \
+                --summary-file /workspace/out/pulumi-preview-summary.md \
+                ${allow_args[*]}
+            "
+          cat out/pulumi-preview-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload preview artifacts
+        if: always() && steps.changes.outputs.needs_guardrails == 'true'
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4
+        with:
+          name: pulumi-preview-${{ github.event.pull_request.number }}-${{ github.run_id }}
+          path: |
+            out/changed-files.txt
+            out/pulumi-preview.json
+            out/pulumi-preview.log
+            out/pulumi-preview-summary.md
+
+  iam-validation:
+    name: IAM Policy Validation
+    runs-on: ubuntu-latest
+    environment: test
+    env:
+      AWS_REGION: eu-central-1
+      REQUIRE_AWS_ACCESS_ANALYZER: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect infrastructure changes
+        id: changes
+        run: |
+          infra_pattern='^(pulumi/|policy_pack/|scripts/|Makefile|Dockerfile|docker-compose\.yml|pyproject\.toml|uv\.lock|\.github/workflows/)'
+          files="$(git diff --name-only '${{ github.event.pull_request.base.sha }}' '${{ github.event.pull_request.head.sha }}')"
+          if printf '%s\n' "${files}" | grep -Eq "${infra_pattern}"; then
+            echo "needs_guardrails=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_guardrails=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## IAM Policy Validation"
+              echo
+              echo "No infrastructure-related files changed in this pull request."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Reject forked infrastructure pull requests
+        if: >-
+          steps.changes.outputs.needs_guardrails == 'true' &&
+          github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "IAM policy validation is disabled for forked pull requests because it requires AWS OIDC credentials." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Verify AWS validation configuration
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        run: test -n '${{ vars.PULUMI_TEST_ROLE_ARN }}'
+
+      - name: Configure AWS credentials
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.PULUMI_TEST_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build validation container
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        run: docker compose build pulumi
+
+      - name: Validate generated IAM policies
+        if: steps.changes.outputs.needs_guardrails == 'true'
+        run: make check-iam REQUIRE_AWS_ACCESS_ANALYZER=1

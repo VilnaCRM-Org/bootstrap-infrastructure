@@ -72,12 +72,21 @@ def test_automation_assume_role_policy_uses_environment_subject():
 
 
 def test_automation_policy_scopes_to_bootstrap_services():
-    policy = json.loads(_automation_policy())
+    policy = json.loads(_automation_policy("123456789012"))
     statements = {statement["Sid"]: statement for statement in policy["Statement"]}
     assert statements["ReadIdentity"]["Action"] == ["sts:GetCallerIdentity"]  # nosec B101
     assert statements["ManageBootstrapS3"]["Action"] == ["s3:*"]  # nosec B101
     assert statements["ManageBootstrapKms"]["Action"] == ["kms:*"]  # nosec B101
-    assert statements["ManageBootstrapIam"]["Action"] == ["iam:*"]  # nosec B101
+    assert "iam:CreateRole" in statements["ManageBootstrapIam"]["Action"]  # nosec B101
+    assert "iam:UpdateAssumeRolePolicy" in statements["ManageBootstrapIam"]["Action"]  # nosec B101
+    assert statements["ManageBootstrapIam"]["Resource"] == [  # nosec B101
+        "arn:aws:iam::123456789012:role/*",
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+    ]
+    assert statements["CreateBootstrapOidcProvider"]["Resource"] == "*"  # nosec B101
+    assert statements["PassBootstrapRolesToBackup"]["Condition"]["StringEquals"] == {  # nosec B101
+        "iam:PassedToService": "backup.amazonaws.com"
+    }
     assert statements["ManageBootstrapBackup"]["Action"] == ["backup:*"]  # nosec B101
     assert statements["ManageBootstrapEcr"]["Action"] == ["ecr:*"]  # nosec B101
 
@@ -92,6 +101,9 @@ def test_log_bucket_policy_contains_required_statements():
     assert "AllowLogDelivery" in sids  # nosec B101
     assert "AllowLogDeliveryAclCheck" in sids  # nosec B101
     assert statements["AllowCloudTrailAclCheck"]["Condition"]["StringEquals"] == {  # nosec B101
+        "aws:SourceAccount": "123456789012"
+    }
+    assert statements["AllowLogDeliveryAclCheck"]["Condition"]["StringEquals"] == {  # nosec B101
         "aws:SourceAccount": "123456789012"
     }
     assert statements["AllowCloudTrailPutObject"]["Condition"]["StringEquals"] == {  # nosec B101

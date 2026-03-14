@@ -1,0 +1,32 @@
+name: Pulumi Coverage
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build test container
+        run: docker compose build pulumi
+
+      - name: Run Python test suites
+        run: |
+          make test-pulumi
+          make test-cost
+          make test-policy
+          make test-unit
+          make test-integration
+          make test-e2e
+
+      - name: Enforce 100% coverage
+        run: make check-coverage

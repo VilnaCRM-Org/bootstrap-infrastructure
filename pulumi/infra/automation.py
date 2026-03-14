@@ -40,8 +40,12 @@ def _automation_assume_role_policy(
     )
 
 
-def _automation_policy() -> str:
+def _automation_policy(account_id: str) -> str:
     """Return the policy used by GitHub automation for bootstrap operations."""
+    role_arn = f"arn:aws:iam::{account_id}:role/*"
+    oidc_provider_arn = (
+        f"arn:aws:iam::{account_id}:oidc-provider/token.actions.githubusercontent.com"
+    )
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -67,8 +71,44 @@ def _automation_policy() -> str:
                 {
                     "Sid": "ManageBootstrapIam",
                     "Effect": "Allow",
-                    "Action": ["iam:*"],
+                    "Action": [
+                        "iam:AttachRolePolicy",
+                        "iam:CreateRole",
+                        "iam:DeleteOpenIDConnectProvider",
+                        "iam:DeleteRole",
+                        "iam:DeleteRolePolicy",
+                        "iam:DetachRolePolicy",
+                        "iam:GetOpenIDConnectProvider",
+                        "iam:GetRole",
+                        "iam:GetRolePolicy",
+                        "iam:ListAttachedRolePolicies",
+                        "iam:ListOpenIDConnectProviders",
+                        "iam:ListRolePolicies",
+                        "iam:ListRoleTags",
+                        "iam:PutRolePolicy",
+                        "iam:TagOpenIDConnectProvider",
+                        "iam:TagRole",
+                        "iam:UntagOpenIDConnectProvider",
+                        "iam:UntagRole",
+                        "iam:UpdateAssumeRolePolicy",
+                        "iam:UpdateOpenIDConnectProviderThumbprint",
+                    ],
+                    "Resource": [role_arn, oidc_provider_arn],
+                },
+                {
+                    "Sid": "CreateBootstrapOidcProvider",
+                    "Effect": "Allow",
+                    "Action": ["iam:CreateOpenIDConnectProvider"],
                     "Resource": "*",
+                },
+                {
+                    "Sid": "PassBootstrapRolesToBackup",
+                    "Effect": "Allow",
+                    "Action": ["iam:PassRole"],
+                    "Resource": role_arn,
+                    "Condition": {
+                        "StringEquals": {"iam:PassedToService": "backup.amazonaws.com"}
+                    },
                 },
                 {
                     "Sid": "ManageBootstrapBackup",
@@ -185,7 +225,7 @@ class GitHubAutomation(pulumi.ComponentResource):
         aws.iam.RolePolicy(
             f"{name}-policy",
             role=role.id,
-            policy=_automation_policy(),
+            policy=_automation_policy(aws.get_caller_identity().account_id),
             opts=base_opts,
         )
 

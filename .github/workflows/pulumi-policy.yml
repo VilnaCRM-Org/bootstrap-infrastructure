@@ -1,0 +1,23 @@
+name: Pulumi CrossGuard Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: CrossGuard Policy Pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build test container
+        run: docker compose build pulumi
+
+      - name: Run policy suite
+        run: make test-crossguard

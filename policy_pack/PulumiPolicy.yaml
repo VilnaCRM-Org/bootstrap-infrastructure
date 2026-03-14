@@ -1,0 +1,4 @@
+runtime:
+  name: python
+version: 0.1.0
+description: Guardrails for the bootstrap-infrastructure Pulumi stack.

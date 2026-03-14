@@ -40,6 +40,8 @@ Local commands:
 make check-bandit
 make check-deps
 make check-sbom
+make check-secrets
+make check-iam
 make check-yaml
 make check-actionlint
 make check-docker
@@ -51,6 +53,8 @@ Coverage:
 - Bandit static security analysis
 - pip-audit dependency CVE detection against the `uv.lock` graph
 - CycloneDX SBOM export from the locked dependency graph
+- Gitleaks secret scanning with the committed `.gitleaks.toml` configuration
+- IAM Access Analyzer validation for generated IAM/resource policies when AWS credentials are available
 - yamllint on workflows and stack manifests
 - actionlint on GitHub Actions workflows
 - hadolint on the Dockerfile
@@ -70,8 +74,25 @@ make test-pulumi
 Coverage:
 - Pulumi project manifest shape
 - stack file conventions
+- policy pack repository wiring
 - local-to-CI target mapping
 - required docs in `docs/`
+
+## CrossGuard
+
+Goal: enforce repo-specific Pulumi guardrails during previews and updates, not only in tests.
+
+Local command:
+```bash
+make test-policy
+make test-crossguard
+```
+
+Coverage:
+- Pulumi CrossGuard rule construction
+- disallowed service-family enforcement
+- S3, KMS, ECR, backup, and FinOps-tag guardrails
+- policy-pack entrypoint wiring
 
 ## Cost Guardrails
 
@@ -146,14 +167,31 @@ Coverage:
 - `pulumi login`
 - `pulumi stack init --secrets-provider`
 - `pulumi preview`
+- `pulumi preview --json`
 - `pulumi up`
 - `pulumi stack output`
 - `pulumi destroy`
 - `pulumi stack rm`
 - `./scripts/run_pulumi_command.sh plan`
 - `./scripts/run_pulumi_command.sh up`
+- `scripts/analyze_pulumi_preview.py`
+- `pulumi preview --policy-pack ...` failure on a disallowed AWS resource
 
 The e2e suite uses a temporary fixture project instead of the full bootstrap stack so it can validate the Pulumi CLI flow without creating application infrastructure.
+
+## Coverage
+
+Goal: require 100% combined coverage for Pulumi stack code and Pulumi policy code across the Python test matrix.
+
+Local command:
+```bash
+make check-coverage
+```
+
+Coverage:
+- combines structural, cost, policy, unit, integration, and e2e Python suites
+- fails if `pulumi/` plus `policy_pack/` drops below 100%
+- keeps mutation and Bats as separate non-coverage guardrails
 
 ## Bats
 
@@ -176,16 +214,21 @@ Coverage:
 
 GitHub Actions mirrors the local targets:
 - `python-quality.yml` -> `make check-format`, `make check-lint`, `make check-spelling`, `make check-toml`, `make check-types`, `make check-ty`, `make check-package`
-- `devsecops-guardrails.yml` -> `make check-bandit`, `make check-deps`, `make check-sbom`, `make check-yaml`, `make check-actionlint`, `make check-docker`, `make check-shell`, `make check-iac`, `make check-qlty`, `make test-cost`
+- `devsecops-guardrails.yml` -> `make check-bandit`, `make check-deps`, `make check-sbom`, `make check-secrets`, `make check-yaml`, `make check-actionlint`, `make check-docker`, `make check-shell`, `make check-iac`, `make check-qlty`, `make test-cost`
+- `pulumi-preview.yml` -> `./scripts/run_pulumi_command.sh plan`, `scripts/analyze_pulumi_preview.py`, `make check-iam`
+- `codeql.yml` -> GitHub CodeQL for `python` and `actions`
 - `pulumi-structural.yml` -> `make test-pulumi`
+- `pulumi-policy.yml` -> `make test-crossguard`
 - `pulumi-unit.yml` -> `make test-unit`
 - `pulumi-integration.yml` -> `make test-integration`
 - `pulumi-mutation.yml` -> `make test-mutation`
 - `pulumi-e2e.yml` -> `make test-e2e`
+- `pulumi-coverage.yml` -> `make check-coverage`
 - `bats-tests.yml` -> `make test-bats`
 - `pulumi-runner-image.yml` -> `make runner-image-build`, `make runner-image-smoke`, `make runner-image-push`
 - `pulumi-pr-commands.yml` -> `./scripts/run_pulumi_command.sh plan|up` inside the published ECR runner image
 - `pulumi-drift.yml` -> `./scripts/run_pulumi_command.sh drift` inside the published ECR runner image
+- `repo-health.yml` -> OpenSSF Scorecard on a schedule
 
 The aggregate local command is:
 ```bash

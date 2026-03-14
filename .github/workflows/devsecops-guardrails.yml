@@ -25,6 +25,9 @@ jobs:
           - name: SBOM Export
             target: check-sbom
             build_pulumi_container: true
+          - name: Gitleaks
+            target: check-secrets
+            build_pulumi_container: false
           - name: YAML Lint
             target: check-yaml
             build_pulumi_container: true

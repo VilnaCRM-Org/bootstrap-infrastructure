@@ -150,6 +150,7 @@ def test_pulumi_command_script_handles_plan_and_up(tmp_path: Path):
     env["PULUMI_BACKEND_URL"] = f"file://{backend_dir}"
     env["PULUMI_SECRETS_PROVIDER"] = provider
     env["PULUMI_DIR"] = str(project_dir)
+    env["PULUMI_PREVIEW_JSON_PATH"] = str(tmp_path / "preview.json")
 
     script = ROOT / "scripts" / "run_pulumi_command.sh"
 
@@ -161,6 +162,7 @@ def test_pulumi_command_script_handles_plan_and_up(tmp_path: Path):
                 env=env,
             )
             assert result.returncode == 0, result.stdout + result.stderr  # nosec B101
+        assert Path(env["PULUMI_PREVIEW_JSON_PATH"]).exists()  # nosec B101
 
         output = _run(
             [
@@ -193,6 +195,88 @@ def test_pulumi_command_script_handles_plan_and_up(tmp_path: Path):
             cwd=project_dir,
             env=env,
         )
+
+
+@pytest.mark.skipif(
+    not HAS_E2E_PROVIDER, reason="PULUMI_E2E_SECRETS_PROVIDER is not set."
+)
+def test_policy_pack_blocks_disallowed_resource_types(tmp_path: Path):
+    provider = os.environ["PULUMI_E2E_SECRETS_PROVIDER"]
+
+    backend_dir = tmp_path / "backend"
+    project_dir = tmp_path / "project"
+    pulumi_home = tmp_path / "pulumi-home"
+    backend_dir.mkdir()
+    project_dir.mkdir()
+    pulumi_home.mkdir()
+
+    (project_dir / "Pulumi.yaml").write_text(
+        "name: pulumi-e2e-policy\nruntime:\n  name: python\n",
+        encoding="utf-8",
+    )
+    (project_dir / "__main__.py").write_text(
+        "import pulumi_aws as aws\n"
+        "aws.ec2.Vpc('blocked-vpc', cidr_block='10.0.0.0/16')\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["PULUMI_HOME"] = str(pulumi_home)
+    env["PULUMI_SKIP_UPDATE_CHECK"] = "true"
+    env["AWS_REGION"] = env.get("AWS_REGION", "eu-central-1")
+    env["AWS_DEFAULT_REGION"] = env["AWS_REGION"]
+
+    backend_url = f"file://{backend_dir}"
+    stack = "policy-e2e"
+
+    try:
+        init = _run(
+            [
+                "pulumi",
+                "login",
+                backend_url,
+            ],
+            cwd=project_dir,
+            env=env,
+        )
+        assert init.returncode == 0, init.stdout + init.stderr  # nosec B101
+
+        stack_init = _run(
+            [
+                "pulumi",
+                "-C",
+                str(project_dir),
+                "stack",
+                "init",
+                stack,
+                "--non-interactive",
+                "--secrets-provider",
+                provider,
+            ],
+            cwd=project_dir,
+            env=env,
+        )
+        assert stack_init.returncode == 0, stack_init.stdout + stack_init.stderr  # nosec B101
+
+        preview = _run(
+            [
+                "pulumi",
+                "-C",
+                str(project_dir),
+                "preview",
+                "--stack",
+                stack,
+                "--non-interactive",
+                "--policy-pack",
+                str(ROOT / "policy_pack"),
+            ],
+            cwd=project_dir,
+            env=env,
+        )
+        assert preview.returncode != 0  # nosec B101
+        assert "approved-bootstrap-resource-types" in (preview.stdout + preview.stderr)  # nosec B101
+        assert "aws:ec2/vpc:Vpc" in (preview.stdout + preview.stderr)  # nosec B101
+    finally:
         _run(
             [
                 "pulumi",
@@ -200,7 +284,7 @@ def test_pulumi_command_script_handles_plan_and_up(tmp_path: Path):
                 str(project_dir),
                 "stack",
                 "rm",
-                env["PULUMI_STACK"],
+                stack,
                 "--yes",
             ],
             cwd=project_dir,

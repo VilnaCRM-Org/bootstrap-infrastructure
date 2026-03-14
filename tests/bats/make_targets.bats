@@ -17,12 +17,17 @@ assert_output_contains() {
   assert_output_contains "check-format"
   assert_output_contains "check-qlty"
   assert_output_contains "check-ty"
+  assert_output_contains "check-secrets"
+  assert_output_contains "check-iam"
   assert_output_contains "pulumi-preview"
   assert_output_contains "pulumi-plan-ci"
   assert_output_contains "runner-image-build"
   assert_output_contains "test-cost"
+  assert_output_contains "test-policy"
+  assert_output_contains "test-crossguard"
   assert_output_contains "test-bats"
   assert_output_contains "test-e2e"
+  assert_output_contains "check-coverage"
 }
 
 @test "make all resolves to help output" {
@@ -131,7 +136,7 @@ assert_output_contains() {
   run make -n clean
   [ "$status" -eq 0 ]
   assert_output_contains "find . -type d -name __pycache__"
-  assert_output_contains "rm -rf .venv .mypy_cache .ruff_cache dist build"
+  assert_output_contains "rm -rf .venv .mypy_cache .ruff_cache .coverage-artifacts dist build"
 }
 
 @test "make test-unit runs pytest for unit tests" {
@@ -158,6 +163,18 @@ assert_output_contains() {
   assert_output_contains "pytest -q tests/cost"
 }
 
+@test "make test-policy runs the policy pack suite" {
+  run make -n test-policy
+  [ "$status" -eq 0 ]
+  assert_output_contains "pytest -q tests/policy"
+}
+
+@test "make test-crossguard aliases the policy pack suite" {
+  run make -n test-crossguard
+  [ "$status" -eq 0 ]
+  assert_output_contains "make test-policy"
+}
+
 @test "make test-mutation runs the mutation script" {
   run make -n test-mutation
   [ "$status" -eq 0 ]
@@ -181,11 +198,13 @@ assert_output_contains() {
   [ "$status" -eq 0 ]
   assert_output_contains "make test-pulumi"
   assert_output_contains "make test-cost"
+  assert_output_contains "make test-policy"
   assert_output_contains "make test-unit"
   assert_output_contains "make test-integration"
   assert_output_contains "make test-mutation"
   assert_output_contains "make test-e2e"
   assert_output_contains "make test-bats"
+  assert_output_contains "make check-coverage"
 }
 
 @test "make check-format runs Ruff format in check mode" {
@@ -222,7 +241,7 @@ assert_output_contains() {
 @test "make check-ty runs Astral Ty" {
   run make -n check-ty
   [ "$status" -eq 0 ]
-  assert_output_contains "ty check"
+  assert_output_contains "--extra-search-path /workspace/pulumi policy_pack scripts tests"
 }
 
 @test "make check-package validates uv lock state and bytecode" {
@@ -242,7 +261,7 @@ assert_output_contains() {
 @test "make check-bandit runs Bandit over pulumi sources" {
   run make -n check-bandit
   [ "$status" -eq 0 ]
-  assert_output_contains "bandit -q -r pulumi"
+  assert_output_contains "bandit -q -r pulumi policy_pack"
 }
 
 @test "make check-deps runs the dependency audit" {
@@ -256,6 +275,19 @@ assert_output_contains() {
   [ "$status" -eq 0 ]
   assert_output_contains "uv export"
   assert_output_contains "cyclonedx1.5"
+}
+
+@test "make check-secrets runs Gitleaks" {
+  run make -n check-secrets
+  [ "$status" -eq 0 ]
+  assert_output_contains "gitleaks"
+  assert_output_contains ".gitleaks.toml"
+}
+
+@test "make check-iam runs the IAM Access Analyzer validator" {
+  run make -n check-iam REQUIRE_AWS_ACCESS_ANALYZER=1
+  [ "$status" -eq 0 ]
+  assert_output_contains "scripts/validate_iam_policies.py"
 }
 
 @test "make check-yaml runs yamllint" {
@@ -288,6 +320,13 @@ assert_output_contains() {
   assert_output_contains "checkov"
 }
 
+@test "make check-coverage combines and enforces coverage" {
+  run make -n check-coverage
+  [ "$status" -eq 0 ]
+  assert_output_contains "coverage combine"
+  assert_output_contains "coverage report --show-missing --fail-under=100"
+}
+
 @test "make check-static runs the Python quality aggregate" {
   run make -n check-static
   [ "$status" -eq 0 ]
@@ -306,6 +345,8 @@ assert_output_contains() {
   assert_output_contains "make check-bandit"
   assert_output_contains "make check-deps"
   assert_output_contains "make check-sbom"
+  assert_output_contains "make check-secrets"
+  assert_output_contains "make check-iam"
   assert_output_contains "make check-yaml"
   assert_output_contains "make check-actionlint"
   assert_output_contains "make check-docker"

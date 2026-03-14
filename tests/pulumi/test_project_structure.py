@@ -31,6 +31,8 @@ def test_makefile_exposes_full_test_matrix():
     assert "check-bandit" in makefile  # nosec B101
     assert "check-deps" in makefile  # nosec B101
     assert "check-sbom" in makefile  # nosec B101
+    assert "check-secrets" in makefile  # nosec B101
+    assert "check-iam" in makefile  # nosec B101
     assert "check-yaml" in makefile  # nosec B101
     assert "check-actionlint" in makefile  # nosec B101
     assert "check-docker" in makefile  # nosec B101
@@ -38,11 +40,14 @@ def test_makefile_exposes_full_test_matrix():
     assert "check-iac" in makefile  # nosec B101
     assert "test-pulumi" in makefile  # nosec B101
     assert "test-cost" in makefile  # nosec B101
+    assert "test-policy" in makefile  # nosec B101
+    assert "test-crossguard" in makefile  # nosec B101
     assert "test-unit" in makefile  # nosec B101
     assert "test-integration" in makefile  # nosec B101
     assert "test-mutation" in makefile  # nosec B101
     assert "test-e2e" in makefile  # nosec B101
     assert "test-bats" in makefile  # nosec B101
+    assert "check-coverage" in makefile  # nosec B101
     assert "ci" in makefile  # nosec B101
 
 
@@ -60,6 +65,7 @@ def test_repository_uses_uv_for_python_tooling():
     assert "[dependency-groups]" in pyproject  # nosec B101
     assert "[tool.uv]" in pyproject  # nosec B101
     assert "[tool.ruff]" in pyproject  # nosec B101
+    assert '"scripts"' in pyproject  # nosec B101
     assert (ROOT / "uv.lock").exists()  # nosec B101
     assert not (ROOT / "poetry.lock").exists()  # nosec B101
 
@@ -76,7 +82,12 @@ def test_ci_workflows_cover_local_test_targets():
     ).read_text()
     mutation = (ROOT / ".github" / "workflows" / "pulumi-mutation.yml").read_text()
     bats = (ROOT / ".github" / "workflows" / "bats-tests.yml").read_text()
+    codeql = (ROOT / ".github" / "workflows" / "codeql.yml").read_text()
     e2e = (ROOT / ".github" / "workflows" / "pulumi-e2e.yml").read_text()
+    policy = (ROOT / ".github" / "workflows" / "pulumi-policy.yml").read_text()
+    preview = (ROOT / ".github" / "workflows" / "pulumi-preview.yml").read_text()
+    coverage = (ROOT / ".github" / "workflows" / "pulumi-coverage.yml").read_text()
+    repo_health = (ROOT / ".github" / "workflows" / "repo-health.yml").read_text()
     runner_image = (
         ROOT / ".github" / "workflows" / "pulumi-runner-image.yml"
     ).read_text()
@@ -96,6 +107,7 @@ def test_ci_workflows_cover_local_test_targets():
     assert "check-bandit" in guardrails  # nosec B101
     assert "check-deps" in guardrails  # nosec B101
     assert "check-sbom" in guardrails  # nosec B101
+    assert "check-secrets" in guardrails  # nosec B101
     assert "check-yaml" in guardrails  # nosec B101
     assert "check-actionlint" in guardrails  # nosec B101
     assert "check-docker" in guardrails  # nosec B101
@@ -112,9 +124,20 @@ def test_ci_workflows_cover_local_test_targets():
     assert "make test-mutation" in mutation  # nosec B101
     assert "docker compose build pulumi" in mutation  # nosec B101
     assert "make test-bats" in bats  # nosec B101
+    assert "language: actions" in codeql  # nosec B101
+    assert "language: python" in codeql  # nosec B101
     assert "make test-e2e" in e2e  # nosec B101
     assert "docker compose build pulumi" in e2e  # nosec B101
     assert "pull_request:" in e2e  # nosec B101
+    assert "CrossGuard" in policy  # nosec B101
+    assert "make test-crossguard" in policy  # nosec B101
+    assert "docker compose build pulumi" in policy  # nosec B101
+    assert "scripts/analyze_pulumi_preview.py" in preview  # nosec B101
+    assert "make check-iam" in preview  # nosec B101
+    assert "workflow_dispatch:" in repo_health  # nosec B101
+    assert "scorecard-action" in repo_health  # nosec B101
+    assert "make check-coverage" in coverage  # nosec B101
+    assert "docker compose build pulumi" in coverage  # nosec B101
     assert "make runner-image-build" in runner_image  # nosec B101
     assert "make runner-image-smoke" in runner_image  # nosec B101
     assert "make runner-image-push" in runner_image  # nosec B101
@@ -141,12 +164,17 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     testing_doc = (ROOT / "docs" / "testing.md").read_text()
     kms_doc = (ROOT / "docs" / "pulumi-bootstrap-kms.md").read_text()
     automation_doc = (ROOT / "docs" / "pulumi-github-automation.md").read_text()
+    policy_doc = (ROOT / "docs" / "pulumi-policy-pack.md").read_text()
     assert "testing.md" in docs_index  # nosec B101
     assert "ci-guardrails.md" in docs_index  # nosec B101
     assert "pulumi-bootstrap-kms.md" in docs_index  # nosec B101
     assert "pulumi-github-automation.md" in docs_index  # nosec B101
+    assert "pulumi-policy-pack.md" in docs_index  # nosec B101
     assert "Python Quality Checks" in ci_doc  # nosec B101
     assert "DevSecOps Guardrails" in ci_doc  # nosec B101
+    assert "Pulumi Preview Guardrails" in ci_doc  # nosec B101
+    assert "CodeQL" in ci_doc  # nosec B101
+    assert "Repository Health" in ci_doc  # nosec B101
     assert "Qlty" in ci_doc  # nosec B101
     assert "uv" in ci_doc  # nosec B101
     assert "Ruff" in testing_doc  # nosec B101
@@ -157,11 +185,25 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     assert "Structural" in testing_doc  # nosec B101
     assert "Cost Guardrails" in testing_doc  # nosec B101
     assert "Mutation" in testing_doc  # nosec B101
+    assert "CrossGuard" in testing_doc  # nosec B101
+    assert "Coverage" in testing_doc  # nosec B101
     assert "Stage-0" in kms_doc  # nosec B101
     assert "pulumiSecretsProviderUrls" in kms_doc  # nosec B101
     assert "pulumi plan" in automation_doc  # nosec B101
     assert "pulumi up" in automation_doc  # nosec B101
     assert "ECR" in automation_doc  # nosec B101
+    assert "CrossGuard" in policy_doc  # nosec B101
+    assert "approved-bootstrap-resource-types" in policy_doc  # nosec B101
+    assert "check-coverage" in policy_doc  # nosec B101
+    assert "approved region allowlist" in policy_doc  # nosec B101
+    assert "wildcard IAM permissions" in policy_doc  # nosec B101
+
+
+def test_repository_tracks_policy_pack_files():
+    policy_pack = ROOT / "policy_pack"
+    assert (policy_pack / "PulumiPolicy.yaml").exists()  # nosec B101
+    assert (policy_pack / "__main__.py").exists()  # nosec B101
+    assert (policy_pack / "guardrails.py").exists()  # nosec B101
 
 
 def test_repository_tracks_qlty_configuration():
@@ -170,3 +212,9 @@ def test_repository_tracks_qlty_configuration():
     assert (qlty_dir / ".gitignore").exists()  # nosec B101
     assert (qlty_dir / "configs" / ".hadolint.yaml").exists()  # nosec B101
     assert (qlty_dir / "configs" / ".shellcheckrc").exists()  # nosec B101
+
+
+def test_repository_tracks_ci_guardrail_support_files():
+    assert (ROOT / ".gitleaks.toml").exists()  # nosec B101
+    assert (ROOT / "scripts" / "analyze_pulumi_preview.py").exists()  # nosec B101
+    assert (ROOT / "scripts" / "validate_iam_policies.py").exists()  # nosec B101

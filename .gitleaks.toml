@@ -1,0 +1,7 @@
+title = "bootstrap-infrastructure gitleaks configuration"
+
+[[allowlists]]
+description = "Allow Pulumi-encrypted stack ciphertext in the committed test stack file."
+condition = "AND"
+paths = ['''^pulumi/Pulumi\.test\.yaml$''']
+regexes = ['''encryptedkey:\s+[A-Za-z0-9+/=]+''']

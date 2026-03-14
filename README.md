@@ -6,7 +6,7 @@
 - Pulumi-based AWS infrastructure for per-repo state, logging, and IAM
 - Built-in Docker environment and convenient `make` CLI commands
 - CI checks for Pulumi unit, integration, structural, and mutation testing
-- Static quality, DevSecOps, and cost guardrail checks for Pulumi/Python code
+- Static quality, DevSecOps, Pulumi policy-pack, preview, CodeQL, IAM validation, coverage, and cost guardrail checks for Pulumi/Python code
 - Configured testing tools
 - Much more!
 
@@ -106,6 +106,8 @@ configured repo/environment naming (for example: `pulumi-bootstrap-infrastructur
 CI also requires `PULUMI_TEST_SECRETS_PROVIDER` and `PULUMI_PROD_SECRETS_PROVIDER` repository variables, each containing an `awskms://...` URI for the matching environment.
 GitHub automation for PR comments also requires `PULUMI_TEST_ROLE_ARN` and `PULUMI_TEST_RUNNER_ECR_REPOSITORY`.
 The automation workflows use the `test` job environment subject for OIDC trust and pull a prebuilt ECR runner image before executing `pulumi plan`, `pulumi up`, or scheduled drift detection.
+Those command paths also apply the repo-local Pulumi CrossGuard Policy Pack from `policy_pack/`, so the same rules are enforced in local CI wrappers, deployment workflows, PR comment automation, and drift detection.
+PR preview safety uses the same OIDC model and blocks destructive diffs for critical resources unless a maintainer applies the reviewed PR label `pulumi-allow-destructive`.
 
 For repositories bootstrapped by this stack, the expected flow is:
 ```text
@@ -144,6 +146,11 @@ Quality and security guardrails:
 ```bash
 make check-static
 make check-security
+make check-secrets
+make check-iam
+make test-policy
+make test-crossguard
+make check-coverage
 make test-cost
 make check-ty
 make ci

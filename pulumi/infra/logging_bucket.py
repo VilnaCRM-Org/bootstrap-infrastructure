@@ -81,7 +81,10 @@ def _log_bucket_policy(bucket_arn: str, account_id: str) -> str:
       "Effect": "Allow",
       "Principal": {{"Service": "logging.s3.amazonaws.com"}},
       "Action": "s3:GetBucketAcl",
-      "Resource": "{bucket_arn}"
+      "Resource": "{bucket_arn}",
+      "Condition": {{
+        "StringEquals": {{"aws:SourceAccount": "{account_id}"}}
+      }}
     }},
     {{
       "Sid": "AllowLogDelivery",

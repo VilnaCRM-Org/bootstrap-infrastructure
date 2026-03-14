@@ -5,7 +5,7 @@ This repository supports GitHub-driven Pulumi operations for the `test` environm
 - a stack-managed Amazon ECR runner repository
 - a stack-managed GitHub OIDC automation role
 - a comment-driven workflow that runs `pulumi plan` and `pulumi up`
-- a scheduled drift workflow that fails when `preview --expect-no-changes` detects drift
+- a scheduled drift workflow that fails when `refresh --preview-only --expect-no-changes` detects drift
 
 ## Runner Image
 
@@ -64,7 +64,7 @@ It pulls the `main` runner image and executes:
 ./scripts/run_pulumi_command.sh drift
 ```
 
-This maps to `pulumi preview --expect-no-changes`, so any unexpected infrastructure drift causes the workflow to fail.
+This maps to `pulumi refresh --preview-only --expect-no-changes`, so any unexpected infrastructure drift causes the workflow to fail without mutating stack state.
 
 ## Required GitHub Variables
 
