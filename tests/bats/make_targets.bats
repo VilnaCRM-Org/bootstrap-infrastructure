@@ -76,8 +76,7 @@ assert_output_contains() {
 @test "make down stops docker compose" {
   run make -n down
   [ "$status" -eq 0 ]
-  assert_output_contains "docker compose"
-  assert_output_contains "down"
+  assert_output_contains "docker compose --env-file .env down"
 }
 
 @test "make clean removes generated artifacts" {

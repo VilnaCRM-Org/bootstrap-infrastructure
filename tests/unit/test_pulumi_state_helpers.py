@@ -41,7 +41,17 @@ def test_bucket_exists_raises_unexpected(monkeypatch):
 
 
 def test_resource_suffix_sanitizes():
-    assert pulumi_state._resource_suffix("Repo.Name") == "repo-name"  # nosec B101
+    assert pulumi_state._resource_suffix("repo") == "repo"  # nosec B101
+
+
+def test_resource_suffix_disambiguates_normalized_collisions():
+    dotted = pulumi_state._resource_suffix("team.app")
+    dashed = pulumi_state._resource_suffix("team-app")
+    underscored = pulumi_state._resource_suffix("team_app")
+    assert dotted.startswith("team-app-")  # nosec B101
+    assert dotted != dashed  # nosec B101
+    assert underscored.startswith("team-app-")  # nosec B101
+    assert underscored != dashed  # nosec B101
 
 
 def test_replication_role_name_limits_length():

@@ -18,34 +18,34 @@ jobs:
         include:
           - name: Bandit
             target: check-bandit
-            requires_container: true
+            build_pulumi_container: true
           - name: Dependency Audit
             target: check-deps
-            requires_container: true
+            build_pulumi_container: true
           - name: SBOM Export
             target: check-sbom
-            requires_container: true
+            build_pulumi_container: true
           - name: YAML Lint
             target: check-yaml
-            requires_container: true
+            build_pulumi_container: true
           - name: Actionlint
             target: check-actionlint
-            requires_container: false
+            build_pulumi_container: false
           - name: Hadolint
             target: check-docker
-            requires_container: false
+            build_pulumi_container: false
           - name: ShellCheck
             target: check-shell
-            requires_container: false
+            build_pulumi_container: false
           - name: Checkov
             target: check-iac
-            requires_container: false
+            build_pulumi_container: false
           - name: Cost Guardrails
             target: test-cost
-            requires_container: true
+            build_pulumi_container: true
           - name: Qlty
             target: check-qlty
-            requires_container: false
+            build_pulumi_container: false
             requires_qlty: true
     name: ${{ matrix.name }}
     steps:
@@ -57,7 +57,7 @@ jobs:
         uses: qltysh/qlty-action/install@a19242102d17e497f437d7466aa01b528537e899 # v2.2.0
 
       - name: Build test container
-        if: ${{ matrix.requires_container }}
+        if: ${{ matrix.build_pulumi_container }}
         run: docker compose build pulumi
 
       - name: Run ${{ matrix.target }}

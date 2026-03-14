@@ -45,7 +45,12 @@ def _bucket_exists(name: str) -> bool:
 
 def _resource_suffix(repo_name: str) -> str:
     """Convert a repo name into a safe Pulumi resource suffix."""
-    return sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+    base = sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+    normalized = repo_name.strip().lower()
+    if normalized == base:
+        return base
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:8]
+    return f"{base}-{digest}"
 
 
 def _truncate_role_suffix(role_suffix: str) -> str:

@@ -194,6 +194,16 @@ def test_github_oidc_role_name_limits_length():
     assert len(role_name) <= github_oidc._MAX_IAM_ROLE_NAME_LENGTH  # nosec B101
 
 
+def test_github_oidc_repo_suffix_disambiguates_normalized_collisions():
+    dotted = github_oidc._repo_suffix("team.app")
+    dashed = github_oidc._repo_suffix("team-app")
+    underscored = github_oidc._repo_suffix("team_app")
+    assert dotted.startswith("team-app-")  # nosec B101
+    assert dotted != dashed  # nosec B101
+    assert underscored.startswith("team-app-")  # nosec B101
+    assert underscored != dashed  # nosec B101
+
+
 def test_truncate_role_suffix_keeps_short():
     short_suffix = "repo-short"
     assert github_oidc._truncate_role_suffix(short_suffix) == short_suffix  # nosec B101

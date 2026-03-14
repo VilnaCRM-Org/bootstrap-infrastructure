@@ -25,6 +25,16 @@ _ROLE_NAME_PREFIX = "PulumiDeploy-"
 _MAX_IAM_ROLE_NAME_LENGTH = 64
 
 
+def _repo_suffix(repo_name: str) -> str:
+    """Return a readable role suffix that stays unique after normalization."""
+    base = sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+    normalized = repo_name.strip().lower()
+    if normalized == base:
+        return base
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:8]
+    return f"{base}-{digest}"
+
+
 def _truncate_role_suffix(repo_suffix: str) -> str:
     max_suffix_len = _MAX_IAM_ROLE_NAME_LENGTH - len(_ROLE_NAME_PREFIX)
     if len(repo_suffix) <= max_suffix_len:
@@ -73,7 +83,7 @@ def _deploy_policy(
     statements = [
         {
             "Effect": "Allow",
-            "Action": ["s3:ListBucket", "s3:CreateBucket"],
+            "Action": ["s3:ListBucket"],
             "Resource": bucket_arn,
         },
         {
@@ -168,9 +178,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
             )
             branch = settings.github_branch or repo.default_branch or "main"
 
-            repo_suffix = sanitize_bucket_component(repo.name, "repoSlug").replace(
-                ".", "-"
-            )
+            repo_suffix = _repo_suffix(repo.name)
             role_name = _role_name_for_suffix(repo_suffix)
 
             def build_assume_role_policy(

@@ -36,7 +36,10 @@ def _log_bucket_policy(bucket_arn: str, account_id: str) -> str:
       "Effect": "Allow",
       "Principal": {{"Service": "cloudtrail.amazonaws.com"}},
       "Action": "s3:GetBucketAcl",
-      "Resource": "{bucket_arn}"
+      "Resource": "{bucket_arn}",
+      "Condition": {{
+        "StringEquals": {{"aws:SourceAccount": "{account_id}"}}
+      }}
     }},
     {{
       "Sid": "AllowCloudTrailPutObject",
@@ -45,7 +48,10 @@ def _log_bucket_policy(bucket_arn: str, account_id: str) -> str:
       "Action": "s3:PutObject",
       "Resource": "{bucket_arn}/cloudtrail/AWSLogs/{account_id}/*",
       "Condition": {{
-        "StringEquals": {{"s3:x-amz-acl": "bucket-owner-full-control"}}
+        "StringEquals": {{
+          "s3:x-amz-acl": "bucket-owner-full-control",
+          "aws:SourceAccount": "{account_id}"
+        }}
       }}
     }},
     {{
