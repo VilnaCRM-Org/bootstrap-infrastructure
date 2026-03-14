@@ -55,6 +55,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - name: Match container user to runner
+        if: ${{ matrix.build_pulumi_container }}
+        run: |
+          {
+            echo "UID=$(id -u)"
+            echo "GID=$(id -g)"
+            echo "USER=$(id -un)"
+          } >> "$GITHUB_ENV"
+
       - name: Install Qlty CLI
         if: ${{ matrix.requires_qlty }}
         uses: qltysh/qlty-action/install@a19242102d17e497f437d7466aa01b528537e899 # v2.2.0
