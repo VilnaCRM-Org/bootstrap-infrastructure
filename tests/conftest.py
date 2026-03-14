@@ -2,9 +2,11 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 import pulumi.runtime
 import pytest
+from pulumi.runtime.mocks import MockCallArgs, MockResourceArgs
 
 import pulumi
 
@@ -18,15 +20,12 @@ if str(PULUMI_DIR) not in sys.path:
 
 class TestMocks(pulumi.runtime.Mocks):
     def __init__(self) -> None:
-        self.resources = []
+        self.resources: list[tuple[str, str, dict[str, Any]]] = []
 
-    def new_resource(self, type_, name=None, inputs=None, provider=None, id_=None):
-        if name is None and hasattr(type_, "typ"):
-            resource_args = type_
-            type_ = resource_args.typ
-            name = resource_args.name
-            inputs = resource_args.inputs
-
+    def new_resource(self, args: MockResourceArgs) -> tuple[str | None, dict[str, Any]]:
+        type_ = args.typ
+        name = args.name
+        inputs = dict(args.inputs)
         state = dict(inputs)
         if type_ == "aws:s3/bucket:Bucket":
             bucket = inputs.get("bucket") or name
@@ -52,18 +51,19 @@ class TestMocks(pulumi.runtime.Mocks):
         elif type_ == "aws:backup/vault:Vault":
             state.setdefault("name", inputs.get("name", name))
         self.resources.append((type_, name, state))
-        return f"{name}_id", state
+        resource_id = None if args.custom is False else f"{name}_id"
+        return resource_id, state
 
-    def call(self, args):
+    def call(self, args: MockCallArgs) -> tuple[dict[str, Any], list[tuple[str, str]]]:
         token = args.token
         payload = args.args
         if token == "aws:index/getRegion:getRegion":  # nosec B105
-            return {"name": "us-east-1"}
+            return {"name": "us-east-1"}, []
         if token == "aws:index/getCallerIdentity:getCallerIdentity":  # nosec B105
-            return {"accountId": "123456789012"}
+            return {"accountId": "123456789012"}, []
         if token == "aws:s3/getBucket:getBucket":  # nosec B105
-            return {"id": payload.get("bucket")}
-        return {}
+            return {"id": payload.get("bucket")}, []
+        return {}, []
 
 
 class AnyThreadEventLoopPolicy(asyncio.DefaultEventLoopPolicy):

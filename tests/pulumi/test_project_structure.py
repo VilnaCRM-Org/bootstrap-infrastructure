@@ -25,6 +25,7 @@ def test_makefile_exposes_full_test_matrix():
     assert "check-spelling" in makefile  # nosec B101
     assert "check-toml" in makefile  # nosec B101
     assert "check-types" in makefile  # nosec B101
+    assert "check-ty" in makefile  # nosec B101
     assert "check-package" in makefile  # nosec B101
     assert "check-bandit" in makefile  # nosec B101
     assert "check-deps" in makefile  # nosec B101
@@ -80,6 +81,7 @@ def test_ci_workflows_cover_local_test_targets():
     assert "check-spelling" in quality  # nosec B101
     assert "check-toml" in quality  # nosec B101
     assert "check-types" in quality  # nosec B101
+    assert "check-ty" in quality  # nosec B101
     assert "check-package" in quality  # nosec B101
     assert "check-bandit" in guardrails  # nosec B101
     assert "check-deps" in guardrails  # nosec B101
@@ -126,6 +128,7 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     assert "Ruff" in testing_doc  # nosec B101
     assert "Typos" in testing_doc  # nosec B101
     assert "Taplo" in testing_doc  # nosec B101
+    assert "Ty" in testing_doc  # nosec B101
     assert "Structural" in testing_doc  # nosec B101
     assert "Cost Guardrails" in testing_doc  # nosec B101
     assert "Mutation" in testing_doc  # nosec B101

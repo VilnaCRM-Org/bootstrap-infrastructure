@@ -1,12 +1,17 @@
 """Central logging bucket infrastructure for the platform."""
 
+from __future__ import annotations
+
 import json
+from collections.abc import Sequence
+from typing import cast
 
 import pulumi_aws as aws
 
 import pulumi
 
-from .config import central_logging_bucket_name
+from .config import central_logging_bucket_name, settings
+from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
 
@@ -68,6 +73,62 @@ def _log_bucket_policy(bucket_arn: str, account_id: str) -> str:
 """
 
 
+def _log_bucket_policy_from_values(values: Sequence[str]) -> str:
+    """Build the logging bucket policy from Pulumi output values."""
+    return _log_bucket_policy(values[0], values[1])
+
+
+def _replication_assume_role_policy(arn: str) -> str:
+    """Build the S3 replication trust policy for the logging bucket."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "s3.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                    "Condition": {"StringEquals": {"aws:SourceArn": arn}},
+                }
+            ],
+        }
+    )
+
+
+def _replication_role_policy(arns: Sequence[str]) -> str:
+    """Build the S3 replication permissions policy for logging buckets."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:GetReplicationConfiguration",
+                        "s3:ListBucket",
+                        "s3:GetObjectVersion",
+                        "s3:GetObjectVersionAcl",
+                        "s3:GetObjectVersionForReplication",
+                        "s3:GetObjectVersionTagging",
+                    ],
+                    "Resource": [arns[0], f"{arns[0]}/*"],
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:ReplicateObject",
+                        "s3:ReplicateDelete",
+                        "s3:ReplicateTags",
+                        "s3:GetObjectVersionTagging",
+                        "s3:PutObject",
+                    ],
+                    "Resource": [arns[1], f"{arns[1]}/*"],
+                },
+            ],
+        }
+    )
+
+
 class CentralLoggingBuckets(pulumi.ComponentResource):
     """Provision primary and replica S3 buckets for centralized logging."""
 
@@ -75,7 +136,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         self,
         name: str,
         *,
-        replication_region: str = "us-east-1",
+        replication_region: str | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize the central logging buckets component."""
@@ -83,9 +144,18 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
 
         region = aws.get_region()
         account = aws.get_caller_identity()
+        resolved_region = (
+            replication_region or settings.replication_region or "us-east-1"
+        )
+        if resolved_region == region.name:
+            raise ValueError(
+                "replication_region "
+                f"'{resolved_region}' must differ from primary region "
+                f"'{region.name}'."
+            )
         replica_provider = aws.Provider(
             f"{name}-replica-provider",
-            region=replication_region,
+            region=resolved_region,
             opts=pulumi.ResourceOptions(parent=self),
         )
 
@@ -173,8 +243,12 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         aws.s3.BucketPolicy(
             f"{name}-policy",
             bucket=bucket.id,
-            policy=pulumi.Output.all(bucket.arn, account.account_id).apply(
-                lambda values: _log_bucket_policy(values[0], values[1])
+            policy=apply_output(
+                cast(
+                    pulumi.Output[Sequence[str]],
+                    pulumi.Output.all(bucket.arn, account.account_id),
+                ),
+                _log_bucket_policy_from_values,
             ),
             opts=base_opts,
         )
@@ -182,28 +256,20 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         aws.s3.BucketPolicy(
             f"{name}-replica-policy",
             bucket=replica_bucket.id,
-            policy=pulumi.Output.all(replica_bucket.arn, account.account_id).apply(
-                lambda values: _log_bucket_policy(values[0], values[1])
+            policy=apply_output(
+                cast(
+                    pulumi.Output[Sequence[str]],
+                    pulumi.Output.all(replica_bucket.arn, account.account_id),
+                ),
+                _log_bucket_policy_from_values,
             ),
             opts=replica_opts,
         )
 
         replication_role = aws.iam.Role(
             f"{name}-replication-role",
-            assume_role_policy=bucket.arn.apply(
-                lambda arn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Principal": {"Service": "s3.amazonaws.com"},
-                                "Action": "sts:AssumeRole",
-                                "Condition": {"StringEquals": {"aws:SourceArn": arn}},
-                            }
-                        ],
-                    }
-                )
+            assume_role_policy=apply_output(
+                bucket.arn, _replication_assume_role_policy
             ),
             tags=base_tags({"Purpose": "central-logs-replication"}),
             opts=base_opts,
@@ -212,37 +278,12 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         replication_role_policy = aws.iam.RolePolicy(
             f"{name}-replication-role-policy",
             role=replication_role.id,
-            policy=pulumi.Output.all(bucket.arn, replica_bucket.arn).apply(
-                lambda arns: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetReplicationConfiguration",
-                                    "s3:ListBucket",
-                                    "s3:GetObjectVersion",
-                                    "s3:GetObjectVersionAcl",
-                                    "s3:GetObjectVersionForReplication",
-                                    "s3:GetObjectVersionTagging",
-                                ],
-                                "Resource": [arns[0], f"{arns[0]}/*"],
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:ReplicateObject",
-                                    "s3:ReplicateDelete",
-                                    "s3:ReplicateTags",
-                                    "s3:GetObjectVersionTagging",
-                                    "s3:PutObject",
-                                ],
-                                "Resource": [arns[1], f"{arns[1]}/*"],
-                            },
-                        ],
-                    }
-                )
+            policy=apply_output(
+                cast(
+                    pulumi.Output[Sequence[str]],
+                    pulumi.Output.all(bucket.arn, replica_bucket.arn),
+                ),
+                _replication_role_policy,
             ),
             opts=base_opts,
         )
@@ -253,7 +294,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             role=replication_role.arn,
             rules=[
                 aws.s3.BucketReplicationConfigRuleArgs(
-                    id="central-logs-to-useast1",
+                    id=f"central-logs-to-{resolved_region.replace('-', '')}",
                     status="Enabled",
                     destination=aws.s3.BucketReplicationConfigRuleDestinationArgs(
                         bucket=replica_bucket.arn,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
+from typing import cast
 
 import pulumi_aws as aws
 
@@ -17,6 +18,7 @@ from .config import (
     settings,
     state_bucket_name_for_repo,
 )
+from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
 _REPLICATION_ROLE_NAME_PREFIX = "PulumiStateRepl-"
@@ -80,6 +82,57 @@ def _bucket_policy(arn: str) -> str:
   ]
 }}
 """
+
+
+def _replication_assume_role_policy(arn: str) -> str:
+    """Build the S3 replication trust policy for a state bucket."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Service": "s3.amazonaws.com"},
+                    "Action": "sts:AssumeRole",
+                    "Condition": {"StringEquals": {"aws:SourceArn": arn}},
+                }
+            ],
+        }
+    )
+
+
+def _replication_role_policy(arns: Sequence[str]) -> str:
+    """Build the S3 replication permissions policy for state buckets."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:GetReplicationConfiguration",
+                        "s3:ListBucket",
+                        "s3:GetObjectVersion",
+                        "s3:GetObjectVersionAcl",
+                        "s3:GetObjectVersionForReplication",
+                        "s3:GetObjectVersionTagging",
+                    ],
+                    "Resource": [arns[0], f"{arns[0]}/*"],
+                },
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:ReplicateObject",
+                        "s3:ReplicateDelete",
+                        "s3:ReplicateTags",
+                        "s3:GetObjectVersionTagging",
+                        "s3:PutObject",
+                    ],
+                    "Resource": [arns[1], f"{arns[1]}/*"],
+                },
+            ],
+        }
+    )
 
 
 class PulumiStateBuckets(pulumi.ComponentResource):
@@ -186,7 +239,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             aws.s3.BucketPolicy(
                 f"{name}-policy-{suffix}",
                 bucket=bucket.id,
-                policy=bucket.arn.apply(_bucket_policy),
+                policy=apply_output(bucket.arn, _bucket_policy),
                 opts=pulumi.ResourceOptions(parent=self),
             )
 
@@ -196,6 +249,18 @@ class PulumiStateBuckets(pulumi.ComponentResource):
                     "Replica bucket name "
                     f"'{replica_bucket_name}' exceeds 63 characters."
                 )
+            replica_import_id = (
+                replica_bucket_name if _bucket_exists(replica_bucket_name) else None
+            )
+            replica_bucket_opts = (
+                pulumi.ResourceOptions(
+                    parent=self,
+                    provider=replica_provider,
+                    import_=replica_import_id,
+                )
+                if replica_import_id
+                else pulumi.ResourceOptions(parent=self, provider=replica_provider)
+            )
 
             replica_bucket = aws.s3.Bucket(
                 f"{name}-replica-{suffix}",
@@ -225,7 +290,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
                         "App": repo.name,
                     }
                 ),
-                opts=pulumi.ResourceOptions(parent=self, provider=replica_provider),
+                opts=replica_bucket_opts,
             )
 
             aws.s3.BucketPublicAccessBlock(
@@ -250,29 +315,15 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             aws.s3.BucketPolicy(
                 f"{name}-replica-policy-{suffix}",
                 bucket=replica_bucket.id,
-                policy=replica_bucket.arn.apply(_bucket_policy),
+                policy=apply_output(replica_bucket.arn, _bucket_policy),
                 opts=pulumi.ResourceOptions(parent=self, provider=replica_provider),
             )
 
             replication_role = aws.iam.Role(
                 f"{name}-replication-role-{suffix}",
                 name=_replication_role_name(suffix),
-                assume_role_policy=bucket.arn.apply(
-                    lambda arn: json.dumps(
-                        {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Principal": {"Service": "s3.amazonaws.com"},
-                                    "Action": "sts:AssumeRole",
-                                    "Condition": {
-                                        "StringEquals": {"aws:SourceArn": arn}
-                                    },
-                                }
-                            ],
-                        }
-                    )
+                assume_role_policy=apply_output(
+                    bucket.arn, _replication_assume_role_policy
                 ),
                 tags=base_tags(
                     {
@@ -287,37 +338,12 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             replication_role_policy = aws.iam.RolePolicy(
                 f"{name}-replication-role-policy-{suffix}",
                 role=replication_role.id,
-                policy=pulumi.Output.all(bucket.arn, replica_bucket.arn).apply(
-                    lambda arns: json.dumps(
-                        {
-                            "Version": "2012-10-17",
-                            "Statement": [
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:GetReplicationConfiguration",
-                                        "s3:ListBucket",
-                                        "s3:GetObjectVersion",
-                                        "s3:GetObjectVersionAcl",
-                                        "s3:GetObjectVersionForReplication",
-                                        "s3:GetObjectVersionTagging",
-                                    ],
-                                    "Resource": [arns[0], f"{arns[0]}/*"],
-                                },
-                                {
-                                    "Effect": "Allow",
-                                    "Action": [
-                                        "s3:ReplicateObject",
-                                        "s3:ReplicateDelete",
-                                        "s3:ReplicateTags",
-                                        "s3:GetObjectVersionTagging",
-                                        "s3:PutObject",
-                                    ],
-                                    "Resource": [arns[1], f"{arns[1]}/*"],
-                                },
-                            ],
-                        }
-                    )
+                policy=apply_output(
+                    cast(
+                        pulumi.Output[Sequence[str]],
+                        pulumi.Output.all(bucket.arn, replica_bucket.arn),
+                    ),
+                    _replication_role_policy,
                 ),
                 opts=pulumi.ResourceOptions(parent=self),
             )

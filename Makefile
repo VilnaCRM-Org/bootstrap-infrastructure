@@ -14,6 +14,7 @@ SHELLCHECK_IMAGE  ?= koalaman/shellcheck:stable
 PYTHON_FORMAT_PATHS = pulumi/__main__.py pulumi/infra tests
 PYTHON_LINT_PATHS   = pulumi/__main__.py pulumi/infra tests
 PYTHON_TYPE_PATHS   = pulumi/__main__.py pulumi/infra
+PYTHON_TY_PATHS     = pulumi tests
 YAML_LINT_PATHS     = .github/workflows pulumi/Pulumi.yaml pulumi/Pulumi.test.yaml pulumi/Pulumi.test.yaml.example pulumi/Pulumi.prod.yaml.example
 SHELLCHECK_PATHS    = /work/scripts/run_mutation_tests.sh
 SPELLCHECK_PATHS    = .
@@ -42,7 +43,7 @@ COVERAGE_DIR ?= $(if $(CI),/tmp,.)
 .RECIPEPREFIX    +=
 .PHONY: all help start pulumi-preview pulumi-up pulumi-refresh pulumi-destroy \
         pulumi-stack-select pulumi-stack-migrate-secrets sh down clean \
-        check-format check-lint check-spelling check-toml check-types check-package \
+        check-format check-lint check-spelling check-toml check-types check-ty check-package \
         check-bandit check-deps check-sbom check-yaml check-actionlint \
         check-docker check-shell check-iac check-static check-security ci \
         test-unit test-integration test-pulumi test-mutation test-e2e \
@@ -137,6 +138,9 @@ check-toml: ## Lint and format-check repository TOML manifests with Taplo.
 check-types: ## Run static type checks for Pulumi Python code.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) mypy $(PYTHON_TYPE_PATHS)
 
+check-ty: ## Run Astral Ty static analysis across Pulumi and test code.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) ty check $(PYTHON_TY_PATHS)
+
 check-package: ## Validate the uv lockfile, synced environment, and Python bytecode compilation.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "uv lock --check && uv sync --check --frozen --all-groups --no-install-project --no-editable && pycache_dir=\$$(mktemp -d \"\$$HOME/pycache.XXXXXX\") && trap 'rm -rf \"\$$pycache_dir\"' EXIT && PYTHONPYCACHEPREFIX=\$$pycache_dir python -m compileall -q $(PYTHON_FORMAT_PATHS)"
 
@@ -170,6 +174,7 @@ check-static: ## Run static formatting, lint, type, and packaging checks.
 	$(MAKE) check-spelling
 	$(MAKE) check-toml
 	$(MAKE) check-types
+	$(MAKE) check-ty
 	$(MAKE) check-package
 
 check-security: ## Run security and policy checks for code, manifests, and build assets.

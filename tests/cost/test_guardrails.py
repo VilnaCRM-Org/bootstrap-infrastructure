@@ -30,14 +30,17 @@ TAGGABLE_RESOURCE_TYPES = {
 def _run_stack(monkeypatch, pulumi_mocks):
     pulumi_mocks.resources.clear()
     config.managed_repositories.cache_clear()
-    monkeypatch.setattr(config.settings, "repo", "repo")
-    monkeypatch.setattr(config.settings, "environment", "test")
-    monkeypatch.setattr(config.settings, "owner", "platform")
-    monkeypatch.setattr(config.settings, "cost_center", "core")
-    monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
-    monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
-    runpy.run_path(STACK_PATH)
-    return list(pulumi_mocks.resources)
+    try:
+        monkeypatch.setattr(config.settings, "repo", "repo")
+        monkeypatch.setattr(config.settings, "environment", "test")
+        monkeypatch.setattr(config.settings, "owner", "platform")
+        monkeypatch.setattr(config.settings, "cost_center", "core")
+        monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+        monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
+        runpy.run_path(str(STACK_PATH))
+        return list(pulumi_mocks.resources)
+    finally:
+        config.managed_repositories.cache_clear()
 
 
 def test_stack_limits_bootstrap_resources_to_low_cost_families(

@@ -11,10 +11,11 @@ The `python-quality.yml` workflow enforces local operator commands:
 - `make check-spelling`
 - `make check-toml`
 - `make check-types`
+- `make check-ty`
 - `make check-package`
 
 These checks ensure the Pulumi Python code stays formatted, linted, spell-checked, type-checked, and buildable with a valid `uv.lock`.
-The format/lint layer is powered by Rust-native tooling: `ruff` for code quality, `typos` for repository spelling, and `taplo` for TOML manifest validation.
+The format/lint layer is powered by Rust-native tooling: `ruff` for code quality, `typos` for repository spelling, `taplo` for TOML manifest validation, and `ty` for an additional static analysis pass over Pulumi code and tests.
 
 ## DevSecOps Guardrails
 

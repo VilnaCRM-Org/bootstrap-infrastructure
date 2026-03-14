@@ -133,6 +133,7 @@ def test_load_managed_repo_overrides_success():
     overrides = config._load_managed_repo_overrides(
         ["repo", {"name": "repo2", "defaultBranch": "dev"}]
     )
+    assert overrides is not None  # nosec B101
     assert overrides[0].name == "repo"  # nosec B101
     assert overrides[0].default_branch == "main"  # nosec B101
     assert overrides[1].name == "repo2"  # nosec B101

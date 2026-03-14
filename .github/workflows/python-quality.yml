@@ -26,6 +26,8 @@ jobs:
             target: check-toml
           - name: Types
             target: check-types
+          - name: Ty
+            target: check-ty
           - name: Package
             target: check-package
     name: ${{ matrix.name }}

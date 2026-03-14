@@ -9,6 +9,7 @@ assert_output_contains() {
   run make help
   [ "$status" -eq 0 ]
   assert_output_contains "check-format"
+  assert_output_contains "check-ty"
   assert_output_contains "pulumi-preview"
   assert_output_contains "test-cost"
   assert_output_contains "test-bats"
@@ -170,6 +171,12 @@ assert_output_contains() {
   assert_output_contains "mypy"
 }
 
+@test "make check-ty runs Astral Ty" {
+  run make -n check-ty
+  [ "$status" -eq 0 ]
+  assert_output_contains "ty check"
+}
+
 @test "make check-package validates uv lock state and bytecode" {
   run make -n check-package
   [ "$status" -eq 0 ]
@@ -235,6 +242,7 @@ assert_output_contains() {
   assert_output_contains "make check-spelling"
   assert_output_contains "make check-toml"
   assert_output_contains "make check-types"
+  assert_output_contains "make check-ty"
   assert_output_contains "make check-package"
 }
 

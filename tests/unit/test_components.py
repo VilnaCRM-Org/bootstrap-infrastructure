@@ -16,14 +16,21 @@ from infra import (
     pulumi_state,
 )
 from infra.iam import GitHubOidcRoles, github_oidc
+from infra.utils.outputs import future_output
 
 
 def test_central_logging_buckets_rejects_long_replica(monkeypatch):
     monkeypatch.setattr(
         logging_bucket, "central_logging_bucket_name", lambda _region: "a" * 60
     )
+    monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
     with pytest.raises(ValueError):
         CentralLoggingBuckets("central-logs")
+
+
+def test_central_logging_buckets_reject_same_replication_region():
+    with pytest.raises(ValueError, match="must differ from primary region"):
+        CentralLoggingBuckets("central-logs", replication_region="us-east-1")
 
 
 def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
@@ -113,11 +120,15 @@ def test_pulumi_secrets_keys_emit_expected_resources_and_outputs(
     start = len(pulumi_mocks.resources)
     secrets = PulumiSecretsKeys("pulumi-secrets", repositories=repos)
 
-    component_urn = _sync_await(secrets.urn.future())
-    provider_url = _sync_await(secrets.provider_urls["repo"].future())
-    alias_name_output = _sync_await(secrets.alias_names["repo"].future())
-    key_arn_output = _sync_await(secrets.key_arns["repo"].future())
+    component_urn = _sync_await(future_output(secrets.urn))
+    provider_url = _sync_await(future_output(secrets.provider_urls["repo"]))
+    alias_name_output = _sync_await(future_output(secrets.alias_names["repo"]))
+    key_arn_output = _sync_await(future_output(secrets.key_arns["repo"]))
 
+    assert component_urn is not None  # nosec B101
+    assert provider_url is not None  # nosec B101
+    assert alias_name_output is not None  # nosec B101
+    assert key_arn_output is not None  # nosec B101
     assert "bootstrap:kms:PulumiSecretsKeys" in component_urn  # nosec B101
     assert provider_url == "awskms://alias/pulumi-repo-test-secrets?region=us-east-1"  # nosec B101
     assert alias_name_output == "alias/pulumi-repo-test-secrets"  # nosec B101
@@ -206,10 +217,13 @@ def test_task_roles_module_has_no_exports():
 
 def test_stack_main_executes(monkeypatch):
     config.managed_repositories.cache_clear()
-    monkeypatch.setattr(config.settings, "repo", "repo")
-    monkeypatch.setattr(config.settings, "environment", "test")
-    monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
-    monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
-    stack_path = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
-    # Keep a fast smoke test for the stack entrypoint alongside the integration suite.
-    runpy.run_path(stack_path)
+    try:
+        monkeypatch.setattr(config.settings, "repo", "repo")
+        monkeypatch.setattr(config.settings, "environment", "test")
+        monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+        monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
+        stack_path = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
+        # Keep a fast stack smoke test alongside the integration suite.
+        runpy.run_path(str(stack_path))
+    finally:
+        config.managed_repositories.cache_clear()

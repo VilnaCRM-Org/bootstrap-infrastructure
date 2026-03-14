@@ -14,6 +14,7 @@ make check-lint
 make check-spelling
 make check-toml
 make check-types
+make check-ty
 make check-package
 ```
 
@@ -23,6 +24,7 @@ Coverage:
 - Typos spelling checks across code, docs, and workflows
 - Taplo lint and formatting checks for `pyproject.toml`
 - mypy type checking for Pulumi Python modules
+- Ty analysis across Pulumi modules and tests
 - `uv lock --check`
 - `uv sync --check`
 - Python bytecode compilation
@@ -166,7 +168,7 @@ Coverage:
 ## CI Mapping
 
 GitHub Actions mirrors the local targets:
-- `python-quality.yml` -> `make check-format`, `make check-lint`, `make check-spelling`, `make check-toml`, `make check-types`, `make check-package`
+- `python-quality.yml` -> `make check-format`, `make check-lint`, `make check-spelling`, `make check-toml`, `make check-types`, `make check-ty`, `make check-package`
 - `devsecops-guardrails.yml` -> `make check-bandit`, `make check-deps`, `make check-sbom`, `make check-yaml`, `make check-actionlint`, `make check-docker`, `make check-shell`, `make check-iac`, `make test-cost`
 - `pulumi-structural.yml` -> `make test-pulumi`
 - `pulumi-unit.yml` -> `make test-unit`
@@ -177,5 +179,5 @@ GitHub Actions mirrors the local targets:
 
 The aggregate local command is:
 ```bash
-make test
+make ci
 ```

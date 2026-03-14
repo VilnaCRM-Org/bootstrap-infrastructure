@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+HAS_E2E_PROVIDER = bool(os.getenv("PULUMI_E2E_SECRETS_PROVIDER"))
+
 
 def _run(
     cmd: list[str], *, cwd: Path, env: dict[str, str]
@@ -13,10 +15,11 @@ def _run(
     )
 
 
+@pytest.mark.skipif(
+    not HAS_E2E_PROVIDER, reason="PULUMI_E2E_SECRETS_PROVIDER is not set."
+)
 def test_pulumi_cli_smoke_with_awskms(tmp_path: Path):
-    provider = os.getenv("PULUMI_E2E_SECRETS_PROVIDER")
-    if not provider:
-        pytest.skip("PULUMI_E2E_SECRETS_PROVIDER is not set.")
+    provider = os.environ["PULUMI_E2E_SECRETS_PROVIDER"]
 
     backend_dir = tmp_path / "backend"
     project_dir = tmp_path / "project"

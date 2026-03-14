@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
+from typing import cast
 
 import pulumi_aws as aws
 
@@ -17,6 +18,7 @@ from ..config import (
     settings,
     state_bucket_name_for_repo,
 )
+from ..utils.outputs import apply_output
 from ..utils.tags import base_tags
 
 _ROLE_NAME_PREFIX = "PulumiDeploy-"
@@ -110,6 +112,15 @@ def _assume_role_policy_for_repo(
     return _assume_role_policy(arn, org, repo_name, branch_name)
 
 
+def _deploy_policy_from_values(values: Sequence[str | None]) -> str:
+    """Build the deploy policy from Pulumi output values."""
+    return _deploy_policy(
+        cast(str, values[0]),
+        cast(str, values[1]),
+        values[2],
+    )
+
+
 class GitHubOidcRoles(pulumi.ComponentResource):
     """Create the GitHub OIDC provider and per-repository deploy roles."""
 
@@ -172,7 +183,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
                     branch_name,
                 )
 
-            assume_role_policy = provider.arn.apply(build_assume_role_policy)
+            assume_role_policy = apply_output(provider.arn, build_assume_role_policy)
 
             role = aws.iam.Role(
                 f"{name}-role-{repo_suffix}",
@@ -195,8 +206,12 @@ class GitHubOidcRoles(pulumi.ComponentResource):
                 )
 
             key_arn = secrets_key_arns.get(repo.name) if secrets_key_arns else None
-            policy = pulumi.Output.all(bucket_arn, objects_arn, key_arn).apply(
-                lambda values: _deploy_policy(values[0], values[1], values[2])
+            policy = apply_output(
+                cast(
+                    pulumi.Output[Sequence[str | None]],
+                    pulumi.Output.all(bucket_arn, objects_arn, key_arn),
+                ),
+                _deploy_policy_from_values,
             )
 
             aws.iam.RolePolicy(

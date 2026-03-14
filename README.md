@@ -35,7 +35,7 @@ uv lock --python 3.11
 ```
 Static quality checks also use Rust-native tooling where it is a good fit:
 `ruff` for Python format/lint, `typos` for repository spellchecking, and
-`taplo` for TOML validation.
+`taplo` plus Astral `ty` for TOML and static type validation.
 
 ### Pulumi onboarding (per repository)
 Each repository gets its own state bucket named `pulumi-<repo>-<env>-state`.
@@ -133,6 +133,7 @@ Quality and security guardrails:
 make check-static
 make check-security
 make test-cost
+make check-ty
 make ci
 ```
 
