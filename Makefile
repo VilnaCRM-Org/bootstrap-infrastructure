@@ -116,7 +116,7 @@ test-bats: ## Execute Bats coverage for Make targets.
 	@if command -v bats >/dev/null 2>&1; then \
 	  bats tests/bats; \
 	else \
-	  docker run --rm -v "$(PWD):/code" -w /code $(BATS_DOCKER_IMAGE) tests/bats; \
+	  docker run --rm -v "$(PWD):/code" -w /code --entrypoint /bin/sh $(BATS_DOCKER_IMAGE) -lc "apk add --no-cache make >/dev/null && bats tests/bats"; \
 	fi
 
 check-format: ## Verify Python formatting with Black.
