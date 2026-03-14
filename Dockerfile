@@ -14,6 +14,10 @@ ARG CA_CERTIFICATES_VERSION=20230311
 ARG UNZIP_VERSION=6.0-28
 ARG CURL_VERSION=7.88.1-10+deb12u14
 ARG GIT_VERSION=1:2.39.5-0+deb12u2
+ARG GNUPG_VERSION=2.2.40-1.1+deb12u2
+ARG PIP_VERSION=26.0.1
+ARG SETUPTOOLS_VERSION=80.9.0
+ARG WHEEL_VERSION=0.46.2
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install OS dependencies required for Pulumi CLI, AWS CLI, and Python tooling
@@ -23,7 +27,7 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/ap
         ca-certificates="${CA_CERTIFICATES_VERSION}" \
         curl="${CURL_VERSION}" \
         git="${GIT_VERSION}" \
-        gnupg \
+        gnupg="${GNUPG_VERSION}" \
         unzip="${UNZIP_VERSION}" \
     && groupadd --gid "${GID}" "${USERNAME}" \
     && useradd --uid "${UID}" --gid "${GID}" --create-home "${USERNAME}" \
@@ -31,13 +35,18 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/ap
 
 WORKDIR /tmp
 
-ADD https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz /tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz
-ADD https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-${PULUMI_VERSION}-checksums.txt /tmp/pulumi-checksums.txt
-
 # Install Pulumi CLI once and expose it on the PATH for all users
 # Install AWS CLI v2, then remove the build-only packages used for verification.
 RUN <<EOF
 set -e
+curl --fail --silent --show-error --location \
+  --retry 5 --retry-delay 5 --retry-all-errors \
+  "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
+  --output "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz"
+curl --fail --silent --show-error --location \
+  --retry 5 --retry-delay 5 --retry-all-errors \
+  "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-${PULUMI_VERSION}-checksums.txt" \
+  --output "/tmp/pulumi-checksums.txt"
 grep "pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt \
   > /tmp/pulumi-checksums.sha256
 sha256sum -c /tmp/pulumi-checksums.sha256
@@ -102,7 +111,14 @@ EOF
 ENV POETRY_HOME=/opt/poetry
 ENV PATH="/opt/pulumi:${POETRY_HOME}/bin:/home/${USERNAME}/.local/bin:/home/${USERNAME}/.pulumi/bin:${PATH}"
 ARG POETRY_VERSION=1.8.5
-RUN python -m pip install --no-cache-dir "poetry==${POETRY_VERSION}"
+ARG POETRY_EXPORT_PLUGIN_VERSION=1.8.0
+RUN python -m pip install --no-cache-dir --upgrade \
+    "pip==${PIP_VERSION}" \
+    "setuptools==${SETUPTOOLS_VERSION}" \
+    "wheel==${WHEEL_VERSION}" \
+    "poetry==${POETRY_VERSION}" \
+    "poetry-plugin-export==${POETRY_EXPORT_PLUGIN_VERSION}"
+RUN poetry config warnings.export false
 ENV POETRY_VIRTUALENVS_CREATE=false
 ENV POETRY_HTTP_TIMEOUT=60
 

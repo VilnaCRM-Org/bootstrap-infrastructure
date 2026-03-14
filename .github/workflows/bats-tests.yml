@@ -1,8 +1,14 @@
 name: CLI testing
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches: ['main']
+
+permissions:
+  contents: read
 
 jobs:
   bats_tests:
@@ -10,9 +16,7 @@ jobs:
     name: Run Bats Tests
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Run Bats suite
-        uses: bats-core/bats-action@3.0.1
-        with:
-          test-path: tests/unit
+        run: make test-bats

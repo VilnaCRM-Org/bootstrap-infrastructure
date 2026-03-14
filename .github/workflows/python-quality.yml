@@ -1,0 +1,36 @@
+name: Python Quality Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Format
+            target: check-format
+          - name: Lint
+            target: check-lint
+          - name: Types
+            target: check-types
+          - name: Package
+            target: check-package
+    name: ${{ matrix.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build test container
+        run: docker compose build pulumi
+
+      - name: Run ${{ matrix.target }}
+        run: make ${{ matrix.target }}

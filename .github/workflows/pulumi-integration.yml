@@ -6,12 +6,18 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   integration:
     name: Integration
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build test container
+        run: docker compose build pulumi
 
       - name: Prepare local Pulumi backend
         run: mkdir -p .pulumi-backend
@@ -19,5 +25,4 @@ jobs:
       - name: Run integration suite
         env:
           PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
-          PULUMI_CONFIG_PASSPHRASE: ""
         run: make test-integration

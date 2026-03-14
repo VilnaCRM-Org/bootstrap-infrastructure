@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: '0 9 * * MON'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
 jobs:
   repo-sync:
     runs-on: ubuntu-latest

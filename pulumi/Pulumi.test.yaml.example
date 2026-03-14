@@ -1,3 +1,5 @@
+# Create this stack with an AWS KMS secrets provider before the first `pulumi up`:
+# pulumi -C pulumi stack init test --secrets-provider "awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1"
 config:
   aws:region: eu-central-1
   bootstrap-infrastructure:githubOrg: VilnaCRM-Org

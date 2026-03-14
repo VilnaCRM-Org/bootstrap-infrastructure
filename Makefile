@@ -2,7 +2,20 @@
 PROJECT            = bootstrap-infrastructure
 ENV_FILE           = .env
 COMPOSE_SERVICE   ?= pulumi
+PULUMI_DIR        ?= pulumi
+STACK             ?=
+PULUMI_SECRETS_PROVIDER ?=
+BATS_DOCKER_IMAGE ?= bats/bats:1.11.1
 EFFECTIVE_ENV_FILE := $(firstword $(wildcard $(ENV_FILE)))
+ACTIONLINT_IMAGE  ?= rhysd/actionlint:1.7.7
+CHECKOV_IMAGE     ?= bridgecrew/checkov:3.2.487
+HADOLINT_IMAGE    ?= hadolint/hadolint:latest
+SHELLCHECK_IMAGE  ?= koalaman/shellcheck:stable
+PYTHON_FORMAT_PATHS = pulumi/__main__.py pulumi/infra tests
+PYTHON_LINT_PATHS   = pulumi/__main__.py pulumi/infra tests
+PYTHON_TYPE_PATHS   = pulumi/__main__.py pulumi/infra
+YAML_LINT_PATHS     = .github/workflows pulumi/Pulumi.yaml pulumi/Pulumi.test.yaml pulumi/Pulumi.test.yaml.example pulumi/Pulumi.prod.yaml.example
+SHELLCHECK_PATHS    = /work/scripts/run_mutation_tests.sh
 
 export COMPOSE_ENV_FILE := $(EFFECTIVE_ENV_FILE)
 UID ?= $(shell id -u 2>/dev/null || echo 1000)
@@ -25,7 +38,12 @@ COVERAGE_DIR ?= $(if $(CI),/tmp,.)
 .DEFAULT_GOAL     = help
 .RECIPEPREFIX    +=
 .PHONY: all help start pulumi-preview pulumi-up pulumi-refresh pulumi-destroy \
-        sh down clean test-unit test-integration test-pulumi test-mutation test
+        pulumi-stack-select pulumi-stack-migrate-secrets sh down clean \
+        check-format check-lint check-types check-package check-bandit \
+        check-deps check-yaml check-actionlint check-docker check-shell \
+        check-iac check-static check-security ci \
+        test-unit test-integration test-pulumi test-mutation test-e2e \
+        test-bats test-cost test
 
 all: help ## Display help (default goal).
 
@@ -37,16 +55,33 @@ start: ## Initialize and start the Pulumi development environment.
 	$(COMPOSE) up -d
 
 pulumi-preview: ## Preview infrastructure changes from inside the Pulumi container.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi preview
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) preview
 
 pulumi-up: ## Apply the current Pulumi infrastructure plan.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi up
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) up
 
 pulumi-refresh: ## Sync the Pulumi stack with live cloud resources.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi refresh
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) refresh
 
 pulumi-destroy: ## Tear down the Pulumi stack (irreversible; use with caution).
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi destroy
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) destroy
+
+define require_var
+@if [ -z "$($(1))" ]; then \
+  echo "$(1) is required." >&2; \
+  exit 1; \
+fi
+endef
+
+pulumi-stack-select: ## Select or create STACK with the AWS KMS secrets provider in PULUMI_SECRETS_PROVIDER.
+	$(call require_var,STACK)
+	$(call require_var,PULUMI_SECRETS_PROVIDER)
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc 'pulumi -C "$(PULUMI_DIR)" stack select "$(STACK)" --non-interactive || pulumi -C "$(PULUMI_DIR)" stack init "$(STACK)" --non-interactive --secrets-provider "$(PULUMI_SECRETS_PROVIDER)"'
+
+pulumi-stack-migrate-secrets: ## Migrate STACK to the AWS KMS secrets provider in PULUMI_SECRETS_PROVIDER.
+	$(call require_var,STACK)
+	$(call require_var,PULUMI_SECRETS_PROVIDER)
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) stack change-secrets-provider "$(PULUMI_SECRETS_PROVIDER)" --stack "$(STACK)" --non-interactive
 
 sh: ## Open a shell inside the Pulumi container.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) sh
@@ -74,11 +109,80 @@ test-pulumi: ## Perform structural checks on Pulumi project configuration (if pr
 test-mutation: ## Run mutation testing suite against Pulumi components (if present).
 	$(call run_or_skip,scripts,poetry run bash -lc "./scripts/run_mutation_tests.sh","mutation tests")
 
+test-e2e: ## Execute end-to-end Pulumi CLI smoke tests (requires PULUMI_E2E_SECRETS_PROVIDER).
+	$(call run_or_skip,tests/e2e,poetry run pytest -q tests/e2e,"e2e tests")
+
+test-bats: ## Execute Bats coverage for Make targets.
+	@if command -v bats >/dev/null 2>&1; then \
+	  bats tests/bats; \
+	else \
+	  docker run --rm -v "$(PWD):/code" -w /code $(BATS_DOCKER_IMAGE) tests/bats; \
+	fi
+
+check-format: ## Verify Python formatting with Black.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) poetry run black --check $(PYTHON_FORMAT_PATHS)
+
+check-lint: ## Run Python lint checks with Flake8.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) poetry run flake8 $(PYTHON_LINT_PATHS)
+
+check-types: ## Run static type checks for Pulumi Python code.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) poetry run mypy $(PYTHON_TYPE_PATHS)
+
+check-package: ## Validate Poetry metadata and Python bytecode compilation.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "poetry check --lock && python -m compileall -q $(PYTHON_FORMAT_PATHS)"
+
+check-bandit: ## Run Bandit security checks on Pulumi Python sources.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) poetry run bandit -q -r pulumi -c pyproject.toml
+
+check-deps: ## Audit locked Python dependencies for known vulnerabilities.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "poetry export --with dev --format requirements.txt --without-hashes -o /tmp/requirements.txt && poetry run python -m pip_audit -r /tmp/requirements.txt --desc"
+
+check-yaml: ## Lint GitHub Actions and Pulumi YAML manifests.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) poetry run yamllint -c .yamllint $(YAML_LINT_PATHS)
+
+check-actionlint: ## Lint GitHub Actions workflows.
+	docker run --rm -v "$(CURDIR):/work" -w /work $(ACTIONLINT_IMAGE) -color
+
+check-docker: ## Lint the Dockerfile with Hadolint.
+	docker run --rm -i $(HADOLINT_IMAGE) hadolint --failure-threshold error - < Dockerfile
+
+check-shell: ## Lint repository shell scripts with ShellCheck.
+	docker run --rm -v "$(CURDIR):/work" $(SHELLCHECK_IMAGE) $(SHELLCHECK_PATHS)
+
+check-iac: ## Run Checkov against GitHub Actions and Dockerfile definitions.
+	docker run --rm -v "$(CURDIR):/work" $(CHECKOV_IMAGE) -d /work --config-file /work/.checkov.yml
+
+check-static: ## Run static formatting, lint, type, and packaging checks.
+	$(MAKE) check-format
+	$(MAKE) check-lint
+	$(MAKE) check-types
+	$(MAKE) check-package
+
+check-security: ## Run security and policy checks for code, manifests, and build assets.
+	$(MAKE) check-bandit
+	$(MAKE) check-deps
+	$(MAKE) check-yaml
+	$(MAKE) check-actionlint
+	$(MAKE) check-docker
+	$(MAKE) check-shell
+	$(MAKE) check-iac
+
+test-cost: ## Execute cost and governance guardrail tests for the Pulumi stack.
+	$(call run_or_skip,tests/cost,poetry run pytest -q tests/cost,"cost guardrail tests")
+
 test: ## Run the complete Pulumi-focused test battery.
 	$(MAKE) test-pulumi
+	$(MAKE) test-cost
 	$(MAKE) test-unit
 	$(MAKE) test-integration
 	$(MAKE) test-mutation
+	$(MAKE) test-e2e
+	$(MAKE) test-bats
+
+ci: ## Run the full local CI battery, including static checks and tests.
+	$(MAKE) check-static
+	$(MAKE) check-security
+	$(MAKE) test
 
 clean: ## Remove Docker Compose artifacts, Python caches, and build artifacts.
 	$(COMPOSE) down -v 2>/dev/null || true

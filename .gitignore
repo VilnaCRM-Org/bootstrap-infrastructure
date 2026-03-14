@@ -9,5 +9,6 @@ build
 .env
 .env.*
 .pulumi-backend
+.mutmut-cache
 .coverage
 .coverage.*

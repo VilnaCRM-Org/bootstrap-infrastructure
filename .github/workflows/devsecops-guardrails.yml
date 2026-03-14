@@ -1,0 +1,53 @@
+name: DevSecOps Guardrails
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Bandit
+            target: check-bandit
+            requires_container: true
+          - name: Dependency Audit
+            target: check-deps
+            requires_container: true
+          - name: YAML Lint
+            target: check-yaml
+            requires_container: true
+          - name: Actionlint
+            target: check-actionlint
+            requires_container: false
+          - name: Hadolint
+            target: check-docker
+            requires_container: false
+          - name: ShellCheck
+            target: check-shell
+            requires_container: false
+          - name: Checkov
+            target: check-iac
+            requires_container: false
+          - name: Cost Guardrails
+            target: test-cost
+            requires_container: true
+    name: ${{ matrix.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Build test container
+        if: ${{ matrix.requires_container }}
+        run: docker compose build pulumi
+
+      - name: Run ${{ matrix.target }}
+        run: make ${{ matrix.target }}

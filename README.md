@@ -6,6 +6,7 @@
 - Pulumi-based AWS infrastructure for per-repo state, logging, and IAM
 - Built-in Docker environment and convenient `make` CLI commands
 - CI checks for Pulumi unit, integration, structural, and mutation testing
+- Static quality, DevSecOps, and cost guardrail checks for Pulumi/Python code
 - Configured testing tools
 - Much more!
 
@@ -29,7 +30,33 @@ make start
 
 ### Pulumi onboarding (per repository)
 Each repository gets its own state bucket named `pulumi-<repo>-<env>-state`.
-Configure the stack values either via `pulumi config set` or by copying the example files in `pulumi/`.
+Each managed repository also gets its own customer-managed KMS key alias named `alias/pulumi-<repo>-<env>-secrets`.
+Use AWS KMS for all Pulumi secrets. Do not use `PULUMI_CONFIG_PASSPHRASE`.
+
+Recommended environment variables:
+```bash
+export PULUMI_BACKEND_URL="s3://pulumi-<repo>-<env>-state/state/<stack>"
+export PULUMI_SECRETS_PROVIDER="awskms://alias/pulumi-platform-bootstrap-<env>?region=eu-central-1"
+```
+
+Before the first deploy, initialize or select the stack with the KMS-backed secrets provider:
+```bash
+make pulumi-stack-select STACK=test PULUMI_SECRETS_PROVIDER="$PULUMI_SECRETS_PROVIDER"
+```
+
+If the stack was created with a Pulumi passphrase in the past, migrate it in place:
+```bash
+make pulumi-stack-migrate-secrets STACK=test PULUMI_SECRETS_PROVIDER="$PULUMI_SECRETS_PROVIDER"
+```
+
+This bootstrap stack provisions the per-repository KMS keys and grants the matching GitHub deploy role access to only its repository key for `kms:Encrypt`, `kms:Decrypt`, `kms:GenerateDataKey`, `kms:DescribeKey`, and `kms:ReEncrypt*`.
+Downstream repositories should use the exported `pulumiSecretsProviderUrls` value for their repository instead of creating a second Pulumi secrets key in the application stack.
+
+`bootstrap-infrastructure` itself is the stage-1 foundation stack, so it cannot rely on a KMS key that it creates during its own first deployment.
+Use a pre-existing account or platform bootstrap key for this repository, such as `alias/pulumi-platform-bootstrap-<env>`.
+If you later want `bootstrap-infrastructure` to use its own per-repo key, migrate it only after the stack has already created that key.
+
+Store non-secret stack configuration in `pulumi/Pulumi.<stack>.yaml` and set actual secrets with `pulumi config set --secret ...`.
 
 Required config values (namespace `bootstrap-infrastructure`):
 - `githubOrg`: GitHub organization name (e.g. `VilnaCRM-Org`)
@@ -44,7 +71,7 @@ Optional config values:
 - `managedRepositories`: List of repositories and default branches when managing multiple repos
 - `githubOidcProviderArn`: Pre-existing OIDC provider ARN (if you don't want Pulumi to create one)
 
-Example stack config (file: `pulumi/Pulumi.test.yaml`):
+Example non-secret stack config (file: `pulumi/Pulumi.test.yaml.example`):
 ```yaml
 config:
   aws:region: eu-central-1
@@ -67,6 +94,21 @@ s3://pulumi-<repo>-<env>-state/state/<stack>
 
 CI requires setting the `PULUMI_STATE_BUCKET` repository variable to the bucket name that matches the
 configured repo/environment naming (for example: `pulumi-bootstrap-infrastructure-test-state`).
+CI also requires `PULUMI_TEST_SECRETS_PROVIDER` and `PULUMI_PROD_SECRETS_PROVIDER` repository variables, each containing an `awskms://...` URI for the matching environment.
+
+For repositories bootstrapped by this stack, the expected flow is:
+```text
+bootstrap-infrastructure stack
+  -> creates per-repo Pulumi state bucket
+  -> creates per-repo Pulumi secrets KMS key + alias
+  -> creates per-repo GitHub OIDC deploy role with S3 + KMS permissions
+  -> exports pulumiSecretsProviderUrls[repo]
+
+downstream repository
+  -> sets PULUMI_BACKEND_URL to its state bucket
+  -> sets PULUMI_SECRETS_PROVIDER to its exported awskms:// URI
+  -> runs pulumi stack init/select using those bootstrap outputs
+```
 
 ### Running Pulumi
 Common commands (inside the Docker container via `make`):
@@ -75,6 +117,20 @@ make pulumi-preview
 make pulumi-up
 make pulumi-refresh
 make pulumi-destroy
+```
+
+Quality and security guardrails:
+```bash
+make check-static
+make check-security
+make test-cost
+make ci
+```
+
+Stack bootstrap helpers:
+```bash
+make pulumi-stack-select STACK=test PULUMI_SECRETS_PROVIDER="$PULUMI_SECRETS_PROVIDER"
+make pulumi-stack-migrate-secrets STACK=test PULUMI_SECRETS_PROVIDER="$PULUMI_SECRETS_PROVIDER"
 ```
 
 ## Using

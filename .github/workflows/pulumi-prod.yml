@@ -1,9 +1,6 @@
-name: Pulumi Deploy Test
+name: Pulumi Deploy Prod
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -11,18 +8,18 @@ permissions:
   contents: read
 
 concurrency:
-  group: pulumi-test
+  group: pulumi-prod
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: test
+    environment: prod
     env:
       AWS_REGION: eu-central-1
-      PULUMI_STACK: test
-      PULUMI_ROLE_ARN: ${{ vars.PULUMI_TEST_ROLE_ARN }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_TEST_SECRETS_PROVIDER }}
+      PULUMI_STACK: prod
+      PULUMI_ROLE_ARN: ${{ vars.PULUMI_PROD_ROLE_ARN }}
+      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_PROD_SECRETS_PROVIDER }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -35,11 +32,11 @@ jobs:
             exit 1
           fi
           if [ -z "${PULUMI_ROLE_ARN}" ]; then
-            echo "PULUMI_TEST_ROLE_ARN repository variable must be set." >&2
+            echo "PULUMI_PROD_ROLE_ARN repository variable must be set." >&2
             exit 1
           fi
           if [ -z "${PULUMI_SECRETS_PROVIDER}" ]; then
-            echo "PULUMI_TEST_SECRETS_PROVIDER repository variable must be set." >&2
+            echo "PULUMI_PROD_SECRETS_PROVIDER repository variable must be set." >&2
             exit 1
           fi
           echo "bucket=${{ vars.PULUMI_STATE_BUCKET }}" >> "$GITHUB_OUTPUT"

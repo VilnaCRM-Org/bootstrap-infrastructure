@@ -11,14 +11,52 @@ python = ">=3.10,<3.12"
 pulumi = ">=3.138,<4"
 pulumi-aws = ">=7.0,<8"
 pyyaml = ">=6,<7"
+protobuf = ">=5.29.6,<7"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
 pytest-cov = "^5.0"
 mutmut = "^2.4"
-black = "^24.0"
+whatthepatch = "0.0.6"
+black = ">=26.3.1,<27"
 flake8 = "^7.0"
 pre-commit = "^3.0"
+mypy = ">=1.18,<2"
+bandit = ">=1.8,<2"
+pip-audit = ">=2.9,<3"
+yamllint = ">=1.37,<2"
+types-pyyaml = ">=6.0.12,<7"
+flake8-bugbear = ">=24.12,<25"
+pip = ">=26.0,<27"
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+extend-exclude = '''
+(
+  /pulumi/venv/
+  | /pulumi/__pycache__/
+  | /tests/__pycache__/
+)
+'''
+
+[tool.mypy]
+python_version = "3.11"
+mypy_path = "pulumi"
+files = ["pulumi/__main__.py", "pulumi/infra"]
+pretty = true
+show_error_codes = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+check_untyped_defs = true
+no_implicit_optional = true
+exclude = ["^pulumi/venv/", "^pulumi/__pycache__/"]
+
+[tool.bandit]
+exclude_dirs = ["pulumi/venv", "pulumi/__pycache__", "tests", ".venv"]
+targets = ["pulumi"]
 
 [build-system]
 requires = ["poetry-core>=1.8.0"]
