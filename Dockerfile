@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7-labs
 
-FROM python:3.11.9-slim-bookworm AS base
+# Keep a glibc-based slim image because AWS CLI v2 only guarantees support on
+# glibc-based Linux distributions.
+FROM python:3.11.9-slim-bookworm@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317 AS base
 
 ARG USERNAME=dev
 ARG UID=1000
@@ -10,9 +12,7 @@ ARG AWSCLI_VERSION=2.16.9
 ARG AWSCLI_ARCH=linux-x86_64
 ARG CA_CERTIFICATES_VERSION=20230311
 ARG UNZIP_VERSION=6.0-28
-ARG GROFF_VERSION=1.22.4-10
 ARG CURL_VERSION=7.88.1-10+deb12u14
-ARG LESS_VERSION=590-2.1~deb12u2
 ARG GIT_VERSION=1:2.39.5-0+deb12u2
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -24,8 +24,6 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/ap
         curl="${CURL_VERSION}" \
         git="${GIT_VERSION}" \
         gnupg \
-        groff="${GROFF_VERSION}" \
-        less="${LESS_VERSION}" \
         unzip="${UNZIP_VERSION}" \
     && groupadd --gid "${GID}" "${USERNAME}" \
     && useradd --uid "${UID}" --gid "${GID}" --create-home "${USERNAME}" \
@@ -37,7 +35,7 @@ ADD https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi
 ADD https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-${PULUMI_VERSION}-checksums.txt /tmp/pulumi-checksums.txt
 
 # Install Pulumi CLI once and expose it on the PATH for all users
-# Install AWS CLI v2
+# Install AWS CLI v2, then remove the build-only packages used for verification.
 RUN <<EOF
 set -e
 grep "pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt \
@@ -96,19 +94,15 @@ GNUPGHOME=/tmp/aws-cli-keyring gpg --batch --verify /tmp/awscliv2.zip.sig /tmp/a
 unzip /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
 rm -rf /tmp/aws /tmp/awscliv2.zip /tmp/awscliv2.zip.sig /tmp/aws-cli-keyring
+apt-get purge -y --auto-remove curl gnupg unzip
+rm -rf /var/lib/apt/lists/*
 EOF
 
 # Install Poetry
 ENV POETRY_HOME=/opt/poetry
 ENV PATH="/opt/pulumi:${POETRY_HOME}/bin:/home/${USERNAME}/.local/bin:/home/${USERNAME}/.pulumi/bin:${PATH}"
-ARG POETRY_VERSION=1.8.4
-ARG POETRY_INSTALLER_SHA256=963d56703976ce9cdc6ff460c44a4f8fbad64c110dc447b86eeabb4a47ec2160
-ADD https://install.python-poetry.org /tmp/poetry-installer.py
-RUN echo "${POETRY_INSTALLER_SHA256}  /tmp/poetry-installer.py" \
-        > /tmp/poetry-installer.sha256 \
-    && sha256sum -c /tmp/poetry-installer.sha256 \
-    && python /tmp/poetry-installer.py --version "${POETRY_VERSION}" \
-    && rm -f /tmp/poetry-installer.py /tmp/poetry-installer.sha256
+ARG POETRY_VERSION=1.8.5
+RUN python -m pip install --no-cache-dir "poetry==${POETRY_VERSION}"
 ENV POETRY_VIRTUALENVS_CREATE=false
 ENV POETRY_HTTP_TIMEOUT=60
 

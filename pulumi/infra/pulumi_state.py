@@ -2,24 +2,32 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from typing import Dict, Sequence
 
 import pulumi
-import pulumi.errors as pulumi_errors
 import pulumi_aws as aws
 
 from .config import ManagedRepository, managed_repositories, settings, state_bucket_name_for_repo, sanitize_bucket_component
 from .utils.tags import base_tags
+
+_REPLICATION_ROLE_NAME_PREFIX = "PulumiStateRepl-"
+_MAX_IAM_ROLE_NAME_LENGTH = 64
 
 
 def _bucket_exists(name: str) -> bool:
   """Return True when the S3 bucket already exists."""
   try:
     aws.s3.get_bucket(bucket=name)
-  except pulumi_errors.RunError as exc:
+  except Exception as exc:
     message = str(exc)
-    if "NotFound" in message or "NoSuchBucket" in message or "404" in message:
+    if (
+      "NotFound" in message
+      or "NoSuchBucket" in message
+      or "404" in message
+      or "couldn't find resource" in message
+    ):
       return False
     raise
   else:
@@ -29,6 +37,21 @@ def _bucket_exists(name: str) -> bool:
 def _resource_suffix(repo_name: str) -> str:
   """Convert a repo name into a safe Pulumi resource suffix."""
   return sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+
+
+def _truncate_role_suffix(role_suffix: str) -> str:
+  """Ensure IAM role suffixes fit within AWS's 64-character limit."""
+  max_suffix_len = _MAX_IAM_ROLE_NAME_LENGTH - len(_REPLICATION_ROLE_NAME_PREFIX)
+  if len(role_suffix) <= max_suffix_len:
+    return role_suffix
+  digest = hashlib.sha256(role_suffix.encode("utf-8")).hexdigest()[:8]
+  truncated_len = max(max_suffix_len - len(digest) - 1, 1)
+  return f"{role_suffix[:truncated_len]}-{digest}"
+
+
+def _replication_role_name(role_suffix: str) -> str:
+  """Build a deterministic IAM role name for S3 replication."""
+  return f"{_REPLICATION_ROLE_NAME_PREFIX}{_truncate_role_suffix(role_suffix)}"
 
 
 def _bucket_policy(arn: str) -> str:
@@ -77,6 +100,11 @@ class PulumiStateBuckets(pulumi.ComponentResource):
       if replication_region
       else (settings.replication_region or "us-east-1")
     )
+    primary_region = aws.get_region().name
+    if resolved_region == primary_region:
+      raise ValueError(
+        f"replication_region '{resolved_region}' must differ from primary region '{primary_region}'."
+      )
 
     replica_provider = aws.Provider(
       f"{name}-replica-provider",
@@ -200,6 +228,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
 
       replication_role = aws.iam.Role(
         f"{name}-replication-role-{suffix}",
+        name=_replication_role_name(suffix),
         assume_role_policy=bucket.arn.apply(
           lambda arn: json.dumps(
             {
@@ -263,7 +292,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         role=replication_role.arn,
         rules=[
           aws.s3.BucketReplicationConfigRuleArgs(
-            id=f"{suffix}-to-useast1",
+            id=f"{suffix}-to-{resolved_region.replace('-', '')}",
             status="Enabled",
             destination=aws.s3.BucketReplicationConfigRuleDestinationArgs(
               bucket=replica_bucket.arn,

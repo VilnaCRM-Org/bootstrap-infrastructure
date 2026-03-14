@@ -13,12 +13,12 @@ from infra import pulumi_state
 
 
 def test_central_logging_buckets_rejects_long_replica(monkeypatch):
-  monkeypatch.setattr(logging_bucket, "central_logging_bucket_name", lambda region: "a" * 60)
+  monkeypatch.setattr(logging_bucket, "central_logging_bucket_name", lambda _region: "a" * 60)
   with pytest.raises(ValueError):
     CentralLoggingBuckets("central-logs")
 
 
-def test_components_build(pulumi_mocks, monkeypatch):
+def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
   monkeypatch.setattr(config.settings, "logging_prefix", "company")
   monkeypatch.setattr(config.settings, "environment", "test")
   monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
@@ -36,12 +36,21 @@ def test_components_build(pulumi_mocks, monkeypatch):
   assert oidc.deploy_role_arns  # nosec B101
 
 
+def test_state_buckets_reject_same_replication_region(monkeypatch):
+  monkeypatch.setattr(config.settings, "replication_region", "us-east-1")
+
+  repos = [config.ManagedRepository(name="repo", default_branch="main")]
+
+  with pytest.raises(ValueError, match="must differ from primary region"):
+    PulumiStateBuckets("pulumi-state-invalid", repositories=repos)
+
+
 def test_github_oidc_roles_with_existing_provider(monkeypatch):
   class FakeProvider:
     arn = pulumi.Output.from_input("arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com")
 
   monkeypatch.setattr(github_oidc.settings, "github_oidc_provider_arn", "arn:existing")
-  monkeypatch.setattr(github_oidc.aws.iam.OpenIdConnectProvider, "get", lambda *args, **kwargs: FakeProvider())
+  monkeypatch.setattr(github_oidc.aws.iam.OpenIdConnectProvider, "get", lambda *_args, **_kwargs: FakeProvider())
 
   repos = [config.ManagedRepository(name="repo2", default_branch="main")]
   roles = GitHubOidcRoles("github-oidc-existing", repositories=repos)
@@ -78,6 +87,8 @@ def test_stack_main_executes(monkeypatch):
   config.managed_repositories.cache_clear()
   monkeypatch.setattr(config.settings, "repo", "repo")
   monkeypatch.setattr(config.settings, "environment", "test")
+  monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
   monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
   stack_path = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
+  # Keep a fast smoke test for the stack entrypoint alongside the integration suite.
   runpy.run_path(stack_path)
