@@ -1,6 +1,7 @@
 # Pulumi Testing Matrix
 
 This repository uses runtime tests plus static and security guardrails to validate the Pulumi stack and its operator interface.
+The Python toolchain is managed with `uv`, and the locked dependency graph lives in `uv.lock`.
 
 ## Static Quality
 
@@ -10,15 +11,20 @@ Local commands:
 ```bash
 make check-format
 make check-lint
+make check-spelling
+make check-toml
 make check-types
 make check-package
 ```
 
 Coverage:
-- Black formatting
-- Flake8 lint rules
+- Ruff formatting
+- Ruff lint rules
+- Typos spelling checks across code, docs, and workflows
+- Taplo lint and formatting checks for `pyproject.toml`
 - mypy type checking for Pulumi Python modules
-- `poetry check --lock`
+- `uv lock --check`
+- `uv sync --check`
 - Python bytecode compilation
 
 ## Security and Supply Chain
@@ -29,6 +35,7 @@ Local commands:
 ```bash
 make check-bandit
 make check-deps
+make check-sbom
 make check-yaml
 make check-actionlint
 make check-docker
@@ -38,7 +45,8 @@ make check-iac
 
 Coverage:
 - Bandit static security analysis
-- pip-audit dependency CVE detection against the Poetry lock
+- pip-audit dependency CVE detection against the `uv.lock` graph
+- CycloneDX SBOM export from the locked dependency graph
 - yamllint on workflows and stack manifests
 - actionlint on GitHub Actions workflows
 - hadolint on the Dockerfile
@@ -117,7 +125,7 @@ Scope:
 
 Implementation notes:
 - the suite runs targeted tests that were written to kill likely helper-level mutations in config normalization, secrets-provider URI construction, IAM role naming, and IAM policy JSON generation
-- coverage is regenerated for `infra.config` and `infra.iam.github_oidc` while the guard suite runs
+- the guard runner does not enable coverage instrumentation because Pulumi package registration collides with coverage startup in the containerized test environment; coverage for the same modules remains enforced by the unit and integration suites
 - `infra.pulumi_secrets` still has dedicated fast unit assertions, but its Pulumi-oriented startup and policy generation paths are validated via unit, integration, and e2e tests instead of a mutator tool because the containerized Pulumi runtime produced persistent false timeout noise
 
 ## E2E
@@ -158,8 +166,8 @@ Coverage:
 ## CI Mapping
 
 GitHub Actions mirrors the local targets:
-- `python-quality.yml` -> `make check-format`, `make check-lint`, `make check-types`, `make check-package`
-- `devsecops-guardrails.yml` -> `make check-bandit`, `make check-deps`, `make check-yaml`, `make check-actionlint`, `make check-docker`, `make check-shell`, `make check-iac`, `make test-cost`
+- `python-quality.yml` -> `make check-format`, `make check-lint`, `make check-spelling`, `make check-toml`, `make check-types`, `make check-package`
+- `devsecops-guardrails.yml` -> `make check-bandit`, `make check-deps`, `make check-sbom`, `make check-yaml`, `make check-actionlint`, `make check-docker`, `make check-shell`, `make check-iac`, `make test-cost`
 - `pulumi-structural.yml` -> `make test-pulumi`
 - `pulumi-unit.yml` -> `make test-unit`
 - `pulumi-integration.yml` -> `make test-integration`

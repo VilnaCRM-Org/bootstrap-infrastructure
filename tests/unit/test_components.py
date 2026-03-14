@@ -2,21 +2,20 @@ import runpy
 from pathlib import Path
 
 import pytest
-import pulumi
 from pulumi.runtime.sync_await import _sync_await
 
+import pulumi
 from infra import (
     CentralLoggingBuckets,
     PulumiSecretsKeys,
     PulumiStateBuckets,
     S3BackupPlan,
+    config,
+    logging_bucket,
+    pulumi_secrets,
+    pulumi_state,
 )
-from infra import config
-from infra.iam import GitHubOidcRoles
-from infra.iam import github_oidc
-from infra import logging_bucket
-from infra import pulumi_secrets
-from infra import pulumi_state
+from infra.iam import GitHubOidcRoles, github_oidc
 
 
 def test_central_logging_buckets_rejects_long_replica(monkeypatch):
@@ -90,9 +89,7 @@ def test_pulumi_secrets_key_policy_uses_account_root():
     assert policy["Version"] == "2012-10-17"  # nosec B101
     assert statement["Sid"] == "EnableAccountPermissions"  # nosec B101
     assert statement["Effect"] == "Allow"  # nosec B101
-    assert (
-        statement["Principal"]["AWS"] == "arn:aws:iam::123456789012:root"
-    )  # nosec B101
+    assert statement["Principal"]["AWS"] == "arn:aws:iam::123456789012:root"  # nosec B101
     assert statement["Action"] == "kms:*"  # nosec B101
     assert statement["Resource"] == "*"  # nosec B101
 
@@ -122,9 +119,7 @@ def test_pulumi_secrets_keys_emit_expected_resources_and_outputs(
     key_arn_output = _sync_await(secrets.key_arns["repo"].future())
 
     assert "bootstrap:kms:PulumiSecretsKeys" in component_urn  # nosec B101
-    assert (
-        provider_url == "awskms://alias/pulumi-repo-test-secrets?region=us-east-1"
-    )  # nosec B101
+    assert provider_url == "awskms://alias/pulumi-repo-test-secrets?region=us-east-1"  # nosec B101
     assert alias_name_output == "alias/pulumi-repo-test-secrets"  # nosec B101
     assert (
         key_arn_output
@@ -147,14 +142,10 @@ def test_pulumi_secrets_keys_emit_expected_resources_and_outputs(
 
     assert key_type == "aws:kms/key:Key"  # nosec B101
     assert key_name == "pulumi-secrets-key-repo"  # nosec B101
-    assert (
-        key_state["description"] == "Pulumi secrets KMS key for repo (main)"
-    )  # nosec B101
+    assert key_state["description"] == "Pulumi secrets KMS key for repo (main)"  # nosec B101
     assert key_state["deletionWindowInDays"] == 30  # nosec B101
     assert key_state["enableKeyRotation"] is True  # nosec B101
-    assert (
-        '"AWS": "arn:aws:iam::123456789012:root"' in key_state["policy"]
-    )  # nosec B101
+    assert '"AWS": "arn:aws:iam::123456789012:root"' in key_state["policy"]  # nosec B101
     assert key_state["tags"]["Purpose"] == "pulumi-secrets"  # nosec B101
     assert key_state["tags"]["Repository"] == "repo"  # nosec B101
     assert key_state["tags"]["App"] == "repo"  # nosec B101

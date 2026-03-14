@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Dict, Sequence
+from collections.abc import Sequence
+
+import pulumi_aws as aws
 
 import pulumi
-import pulumi_aws as aws
 
 from .config import (
     ManagedRepository,
     managed_repositories,
+    sanitize_bucket_component,
     settings,
     state_bucket_name_for_repo,
-    sanitize_bucket_component,
 )
 from .utils.tags import base_tags
 
@@ -98,10 +99,10 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         repos = (
             list(repositories) if repositories is not None else managed_repositories()
         )
-        self.state_buckets: Dict[str, pulumi.Output[str]] = {}
-        self.backend_urls: Dict[str, pulumi.Output[str]] = {}
-        self.bucket_resources: Dict[str, aws.s3.Bucket] = {}
-        self.bucket_arns: Dict[str, pulumi.Output[str]] = {}
+        self.state_buckets: dict[str, pulumi.Output[str]] = {}
+        self.backend_urls: dict[str, pulumi.Output[str]] = {}
+        self.bucket_resources: dict[str, aws.s3.Bucket] = {}
+        self.bucket_arns: dict[str, pulumi.Output[str]] = {}
 
         resolved_region = (
             replication_region
@@ -111,7 +112,9 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         primary_region = aws.get_region().name
         if resolved_region == primary_region:
             raise ValueError(
-                f"replication_region '{resolved_region}' must differ from primary region '{primary_region}'."
+                "replication_region "
+                f"'{resolved_region}' must differ from primary region "
+                f"'{primary_region}'."
             )
 
         replica_provider = aws.Provider(
@@ -190,7 +193,8 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             replica_bucket_name = f"{bucket_name}-replication"
             if len(replica_bucket_name) > 63:
                 raise ValueError(
-                    f"Replica bucket name '{replica_bucket_name}' exceeds 63 characters."
+                    "Replica bucket name "
+                    f"'{replica_bucket_name}' exceeds 63 characters."
                 )
 
             replica_bucket = aws.s3.Bucket(

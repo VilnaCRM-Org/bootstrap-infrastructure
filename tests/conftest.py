@@ -3,9 +3,10 @@ import os
 import sys
 from pathlib import Path
 
-import pulumi
 import pulumi.runtime
 import pytest
+
+import pulumi
 
 os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 

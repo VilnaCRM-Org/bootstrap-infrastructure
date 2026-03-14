@@ -1,10 +1,10 @@
 """Configuration helpers for Pulumi infrastructure stacks."""
 
 import os
+import re
 from dataclasses import dataclass, field
 from functools import lru_cache
-import re
-from typing import Any, List, Optional
+from typing import Any
 
 import pulumi
 
@@ -14,16 +14,16 @@ class RepoSettings:
     """Strongly-typed configuration values for the stack."""
 
     org: str
-    repo: Optional[str]
+    repo: str | None
     environment: str
     owner: str
     cost_center: str
-    github_branch: Optional[str]
+    github_branch: str | None
     logging_prefix: str
-    replication_region: Optional[str]
-    github_token: Optional[str]
-    github_oidc_provider_arn: Optional[str]
-    managed_repo_overrides: Optional[List["ManagedRepository"]] = field(default=None)
+    replication_region: str | None
+    github_token: str | None
+    github_oidc_provider_arn: str | None
+    managed_repo_overrides: list["ManagedRepository"] | None = field(default=None)
 
 
 @dataclass
@@ -73,7 +73,7 @@ _IPV4_PATTERN = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
 _IPV6_PATTERN = re.compile(r"^[0-9a-f:]+$")
 
 
-def _load_managed_repo_overrides(raw: Any) -> Optional[List[ManagedRepository]]:
+def _load_managed_repo_overrides(raw: Any) -> list[ManagedRepository] | None:
     """Normalize managedRepositories config entries into structured objects."""
     if raw is None:
         return None
@@ -81,7 +81,7 @@ def _load_managed_repo_overrides(raw: Any) -> Optional[List[ManagedRepository]]:
         raise ValueError(
             "managedRepositories config must be a list of repository names or objects."
         )
-    overrides: List[ManagedRepository] = []
+    overrides: list[ManagedRepository] = []
     for item in raw:
         name: object
         default_branch: object
@@ -93,7 +93,8 @@ def _load_managed_repo_overrides(raw: Any) -> Optional[List[ManagedRepository]]:
             default_branch = item.get("defaultBranch") or "main"
         else:
             raise ValueError(
-                "Each managedRepositories entry must be a string or an object with 'name'."
+                "Each managedRepositories entry must be a string or an object "
+                "with 'name'."
             )
         if not isinstance(name, str) or not name.strip():
             raise ValueError(
@@ -161,7 +162,9 @@ def state_bucket_name_for_repo(repo_name: str) -> str:
     name = f"pulumi-{repo_part}-{env_part}-state"
     if len(name) > 63:
         raise ValueError(
-            f"Combined repo/environment ('{repo_part}', '{env_part}') produce bucket name '{name}' longer than 63 characters."
+            "Combined repo/environment "
+            f"('{repo_part}', '{env_part}') produce bucket name "
+            f"'{name}' longer than 63 characters."
         )
     return name
 
@@ -198,13 +201,14 @@ def central_logging_bucket_name(region: str) -> str:
     name = f"{prefix_part}-central-logs-{region_part}-{env_part}"
     if len(name) > 63:
         raise ValueError(
-            "Combined logging prefix/region/environment results in an S3 bucket name longer than 63 characters."
+            "Combined logging prefix/region/environment results in an S3 "
+            "bucket name longer than 63 characters."
         )
     return name
 
 
 @lru_cache(maxsize=1)
-def managed_repositories() -> List[ManagedRepository]:
+def managed_repositories() -> list[ManagedRepository]:
     """Return the list of repositories to provision state buckets for."""
     if settings.managed_repo_overrides:
         return settings.managed_repo_overrides
@@ -215,6 +219,7 @@ def managed_repositories() -> List[ManagedRepository]:
             )
         ]
     raise ValueError(
-        "No managed repositories specified. Set bootstrap-infrastructure:managedRepositories "
+        "No managed repositories specified. Set "
+        "bootstrap-infrastructure:managedRepositories "
         "to a list of repo names (optionally with defaultBranch)."
     )

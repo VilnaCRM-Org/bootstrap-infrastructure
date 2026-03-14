@@ -1,6 +1,4 @@
 name: bootstrap-infrastructure
 runtime:
   name: python
-  options:
-    virtualenv: venv
 description: Pulumi stack that provisions the AWS resources for the bootstrap infrastructure template.

@@ -4,8 +4,9 @@ import os
 import sys
 from pathlib import Path
 
-import pulumi
 import pytest
+
+import pulumi
 
 os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
@@ -24,9 +25,7 @@ from infra.config import (
 
 def test_sanitize_bucket_component_normalizes_case_and_invalid_chars():
     """Sanitizer should lowercase and replace invalid characters."""
-    assert (
-        _sanitize_bucket_component("My_App.repo", "repoSlug") == "my-app.repo"
-    )  # nosec B101
+    assert _sanitize_bucket_component("My_App.repo", "repoSlug") == "my-app.repo"  # nosec B101
 
 
 def test_sanitize_bucket_component_collapses_sequences_and_trims():
@@ -84,9 +83,7 @@ def test_require_config_value_fallback(monkeypatch):
 
     monkeypatch.setattr(config, "cfg", DummyCfg())
     monkeypatch.setattr(config, "_ALLOW_TEST_DEFAULTS", True)
-    assert (
-        config._require_config_value("missing", "fallback") == "fallback"
-    )  # nosec B101
+    assert config._require_config_value("missing", "fallback") == "fallback"  # nosec B101
 
 
 def test_require_config_value_raises(monkeypatch):
@@ -212,9 +209,7 @@ def test_pulumi_secrets_provider_for_repo(monkeypatch):
     """Pulumi secrets provider URIs use the KMS alias and region."""
     monkeypatch.setattr(settings, "environment", "test")
     provider = pulumi_secrets_provider_for_repo("repo", "eu-central-1")
-    assert (
-        provider == "awskms://alias/pulumi-repo-test-secrets?region=eu-central-1"
-    )  # nosec B101
+    assert provider == "awskms://alias/pulumi-repo-test-secrets?region=eu-central-1"  # nosec B101
 
 
 def test_pulumi_secrets_provider_for_repo_reports_region_label(monkeypatch):

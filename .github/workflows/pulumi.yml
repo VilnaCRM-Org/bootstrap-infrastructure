@@ -50,14 +50,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Poetry
-        uses: snok/install-poetry@76e04a911780d5b312d89783f7b1cd627778900a # v1.4.1
+      - name: Setup uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
         with:
-          version: "1.8.4"
-          virtualenvs-create: false
+          version: "0.9.21"
+          enable-cache: true
 
       - name: Install dependencies
-        run: poetry install --no-root --no-interaction
+        run: uv sync --frozen --all-groups --no-install-project --no-editable
 
       - name: Install Pulumi CLI
         uses: pulumi/actions@8582a9e8cc630786854029b4e09281acd6794b58 # v6
@@ -103,9 +103,10 @@ jobs:
       - name: Pulumi up
         env:
           PULUMI_BACKEND_URL: ${{ steps.backend.outputs.backend_url }}
+          PULUMI_SKIP_UPDATE_CHECK: "true"
         run: |
-          if ! poetry run pulumi -C pulumi stack select "$PULUMI_STACK" --non-interactive; then
-            poetry run pulumi -C pulumi stack init "$PULUMI_STACK" --non-interactive --secrets-provider "$PULUMI_SECRETS_PROVIDER"
+          if ! uv run --frozen --no-sync pulumi -C pulumi stack select "$PULUMI_STACK" --non-interactive; then
+            uv run --frozen --no-sync pulumi -C pulumi stack init "$PULUMI_STACK" --non-interactive --secrets-provider "$PULUMI_SECRETS_PROVIDER"
           fi
-          poetry run pulumi -C pulumi stack change-secrets-provider "$PULUMI_SECRETS_PROVIDER" --stack "$PULUMI_STACK" --non-interactive
-          poetry run pulumi -C pulumi up --yes --skip-preview
+          uv run --frozen --no-sync pulumi -C pulumi stack change-secrets-provider "$PULUMI_SECRETS_PROVIDER" --stack "$PULUMI_STACK" --non-interactive
+          uv run --frozen --no-sync pulumi -C pulumi up --yes --skip-preview

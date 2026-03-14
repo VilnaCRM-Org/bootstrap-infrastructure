@@ -1,8 +1,7 @@
 import pulumi.errors as pulumi_errors
 import pytest
 
-from infra import config
-from infra import pulumi_state
+from infra import config, pulumi_state
 
 
 def test_bucket_exists_true(monkeypatch):
@@ -43,9 +42,7 @@ def test_resource_suffix_sanitizes():
 
 def test_replication_role_name_limits_length():
     role_name = pulumi_state._replication_role_name("a" * 80)
-    assert role_name.startswith(
-        pulumi_state._REPLICATION_ROLE_NAME_PREFIX
-    )  # nosec B101
+    assert role_name.startswith(pulumi_state._REPLICATION_ROLE_NAME_PREFIX)  # nosec B101
     assert len(role_name) <= pulumi_state._MAX_IAM_ROLE_NAME_LENGTH  # nosec B101
 
 

@@ -8,10 +8,13 @@ The `python-quality.yml` workflow enforces local operator commands:
 
 - `make check-format`
 - `make check-lint`
+- `make check-spelling`
+- `make check-toml`
 - `make check-types`
 - `make check-package`
 
-These checks ensure the Pulumi Python code stays formatted, linted, type-checked, and buildable with a valid Poetry lockfile.
+These checks ensure the Pulumi Python code stays formatted, linted, spell-checked, type-checked, and buildable with a valid `uv.lock`.
+The format/lint layer is powered by Rust-native tooling: `ruff` for code quality, `typos` for repository spelling, and `taplo` for TOML manifest validation.
 
 ## DevSecOps Guardrails
 
@@ -19,6 +22,7 @@ The `devsecops-guardrails.yml` workflow adds defensive checks that are cheap to 
 
 - `make check-bandit`
 - `make check-deps`
+- `make check-sbom`
 - `make check-yaml`
 - `make check-actionlint`
 - `make check-docker`
@@ -26,7 +30,7 @@ The `devsecops-guardrails.yml` workflow adds defensive checks that are cheap to 
 - `make check-iac`
 - `make test-cost`
 
-This combination covers application security, dependency risk, workflow hygiene, Dockerfile hygiene, shell hygiene, IaC policy scanning, and low-cost resource governance.
+This combination covers application security, dependency risk, SBOM generation, workflow hygiene, Dockerfile hygiene, shell hygiene, IaC policy scanning, and low-cost resource governance.
 
 ## Deployment Workflows
 

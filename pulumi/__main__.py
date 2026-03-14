@@ -7,9 +7,12 @@ avoid import-time side effects.
 """
 
 import pulumi
-
-from infra import CentralLoggingBuckets, PulumiStateBuckets, S3BackupPlan
-from infra import PulumiSecretsKeys
+from infra import (
+    CentralLoggingBuckets,
+    PulumiSecretsKeys,
+    PulumiStateBuckets,
+    S3BackupPlan,
+)
 from infra.iam import GitHubOidcRoles
 
 logging = CentralLoggingBuckets("central-logging")

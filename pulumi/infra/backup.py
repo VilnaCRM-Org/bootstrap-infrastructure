@@ -1,10 +1,11 @@
 """AWS Backup plan for centralized logging and Pulumi state buckets."""
 
 import json
-from typing import Sequence
+from collections.abc import Sequence
+
+import pulumi_aws as aws
 
 import pulumi
-import pulumi_aws as aws
 
 from .utils.tags import base_tags
 

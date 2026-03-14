@@ -82,7 +82,7 @@ assert_output_contains() {
   run make -n clean
   [ "$status" -eq 0 ]
   assert_output_contains "find . -type d -name __pycache__"
-  assert_output_contains "rm -rf .venv dist build"
+  assert_output_contains "rm -rf .venv .mypy_cache .ruff_cache dist build"
 }
 
 @test "make test-unit runs pytest for unit tests" {
@@ -139,16 +139,29 @@ assert_output_contains() {
   assert_output_contains "make test-bats"
 }
 
-@test "make check-format runs Black in check mode" {
+@test "make check-format runs Ruff format in check mode" {
   run make -n check-format
   [ "$status" -eq 0 ]
-  assert_output_contains "black --check"
+  assert_output_contains "ruff format --check"
 }
 
-@test "make check-lint runs Flake8" {
+@test "make check-lint runs Ruff" {
   run make -n check-lint
   [ "$status" -eq 0 ]
-  assert_output_contains "flake8"
+  assert_output_contains "ruff check"
+}
+
+@test "make check-spelling runs typos" {
+  run make -n check-spelling
+  [ "$status" -eq 0 ]
+  assert_output_contains "typos"
+}
+
+@test "make check-toml runs Taplo" {
+  run make -n check-toml
+  [ "$status" -eq 0 ]
+  assert_output_contains "taplo lint"
+  assert_output_contains "taplo format --check"
 }
 
 @test "make check-types runs mypy" {
@@ -157,10 +170,11 @@ assert_output_contains() {
   assert_output_contains "mypy"
 }
 
-@test "make check-package validates Poetry metadata and bytecode" {
+@test "make check-package validates uv lock state and bytecode" {
   run make -n check-package
   [ "$status" -eq 0 ]
-  assert_output_contains "poetry check --lock"
+  assert_output_contains "uv lock --check"
+  assert_output_contains "uv sync --check"
   assert_output_contains "python -m compileall"
 }
 
@@ -174,6 +188,13 @@ assert_output_contains() {
   run make -n check-deps
   [ "$status" -eq 0 ]
   assert_output_contains "pip_audit"
+}
+
+@test "make check-sbom exports a CycloneDX SBOM" {
+  run make -n check-sbom
+  [ "$status" -eq 0 ]
+  assert_output_contains "uv export"
+  assert_output_contains "cyclonedx1.5"
 }
 
 @test "make check-yaml runs yamllint" {
@@ -211,6 +232,8 @@ assert_output_contains() {
   [ "$status" -eq 0 ]
   assert_output_contains "make check-format"
   assert_output_contains "make check-lint"
+  assert_output_contains "make check-spelling"
+  assert_output_contains "make check-toml"
   assert_output_contains "make check-types"
   assert_output_contains "make check-package"
 }
@@ -220,6 +243,7 @@ assert_output_contains() {
   [ "$status" -eq 0 ]
   assert_output_contains "make check-bandit"
   assert_output_contains "make check-deps"
+  assert_output_contains "make check-sbom"
   assert_output_contains "make check-yaml"
   assert_output_contains "make check-actionlint"
   assert_output_contains "make check-docker"

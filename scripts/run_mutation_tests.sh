@@ -3,18 +3,15 @@ set -euo pipefail
 
 cd /workspace
 
-export COVERAGE_FILE="${COVERAGE_FILE:-/tmp/.coverage.mutation}"
-
 mutation_tests=(
   tests/unit/test_config.py
   tests/unit/test_policies.py
   tests/unit/test_mutation_targets.py
 )
-mutation_cov_targets=(
-  --cov=infra.config
-  --cov=infra.iam.github_oidc
-)
 
-poetry run pytest -q "${mutation_tests[@]}" \
-  "${mutation_cov_targets[@]}" \
-  --cov-report=term
+# Coverage instrumentation re-imports Pulumi packages during collection and
+# trips Pulumi's resource-package registration guard in this containerized test
+# environment. Keep the mutation guard deterministic by running the focused
+# tests directly; full coverage remains enforced by the unit and integration
+# suites.
+uv run --frozen --no-sync pytest -q "${mutation_tests[@]}"

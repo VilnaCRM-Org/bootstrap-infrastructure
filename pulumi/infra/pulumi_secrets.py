@@ -3,10 +3,11 @@
 from __future__ import annotations  # pragma: no mutate
 
 import json  # pragma: no mutate
-from typing import Dict, Sequence  # pragma: no mutate
+from collections.abc import Sequence  # pragma: no mutate
+
+import pulumi_aws as aws  # pragma: no mutate
 
 import pulumi  # pragma: no mutate
-import pulumi_aws as aws  # pragma: no mutate
 
 from .config import (
     ManagedRepository,
@@ -37,7 +38,7 @@ def _key_policy(account_id: str) -> str:
 
 
 class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
-    """Create a customer-managed KMS key and alias for each managed repository."""  # pragma: no mutate
+    """Create a customer-managed KMS key and alias for each managed repository."""
 
     def __init__(  # pragma: no mutate
         self,  # pragma: no mutate
@@ -56,9 +57,9 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
         account_id = aws.get_caller_identity().account_id  # pragma: no mutate
         region = aws.get_region().name  # pragma: no mutate
 
-        self.key_arns: Dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
-        self.alias_names: Dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
-        self.provider_urls: Dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
+        self.key_arns: dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
+        self.alias_names: dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
+        self.provider_urls: dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
 
         for repo in repos:  # pragma: no mutate
             suffix = _resource_suffix(repo.name)  # pragma: no mutate
@@ -68,7 +69,9 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
 
             key = aws.kms.Key(  # pragma: no mutate
                 f"{name}-key-{suffix}",  # pragma: no mutate
-                description=f"Pulumi secrets KMS key for {repo.name} ({repo.default_branch})",  # pragma: no mutate
+                description=(
+                    f"Pulumi secrets KMS key for {repo.name} ({repo.default_branch})"
+                ),  # pragma: no mutate
                 deletion_window_in_days=30,  # pragma: no mutate
                 enable_key_rotation=True,  # pragma: no mutate
                 policy=_key_policy(account_id),  # pragma: no mutate

@@ -2,8 +2,9 @@
 
 import json
 
-import pulumi
 import pulumi_aws as aws
+
+import pulumi
 
 from .config import central_logging_bucket_name
 from .utils.tags import base_tags

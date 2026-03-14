@@ -9,6 +9,7 @@ def test_pulumi_project_manifest_uses_python_runtime():
     manifest = yaml.safe_load((ROOT / "pulumi" / "Pulumi.yaml").read_text())
     assert manifest["name"] == "bootstrap-infrastructure"  # nosec B101
     assert manifest["runtime"]["name"] == "python"  # nosec B101
+    assert "options" not in manifest["runtime"]  # nosec B101
 
 
 def test_stack_file_does_not_use_encryptionsalt():
@@ -21,10 +22,13 @@ def test_makefile_exposes_full_test_matrix():
     makefile = (ROOT / "Makefile").read_text()
     assert "check-format" in makefile  # nosec B101
     assert "check-lint" in makefile  # nosec B101
+    assert "check-spelling" in makefile  # nosec B101
+    assert "check-toml" in makefile  # nosec B101
     assert "check-types" in makefile  # nosec B101
     assert "check-package" in makefile  # nosec B101
     assert "check-bandit" in makefile  # nosec B101
     assert "check-deps" in makefile  # nosec B101
+    assert "check-sbom" in makefile  # nosec B101
     assert "check-yaml" in makefile  # nosec B101
     assert "check-actionlint" in makefile  # nosec B101
     assert "check-docker" in makefile  # nosec B101
@@ -46,6 +50,16 @@ def test_deploy_stack_exports_pulumi_kms_outputs():
     assert 'pulumi.export("pulumiSecretsProviderUrls"' in main_text  # nosec B101
 
 
+def test_repository_uses_uv_for_python_tooling():
+    pyproject = (ROOT / "pyproject.toml").read_text()
+    assert "[project]" in pyproject  # nosec B101
+    assert "[dependency-groups]" in pyproject  # nosec B101
+    assert "[tool.uv]" in pyproject  # nosec B101
+    assert "[tool.ruff]" in pyproject  # nosec B101
+    assert (ROOT / "uv.lock").exists()  # nosec B101
+    assert not (ROOT / "poetry.lock").exists()  # nosec B101
+
+
 def test_ci_workflows_cover_local_test_targets():
     quality = (ROOT / ".github" / "workflows" / "python-quality.yml").read_text()
     guardrails = (
@@ -63,10 +77,13 @@ def test_ci_workflows_cover_local_test_targets():
     deploy_prod = (ROOT / ".github" / "workflows" / "pulumi-prod.yml").read_text()
     assert "check-format" in quality  # nosec B101
     assert "check-lint" in quality  # nosec B101
+    assert "check-spelling" in quality  # nosec B101
+    assert "check-toml" in quality  # nosec B101
     assert "check-types" in quality  # nosec B101
     assert "check-package" in quality  # nosec B101
     assert "check-bandit" in guardrails  # nosec B101
     assert "check-deps" in guardrails  # nosec B101
+    assert "check-sbom" in guardrails  # nosec B101
     assert "check-yaml" in guardrails  # nosec B101
     assert "check-actionlint" in guardrails  # nosec B101
     assert "check-docker" in guardrails  # nosec B101
@@ -87,6 +104,12 @@ def test_ci_workflows_cover_local_test_targets():
     assert "pull_request:" in e2e  # nosec B101
     assert "PULUMI_STACK: test" in deploy_test  # nosec B101
     assert "PULUMI_STACK: prod" in deploy_prod  # nosec B101
+    assert "setup-uv" in deploy_test  # nosec B101
+    assert "setup-uv" in deploy_prod  # nosec B101
+    assert "uv sync" in deploy_test  # nosec B101
+    assert "uv sync" in deploy_prod  # nosec B101
+    assert "poetry" not in deploy_test  # nosec B101
+    assert "poetry" not in deploy_prod  # nosec B101
 
 
 def test_docs_cover_testing_and_bootstrap_architecture():
@@ -99,6 +122,10 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     assert "pulumi-bootstrap-kms.md" in docs_index  # nosec B101
     assert "Python Quality Checks" in ci_doc  # nosec B101
     assert "DevSecOps Guardrails" in ci_doc  # nosec B101
+    assert "uv" in ci_doc  # nosec B101
+    assert "Ruff" in testing_doc  # nosec B101
+    assert "Typos" in testing_doc  # nosec B101
+    assert "Taplo" in testing_doc  # nosec B101
     assert "Structural" in testing_doc  # nosec B101
     assert "Cost Guardrails" in testing_doc  # nosec B101
     assert "Mutation" in testing_doc  # nosec B101

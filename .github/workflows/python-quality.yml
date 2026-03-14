@@ -20,6 +20,10 @@ jobs:
             target: check-format
           - name: Lint
             target: check-lint
+          - name: Spelling
+            target: check-spelling
+          - name: TOML
+            target: check-toml
           - name: Types
             target: check-types
           - name: Package

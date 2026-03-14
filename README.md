@@ -28,6 +28,15 @@ Use `make` to see available commands and start the Pulumi container:
 make start
 ```
 
+Python dependencies and developer tooling are locked with `uv`.
+When you change Python dependencies, regenerate the lockfile with:
+```bash
+uv lock --python 3.11
+```
+Static quality checks also use Rust-native tooling where it is a good fit:
+`ruff` for Python format/lint, `typos` for repository spellchecking, and
+`taplo` for TOML validation.
+
 ### Pulumi onboarding (per repository)
 Each repository gets its own state bucket named `pulumi-<repo>-<env>-state`.
 Each managed repository also gets its own customer-managed KMS key alias named `alias/pulumi-<repo>-<env>-secrets`.

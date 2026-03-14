@@ -1,44 +1,47 @@
-[tool.poetry]
+[project]
 name = "bootstrap-infrastructure"
 version = "0.1.0"
 description = "Pulumi-based AWS bootstrap stack"
-authors = ["Bootstrap Infra Team <infra@example.com>"]
 readme = "README.md"
-package-mode = false
+requires-python = ">=3.10,<3.12"
+authors = [{ name = "Bootstrap Infra Team", email = "infra@example.com" }]
+dependencies = [
+  "protobuf>=5.29.6,<7",
+  "pulumi>=3.138,<4",
+  "pulumi-aws>=7.0,<8",
+  "pyyaml>=6,<7",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.10,<3.12"
-pulumi = ">=3.138,<4"
-pulumi-aws = ">=7.0,<8"
-pyyaml = ">=6,<7"
-protobuf = ">=5.29.6,<7"
+[dependency-groups]
+dev = [
+  "bandit>=1.8,<2",
+  "mypy>=1.18,<2",
+  "mutmut>=2.4,<3",
+  "pip-audit>=2.9,<3",
+  "pre-commit>=3.0,<4",
+  "pytest-cov>=5.0,<6",
+  "pytest>=8.0,<9",
+  "ruff>=0.11,<1",
+  "types-pyyaml>=6.0.12,<7",
+  "whatthepatch==0.0.6",
+  "yamllint>=1.37,<2",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0"
-pytest-cov = "^5.0"
-mutmut = "^2.4"
-whatthepatch = "0.0.6"
-black = ">=26.3.1,<27"
-flake8 = "^7.0"
-pre-commit = "^3.0"
-mypy = ">=1.18,<2"
-bandit = ">=1.8,<2"
-pip-audit = ">=2.9,<3"
-yamllint = ">=1.37,<2"
-types-pyyaml = ">=6.0.12,<7"
-flake8-bugbear = ">=24.12,<25"
-pip = ">=26.0,<27"
+[tool.uv]
+package = false
+default-groups = ["dev"]
 
-[tool.black]
+[tool.ruff]
 line-length = 88
-target-version = ["py311"]
-extend-exclude = '''
-(
-  /pulumi/venv/
-  | /pulumi/__pycache__/
-  | /tests/__pycache__/
-)
-'''
+src = ["pulumi", "tests"]
+target-version = "py311"
+extend-exclude = ["pulumi/venv", "pulumi/__pycache__", "tests/__pycache__"]
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP", "W"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["infra"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -57,7 +60,3 @@ exclude = ["^pulumi/venv/", "^pulumi/__pycache__/"]
 [tool.bandit]
 exclude_dirs = ["pulumi/venv", "pulumi/__pycache__", "tests", ".venv"]
 targets = ["pulumi"]
-
-[build-system]
-requires = ["poetry-core>=1.8.0"]
-build-backend = "poetry.core.masonry.api"

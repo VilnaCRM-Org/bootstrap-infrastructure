@@ -1,11 +1,9 @@
 """Tagging helpers for infrastructure resources."""
 
-from typing import Dict
-
 from ..config import settings
 
 
-def base_tags(extra: Dict[str, str] | None = None) -> Dict[str, str]:
+def base_tags(extra: dict[str, str] | None = None) -> dict[str, str]:
     """Return the standard tag set merged with optional extra tags."""
     tags = {
         "Environment": settings.environment,

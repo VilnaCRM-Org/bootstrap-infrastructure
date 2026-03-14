@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Dict, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+
+import pulumi_aws as aws
 
 import pulumi
-import pulumi_aws as aws
 
 from ..config import (
     ManagedRepository,
     managed_repositories,
+    sanitize_bucket_component,
     settings,
     state_bucket_name_for_repo,
-    sanitize_bucket_component,
 )
 from ..utils.tags import base_tags
 
@@ -53,7 +54,8 @@ def _assume_role_policy(arn: str, org: str, repo_name: str, branch_name: str) ->
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         }},
         "StringLike": {{
-          "token.actions.githubusercontent.com:sub": "repo:{org}/{repo_name}:ref:refs/heads/{branch_name}"
+          "token.actions.githubusercontent.com:sub":
+            "repo:{org}/{repo_name}:ref:refs/heads/{branch_name}"
         }}
       }}
     }}
@@ -145,7 +147,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
             )
 
         self.provider = provider
-        self.deploy_role_arns: Dict[str, pulumi.Output[str]] = {}
+        self.deploy_role_arns: dict[str, pulumi.Output[str]] = {}
 
         for repo in repos:
             bucket_name = state_bucket_name_for_repo(repo.name)
@@ -188,7 +190,8 @@ class GitHubOidcRoles(pulumi.ComponentResource):
 
             if secrets_key_arns is not None and repo.name not in secrets_key_arns:
                 raise ValueError(
-                    f"Missing Pulumi secrets KMS key ARN for managed repository '{repo.name}'."
+                    "Missing Pulumi secrets KMS key ARN for managed "
+                    f"repository '{repo.name}'."
                 )
 
             key_arn = secrets_key_arns.get(repo.name) if secrets_key_arns else None
