@@ -15,6 +15,28 @@ from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
 
+def _bucket_exists(name: str, *, provider: aws.Provider | None = None) -> bool:
+    """Return True when the S3 bucket already exists."""
+    try:
+        invoke_opts = (
+            pulumi.InvokeOptions(provider=provider) if provider is not None else None
+        )
+        aws.s3.get_bucket(bucket=name, opts=invoke_opts)
+    except Exception as exc:
+        message = str(exc)
+        if (
+            "NotFound" in message
+            or "NoSuchBucket" in message
+            or "404" in message
+            or "empty result" in message
+            or "couldn't find resource" in message
+        ):
+            return False
+        raise
+    else:
+        return True
+
+
 def _log_bucket_policy(bucket_arn: str, account_id: str) -> str:
     """Build the TLS-only policy with CloudTrail and log delivery permissions."""
     return f"""
@@ -172,58 +194,130 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 "Replica logging bucket name exceeds S3 63-character limit."
             )
 
-        base_opts = pulumi.ResourceOptions(parent=self)
-        replica_opts = pulumi.ResourceOptions(parent=self, provider=replica_provider)
+        primary_import_id = (
+            primary_bucket_name if _bucket_exists(primary_bucket_name) else None
+        )
+        replica_import_id = (
+            replica_bucket_name
+            if _bucket_exists(replica_bucket_name, provider=replica_provider)
+            else None
+        )
+        primary_bucket_opts = (
+            pulumi.ResourceOptions(parent=self, import_=primary_import_id)
+            if primary_import_id
+            else pulumi.ResourceOptions(parent=self)
+        )
+        primary_resource_opts = pulumi.ResourceOptions(parent=self)
+        replica_bucket_opts = (
+            pulumi.ResourceOptions(
+                parent=self,
+                provider=replica_provider,
+                import_=replica_import_id,
+            )
+            if replica_import_id
+            else pulumi.ResourceOptions(parent=self, provider=replica_provider)
+        )
+        replica_resource_opts = pulumi.ResourceOptions(
+            parent=self, provider=replica_provider
+        )
 
         bucket = aws.s3.Bucket(
             f"{name}-primary",
             bucket=primary_bucket_name,
-            versioning=aws.s3.BucketVersioningArgs(enabled=True),
-            lifecycle_rules=[
-                aws.s3.BucketLifecycleRuleArgs(
-                    id="logs-lifecycle",
-                    enabled=True,
-                    abort_incomplete_multipart_upload_days=7,
-                    transitions=[
-                        aws.s3.BucketLifecycleRuleTransitionArgs(
-                            days=30,
-                            storage_class="STANDARD_IA",
-                        )
-                    ],
-                    expiration=aws.s3.BucketLifecycleRuleExpirationArgs(days=365),
-                )
-            ],
-            server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
-                rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                        sse_algorithm="AES256"
-                    )
-                )
-            ),
             tags=base_tags({"Purpose": "central-logging"}),
-            opts=base_opts,
+            opts=primary_bucket_opts,
         )
 
         replica_bucket = aws.s3.Bucket(
             f"{name}-replica",
             bucket=replica_bucket_name,
-            versioning=aws.s3.BucketVersioningArgs(enabled=True),
-            lifecycle_rules=[
-                aws.s3.BucketLifecycleRuleArgs(
-                    id="replica-lifecycle",
-                    enabled=True,
-                    abort_incomplete_multipart_upload_days=7,
-                )
-            ],
-            server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
-                rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+            tags=base_tags({"Purpose": "central-logging-replica"}),
+            opts=replica_bucket_opts,
+        )
+
+        aws.s3.BucketVersioning(
+            f"{name}-primary-versioning",
+            bucket=bucket.id,
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+                status="Enabled"
+            ),
+            opts=primary_resource_opts,
+        )
+
+        aws.s3.BucketVersioning(
+            f"{name}-replica-versioning",
+            bucket=replica_bucket.id,
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+                status="Enabled"
+            ),
+            opts=replica_resource_opts,
+        )
+
+        aws.s3.BucketServerSideEncryptionConfiguration(
+            f"{name}-primary-sse",
+            bucket=bucket.id,
+            rules=[
+                aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
                     apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                         sse_algorithm="AES256"
                     )
                 )
-            ),
-            tags=base_tags({"Purpose": "central-logging-replica"}),
-            opts=replica_opts,
+            ],
+            opts=primary_resource_opts,
+        )
+
+        aws.s3.BucketServerSideEncryptionConfiguration(
+            f"{name}-replica-sse",
+            bucket=replica_bucket.id,
+            rules=[
+                aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                        sse_algorithm="AES256"
+                    )
+                )
+            ],
+            opts=replica_resource_opts,
+        )
+
+        aws.s3.BucketLifecycleConfiguration(
+            f"{name}-primary-lifecycle",
+            bucket=bucket.id,
+            rules=[
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="logs-lifecycle",
+                    status="Enabled",
+                    prefix="",
+                    abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
+                        days_after_initiation=7
+                    ),
+                    transitions=[
+                        aws.s3.BucketLifecycleConfigurationRuleTransitionArgs(
+                            days=30,
+                            storage_class="STANDARD_IA",
+                        )
+                    ],
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=365
+                    ),
+                )
+            ],
+            opts=primary_resource_opts,
+        )
+
+        aws.s3.BucketLifecycleConfiguration(
+            f"{name}-replica-lifecycle",
+            bucket=replica_bucket.id,
+            rules=[
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="replica-lifecycle",
+                    status="Enabled",
+                    prefix="",
+                    abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
+                        days_after_initiation=7
+                    ),
+                )
+            ],
+            opts=replica_resource_opts,
         )
 
         aws.s3.BucketPublicAccessBlock(
@@ -233,7 +327,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             block_public_policy=True,
             ignore_public_acls=True,
             restrict_public_buckets=True,
-            opts=base_opts,
+            opts=primary_resource_opts,
         )
 
         aws.s3.BucketPublicAccessBlock(
@@ -243,7 +337,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             block_public_policy=True,
             ignore_public_acls=True,
             restrict_public_buckets=True,
-            opts=replica_opts,
+            opts=replica_resource_opts,
         )
 
         aws.s3.BucketPolicy(
@@ -256,7 +350,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 ),
                 _log_bucket_policy_from_values,
             ),
-            opts=base_opts,
+            opts=primary_resource_opts,
         )
 
         aws.s3.BucketPolicy(
@@ -269,7 +363,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 ),
                 _log_bucket_policy_from_values,
             ),
-            opts=replica_opts,
+            opts=replica_resource_opts,
         )
 
         replication_role = aws.iam.Role(
@@ -278,7 +372,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 bucket.arn, _replication_assume_role_policy
             ),
             tags=base_tags({"Purpose": "central-logs-replication"}),
-            opts=base_opts,
+            opts=primary_resource_opts,
         )
 
         replication_role_policy = aws.iam.RolePolicy(
@@ -291,7 +385,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 ),
                 _replication_role_policy,
             ),
-            opts=base_opts,
+            opts=primary_resource_opts,
         )
 
         aws.s3.BucketReplicationConfig(

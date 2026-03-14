@@ -10,6 +10,11 @@ def test_stack_executes(monkeypatch):
         monkeypatch.setattr(config.settings, "repo", "repo")
         monkeypatch.setattr(config.settings, "environment", "test")
         monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+        monkeypatch.setattr(
+            config.settings,
+            "github_oidc_provider_arn",
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+        )
         monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
         stack_path = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
         runpy.run_path(str(stack_path))

@@ -193,6 +193,26 @@ def pulumi_secrets_provider_for_repo(repo_name: str, region: str) -> str:
     )
 
 
+def runner_ecr_repository_name(repo_name: str) -> str:
+    """Compute the ECR repository name used by GitHub automation runners."""
+    repo_part = _sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+    env_part = _sanitize_bucket_component(settings.environment, "environment")
+    return f"pulumi-runner/{repo_part}-{env_part}"
+
+
+def automation_role_name(repo_name: str) -> str:
+    """Compute the GitHub automation role name for this repository/environment."""
+    repo_part = _sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+    env_part = _sanitize_bucket_component(settings.environment, "environment")
+    name = f"PulumiAutomation-{repo_part}-{env_part}"
+    if len(name) > 64:
+        raise ValueError(
+            "Combined repo/environment produce automation role name "
+            f"'{name}' longer than 64 characters."
+        )
+    return name
+
+
 def central_logging_bucket_name(region: str) -> str:
     """Compute the central logging bucket name for a given region."""
     prefix_part = _sanitize_bucket_component(settings.logging_prefix, "loggingPrefix")

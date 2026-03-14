@@ -50,6 +50,8 @@ def test_deploy_stack_exports_pulumi_kms_outputs():
     main_text = (ROOT / "pulumi" / "__main__.py").read_text()
     assert 'pulumi.export("pulumiSecretsKeyArns"' in main_text  # nosec B101
     assert 'pulumi.export("pulumiSecretsProviderUrls"' in main_text  # nosec B101
+    assert 'pulumi.export("automationRoleArn"' in main_text  # nosec B101
+    assert 'pulumi.export("runnerRepositoryUrl"' in main_text  # nosec B101
 
 
 def test_repository_uses_uv_for_python_tooling():
@@ -75,6 +77,13 @@ def test_ci_workflows_cover_local_test_targets():
     mutation = (ROOT / ".github" / "workflows" / "pulumi-mutation.yml").read_text()
     bats = (ROOT / ".github" / "workflows" / "bats-tests.yml").read_text()
     e2e = (ROOT / ".github" / "workflows" / "pulumi-e2e.yml").read_text()
+    runner_image = (
+        ROOT / ".github" / "workflows" / "pulumi-runner-image.yml"
+    ).read_text()
+    pr_commands = (
+        ROOT / ".github" / "workflows" / "pulumi-pr-commands.yml"
+    ).read_text()
+    drift = (ROOT / ".github" / "workflows" / "pulumi-drift.yml").read_text()
     deploy_test = (ROOT / ".github" / "workflows" / "pulumi.yml").read_text()
     deploy_prod = (ROOT / ".github" / "workflows" / "pulumi-prod.yml").read_text()
     assert "check-format" in quality  # nosec B101
@@ -106,12 +115,22 @@ def test_ci_workflows_cover_local_test_targets():
     assert "make test-e2e" in e2e  # nosec B101
     assert "docker compose build pulumi" in e2e  # nosec B101
     assert "pull_request:" in e2e  # nosec B101
+    assert "make runner-image-build" in runner_image  # nosec B101
+    assert "make runner-image-smoke" in runner_image  # nosec B101
+    assert "make runner-image-push" in runner_image  # nosec B101
+    assert "issue_comment:" in pr_commands  # nosec B101
+    assert "./scripts/run_pulumi_command.sh" in pr_commands  # nosec B101
+    assert "upload-artifact" in pr_commands  # nosec B101
+    assert "run_pulumi_command.sh drift" in drift  # nosec B101
+    assert "schedule:" in drift  # nosec B101
     assert "PULUMI_STACK: test" in deploy_test  # nosec B101
     assert "PULUMI_STACK: prod" in deploy_prod  # nosec B101
     assert "setup-uv" in deploy_test  # nosec B101
     assert "setup-uv" in deploy_prod  # nosec B101
     assert "uv sync" in deploy_test  # nosec B101
     assert "uv sync" in deploy_prod  # nosec B101
+    assert "run_pulumi_command.sh up" in deploy_test  # nosec B101
+    assert "run_pulumi_command.sh up" in deploy_prod  # nosec B101
     assert "poetry" not in deploy_test  # nosec B101
     assert "poetry" not in deploy_prod  # nosec B101
 
@@ -121,9 +140,11 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     ci_doc = (ROOT / "docs" / "ci-guardrails.md").read_text()
     testing_doc = (ROOT / "docs" / "testing.md").read_text()
     kms_doc = (ROOT / "docs" / "pulumi-bootstrap-kms.md").read_text()
+    automation_doc = (ROOT / "docs" / "pulumi-github-automation.md").read_text()
     assert "testing.md" in docs_index  # nosec B101
     assert "ci-guardrails.md" in docs_index  # nosec B101
     assert "pulumi-bootstrap-kms.md" in docs_index  # nosec B101
+    assert "pulumi-github-automation.md" in docs_index  # nosec B101
     assert "Python Quality Checks" in ci_doc  # nosec B101
     assert "DevSecOps Guardrails" in ci_doc  # nosec B101
     assert "Qlty" in ci_doc  # nosec B101
@@ -138,6 +159,9 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     assert "Mutation" in testing_doc  # nosec B101
     assert "Stage-0" in kms_doc  # nosec B101
     assert "pulumiSecretsProviderUrls" in kms_doc  # nosec B101
+    assert "pulumi plan" in automation_doc  # nosec B101
+    assert "pulumi up" in automation_doc  # nosec B101
+    assert "ECR" in automation_doc  # nosec B101
 
 
 def test_repository_tracks_qlty_configuration():

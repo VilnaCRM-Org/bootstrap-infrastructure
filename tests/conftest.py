@@ -40,6 +40,17 @@ class TestMocks(pulumi.runtime.Mocks):
                 "arn",
                 "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
             )
+        elif type_ == "aws:ecr/repository:Repository":
+            repository_name = inputs.get("name") or name
+            state.setdefault("name", repository_name)
+            state.setdefault(
+                "repositoryUrl",
+                f"123456789012.dkr.ecr.us-east-1.amazonaws.com/{repository_name}",
+            )
+            state.setdefault(
+                "repository_url",
+                f"123456789012.dkr.ecr.us-east-1.amazonaws.com/{repository_name}",
+            )
         elif type_ == "aws:kms/key:Key":
             state.setdefault("arn", f"arn:aws:kms:us-east-1:123456789012:key/{name}")
             state.setdefault("keyId", f"{name}-key-id")
@@ -61,6 +72,8 @@ class TestMocks(pulumi.runtime.Mocks):
             return {"name": "us-east-1"}, []
         if token == "aws:index/getCallerIdentity:getCallerIdentity":  # nosec B105
             return {"accountId": "123456789012"}, []
+        if token == "aws:iam/getRole:getRole":  # nosec B105
+            return {"arn": f"arn:aws:iam::123456789012:role/{payload.get('name')}"}, []
         if token == "aws:s3/getBucket:getBucket":  # nosec B105
             return {"id": payload.get("bucket")}, []
         return {}, []

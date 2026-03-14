@@ -7,6 +7,7 @@ from pulumi.runtime.sync_await import _sync_await
 import pulumi
 from infra import (
     CentralLoggingBuckets,
+    GitHubAutomation,
     PulumiSecretsKeys,
     PulumiStateBuckets,
     S3BackupPlan,
@@ -35,9 +36,21 @@ def test_central_logging_buckets_reject_same_replication_region():
 
 def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    monkeypatch.setattr(config.settings, "repo", "bootstrap-infrastructure")
     monkeypatch.setattr(config.settings, "environment", "test")
     monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
-    monkeypatch.setattr(pulumi_state, "_bucket_exists", lambda _name: False)
+    monkeypatch.setattr(
+        config.settings,
+        "github_oidc_provider_arn",
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+    )
+    monkeypatch.setattr(
+        pulumi_state, "_bucket_exists", lambda _name, provider=None: False
+    )
+    monkeypatch.setattr(
+        logging_bucket, "_bucket_exists", lambda _name, provider=None: False
+    )
+    monkeypatch.setattr(github_oidc, "_role_exists", lambda _name: False)
 
     repos = [config.ManagedRepository(name="repo", default_branch="main")]
 
@@ -49,6 +62,7 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     oidc = GitHubOidcRoles(
         "github-oidc", repositories=repos, secrets_key_arns=secrets.key_arns
     )
+    automation = GitHubAutomation("github-automation")
     S3BackupPlan(
         "backup", backup_target_arns=[logging.bucket.arn, *state.bucket_arns.values()]
     )
@@ -57,6 +71,7 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     assert state.backend_urls  # nosec B101
     assert secrets.provider_urls  # nosec B101
     assert oidc.deploy_role_arns  # nosec B101
+    assert automation.repository.repository_url is not None  # nosec B101
 
 
 def test_state_buckets_reject_same_replication_region(monkeypatch):
@@ -152,6 +167,70 @@ def test_pulumi_secrets_keys_emit_expected_resources_and_outputs(
     assert alias_state["name"] == "alias/pulumi-repo-test-secrets"  # nosec B101
 
 
+def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkeypatch):  # noqa: ARG001
+    monkeypatch.setattr(config.settings, "repo", "bootstrap-infrastructure")
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "org", "VilnaCRM-Org")
+    monkeypatch.setattr(
+        config.settings,
+        "github_oidc_provider_arn",
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+    )
+
+    start = len(pulumi_mocks.resources)
+    automation = GitHubAutomation("github-automation")
+
+    repository_url = _sync_await(future_output(automation.repository.repository_url))
+    role_arn = _sync_await(future_output(automation.role.arn))
+    assert repository_url is not None  # nosec B101
+    assert role_arn is not None  # nosec B101
+    assert repository_url.endswith("/pulumi-runner/bootstrap-infrastructure-test")  # nosec B101
+    assert role_arn.endswith(":role/PulumiAutomation-bootstrap-infrastructure-test")  # nosec B101
+
+    new_resources = pulumi_mocks.resources[start:]
+    repository_type, _, repository_state = next(
+        (type_, name, state)
+        for type_, name, state in new_resources
+        if type_ == "aws:ecr/repository:Repository"
+    )
+    role_type, _, role_state = next(
+        (type_, name, state)
+        for type_, name, state in new_resources
+        if type_ == "aws:iam/role:Role"
+        and state.get("name") == "PulumiAutomation-bootstrap-infrastructure-test"
+    )
+
+    assert repository_type == "aws:ecr/repository:Repository"  # nosec B101
+    assert repository_state["name"] == "pulumi-runner/bootstrap-infrastructure-test"  # nosec B101
+    assert repository_state["imageTagMutability"] == "IMMUTABLE"  # nosec B101
+    assert repository_state["imageScanningConfiguration"]["scanOnPush"] is True  # nosec B101
+    assert role_type == "aws:iam/role:Role"  # nosec B101
+    assert (
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
+        in role_state["assumeRolePolicy"]
+    )  # nosec B101
+
+
+def test_github_automation_requires_repo(monkeypatch):
+    monkeypatch.setattr(config.settings, "repo", None)
+    monkeypatch.setattr(
+        config.settings,
+        "github_oidc_provider_arn",
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+    )
+
+    with pytest.raises(ValueError, match="repoSlug config is required"):
+        GitHubAutomation("github-automation-missing-repo")
+
+
+def test_github_automation_requires_provider(monkeypatch):
+    monkeypatch.setattr(config.settings, "repo", "bootstrap-infrastructure")
+    monkeypatch.setattr(config.settings, "github_oidc_provider_arn", None)
+
+    with pytest.raises(ValueError, match="githubOidcProviderArn config is required"):
+        GitHubAutomation("github-automation-missing-provider")
+
+
 def test_github_oidc_roles_require_matching_kms_key(monkeypatch):
     class FakeProvider:
         arn = pulumi.Output.from_input(
@@ -174,11 +253,46 @@ def test_github_oidc_roles_require_matching_kms_key(monkeypatch):
         )
 
 
+def test_github_oidc_roles_create_provider_when_missing(monkeypatch, pulumi_mocks):  # noqa: ARG001
+    monkeypatch.setattr(github_oidc.settings, "github_oidc_provider_arn", None)
+    monkeypatch.setattr(github_oidc.settings, "org", "VilnaCRM-Org")
+
+    repos = [config.ManagedRepository(name="repo3", default_branch="main")]
+    roles = GitHubOidcRoles("github-oidc-created", repositories=repos)
+
+    assert roles.deploy_role_arns  # nosec B101
+
+
 def test_github_oidc_role_name_limits_length():
     long_suffix = "a" * 70
     role_name = github_oidc._role_name_for_suffix(long_suffix)
     assert role_name.startswith(github_oidc._ROLE_NAME_PREFIX)  # nosec B101
     assert len(role_name) <= github_oidc._MAX_IAM_ROLE_NAME_LENGTH  # nosec B101
+
+
+def test_github_oidc_role_exists_true(monkeypatch):
+    monkeypatch.setattr(github_oidc.aws.iam, "get_role", lambda **_kwargs: object())
+
+    assert github_oidc._role_exists("PulumiDeploy-repo") is True  # nosec B101
+
+
+def test_github_oidc_role_exists_false(monkeypatch):
+    def raise_missing(**_kwargs):
+        raise RuntimeError("NoSuchEntity")
+
+    monkeypatch.setattr(github_oidc.aws.iam, "get_role", raise_missing)
+
+    assert github_oidc._role_exists("PulumiDeploy-repo") is False  # nosec B101
+
+
+def test_github_oidc_role_exists_raises_unexpected(monkeypatch):
+    def raise_other(**_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(github_oidc.aws.iam, "get_role", raise_other)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        github_oidc._role_exists("PulumiDeploy-repo")
 
 
 def test_github_oidc_repo_suffix_disambiguates_normalized_collisions():
@@ -218,6 +332,11 @@ def test_stack_main_executes(monkeypatch):
         monkeypatch.setattr(config.settings, "repo", "repo")
         monkeypatch.setattr(config.settings, "environment", "test")
         monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+        monkeypatch.setattr(
+            config.settings,
+            "github_oidc_provider_arn",
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+        )
         monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
         stack_path = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
         # Keep a fast stack smoke test alongside the integration suite.

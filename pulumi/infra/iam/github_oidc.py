@@ -25,6 +25,19 @@ _ROLE_NAME_PREFIX = "PulumiDeploy-"
 _MAX_IAM_ROLE_NAME_LENGTH = 64
 
 
+def _role_exists(name: str) -> bool:
+    """Return True when the IAM role already exists."""
+    try:
+        aws.iam.get_role(name=name)
+    except Exception as exc:
+        message = str(exc)
+        if "NoSuchEntity" in message or "couldn't find resource" in message:
+            return False
+        raise
+    else:
+        return True
+
+
 def _repo_suffix(repo_name: str) -> str:
     """Return a readable role suffix that stays unique after normalization."""
     base = sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
@@ -193,20 +206,26 @@ class GitHubOidcRoles(pulumi.ComponentResource):
                 )
 
             assume_role_policy = apply_output(provider.arn, build_assume_role_policy)
-
-            role = aws.iam.Role(
-                f"{name}-role-{repo_suffix}",
-                name=role_name,
-                assume_role_policy=assume_role_policy,
-                tags=base_tags(
-                    {
-                        "Purpose": "pulumi-deploy",
-                        "Repository": repo.name,
-                        "App": repo.name,
-                    }
-                ),
-                opts=pulumi.ResourceOptions(parent=self),
-            )
+            if _role_exists(role_name):
+                role = aws.iam.Role.get(
+                    f"{name}-role-{repo_suffix}",
+                    role_name,
+                    opts=pulumi.ResourceOptions(parent=self),
+                )
+            else:
+                role = aws.iam.Role(
+                    f"{name}-role-{repo_suffix}",
+                    name=role_name,
+                    assume_role_policy=assume_role_policy,
+                    tags=base_tags(
+                        {
+                            "Purpose": "pulumi-deploy",
+                            "Repository": repo.name,
+                            "App": repo.name,
+                        }
+                    ),
+                    opts=pulumi.ResourceOptions(parent=self),
+                )
 
             if secrets_key_arns is not None and repo.name not in secrets_key_arns:
                 raise ValueError(

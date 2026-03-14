@@ -5,6 +5,12 @@ COMPOSE_SERVICE   ?= pulumi
 PULUMI_DIR        ?= pulumi
 STACK             ?=
 PULUMI_SECRETS_PROVIDER ?=
+PULUMI_STACK      ?=
+AWS_REGION        ?= eu-central-1
+RUNNER_IMAGE_SOURCE ?= $(PROJECT)-pulumi:latest
+RUNNER_IMAGE_TAG  ?= local
+RUNNER_ECR_REPOSITORY ?=
+RUNNER_IMAGE_ADDITIONAL_TAGS ?=
 BATS_DOCKER_IMAGE ?= bats/bats:1.11.1
 EFFECTIVE_ENV_FILE := $(firstword $(wildcard $(ENV_FILE)))
 ACTIONLINT_IMAGE  ?= rhysd/actionlint:1.7.7
@@ -16,7 +22,7 @@ PYTHON_LINT_PATHS   = pulumi/__main__.py pulumi/infra tests
 PYTHON_TYPE_PATHS   = pulumi/__main__.py pulumi/infra
 PYTHON_TY_PATHS     = pulumi tests
 YAML_LINT_PATHS     = .github/workflows pulumi/Pulumi.yaml pulumi/Pulumi.test.yaml pulumi/Pulumi.test.yaml.example pulumi/Pulumi.prod.yaml.example
-SHELLCHECK_PATHS    = /work/scripts/run_mutation_tests.sh
+SHELLCHECK_PATHS    = /work/scripts/run_mutation_tests.sh /work/scripts/run_pulumi_command.sh /work/scripts/publish_runner_image.sh
 SPELLCHECK_PATHS    = .
 TOML_LINT_PATHS     = pyproject.toml
 QLTY ?= qlty
@@ -43,7 +49,9 @@ COVERAGE_DIR ?= $(if $(CI),/tmp,.)
 .DEFAULT_GOAL     = help
 .RECIPEPREFIX    +=
 .PHONY: all help start pulumi-preview pulumi-up pulumi-refresh pulumi-destroy \
+        pulumi-plan-ci pulumi-up-ci pulumi-drift-ci \
         pulumi-stack-select pulumi-stack-migrate-secrets sh down clean \
+        runner-image-build runner-image-smoke runner-image-push \
         check-format check-lint check-spelling check-toml check-types check-ty check-package check-qlty \
         check-bandit check-deps check-sbom check-yaml check-actionlint \
         check-docker check-shell check-iac check-static check-security ci \
@@ -71,6 +79,15 @@ pulumi-refresh: ## Sync the Pulumi stack with live cloud resources.
 pulumi-destroy: ## Tear down the Pulumi stack (irreversible; use with caution).
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) destroy
 
+pulumi-plan-ci: ## Execute the GitHub automation Pulumi plan flow via the shared command runner.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "./scripts/run_pulumi_command.sh plan"
+
+pulumi-up-ci: ## Execute the GitHub automation Pulumi apply flow via the shared command runner.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "./scripts/run_pulumi_command.sh up"
+
+pulumi-drift-ci: ## Execute the GitHub automation drift check via the shared command runner.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "./scripts/run_pulumi_command.sh drift"
+
 define require_var
 @if [ -z "$($(1))" ]; then \
   echo "$(1) is required." >&2; \
@@ -93,6 +110,17 @@ sh: ## Open a shell inside the Pulumi container.
 
 down: ## Stop the Docker Compose environment.
 	$(COMPOSE) down
+
+runner-image-build: ## Build the GitHub automation runner image locally.
+	$(COMPOSE) build $(COMPOSE_SERVICE)
+
+runner-image-smoke: ## Verify the runner image includes the required CLI toolchain.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "pulumi version && aws --version && uv --version && typos --version && taplo --version"
+
+runner-image-push: ## Push the locally built runner image into ECR.
+	$(call require_var,RUNNER_ECR_REPOSITORY)
+	$(call require_var,RUNNER_IMAGE_TAG)
+	AWS_REGION="$(AWS_REGION)" RUNNER_IMAGE_SOURCE="$(RUNNER_IMAGE_SOURCE)" RUNNER_ECR_REPOSITORY="$(RUNNER_ECR_REPOSITORY)" RUNNER_IMAGE_TAG="$(RUNNER_IMAGE_TAG)" RUNNER_IMAGE_ADDITIONAL_TAGS="$(RUNNER_IMAGE_ADDITIONAL_TAGS)" ./scripts/publish_runner_image.sh
 
 define run_or_skip
 @if [ -d "$(1)" ]; then \

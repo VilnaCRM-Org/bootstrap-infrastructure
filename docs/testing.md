@@ -150,6 +150,8 @@ Coverage:
 - `pulumi stack output`
 - `pulumi destroy`
 - `pulumi stack rm`
+- `./scripts/run_pulumi_command.sh plan`
+- `./scripts/run_pulumi_command.sh up`
 
 The e2e suite uses a temporary fixture project instead of the full bootstrap stack so it can validate the Pulumi CLI flow without creating application infrastructure.
 
@@ -165,6 +167,8 @@ make test-bats
 Coverage:
 - help and default targets
 - every Pulumi command wrapper
+- the CI-oriented Pulumi command wrappers (`pulumi-plan-ci`, `pulumi-up-ci`, `pulumi-drift-ci`)
+- runner image operator commands (`runner-image-build`, `runner-image-smoke`, `runner-image-push`)
 - test command wrappers
 - cleanup and shell targets
 
@@ -179,6 +183,9 @@ GitHub Actions mirrors the local targets:
 - `pulumi-mutation.yml` -> `make test-mutation`
 - `pulumi-e2e.yml` -> `make test-e2e`
 - `bats-tests.yml` -> `make test-bats`
+- `pulumi-runner-image.yml` -> `make runner-image-build`, `make runner-image-smoke`, `make runner-image-push`
+- `pulumi-pr-commands.yml` -> `./scripts/run_pulumi_command.sh plan|up` inside the published ECR runner image
+- `pulumi-drift.yml` -> `./scripts/run_pulumi_command.sh drift` inside the published ECR runner image
 
 The aggregate local command is:
 ```bash

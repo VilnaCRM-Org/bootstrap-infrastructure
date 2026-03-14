@@ -1,5 +1,6 @@
 import json
 
+from infra.automation import _automation_assume_role_policy, _automation_policy
 from infra.iam.github_oidc import _assume_role_policy, _deploy_policy
 from infra.logging_bucket import _log_bucket_policy
 from infra.pulumi_state import _bucket_policy
@@ -55,6 +56,30 @@ def test_deploy_policy_includes_kms_permissions():
         "kms:ReEncrypt*",
     ]
     assert policy["Statement"][2]["Resource"] == "arn:kms"  # nosec B101
+
+
+def test_automation_assume_role_policy_uses_environment_subject():
+    policy = json.loads(
+        _automation_assume_role_policy("arn:oidc", "org", "repo", "test")
+    )
+    statement = policy["Statement"][0]
+    assert statement["Principal"]["Federated"] == "arn:oidc"  # nosec B101
+    assert statement["Action"] == "sts:AssumeRoleWithWebIdentity"  # nosec B101
+    assert statement["Condition"]["StringEquals"] == {  # nosec B101
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": "repo:org/repo:environment:test",
+    }
+
+
+def test_automation_policy_scopes_to_bootstrap_services():
+    policy = json.loads(_automation_policy())
+    statements = {statement["Sid"]: statement for statement in policy["Statement"]}
+    assert statements["ReadIdentity"]["Action"] == ["sts:GetCallerIdentity"]  # nosec B101
+    assert statements["ManageBootstrapS3"]["Action"] == ["s3:*"]  # nosec B101
+    assert statements["ManageBootstrapKms"]["Action"] == ["kms:*"]  # nosec B101
+    assert statements["ManageBootstrapIam"]["Action"] == ["iam:*"]  # nosec B101
+    assert statements["ManageBootstrapBackup"]["Action"] == ["backup:*"]  # nosec B101
+    assert statements["ManageBootstrapEcr"]["Action"] == ["ecr:*"]  # nosec B101
 
 
 def test_log_bucket_policy_contains_required_statements():

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 HAS_E2E_PROVIDER = bool(os.getenv("PULUMI_E2E_SECRETS_PROVIDER"))
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _run(
@@ -115,6 +116,93 @@ def test_pulumi_cli_smoke_with_awskms(tmp_path: Path):
         )
         _run(
             ["pulumi", "-C", str(project_dir), "stack", "rm", stack, "--yes"],
+            cwd=project_dir,
+            env=env,
+        )
+
+
+@pytest.mark.skipif(
+    not HAS_E2E_PROVIDER, reason="PULUMI_E2E_SECRETS_PROVIDER is not set."
+)
+def test_pulumi_command_script_handles_plan_and_up(tmp_path: Path):
+    provider = os.environ["PULUMI_E2E_SECRETS_PROVIDER"]
+
+    backend_dir = tmp_path / "backend"
+    project_dir = tmp_path / "project"
+    pulumi_home = tmp_path / "pulumi-home"
+    backend_dir.mkdir()
+    project_dir.mkdir()
+    pulumi_home.mkdir()
+
+    (project_dir / "Pulumi.yaml").write_text(
+        "name: pulumi-e2e-smoke\nruntime:\n  name: python\n",
+        encoding="utf-8",
+    )
+    (project_dir / "__main__.py").write_text(
+        "import pulumi\npulumi.export('status', 'ok')\n",
+        encoding="utf-8",
+    )
+
+    env = os.environ.copy()
+    env["PULUMI_HOME"] = str(pulumi_home)
+    env["PULUMI_SKIP_UPDATE_CHECK"] = "true"
+    env["PULUMI_STACK"] = "script-e2e"
+    env["PULUMI_BACKEND_URL"] = f"file://{backend_dir}"
+    env["PULUMI_SECRETS_PROVIDER"] = provider
+    env["PULUMI_DIR"] = str(project_dir)
+
+    script = ROOT / "scripts" / "run_pulumi_command.sh"
+
+    try:
+        for command_name in ("plan", "up"):
+            result = _run(
+                ["bash", str(script), command_name],
+                cwd=ROOT,
+                env=env,
+            )
+            assert result.returncode == 0, result.stdout + result.stderr  # nosec B101
+
+        output = _run(
+            [
+                "pulumi",
+                "-C",
+                str(project_dir),
+                "stack",
+                "output",
+                "status",
+                "--stack",
+                env["PULUMI_STACK"],
+            ],
+            cwd=project_dir,
+            env=env,
+        )
+        assert output.returncode == 0, output.stdout + output.stderr  # nosec B101
+        assert output.stdout.strip() == "ok"  # nosec B101
+    finally:
+        _run(
+            [
+                "pulumi",
+                "-C",
+                str(project_dir),
+                "destroy",
+                "--stack",
+                env["PULUMI_STACK"],
+                "--yes",
+                "--skip-preview",
+            ],
+            cwd=project_dir,
+            env=env,
+        )
+        _run(
+            [
+                "pulumi",
+                "-C",
+                str(project_dir),
+                "stack",
+                "rm",
+                env["PULUMI_STACK"],
+                "--yes",
+            ],
             cwd=project_dir,
             env=env,
         )

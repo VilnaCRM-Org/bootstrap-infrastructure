@@ -25,16 +25,20 @@ _REPLICATION_ROLE_NAME_PREFIX = "PulumiStateRepl-"
 _MAX_IAM_ROLE_NAME_LENGTH = 64
 
 
-def _bucket_exists(name: str) -> bool:
+def _bucket_exists(name: str, *, provider: aws.Provider | None = None) -> bool:
     """Return True when the S3 bucket already exists."""
     try:
-        aws.s3.get_bucket(bucket=name)
+        invoke_opts = (
+            pulumi.InvokeOptions(provider=provider) if provider is not None else None
+        )
+        aws.s3.get_bucket(bucket=name, opts=invoke_opts)
     except Exception as exc:
         message = str(exc)
         if (
             "NotFound" in message
             or "NoSuchBucket" in message
             or "404" in message
+            or "empty result" in message
             or "couldn't find resource" in message
         ):
             return False
@@ -255,7 +259,9 @@ class PulumiStateBuckets(pulumi.ComponentResource):
                     f"'{replica_bucket_name}' exceeds 63 characters."
                 )
             replica_import_id = (
-                replica_bucket_name if _bucket_exists(replica_bucket_name) else None
+                replica_bucket_name
+                if _bucket_exists(replica_bucket_name, provider=replica_provider)
+                else None
             )
             replica_bucket_opts = (
                 pulumi.ResourceOptions(

@@ -104,6 +104,8 @@ s3://pulumi-<repo>-<env>-state/state/<stack>
 CI requires setting the `PULUMI_STATE_BUCKET` repository variable to the bucket name that matches the
 configured repo/environment naming (for example: `pulumi-bootstrap-infrastructure-test-state`).
 CI also requires `PULUMI_TEST_SECRETS_PROVIDER` and `PULUMI_PROD_SECRETS_PROVIDER` repository variables, each containing an `awskms://...` URI for the matching environment.
+GitHub automation for PR comments also requires `PULUMI_TEST_ROLE_ARN` and `PULUMI_TEST_RUNNER_ECR_REPOSITORY`.
+The automation workflows use the `test` job environment subject for OIDC trust and pull a prebuilt ECR runner image before executing `pulumi plan`, `pulumi up`, or scheduled drift detection.
 
 For repositories bootstrapped by this stack, the expected flow is:
 ```text
@@ -126,6 +128,16 @@ make pulumi-preview
 make pulumi-up
 make pulumi-refresh
 make pulumi-destroy
+make pulumi-plan-ci
+make pulumi-up-ci
+make pulumi-drift-ci
+```
+
+Runner image commands:
+```bash
+make runner-image-build
+make runner-image-smoke
+make runner-image-push RUNNER_ECR_REPOSITORY=pulumi-runner/bootstrap-infrastructure-test RUNNER_IMAGE_TAG=sha-<commit>
 ```
 
 Quality and security guardrails:

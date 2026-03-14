@@ -9,6 +9,7 @@ avoid import-time side effects.
 import pulumi
 from infra import (
     CentralLoggingBuckets,
+    GitHubAutomation,
     PulumiSecretsKeys,
     PulumiStateBuckets,
     S3BackupPlan,
@@ -19,6 +20,7 @@ logging = CentralLoggingBuckets("central-logging")
 state = PulumiStateBuckets("pulumi-state")
 secrets = PulumiSecretsKeys("pulumi-secrets")
 oidc = GitHubOidcRoles("github-oidc", secrets_key_arns=secrets.key_arns)
+automation = GitHubAutomation("github-automation")
 
 backup_targets = [logging.bucket.arn, *state.bucket_arns.values()]
 S3BackupPlan("s3-backup", backup_target_arns=backup_targets)
@@ -31,3 +33,6 @@ pulumi.export("pulumiSecretsKeyArns", secrets.key_arns)
 pulumi.export("pulumiSecretsAliases", secrets.alias_names)
 pulumi.export("pulumiSecretsProviderUrls", secrets.provider_urls)
 pulumi.export("deployRoleArns", oidc.deploy_role_arns)
+pulumi.export("automationRoleArn", automation.role.arn)
+pulumi.export("runnerRepositoryName", automation.repository.name)
+pulumi.export("runnerRepositoryUrl", automation.repository.repository_url)

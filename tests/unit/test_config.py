@@ -15,9 +15,11 @@ sys.path.append(str(Path(__file__).resolve().parents[2] / "pulumi"))
 from infra import config
 from infra.config import (
     _sanitize_bucket_component,
+    automation_role_name,
     central_logging_bucket_name,
     pulumi_secrets_alias_name_for_repo,
     pulumi_secrets_provider_for_repo,
+    runner_ecr_repository_name,
     settings,
     state_bucket_name_for_repo,
 )
@@ -217,6 +219,22 @@ def test_pulumi_secrets_provider_for_repo_reports_region_label(monkeypatch):
     monkeypatch.setattr(settings, "environment", "test")
     with pytest.raises(ValueError, match=r"^region\b"):
         pulumi_secrets_provider_for_repo("repo", "??")
+
+
+def test_runner_ecr_repository_name(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "test")
+    assert runner_ecr_repository_name("My.Repo") == "pulumi-runner/my-repo-test"  # nosec B101
+
+
+def test_automation_role_name(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "test")
+    assert automation_role_name("My.Repo") == "PulumiAutomation-my-repo-test"  # nosec B101
+
+
+def test_automation_role_name_length_guard(monkeypatch):
+    monkeypatch.setattr(settings, "environment", "e" * 40)
+    with pytest.raises(ValueError):
+        automation_role_name("r" * 40)
 
 
 def test_central_logging_bucket_length_guard(monkeypatch):

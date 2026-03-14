@@ -24,10 +24,15 @@ services:
       - PULUMI_BACKEND_URL
       - PULUMI_SECRETS_PROVIDER
       - PULUMI_E2E_SECRETS_PROVIDER
+      - PULUMI_STACK
+      - PULUMI_DIR
+      - PULUMI_SKIP_UPDATE_CHECK
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
       - AWS_SESSION_TOKEN
       - AWS_PROFILE
+      - AWS_REGION
+      - AWS_DEFAULT_REGION
       - PYTHONPATH=/workspace/pulumi
     tty: true
     stdin_open: true

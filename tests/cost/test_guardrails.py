@@ -6,6 +6,7 @@ import runpy
 from pathlib import Path
 
 from infra import config
+from infra.iam import github_oidc
 
 STACK_PATH = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
 DISALLOWED_RESOURCE_PREFIXES = (
@@ -21,6 +22,7 @@ DISALLOWED_RESOURCE_PREFIXES = (
 )
 TAGGABLE_RESOURCE_TYPES = {
     "aws:backup/vault:Vault",
+    "aws:ecr/repository:Repository",
     "aws:iam/role:Role",
     "aws:kms/key:Key",
     "aws:s3/bucket:Bucket",
@@ -36,7 +38,13 @@ def _run_stack(monkeypatch, pulumi_mocks):
         monkeypatch.setattr(config.settings, "owner", "platform")
         monkeypatch.setattr(config.settings, "cost_center", "core")
         monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+        monkeypatch.setattr(
+            config.settings,
+            "github_oidc_provider_arn",
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+        )
         monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
+        monkeypatch.setattr(github_oidc, "_role_exists", lambda _name: False)
         runpy.run_path(str(STACK_PATH))
         return list(pulumi_mocks.resources)
     finally:

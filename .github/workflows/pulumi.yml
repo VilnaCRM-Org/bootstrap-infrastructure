@@ -103,10 +103,7 @@ jobs:
       - name: Pulumi up
         env:
           PULUMI_BACKEND_URL: ${{ steps.backend.outputs.backend_url }}
+          PULUMI_SECRETS_PROVIDER: ${{ env.PULUMI_SECRETS_PROVIDER }}
+          PULUMI_STACK: ${{ env.PULUMI_STACK }}
           PULUMI_SKIP_UPDATE_CHECK: "true"
-        run: |
-          if ! uv run --frozen --no-sync pulumi -C pulumi stack select "$PULUMI_STACK" --non-interactive; then
-            uv run --frozen --no-sync pulumi -C pulumi stack init "$PULUMI_STACK" --non-interactive --secrets-provider "$PULUMI_SECRETS_PROVIDER"
-          fi
-          uv run --frozen --no-sync pulumi -C pulumi stack change-secrets-provider "$PULUMI_SECRETS_PROVIDER" --stack "$PULUMI_STACK" --non-interactive
-          uv run --frozen --no-sync pulumi -C pulumi up --yes --skip-preview
+        run: bash ./scripts/run_pulumi_command.sh up

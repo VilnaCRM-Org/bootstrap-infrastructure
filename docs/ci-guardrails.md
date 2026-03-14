@@ -52,5 +52,8 @@ Deployment is split by environment so the repository does not rely on mutable `w
 
 - `pulumi.yml`: deploys the `test` stack
 - `pulumi-prod.yml`: deploys the `prod` stack
+- `pulumi-runner-image.yml`: builds and publishes the ECR-based Pulumi runner image for test automation
+- `pulumi-pr-commands.yml`: listens for `pulumi plan` and `pulumi up` comments on pull requests
+- `pulumi-drift.yml`: detects unexpected infrastructure drift on a schedule
 
 This keeps the deploy workflows easier to reason about and aligns better with GitHub Actions policy scanners.

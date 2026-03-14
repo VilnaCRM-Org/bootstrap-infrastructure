@@ -1,0 +1,76 @@
+name: Pulumi Runner Image
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - Dockerfile
+      - docker-compose.yml
+      - Makefile
+      - pyproject.toml
+      - uv.lock
+      - scripts/run_pulumi_command.sh
+      - scripts/publish_runner_image.sh
+  pull_request:
+    paths:
+      - Dockerfile
+      - docker-compose.yml
+      - Makefile
+      - pyproject.toml
+      - uv.lock
+      - scripts/run_pulumi_command.sh
+      - scripts/publish_runner_image.sh
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: pulumi-runner-image-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: >-
+      vars.PULUMI_TEST_ROLE_ARN != '' &&
+      vars.PULUMI_TEST_RUNNER_ECR_REPOSITORY != '' &&
+      (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    environment: test
+    env:
+      AWS_REGION: eu-central-1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.PULUMI_TEST_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build runner image
+        run: make runner-image-build
+
+      - name: Smoke test runner image
+        run: make runner-image-smoke
+
+      - name: Resolve image tags
+        id: tags
+        run: |
+          echo "primary=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "additional=main" >> "$GITHUB_OUTPUT"
+          else
+            echo "additional=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push runner image
+        run: |
+          make runner-image-push \
+            RUNNER_ECR_REPOSITORY='${{ vars.PULUMI_TEST_RUNNER_ECR_REPOSITORY }}' \
+            RUNNER_IMAGE_TAG='${{ steps.tags.outputs.primary }}' \
+            RUNNER_IMAGE_ADDITIONAL_TAGS='${{ steps.tags.outputs.additional }}'

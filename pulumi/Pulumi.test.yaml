@@ -1,5 +1,7 @@
 # Initialize or migrate this stack with an AWS KMS secrets provider:
-# pulumi -C pulumi stack init test --secrets-provider "awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1"
+# pulumi -C pulumi stack init test \
+#   --secrets-provider \
+#   "awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1"
 config:
   aws:region: eu-central-1
   bootstrap-infrastructure:githubOrg: VilnaCRM-Org
@@ -12,3 +14,7 @@ config:
     - name: bootstrap-infrastructure
       defaultBranch: main
   bootstrap-infrastructure:githubOidcProviderArn: arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com
+secretsprovider: awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1
+# yamllint disable rule:line-length
+encryptedkey: AQICAHhuJ08K1qm+KN2D75YLTMkGO58gvRwbGTrGUFRbTvX/8gFT4We5jg5IM/4kV+jowR2JAAAAfjB8BgkqhkiG9w0BBwagbzBtAgEAMGgGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMXUYAF7o3afaaUn80AgEQgDsWE7rgAzjSdP5Ocek3ZHl9GxyrVAhN5V8NCSFC6ROedLDutJy1mb+x6kbgJAgxSIFXp8yq2A4Xj09ddQ==
+# yamllint enable rule:line-length

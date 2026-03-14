@@ -10,7 +10,7 @@ class BucketLookupNotFoundError(RuntimeError):
 
 def test_bucket_exists_true(monkeypatch):
     monkeypatch.setattr(
-        pulumi_state.aws.s3, "get_bucket", lambda bucket: {"id": bucket}
+        pulumi_state.aws.s3, "get_bucket", lambda bucket, opts=None: {"id": bucket}
     )
     assert pulumi_state._bucket_exists("bucket") is True  # nosec B101
 
@@ -28,6 +28,14 @@ def test_bucket_exists_handles_invoke_not_found(monkeypatch):
         raise BucketLookupNotFoundError("couldn't find resource")
 
     monkeypatch.setattr(pulumi_state.aws.s3, "get_bucket", raise_not_found)
+    assert pulumi_state._bucket_exists("missing") is False  # nosec B101
+
+
+def test_bucket_exists_handles_empty_result(monkeypatch):
+    def raise_empty_result(*_args, **_kwargs):
+        raise BucketLookupNotFoundError("empty result")
+
+    monkeypatch.setattr(pulumi_state.aws.s3, "get_bucket", raise_empty_result)
     assert pulumi_state._bucket_exists("missing") is False  # nosec B101
 
 
@@ -64,7 +72,9 @@ def test_replica_bucket_name_length_guard(monkeypatch):
     monkeypatch.setattr(
         pulumi_state, "state_bucket_name_for_repo", lambda _repo: "a" * 60
     )
-    monkeypatch.setattr(pulumi_state, "_bucket_exists", lambda _name: False)
+    monkeypatch.setattr(
+        pulumi_state, "_bucket_exists", lambda _name, provider=None: False
+    )
     repos = [config.ManagedRepository(name="repo", default_branch="main")]
     with pytest.raises(ValueError):
         pulumi_state.PulumiStateBuckets(

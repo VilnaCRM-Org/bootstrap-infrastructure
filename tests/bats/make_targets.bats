@@ -18,6 +18,8 @@ assert_output_contains() {
   assert_output_contains "check-qlty"
   assert_output_contains "check-ty"
   assert_output_contains "pulumi-preview"
+  assert_output_contains "pulumi-plan-ci"
+  assert_output_contains "runner-image-build"
   assert_output_contains "test-cost"
   assert_output_contains "test-bats"
   assert_output_contains "test-e2e"
@@ -60,6 +62,24 @@ assert_output_contains() {
   assert_output_contains "pulumi -C pulumi destroy"
 }
 
+@test "make pulumi-plan-ci uses the shared Pulumi command runner" {
+  run make -n pulumi-plan-ci
+  [ "$status" -eq 0 ]
+  assert_output_contains "./scripts/run_pulumi_command.sh plan"
+}
+
+@test "make pulumi-up-ci uses the shared Pulumi command runner" {
+  run make -n pulumi-up-ci
+  [ "$status" -eq 0 ]
+  assert_output_contains "./scripts/run_pulumi_command.sh up"
+}
+
+@test "make pulumi-drift-ci uses the shared Pulumi command runner" {
+  run make -n pulumi-drift-ci
+  [ "$status" -eq 0 ]
+  assert_output_contains "./scripts/run_pulumi_command.sh drift"
+}
+
 @test "make pulumi-stack-select wires select and init" {
   run make -n pulumi-stack-select STACK=test PULUMI_SECRETS_PROVIDER=awskms://alias/example?region=eu-central-1
   [ "$status" -eq 0 ]
@@ -83,6 +103,28 @@ assert_output_contains() {
   run make -n down
   [ "$status" -eq 0 ]
   assert_output_contains "docker compose --env-file .env down"
+}
+
+@test "make runner-image-build builds the local automation image" {
+  run make -n runner-image-build
+  [ "$status" -eq 0 ]
+  assert_output_contains "docker compose --env-file .env build pulumi"
+}
+
+@test "make runner-image-smoke checks the local automation image toolchain" {
+  run make -n runner-image-smoke
+  [ "$status" -eq 0 ]
+  assert_output_contains "pulumi version"
+  assert_output_contains "aws --version"
+  assert_output_contains "uv --version"
+}
+
+@test "make runner-image-push calls the shared ECR publish script" {
+  run make -n runner-image-push RUNNER_ECR_REPOSITORY=pulumi-runner/bootstrap-infrastructure-test RUNNER_IMAGE_TAG=sha-example
+  [ "$status" -eq 0 ]
+  assert_output_contains "./scripts/publish_runner_image.sh"
+  assert_output_contains "RUNNER_ECR_REPOSITORY=\"pulumi-runner/bootstrap-infrastructure-test\""
+  assert_output_contains "RUNNER_IMAGE_TAG=\"sha-example\""
 }
 
 @test "make clean removes generated artifacts" {
