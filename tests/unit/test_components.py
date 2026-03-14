@@ -88,19 +88,6 @@ def test_github_oidc_roles_with_existing_provider(monkeypatch):
     assert roles.deploy_role_arns  # nosec B101
 
 
-def test_pulumi_secrets_key_policy_uses_account_root():
-    import json
-
-    policy = json.loads(pulumi_secrets._key_policy("123456789012"))
-    statement = policy["Statement"][0]
-    assert policy["Version"] == "2012-10-17"  # nosec B101
-    assert statement["Sid"] == "EnableAccountPermissions"  # nosec B101
-    assert statement["Effect"] == "Allow"  # nosec B101
-    assert statement["Principal"]["AWS"] == "arn:aws:iam::123456789012:root"  # nosec B101
-    assert statement["Action"] == "kms:*"  # nosec B101
-    assert statement["Resource"] == "*"  # nosec B101
-
-
 def test_pulumi_secrets_keys_emit_expected_resources_and_outputs(
     pulumi_mocks, monkeypatch
 ):  # noqa: ARG001

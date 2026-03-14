@@ -61,10 +61,16 @@ def test_stack_limits_bootstrap_resources_to_low_cost_families(
 def test_taggable_resources_include_finops_tags(monkeypatch, pulumi_mocks):
     resources = _run_stack(monkeypatch, pulumi_mocks)
 
-    for type_, _name, state in resources:
+    for type_, name, state in resources:
         if type_ not in TAGGABLE_RESOURCE_TYPES:
             continue
         tags = state.get("tags")
-        assert isinstance(tags, dict)  # nosec B101
-        assert tags["Owner"] == "platform"  # nosec B101
-        assert tags["CostCenter"] == "core"  # nosec B101
+        assert isinstance(tags, dict), (  # nosec B101
+            f"{type_} {name} should expose a tag map, got {tags!r}"
+        )
+        assert tags["Owner"] == "platform", (  # nosec B101
+            f"{type_} {name} is missing Owner=platform in tags {tags!r}"
+        )
+        assert tags["CostCenter"] == "core", (  # nosec B101
+            f"{type_} {name} is missing CostCenter=core in tags {tags!r}"
+        )

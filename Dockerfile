@@ -2,73 +2,73 @@
 
 # Keep a glibc-based slim image because AWS CLI v2 only guarantees support on
 # glibc-based Linux distributions.
-FROM python:3.11.9-slim-bookworm@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317 AS base
+FROM python:3.11.9-slim-bookworm@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317 AS tooling-builder
 
-ARG USERNAME=dev
-ARG UID=1000
-ARG GID=1000
 ARG PULUMI_VERSION=3.138.0
 ARG AWSCLI_VERSION=2.16.9
 ARG AWSCLI_ARCH=linux-x86_64
-ARG CA_CERTIFICATES_VERSION=20230311
-ARG UNZIP_VERSION=6.0-28
 ARG CURL_VERSION=7.88.1-10+deb12u14
-ARG GIT_VERSION=1:2.39.5-0+deb12u2
 ARG GNUPG_VERSION=2.2.40-1.1+deb12u2
-ARG PIP_VERSION=26.0.1
+ARG UNZIP_VERSION=6.0-28
 ARG UV_VERSION=0.9.21
+ARG UV_SHA256=0a1ab27383c28ef1c041f85cbbc609d8e3752dfb4b238d2ad97b208a52232baf
 ARG TYPOS_VERSION=1.44.0
+ARG TYPOS_SHA256=1b788b7d764e2f20fe089487428a3944ed218d1fb6fcd8eac4230b5893a38779
 ARG TAPLO_VERSION=0.10.0
+ARG TAPLO_SHA256=8fe196b894ccf9072f98d4e1013a180306e17d244830b03986ee5e8eabeb6156
 ENV DEBIAN_FRONTEND=noninteractive
+ENV UV_PROJECT_ENVIRONMENT=/opt/uv-env
+ENV UV_LINK_MODE=copy
+ENV UV_PYTHON_DOWNLOADS=never
 
-# Install OS dependencies required for Pulumi CLI, AWS CLI, and Python tooling
 RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/99retries \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
-        ca-certificates="${CA_CERTIFICATES_VERSION}" \
         curl="${CURL_VERSION}" \
-        git="${GIT_VERSION}" \
         gnupg="${GNUPG_VERSION}" \
         unzip="${UNZIP_VERSION}" \
-    && groupadd --gid "${GID}" "${USERNAME}" \
-    && useradd --uid "${UID}" --gid "${GID}" --create-home "${USERNAME}" \
-    && install -d --owner "${UID}" --group "${GID}" "/home/${USERNAME}/tmp" \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /tmp
 
-# Install Pulumi CLI once and expose it on the PATH for all users.
-# Install AWS CLI v2 plus the Rust-native CLI quality tools used by local and
-# CI guardrails, then remove the build-only packages used for downloads.
+# Install Pulumi CLI, AWS CLI v2, uv, and repository tooling in a throwaway
+# stage so the final runtime image only carries the binaries and virtualenv.
 RUN <<EOF
-set -e
-curl --fail --silent --show-error --location \
-  --retry 5 --retry-delay 5 --retry-all-errors \
+set -eu
+
+download() {
+  curl --fail --silent --show-error --location \
+    --retry 5 --retry-delay 5 --retry-all-errors \
+    "$1" --output "$2"
+}
+
+verify_sha256() {
+  checksum_file=/tmp/asset.sha256
+  printf '%s  %s\n' "$1" "$2" > "$checksum_file"
+  sha256sum -c "$checksum_file"
+  rm -f "$checksum_file"
+}
+
+download \
   "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
-  --output "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz"
-curl --fail --silent --show-error --location \
-  --retry 5 --retry-delay 5 --retry-all-errors \
+  "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz"
+download \
   "https://github.com/pulumi/pulumi/releases/download/v${PULUMI_VERSION}/pulumi-${PULUMI_VERSION}-checksums.txt" \
-  --output "/tmp/pulumi-checksums.txt"
-grep "pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt \
-  > /tmp/pulumi-checksums.sha256
+  /tmp/pulumi-checksums.txt
+grep "pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt > /tmp/pulumi-checksums.sha256
 sha256sum -c /tmp/pulumi-checksums.sha256
 mkdir -p /opt/pulumi
 tar --extract --gzip \
   --file "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
   --strip-components=1 \
   --directory /opt/pulumi
-ln -sf /opt/pulumi/pulumi /usr/local/bin/pulumi
-rm -rf "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" /tmp/pulumi-checksums.txt /tmp/pulumi-checksums.sha256
 
-curl --fail --silent --show-error --location \
-  --retry 5 --retry-delay 5 --retry-all-errors \
+download \
   "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip" \
-  --output "/tmp/awscliv2.zip"
-curl --fail --silent --show-error --location \
-  --retry 5 --retry-delay 5 --retry-all-errors \
+  /tmp/awscliv2.zip
+download \
   "https://awscli.amazonaws.com/awscli-exe-${AWSCLI_ARCH}-${AWSCLI_VERSION}.zip.sig" \
-  --output "/tmp/awscliv2.zip.sig"
+  /tmp/awscliv2.zip.sig
 mkdir -p /tmp/aws-cli-keyring
 cat > /tmp/aws-cli-keyring/awscli-public-key.asc <<'KEY'
 -----BEGIN PGP PUBLIC KEY BLOCK-----
@@ -106,17 +106,24 @@ GNUPGHOME=/tmp/aws-cli-keyring gpg --batch --verify /tmp/awscliv2.zip.sig /tmp/a
 unzip /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install --bin-dir /usr/local/bin --install-dir /usr/local/aws-cli
 
-curl --fail --silent --show-error --location \
-  --retry 5 --retry-delay 5 --retry-all-errors \
+download \
+  "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz" \
+  /tmp/uv.tar.gz
+verify_sha256 "${UV_SHA256}" /tmp/uv.tar.gz
+tar --extract --gzip --file /tmp/uv.tar.gz --directory /tmp
+install -m 0755 /tmp/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv
+
+download \
   "https://github.com/crate-ci/typos/releases/download/v${TYPOS_VERSION}/typos-v${TYPOS_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
-  --output /tmp/typos.tar.gz
+  /tmp/typos.tar.gz
+verify_sha256 "${TYPOS_SHA256}" /tmp/typos.tar.gz
 tar --extract --gzip --file /tmp/typos.tar.gz --directory /tmp
 install -m 0755 /tmp/typos /usr/local/bin/typos
 
-curl --fail --silent --show-error --location \
-  --retry 5 --retry-delay 5 --retry-all-errors \
+download \
   "https://github.com/tamasfe/taplo/releases/download/${TAPLO_VERSION}/taplo-linux-x86_64.gz" \
-  --output /tmp/taplo.gz
+  /tmp/taplo.gz
+verify_sha256 "${TAPLO_SHA256}" /tmp/taplo.gz
 python - <<'PY'
 import gzip
 import shutil
@@ -128,33 +135,52 @@ install -m 0755 /tmp/taplo /usr/local/bin/taplo
 
 rm -rf \
   /tmp/aws \
+  /tmp/aws-cli-keyring \
   /tmp/awscliv2.zip \
   /tmp/awscliv2.zip.sig \
-  /tmp/aws-cli-keyring \
+  "/tmp/pulumi-v${PULUMI_VERSION}-linux-x64.tar.gz" \
+  /tmp/pulumi-checksums.txt \
+  /tmp/pulumi-checksums.sha256 \
   /tmp/taplo \
   /tmp/taplo.gz \
   /tmp/typos \
-  /tmp/typos.tar.gz
-apt-get purge -y --auto-remove curl gnupg unzip
-rm -rf /var/lib/apt/lists/*
+  /tmp/typos.tar.gz \
+  /tmp/uv.tar.gz \
+  /tmp/uv-x86_64-unknown-linux-gnu
 EOF
 
-# Install uv for Python dependency and command management.
-ENV UV_PROJECT_ENVIRONMENT=/opt/uv-env
-ENV UV_LINK_MODE=copy
-ENV UV_COMPILE_BYTECODE=1
-ENV UV_PYTHON_DOWNLOADS=never
-ENV PATH="/opt/pulumi:${UV_PROJECT_ENVIRONMENT}/bin:/home/${USERNAME}/.local/bin:/home/${USERNAME}/.pulumi/bin:${PATH}"
-RUN python -m pip install --no-cache-dir --upgrade \
-    "pip==${PIP_VERSION}" \
-    "uv==${UV_VERSION}"
-
 WORKDIR /workspace
-COPY --chown=${USERNAME}:${GID} pyproject.toml uv.lock /workspace/
+COPY pyproject.toml uv.lock /workspace/
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --all-groups --no-install-project --no-editable
 
+FROM python:3.11.9-slim-bookworm@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317 AS runtime
+
+ARG USERNAME=dev
+ARG UID=1000
+ARG GID=1000
+ENV UV_PROJECT_ENVIRONMENT=/opt/uv-env
+ENV UV_LINK_MODE=copy
+ENV UV_PYTHON_DOWNLOADS=never
+ENV PATH="/opt/pulumi:${UV_PROJECT_ENVIRONMENT}/bin:/home/${USERNAME}/.local/bin:/home/${USERNAME}/.pulumi/bin:${PATH}"
+
+RUN groupadd --gid "${GID}" "${USERNAME}" \
+    && useradd --uid "${UID}" --gid "${GID}" --create-home "${USERNAME}" \
+    && install -d --owner "${UID}" --group "${GID}" "/home/${USERNAME}/tmp"
+
+COPY --from=tooling-builder /opt/pulumi /opt/pulumi
+COPY --from=tooling-builder /usr/local/aws-cli /usr/local/aws-cli
+COPY --from=tooling-builder /usr/local/bin/uv /usr/local/bin/uv
+COPY --from=tooling-builder /usr/local/bin/typos /usr/local/bin/typos
+COPY --from=tooling-builder /usr/local/bin/taplo /usr/local/bin/taplo
+COPY --from=tooling-builder /opt/uv-env /opt/uv-env
+
+RUN ln -sf /opt/pulumi/pulumi /usr/local/bin/pulumi \
+    && ln -sf /usr/local/aws-cli/v2/current/bin/aws /usr/local/bin/aws \
+    && ln -sf /usr/local/aws-cli/v2/current/bin/aws_completer /usr/local/bin/aws_completer
+
+WORKDIR /workspace
 USER "${USERNAME}"
 
 # Pulumi CLI caches a few files under the user's home directory

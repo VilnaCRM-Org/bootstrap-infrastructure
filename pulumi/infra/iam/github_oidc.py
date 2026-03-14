@@ -85,6 +85,7 @@ def _deploy_policy(
             "Effect": "Allow",
             "Action": ["s3:ListBucket"],
             "Resource": bucket_arn,
+            "Condition": {"StringLike": {"s3:prefix": "state/*"}},
         },
         {
             "Effect": "Allow",

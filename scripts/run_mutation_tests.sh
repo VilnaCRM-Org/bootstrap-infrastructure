@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /workspace
+cd "${WORKSPACE:-/workspace}"
 
 mutation_tests=(
   tests/unit/test_config.py

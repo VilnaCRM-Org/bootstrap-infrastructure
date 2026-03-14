@@ -30,6 +30,9 @@ def test_deploy_policy_shape():
     assert policy["Statement"][0]["Effect"] == "Allow"  # nosec B101
     assert policy["Statement"][0]["Action"] == ["s3:ListBucket"]  # nosec B101
     assert policy["Statement"][0]["Resource"] == "arn:bucket"  # nosec B101
+    assert policy["Statement"][0]["Condition"]["StringLike"] == {  # nosec B101
+        "s3:prefix": "state/*"
+    }
     assert policy["Statement"][1]["Effect"] == "Allow"  # nosec B101
     assert policy["Statement"][1]["Action"] == [  # nosec B101
         "s3:GetObject",
@@ -59,11 +62,11 @@ def test_log_bucket_policy_contains_required_statements():
     statements = {statement["Sid"]: statement for statement in policy["Statement"]}
     sids = set(statements)
     assert "RequireTLS" in sids  # nosec B101
-    assert "AllowCloudTrailWrites" in sids  # nosec B101
+    assert "AllowCloudTrailAclCheck" in sids  # nosec B101
     assert "AllowCloudTrailPutObject" in sids  # nosec B101
     assert "AllowLogDelivery" in sids  # nosec B101
     assert "AllowLogDeliveryAclCheck" in sids  # nosec B101
-    assert statements["AllowCloudTrailWrites"]["Condition"]["StringEquals"] == {  # nosec B101
+    assert statements["AllowCloudTrailAclCheck"]["Condition"]["StringEquals"] == {  # nosec B101
         "aws:SourceAccount": "123456789012"
     }
     assert statements["AllowCloudTrailPutObject"]["Condition"]["StringEquals"] == {  # nosec B101

@@ -2,7 +2,13 @@
 
 assert_output_contains() {
   local expected="$1"
-  [[ "$output" == *"$expected"* ]]
+  if [[ "$output" == *"$expected"* ]]; then
+    return 0
+  fi
+
+  printf 'expected: %s\n' "$expected" >&2
+  printf 'actual: %s\n' "$output" >&2
+  return 1
 }
 
 @test "make help renders the target list" {

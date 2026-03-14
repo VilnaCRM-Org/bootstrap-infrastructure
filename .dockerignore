@@ -1,6 +1,8 @@
 .git
 .github
 .venv
+.env*
+.secrets*
 __pycache__
 *.pyc
 *.pyo
@@ -15,3 +17,5 @@ build
 .mypy_cache
 .idea
 docs
+.DS_Store
+Thumbs.db
