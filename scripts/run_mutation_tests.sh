@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd /workspace
 
+export COVERAGE_FILE="${COVERAGE_FILE:-/tmp/.coverage.mutation}"
+
 mutation_tests=(
   tests/unit/test_config.py
   tests/unit/test_policies.py

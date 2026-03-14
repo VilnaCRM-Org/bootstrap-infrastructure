@@ -107,7 +107,7 @@ test-pulumi: ## Perform structural checks on Pulumi project configuration (if pr
 	$(call run_or_skip,tests/pulumi,poetry run pytest -q tests/pulumi,"Pulumi structural tests")
 
 test-mutation: ## Run mutation testing suite against Pulumi components (if present).
-	$(call run_or_skip,scripts,poetry run bash -lc "./scripts/run_mutation_tests.sh","mutation tests")
+	$(call run_or_skip,scripts,bash -lc "COVERAGE_FILE=$(COVERAGE_DIR)/.coverage.mutation poetry run ./scripts/run_mutation_tests.sh","mutation tests")
 
 test-e2e: ## Execute end-to-end Pulumi CLI smoke tests (requires PULUMI_E2E_SECRETS_PROVIDER).
 	$(call run_or_skip,tests/e2e,poetry run pytest -q tests/e2e,"e2e tests")
@@ -129,7 +129,7 @@ check-types: ## Run static type checks for Pulumi Python code.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) poetry run mypy $(PYTHON_TYPE_PATHS)
 
 check-package: ## Validate Poetry metadata and Python bytecode compilation.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "poetry check --lock && python -m compileall -q $(PYTHON_FORMAT_PATHS)"
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "poetry check --lock && PYTHONPYCACHEPREFIX=/tmp/pycache python -m compileall -q $(PYTHON_FORMAT_PATHS)"
 
 check-bandit: ## Run Bandit security checks on Pulumi Python sources.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) poetry run bandit -q -r pulumi -c pyproject.toml
