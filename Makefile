@@ -123,10 +123,10 @@ test-bats: ## Execute Bats coverage for Make targets.
 	fi
 
 check-format: ## Verify Python formatting with Ruff.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) ruff format --check $(PYTHON_FORMAT_PATHS)
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p \"\$$HOME/.ruff_cache\" && RUFF_CACHE_DIR=\"\$$HOME/.ruff_cache\" $(UV_RUN) ruff format --check $(PYTHON_FORMAT_PATHS)"
 
 check-lint: ## Run Python lint checks with Ruff.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) ruff check $(PYTHON_LINT_PATHS)
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p \"\$$HOME/.ruff_cache\" && RUFF_CACHE_DIR=\"\$$HOME/.ruff_cache\" $(UV_RUN) ruff check $(PYTHON_LINT_PATHS)"
 
 check-spelling: ## Run typo detection across repository sources.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) typos $(SPELLCHECK_PATHS)
