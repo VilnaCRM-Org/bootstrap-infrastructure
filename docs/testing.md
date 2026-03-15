@@ -226,7 +226,8 @@ GitHub Actions mirrors the local targets:
 - `pulumi-coverage.yml` -> `make check-coverage`
 - `bats-tests.yml` -> `make test-bats`
 - `pulumi-runner-image.yml` -> `make runner-image-build`, `make runner-image-smoke`, `make runner-image-push`
-- `pulumi-pr-commands.yml` -> `./scripts/run_pulumi_command.sh plan|up` inside the published ECR runner image
+- `pulumi-pr-commands.yml` -> validate and dispatch trusted PR command runs from `issue_comment`
+- `pulumi-pr-command-runner.yml` -> `./scripts/run_pulumi_command.sh plan|up` inside the published ECR runner image
 - `pulumi-drift.yml` -> `./scripts/run_pulumi_command.sh drift` inside the published ECR runner image
 - `repo-health.yml` -> OpenSSF Scorecard on a schedule
 

@@ -23,7 +23,7 @@ This repository ships a Pulumi CrossGuard Policy Pack in `policy_pack/` and appl
 
 - Local CI wrapper: `make pulumi-plan-ci`, `make pulumi-up-ci`, `make pulumi-drift-ci`
 - GitHub deploy workflows: `pulumi.yml`, `pulumi-prod.yml`
-- PR comment automation: `pulumi-pr-commands.yml`
+- PR comment automation: `pulumi-pr-commands.yml` dispatches `pulumi-pr-command-runner.yml`
 - Drift detection: `pulumi-drift.yml`
 - Dedicated policy tests: `make test-policy`
 - CrossGuard alias: `make test-crossguard`

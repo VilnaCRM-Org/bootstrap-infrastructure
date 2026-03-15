@@ -1,0 +1,160 @@
+name: Pulumi PR Command Runner
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Pull request number
+        required: true
+        type: string
+      head_sha:
+        description: Pull request head commit SHA
+        required: true
+        type: string
+      command:
+        description: Pulumi command to execute
+        required: true
+        type: choice
+        options:
+          - plan
+          - up
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: pulumi-pr-command-${{ inputs.pull_request_number }}
+  cancel-in-progress: false
+
+jobs:
+  command:
+    runs-on: ubuntu-latest
+    environment: test
+    env:
+      AWS_REGION: eu-central-1
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Resolve PR metadata
+        id: pr
+        run: |
+          {
+            echo "head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ inputs.pull_request_number }}" --jq '.head.sha')"
+            echo "head_repo=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ inputs.pull_request_number }}" --jq '.head.repo.full_name')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Reject forked PRs
+        if: steps.pr.outputs.head_repo != github.repository
+        run: |
+          body_file="$(mktemp)"
+          cat > "${body_file}" <<'EOF'
+          Pulumi PR command runner rejected this request because the pull request
+          head is not in the base repository.
+          EOF
+          gh pr comment ${{ inputs.pull_request_number }} --body-file "${body_file}"
+          exit 1
+
+      - name: Reject stale dispatches
+        if: steps.pr.outputs.head_sha != inputs.head_sha
+        run: |
+          body_file="$(mktemp)"
+          cat > "${body_file}" <<'EOF'
+          Pulumi PR command runner rejected this request because the pull request
+          head moved after the command was queued. Comment again on the latest
+          commit.
+          EOF
+          gh pr comment ${{ inputs.pull_request_number }} --body-file "${body_file}"
+          exit 1
+
+      - name: Checkout PR head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.head_sha }}
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4
+        with:
+          role-to-assume: ${{ vars.PULUMI_TEST_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve runner image
+        id: image
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          registry="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          repository='${{ vars.PULUMI_TEST_RUNNER_ECR_REPOSITORY }}'
+          primary_tag="sha-${{ inputs.head_sha }}"
+
+          if aws ecr describe-images --region "${AWS_REGION}" --repository-name "${repository}" --image-ids imageTag="${primary_tag}" >/dev/null 2>&1; then
+            selected_tag="${primary_tag}"
+          else
+            selected_tag="main"
+          fi
+
+          echo "image_ref=${registry}/${repository}:${selected_tag}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${selected_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Amazon ECR
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          registry="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${registry}"
+
+      - name: Pull runner image
+        run: docker pull '${{ steps.image.outputs.image_ref }}'
+
+      - name: Run Pulumi command
+        id: run_command
+        run: |
+          mkdir -p out
+          set -o pipefail
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            -e AWS_ACCESS_KEY_ID \
+            -e AWS_SECRET_ACCESS_KEY \
+            -e AWS_SESSION_TOKEN \
+            -e AWS_REGION="${AWS_REGION}" \
+            -e AWS_DEFAULT_REGION="${AWS_REGION}" \
+            -e PULUMI_STACK="test" \
+            -e PULUMI_DIR="pulumi" \
+            -e PULUMI_BACKEND_URL="s3://${{ vars.PULUMI_STATE_BUCKET }}/state/test" \
+            -e PULUMI_SECRETS_PROVIDER='${{ vars.PULUMI_TEST_SECRETS_PROVIDER }}' \
+            -e PULUMI_SKIP_UPDATE_CHECK="true" \
+            '${{ steps.image.outputs.image_ref }}' \
+            bash -lc "./scripts/run_pulumi_command.sh '${{ inputs.command }}'" 2>&1 | tee out/pulumi-command.log
+
+      - name: Upload Pulumi command log
+        if: always()
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4
+        with:
+          name: pulumi-${{ inputs.command }}-${{ inputs.pull_request_number }}-${{ inputs.head_sha }}
+          path: out/pulumi-command.log
+
+      - name: Comment command result
+        if: always()
+        run: |
+          log_tail="$(tail -n 80 out/pulumi-command.log 2>/dev/null || true)"
+          status_text='${{ steps.run_command.outcome }}'
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body_file="$(mktemp)"
+          {
+            echo "## Pulumi ${{ inputs.command }}: ${status_text}"
+            echo
+            echo "- Stack: \`test\`"
+            echo "- Commit: \`${{ inputs.head_sha }}\`"
+            echo "- Runner image: \`${{ steps.image.outputs.image_ref }}\`"
+            echo "- Workflow run: ${run_url}"
+            echo
+            echo "<details><summary>Log tail</summary>"
+            echo
+            echo '```text'
+            printf '%s\n' "${log_tail}"
+            echo '```'
+            echo
+            echo "</details>"
+          } > "${body_file}"
+          gh pr comment ${{ inputs.pull_request_number }} --body-file "${body_file}"

@@ -94,6 +94,9 @@ def test_ci_workflows_cover_local_test_targets():
     pr_commands = (
         ROOT / ".github" / "workflows" / "pulumi-pr-commands.yml"
     ).read_text()
+    pr_runner = (
+        ROOT / ".github" / "workflows" / "pulumi-pr-command-runner.yml"
+    ).read_text()
     drift = (ROOT / ".github" / "workflows" / "pulumi-drift.yml").read_text()
     deploy_test = (ROOT / ".github" / "workflows" / "pulumi.yml").read_text()
     deploy_prod = (ROOT / ".github" / "workflows" / "pulumi-prod.yml").read_text()
@@ -142,8 +145,10 @@ def test_ci_workflows_cover_local_test_targets():
     assert "make runner-image-smoke" in runner_image  # nosec B101
     assert "make runner-image-push" in runner_image  # nosec B101
     assert "issue_comment:" in pr_commands  # nosec B101
-    assert "./scripts/run_pulumi_command.sh" in pr_commands  # nosec B101
-    assert "upload-artifact" in pr_commands  # nosec B101
+    assert "dispatches" in pr_commands  # nosec B101
+    assert "pull_request_number" in pr_runner  # nosec B101
+    assert "./scripts/run_pulumi_command.sh" in pr_runner  # nosec B101
+    assert "upload-artifact" in pr_runner  # nosec B101
     assert "run_pulumi_command.sh drift" in drift  # nosec B101
     assert "schedule:" in drift  # nosec B101
     assert "PULUMI_STACK: test" in deploy_test  # nosec B101

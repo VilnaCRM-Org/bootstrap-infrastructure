@@ -4,7 +4,7 @@ This repository supports GitHub-driven Pulumi operations for the `test` environm
 
 - a stack-managed Amazon ECR runner repository
 - a stack-managed GitHub OIDC automation role
-- a comment-driven workflow that runs `pulumi plan` and `pulumi up`
+- a comment-driven dispatcher workflow plus a trusted runner workflow that run `pulumi plan` and `pulumi up`
 - a scheduled drift workflow that fails when `refresh --preview-only --expect-no-changes` detects drift
 
 ## Runner Image
@@ -42,16 +42,19 @@ Guardrails:
 - only comments on pull requests are considered
 - only `OWNER`, `MEMBER`, and `COLLABORATOR` authors are accepted
 - only branches in the same repository are accepted; forks are rejected to avoid exposing AWS credentials
+- the `issue_comment` workflow only dispatches a trusted `workflow_dispatch` runner; it does not check out PR code itself
 - the workflow uses the PR-head runner image tag when present and falls back to `main`
 
 The command flow is:
 
 1. Resolve the PR head SHA and repository.
-2. Assume the GitHub OIDC automation role in AWS.
-3. Pull the ECR runner image.
-4. Run `./scripts/run_pulumi_command.sh plan` or `up`.
-5. Upload the full log as a workflow artifact.
-6. Post a PR comment with the status, image reference, run URL, and log tail.
+2. Dispatch `pulumi-pr-command-runner.yml` on the trusted default branch with the PR number, head SHA, and command.
+3. Re-validate that the PR head still matches the queued SHA.
+4. Assume the GitHub OIDC automation role in AWS.
+5. Pull the ECR runner image.
+6. Run `./scripts/run_pulumi_command.sh plan` or `up`.
+7. Upload the full log as a workflow artifact.
+8. Post a PR comment with the status, image reference, run URL, and log tail.
 
 This is intentionally close to the Atlantis operator model: the PR becomes the control plane, and the workflow run plus artifact become the debug surface.
 

@@ -128,6 +128,7 @@ Those rules are also applied by [run_pulumi_command.sh](/home/kravtsov/Projects/
 - `pulumi.yml`
 - `pulumi-prod.yml`
 - `pulumi-pr-commands.yml`
+- `pulumi-pr-command-runner.yml`
 - `pulumi-preview.yml`
 
 This keeps local operator flows, deployment workflows, and PR automation on the same guardrail set.
