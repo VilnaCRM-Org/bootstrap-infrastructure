@@ -33,6 +33,6 @@ services:
       - AWS_PROFILE
       - AWS_REGION
       - AWS_DEFAULT_REGION
-      - PYTHONPATH=/workspace/pulumi
+      - PYTHONPATH=/workspace:/workspace/pulumi
     tty: true
     stdin_open: true
