@@ -18,14 +18,22 @@ CHECKOV_IMAGE     ?= bridgecrew/checkov:3.2.487
 GITLEAKS_IMAGE    ?= zricethezav/gitleaks:v8.30.0
 HADOLINT_IMAGE    ?= hadolint/hadolint:v2.14.0
 SHELLCHECK_IMAGE  ?= koalaman/shellcheck:stable
+SHFMT_IMAGE       ?= mvdan/shfmt:v3.11.0
 PYTHON_FORMAT_PATHS = pulumi/__main__.py pulumi/infra policy_pack scripts/*.py tests
 PYTHON_LINT_PATHS   = pulumi/__main__.py pulumi/infra policy_pack scripts/*.py tests
 PYTHON_TYPE_PATHS   = pulumi/__main__.py pulumi/infra policy_pack scripts/*.py
 PYTHON_TY_PATHS     = pulumi policy_pack scripts tests
 YAML_LINT_PATHS     = .github/workflows pulumi/Pulumi.yaml pulumi/Pulumi.test.yaml pulumi/Pulumi.test.yaml.example pulumi/Pulumi.prod.yaml.example
 SHELLCHECK_PATHS    = /work/scripts/run_mutation_tests.sh /work/scripts/run_pulumi_command.sh /work/scripts/publish_runner_image.sh
+SHFMT_PATHS        := scripts/*.sh
 SPELLCHECK_PATHS    = .
 TOML_LINT_PATHS     = pyproject.toml
+RADON_PATHS         = pulumi/infra policy_pack scripts
+XENON_IGNORE_PATHS  = .git,.venv,pulumi/venv,__pycache__,.coverage-artifacts,.quality-reports
+INTERROGATE_PATHS   = pulumi/infra/config.py pulumi/infra/utils pulumi/infra/iam pulumi/infra/pulumi_secrets.py scripts/analyze_pulumi_preview.py scripts/validate_iam_policies.py
+VULTURE_PATHS       = pulumi/infra policy_pack scripts
+WILY_PATHS          = pulumi/infra policy_pack scripts
+QUALITY_REPORT_DIR ?= .quality-reports
 QLTY ?= qlty
 
 export COMPOSE_ENV_FILE := $(EFFECTIVE_ENV_FILE)
@@ -42,7 +50,7 @@ DOCKER_COMPOSE    = docker compose
 COMPOSE_ENV_FLAG  = $(if $(EFFECTIVE_ENV_FILE),--env-file $(EFFECTIVE_ENV_FILE),)
 COMPOSE           = $(DOCKER_COMPOSE) $(COMPOSE_ENV_FLAG)
 UV_RUN            = uv run --frozen --no-sync
-PYTEST_COV_OPTS   = --cov=./pulumi --cov=./policy_pack --cov-report=
+PYTEST_COV_OPTS   = --cov=./pulumi --cov=./policy_pack --cov-branch --cov-report=
 COVERAGE_DIR ?= .coverage-artifacts
 
 # Misc
@@ -52,9 +60,11 @@ COVERAGE_DIR ?= .coverage-artifacts
         pulumi-plan-ci pulumi-up-ci pulumi-drift-ci \
         pulumi-stack-select pulumi-stack-migrate-secrets sh down clean \
         runner-image-build runner-image-smoke runner-image-push \
-        check-format check-lint check-spelling check-toml check-types check-ty check-package check-qlty \
+        check-format check-lint check-radon check-xenon check-imports check-deptry \
+        check-spelling check-toml check-types check-ty check-package check-qlty \
         check-bandit check-deps check-sbom check-secrets check-iam check-yaml check-actionlint \
-        check-docker check-shell check-iac check-static check-security check-coverage ci \
+        check-docker check-shell check-iac check-static check-security check-coverage \
+        report-wily report-vulture report-docstrings report-sbom ci \
         test-unit test-integration test-pulumi test-policy test-crossguard test-mutation test-e2e \
         test-bats test-cost test
 
@@ -168,6 +178,18 @@ check-format: ## Verify Python formatting with Ruff.
 check-lint: ## Run Python lint checks with Ruff.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p \"\$$HOME/.ruff_cache\" && RUFF_CACHE_DIR=\"\$$HOME/.ruff_cache\" $(UV_RUN) ruff check $(PYTHON_LINT_PATHS)"
 
+check-radon: ## Enforce Radon maintainability index thresholds for repo Python modules.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) python scripts/check_radon_maintainability.py
+
+check-xenon: ## Enforce Xenon complexity ceilings for Pulumi, policy, and helper modules.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) xenon -a A -m A -b C -i "$(XENON_IGNORE_PATHS)" $(RADON_PATHS)
+
+check-imports: ## Enforce import-layer boundaries between infra, policy, and scripts packages.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) lint-imports --config .importlinter
+
+check-deptry: ## Validate runtime and dev dependency hygiene against the uv project metadata.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) deptry .
+
 check-spelling: ## Run typo detection across repository sources.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) typos $(SPELLCHECK_PATHS)
 
@@ -211,15 +233,32 @@ check-actionlint: ## Lint GitHub Actions workflows.
 check-docker: ## Lint the Dockerfile with Hadolint.
 	docker run --rm -i $(HADOLINT_IMAGE) hadolint --failure-threshold error - < Dockerfile
 
-check-shell: ## Lint repository shell scripts with ShellCheck.
+check-shell: ## Lint and format-check repository shell scripts with ShellCheck and shfmt.
 	docker run --rm -v "$(CURDIR):/work" $(SHELLCHECK_IMAGE) $(SHELLCHECK_PATHS)
+	docker run --rm -v "$(CURDIR):/work" -w /work $(SHFMT_IMAGE) -d -i 2 -ci -bn $(SHFMT_PATHS)
 
 check-iac: ## Run Checkov against GitHub Actions and Dockerfile definitions.
 	docker run --rm -v "$(CURDIR):/work" $(CHECKOV_IMAGE) -d /work --config-file /work/.checkov.yml
 
+report-wily: ## Build scheduled Wily maintainability trend reports.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) python scripts/run_wily_report.py --report-dir '$(QUALITY_REPORT_DIR)/wily' $(WILY_PATHS)
+
+report-vulture: ## Produce a scheduled dead-code report with Vulture.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p '$(QUALITY_REPORT_DIR)' && $(UV_RUN) vulture $(VULTURE_PATHS) --min-confidence 80 | tee '$(QUALITY_REPORT_DIR)/vulture.txt'"
+
+report-docstrings: ## Measure docstring coverage for reusable infra and guardrail modules.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p '$(QUALITY_REPORT_DIR)' && $(UV_RUN) docstr-coverage --skip-file-doc --skip-private --fail-under 80 $(INTERROGATE_PATHS) | tee '$(QUALITY_REPORT_DIR)/docstr-coverage.txt'"
+
+report-sbom: ## Export a CycloneDX SBOM artifact from the locked uv dependency graph.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p '$(QUALITY_REPORT_DIR)' && uv export --preview-features sbom-export --frozen --all-groups --format cyclonedx1.5 --no-emit-project --output-file '$(QUALITY_REPORT_DIR)/sbom.cyclonedx.json' >/dev/null && python -m json.tool '$(QUALITY_REPORT_DIR)/sbom.cyclonedx.json' >/dev/null"
+
 check-static: ## Run static formatting, lint, type, and packaging checks.
 	$(MAKE) check-format
 	$(MAKE) check-lint
+	$(MAKE) check-radon
+	$(MAKE) check-xenon
+	$(MAKE) check-imports
+	$(MAKE) check-deptry
 	$(MAKE) check-spelling
 	$(MAKE) check-toml
 	$(MAKE) check-types
@@ -265,4 +304,4 @@ clean: ## Remove Docker Compose artifacts, Python caches, and build artifacts.
 	$(COMPOSE) down -v 2>/dev/null || true
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	rm -rf .venv .mypy_cache .ruff_cache .coverage-artifacts dist build *.egg-info 2>/dev/null || true
+	rm -rf .venv .mypy_cache .ruff_cache .coverage-artifacts .quality-reports .wily dist build *.egg-info 2>/dev/null || true

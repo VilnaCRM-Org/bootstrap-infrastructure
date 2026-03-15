@@ -274,6 +274,23 @@ def test_tls_bucket_policy_messages_require_valid_json_and_tls_deny():
         )
         == []
     )  # nosec B101
+    assert (
+        guardrails.tls_bucket_policy_messages(
+            "aws:s3/bucketPolicy:BucketPolicy",
+            {
+                "policy": {
+                    "Statement": [
+                        {"Effect": "Deny", "Condition": {"Bool": {}}},
+                        {
+                            "Effect": "Deny",
+                            "Condition": {"Bool": {"aws:SecureTransport": "false"}},
+                        },
+                    ]
+                }
+            },
+        )
+        == []
+    )  # nosec B101
 
 
 def test_kms_key_messages_require_rotation_and_window():
@@ -634,5 +651,22 @@ def test_policy_pack_main_invokes_create_policy_pack(monkeypatch):
     )
     sys.modules.pop("policy_pack.__main__", None)
     importlib.import_module("policy_pack.__main__")
+    assert called["value"] is True  # nosec B101
+    assert sys.path[0] == root  # nosec B101
+
+
+def test_policy_pack_main_leaves_existing_root_path_order_intact(monkeypatch):
+    called = {"value": False}
+    root = str(Path(__file__).resolve().parents[2])
+
+    def fake_create_policy_pack():
+        called["value"] = True
+        return None
+
+    monkeypatch.setattr(guardrails, "create_policy_pack", fake_create_policy_pack)
+    monkeypatch.setattr(sys, "path", [root, *[entry for entry in sys.path if entry]])
+    sys.modules.pop("policy_pack.__main__", None)
+    importlib.import_module("policy_pack.__main__")
+
     assert called["value"] is True  # nosec B101
     assert sys.path[0] == root  # nosec B101

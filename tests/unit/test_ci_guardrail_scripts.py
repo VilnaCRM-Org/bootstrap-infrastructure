@@ -24,6 +24,11 @@ preview_guard = _load_module(
 iam_validation = _load_module(
     "scripts/validate_iam_policies.py", "scripts.validate_iam_policies"
 )
+radon_maintainability = _load_module(
+    "scripts/check_radon_maintainability.py",
+    "scripts.check_radon_maintainability",
+)
+wily_report = _load_module("scripts/run_wily_report.py", "scripts.run_wily_report")
 
 
 def test_preview_guard_detects_critical_destructive_steps():
@@ -115,3 +120,23 @@ def test_iam_validation_filters_non_blocking_findings():
     assert blocked == [  # nosec B101
         {"findingType": "WARNING", "issueCode": "REAL_WARNING"}
     ]
+
+
+def test_radon_maintainability_detects_modules_below_rank_threshold():
+    failures = radon_maintainability.failing_modules(
+        {
+            "pulumi/infra/config.py": {"rank": "A", "mi": 32.71},
+            "policy_pack/guardrails.py": {"rank": "B", "mi": 10.28},
+            "scripts/example.py": {"rank": "C", "mi": 4.0},
+        },
+        "B",
+    )
+
+    assert failures == [  # nosec B101
+        ("scripts/example.py", "C", 4.0)
+    ]
+
+
+def test_wily_report_status_output_detection_is_stable():
+    assert wily_report.status_output_is_clean("") is True  # nosec B101
+    assert wily_report.status_output_is_clean(" M Makefile") is False  # nosec B101

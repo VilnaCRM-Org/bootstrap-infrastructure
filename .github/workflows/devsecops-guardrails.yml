@@ -37,7 +37,7 @@ jobs:
           - name: Hadolint
             target: check-docker
             build_pulumi_container: false
-          - name: ShellCheck
+          - name: Shell Quality
             target: check-shell
             build_pulumi_container: false
           - name: Checkov

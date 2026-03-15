@@ -141,12 +141,18 @@ FROM python:3.11.9-slim-bookworm@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f
 ARG USERNAME=dev
 ARG UID=1000
 ARG GID=1000
+ARG GIT_VERSION=1:2.39.5-0+deb12u3
 ENV UV_PROJECT_ENVIRONMENT=/opt/uv-env
 ENV UV_LINK_MODE=copy
 ENV UV_PYTHON_DOWNLOADS=never
 ENV PATH="/opt/pulumi:${UV_PROJECT_ENVIRONMENT}/bin:/home/${USERNAME}/.local/bin:/home/${USERNAME}/.pulumi/bin:${PATH}"
 
-RUN groupadd --gid "${GID}" "${USERNAME}" \
+RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/99retries \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git="${GIT_VERSION}" \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid "${GID}" "${USERNAME}" \
     && useradd --uid "${UID}" --gid "${GID}" --create-home "${USERNAME}" \
     && install -d --owner "${UID}" --group "${GID}" "/home/${USERNAME}/tmp"
 

@@ -15,6 +15,10 @@ assert_output_contains() {
   run make help
   [ "$status" -eq 0 ]
   assert_output_contains "check-format"
+  assert_output_contains "check-radon"
+  assert_output_contains "check-xenon"
+  assert_output_contains "check-imports"
+  assert_output_contains "check-deptry"
   assert_output_contains "check-qlty"
   assert_output_contains "check-ty"
   assert_output_contains "check-secrets"
@@ -28,6 +32,10 @@ assert_output_contains() {
   assert_output_contains "test-bats"
   assert_output_contains "test-e2e"
   assert_output_contains "check-coverage"
+  assert_output_contains "report-wily"
+  assert_output_contains "report-vulture"
+  assert_output_contains "report-docstrings"
+  assert_output_contains "report-sbom"
 }
 
 @test "make all resolves to help output" {
@@ -136,7 +144,8 @@ assert_output_contains() {
   run make -n clean
   [ "$status" -eq 0 ]
   assert_output_contains "find . -type d -name __pycache__"
-  assert_output_contains "rm -rf .venv .mypy_cache .ruff_cache .coverage-artifacts dist build"
+  assert_output_contains ".quality-reports"
+  assert_output_contains ".wily"
 }
 
 @test "make test-unit runs pytest for unit tests" {
@@ -219,6 +228,30 @@ assert_output_contains() {
   assert_output_contains "ruff check"
 }
 
+@test "make check-radon runs the Radon maintainability guard" {
+  run make -n check-radon
+  [ "$status" -eq 0 ]
+  assert_output_contains "check_radon_maintainability.py"
+}
+
+@test "make check-xenon runs Xenon complexity gating" {
+  run make -n check-xenon
+  [ "$status" -eq 0 ]
+  assert_output_contains "xenon -a A -m A -b C"
+}
+
+@test "make check-imports runs Import Linter with the repo contracts" {
+  run make -n check-imports
+  [ "$status" -eq 0 ]
+  assert_output_contains "lint-imports --config .importlinter"
+}
+
+@test "make check-deptry runs dependency hygiene analysis" {
+  run make -n check-deptry
+  [ "$status" -eq 0 ]
+  assert_output_contains "deptry ."
+}
+
 @test "make check-spelling runs typos" {
   run make -n check-spelling
   [ "$status" -eq 0 ]
@@ -256,6 +289,39 @@ assert_output_contains() {
   run make -n check-qlty
   [ "$status" -eq 0 ]
   assert_output_contains "qlty check --all --summary --no-progress --level note --fail-level note"
+}
+
+@test "make check-shell runs ShellCheck and shfmt" {
+  run make -n check-shell
+  [ "$status" -eq 0 ]
+  assert_output_contains "shellcheck"
+  assert_output_contains "mvdan/shfmt"
+}
+
+@test "make report-wily builds scheduled trend reports" {
+  run make -n report-wily
+  [ "$status" -eq 0 ]
+  assert_output_contains "python scripts/run_wily_report.py"
+  assert_output_contains "--report-dir '.quality-reports/wily'"
+}
+
+@test "make report-vulture emits a dead-code report" {
+  run make -n report-vulture
+  [ "$status" -eq 0 ]
+  assert_output_contains "vulture"
+}
+
+@test "make report-docstrings measures selective docstring coverage" {
+  run make -n report-docstrings
+  [ "$status" -eq 0 ]
+  assert_output_contains "docstr-coverage"
+  assert_output_contains "--fail-under 80"
+}
+
+@test "make report-sbom exports a scheduled sbom snapshot" {
+  run make -n report-sbom
+  [ "$status" -eq 0 ]
+  assert_output_contains "sbom.cyclonedx.json"
 }
 
 @test "make check-bandit runs Bandit over pulumi sources" {

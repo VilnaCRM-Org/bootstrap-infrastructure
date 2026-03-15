@@ -11,6 +11,10 @@ Local commands:
 ```bash
 make check-format
 make check-lint
+make check-radon
+make check-xenon
+make check-imports
+make check-deptry
 make check-spelling
 make check-toml
 make check-types
@@ -21,7 +25,11 @@ make check-qlty
 
 Coverage:
 - Ruff formatting
-- Ruff lint rules
+- Ruff lint rules, including McCabe complexity (`C901`)
+- Radon maintainability index enforcement with minimum rank `B`
+- Xenon complexity ceilings: average `A`, modules `A`, blocks `C`
+- Import Linter architecture contracts between `infra`, `policy_pack`, and `scripts`
+- Deptry dependency hygiene checks
 - Typos spelling checks across code, docs, and workflows
 - Taplo lint and formatting checks for `pyproject.toml`
 - mypy type checking for Pulumi Python modules
@@ -59,6 +67,7 @@ Coverage:
 - actionlint on GitHub Actions workflows
 - hadolint on the Dockerfile
 - ShellCheck on repository shell scripts
+- `shfmt` shell formatting validation
 - Checkov policy scanning for GitHub Actions and Dockerfile definitions
 - Qlty multi-tool code health/security scan using the committed `.qlty/` config
 
@@ -190,8 +199,29 @@ make check-coverage
 
 Coverage:
 - combines structural, cost, policy, unit, integration, and e2e Python suites
-- fails if `pulumi/` plus `policy_pack/` drops below 100%
+- fails if `pulumi/` plus `policy_pack/` drops below 100% combined line+branch coverage
 - keeps mutation and Bats as separate non-coverage guardrails
+
+## Monitoring
+
+Goal: track maintainability and documentation drift over time without turning high-noise reports into daily PR blockers.
+
+Local commands:
+```bash
+make report-wily
+make report-vulture
+make report-docstrings
+make report-sbom
+```
+
+Coverage:
+- Wily trend reports for maintainability and cyclomatic drift across recent revisions
+- Vulture dead-code reporting at confidence `80`
+- `docstr-coverage` reporting for reusable modules with an advisory floor of `80%`
+- scheduled CycloneDX SBOM snapshots
+
+Implementation note:
+- `make report-wily` uses [run_wily_report.py](/home/kravtsov/Projects/bootstrap-infrastructure/scripts/run_wily_report.py). In CI it analyzes the clean checkout directly; on a dirty local worktree it falls back to a temporary clone of `HEAD` so the advisory report remains runnable.
 
 ## Bats
 
@@ -213,8 +243,9 @@ Coverage:
 ## CI Mapping
 
 GitHub Actions mirrors the local targets:
-- `python-quality.yml` -> `make check-format`, `make check-lint`, `make check-spelling`, `make check-toml`, `make check-types`, `make check-ty`, `make check-package`
+- `python-quality.yml` -> `make check-format`, `make check-lint`, `make check-radon`, `make check-xenon`, `make check-imports`, `make check-deptry`, `make check-spelling`, `make check-toml`, `make check-types`, `make check-ty`, `make check-package`
 - `devsecops-guardrails.yml` -> `make check-bandit`, `make check-deps`, `make check-sbom`, `make check-secrets`, `make check-yaml`, `make check-actionlint`, `make check-docker`, `make check-shell`, `make check-iac`, `make check-qlty`, `make test-cost`
+- `dependency-review.yml` -> GitHub dependency review for changes to dependency metadata
 - `pulumi-preview.yml` -> `./scripts/run_pulumi_command.sh plan`, `scripts/analyze_pulumi_preview.py`, `make check-iam`
 - `codeql.yml` -> GitHub CodeQL for `python` and `actions`
 - `pulumi-structural.yml` -> `make test-pulumi`
@@ -229,6 +260,7 @@ GitHub Actions mirrors the local targets:
 - `pulumi-pr-commands.yml` -> validate and dispatch trusted PR command runs from `issue_comment`
 - `pulumi-pr-command-runner.yml` -> `./scripts/run_pulumi_command.sh plan|up` inside the published ECR runner image
 - `pulumi-drift.yml` -> `./scripts/run_pulumi_command.sh drift` inside the published ECR runner image
+- `quality-monitoring.yml` -> `make report-wily`, `make report-vulture`, `make report-docstrings`, `make report-sbom`
 - `repo-health.yml` -> OpenSSF Scorecard on a schedule
 
 The aggregate local command is:

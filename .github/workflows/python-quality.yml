@@ -20,6 +20,14 @@ jobs:
             target: check-format
           - name: Lint
             target: check-lint
+          - name: Radon Maintainability
+            target: check-radon
+          - name: Xenon Complexity
+            target: check-xenon
+          - name: Import Linter
+            target: check-imports
+          - name: Deptry
+            target: check-deptry
           - name: Spelling
             target: check-spelling
           - name: TOML
@@ -28,7 +36,7 @@ jobs:
             target: check-types
           - name: Ty
             target: check-ty
-          - name: Package
+          - name: Package And Lockfile
             target: check-package
     name: ${{ matrix.name }}
     steps:

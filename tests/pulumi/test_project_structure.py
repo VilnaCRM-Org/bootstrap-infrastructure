@@ -22,6 +22,10 @@ def test_makefile_exposes_full_test_matrix():
     makefile = (ROOT / "Makefile").read_text()
     assert "check-format" in makefile  # nosec B101
     assert "check-lint" in makefile  # nosec B101
+    assert "check-radon" in makefile  # nosec B101
+    assert "check-xenon" in makefile  # nosec B101
+    assert "check-imports" in makefile  # nosec B101
+    assert "check-deptry" in makefile  # nosec B101
     assert "check-spelling" in makefile  # nosec B101
     assert "check-toml" in makefile  # nosec B101
     assert "check-types" in makefile  # nosec B101
@@ -38,6 +42,10 @@ def test_makefile_exposes_full_test_matrix():
     assert "check-docker" in makefile  # nosec B101
     assert "check-shell" in makefile  # nosec B101
     assert "check-iac" in makefile  # nosec B101
+    assert "report-wily" in makefile  # nosec B101
+    assert "report-vulture" in makefile  # nosec B101
+    assert "report-docstrings" in makefile  # nosec B101
+    assert "report-sbom" in makefile  # nosec B101
     assert "test-pulumi" in makefile  # nosec B101
     assert "test-cost" in makefile  # nosec B101
     assert "test-policy" in makefile  # nosec B101
@@ -88,6 +96,12 @@ def test_ci_workflows_cover_local_test_targets():
     preview = (ROOT / ".github" / "workflows" / "pulumi-preview.yml").read_text()
     coverage = (ROOT / ".github" / "workflows" / "pulumi-coverage.yml").read_text()
     repo_health = (ROOT / ".github" / "workflows" / "repo-health.yml").read_text()
+    dependency_review = (
+        ROOT / ".github" / "workflows" / "dependency-review.yml"
+    ).read_text()
+    quality_monitoring = (
+        ROOT / ".github" / "workflows" / "quality-monitoring.yml"
+    ).read_text()
     runner_image = (
         ROOT / ".github" / "workflows" / "pulumi-runner-image.yml"
     ).read_text()
@@ -102,6 +116,10 @@ def test_ci_workflows_cover_local_test_targets():
     deploy_prod = (ROOT / ".github" / "workflows" / "pulumi-prod.yml").read_text()
     assert "check-format" in quality  # nosec B101
     assert "check-lint" in quality  # nosec B101
+    assert "check-radon" in quality  # nosec B101
+    assert "check-xenon" in quality  # nosec B101
+    assert "check-imports" in quality  # nosec B101
+    assert "check-deptry" in quality  # nosec B101
     assert "check-spelling" in quality  # nosec B101
     assert "check-toml" in quality  # nosec B101
     assert "check-types" in quality  # nosec B101
@@ -139,6 +157,13 @@ def test_ci_workflows_cover_local_test_targets():
     assert "make check-iam" in preview  # nosec B101
     assert "workflow_dispatch:" in repo_health  # nosec B101
     assert "scorecard-action" in repo_health  # nosec B101
+    assert "dependency-review-action" in dependency_review  # nosec B101
+    assert "pull_request:" in dependency_review  # nosec B101
+    assert "report-wily" in quality_monitoring  # nosec B101
+    assert "report-vulture" in quality_monitoring  # nosec B101
+    assert "report-docstrings" in quality_monitoring  # nosec B101
+    assert "report-sbom" in quality_monitoring  # nosec B101
+    assert "schedule:" in quality_monitoring  # nosec B101
     assert "make check-coverage" in coverage  # nosec B101
     assert "docker compose build pulumi" in coverage  # nosec B101
     assert "make runner-image-build" in runner_image  # nosec B101
@@ -180,12 +205,27 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     assert "Pulumi Preview Guardrails" in ci_doc  # nosec B101
     assert "CodeQL" in ci_doc  # nosec B101
     assert "Repository Health" in ci_doc  # nosec B101
+    assert "Dependency Review" in ci_doc  # nosec B101
+    assert "Quality Monitoring" in ci_doc  # nosec B101
+    assert "Radon" in ci_doc  # nosec B101
+    assert "Xenon" in ci_doc  # nosec B101
+    assert "Import Linter" in ci_doc  # nosec B101
+    assert "Deptry" in ci_doc  # nosec B101
+    assert "shfmt" in ci_doc  # nosec B101
     assert "Qlty" in ci_doc  # nosec B101
     assert "uv" in ci_doc  # nosec B101
     assert "Ruff" in testing_doc  # nosec B101
     assert "Typos" in testing_doc  # nosec B101
     assert "Taplo" in testing_doc  # nosec B101
     assert "Ty" in testing_doc  # nosec B101
+    assert "Radon" in testing_doc  # nosec B101
+    assert "Xenon" in testing_doc  # nosec B101
+    assert "Import Linter" in testing_doc  # nosec B101
+    assert "Deptry" in testing_doc  # nosec B101
+    assert "shfmt" in testing_doc  # nosec B101
+    assert "Wily" in testing_doc  # nosec B101
+    assert "Vulture" in testing_doc  # nosec B101
+    assert "docstr-coverage" in testing_doc  # nosec B101
     assert "Qlty" in testing_doc  # nosec B101
     assert "Structural" in testing_doc  # nosec B101
     assert "Cost Guardrails" in testing_doc  # nosec B101
@@ -221,5 +261,9 @@ def test_repository_tracks_qlty_configuration():
 
 def test_repository_tracks_ci_guardrail_support_files():
     assert (ROOT / ".gitleaks.toml").exists()  # nosec B101
+    assert (ROOT / ".importlinter").exists()  # nosec B101
     assert (ROOT / "scripts" / "analyze_pulumi_preview.py").exists()  # nosec B101
+    assert (ROOT / "scripts" / "__init__.py").exists()  # nosec B101
+    assert (ROOT / "scripts" / "check_radon_maintainability.py").exists()  # nosec B101
+    assert (ROOT / "scripts" / "run_wily_report.py").exists()  # nosec B101
     assert (ROOT / "scripts" / "validate_iam_policies.py").exists()  # nosec B101

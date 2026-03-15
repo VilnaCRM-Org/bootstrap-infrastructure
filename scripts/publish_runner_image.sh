@@ -43,7 +43,7 @@ docker tag "${image_source}" "${image_uri}:${image_tag}"
 docker push "${image_uri}:${image_tag}"
 
 if [[ -n "${additional_tags}" ]]; then
-  IFS=',' read -r -a extra_tags <<< "${additional_tags}"
+  IFS=',' read -r -a extra_tags <<<"${additional_tags}"
   for extra_tag in "${extra_tags[@]}"; do
     trimmed_tag="${extra_tag// /}"
     if [[ -z "${trimmed_tag}" ]]; then
