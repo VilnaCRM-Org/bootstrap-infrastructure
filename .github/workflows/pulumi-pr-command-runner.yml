@@ -1,23 +1,9 @@
 name: Pulumi PR Command Runner
 
 on:
-  workflow_dispatch:
-    inputs:
-      pull_request_number:
-        description: Pull request number
-        required: true
-        type: string
-      head_sha:
-        description: Pull request head commit SHA
-        required: true
-        type: string
-      command:
-        description: Pulumi command to execute
-        required: true
-        type: choice
-        options:
-          - plan
-          - up
+  repository_dispatch:
+    types:
+      - pulumi-pr-command
 
 permissions:
   id-token: write
@@ -26,7 +12,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: pulumi-pr-command-${{ inputs.pull_request_number }}
+  group: pulumi-pr-command-${{ github.event.client_payload.pull_request_number }}
   cancel-in-progress: false
 
 jobs:
@@ -41,8 +27,8 @@ jobs:
         id: pr
         run: |
           {
-            echo "head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ inputs.pull_request_number }}" --jq '.head.sha')"
-            echo "head_repo=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ inputs.pull_request_number }}" --jq '.head.repo.full_name')"
+            echo "head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.client_payload.pull_request_number }}" --jq '.head.sha')"
+            echo "head_repo=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.client_payload.pull_request_number }}" --jq '.head.repo.full_name')"
           } >> "$GITHUB_OUTPUT"
 
       - name: Reject forked PRs
@@ -53,11 +39,11 @@ jobs:
           Pulumi PR command runner rejected this request because the pull request
           head is not in the base repository.
           EOF
-          gh pr comment ${{ inputs.pull_request_number }} --body-file "${body_file}"
+          gh pr comment ${{ github.event.client_payload.pull_request_number }} --body-file "${body_file}"
           exit 1
 
       - name: Reject stale dispatches
-        if: steps.pr.outputs.head_sha != inputs.head_sha
+        if: steps.pr.outputs.head_sha != github.event.client_payload.head_sha
         run: |
           body_file="$(mktemp)"
           cat > "${body_file}" <<'EOF'
@@ -65,13 +51,13 @@ jobs:
           head moved after the command was queued. Comment again on the latest
           commit.
           EOF
-          gh pr comment ${{ inputs.pull_request_number }} --body-file "${body_file}"
+          gh pr comment ${{ github.event.client_payload.pull_request_number }} --body-file "${body_file}"
           exit 1
 
       - name: Checkout PR head
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          ref: ${{ inputs.head_sha }}
+          ref: ${{ github.event.client_payload.head_sha }}
           persist-credentials: false
 
       - name: Configure AWS credentials
@@ -86,7 +72,7 @@ jobs:
           account_id="$(aws sts get-caller-identity --query Account --output text)"
           registry="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com"
           repository='${{ vars.PULUMI_TEST_RUNNER_ECR_REPOSITORY }}'
-          primary_tag="sha-${{ inputs.head_sha }}"
+          primary_tag="sha-${{ github.event.client_payload.head_sha }}"
 
           if aws ecr describe-images --region "${AWS_REGION}" --repository-name "${repository}" --image-ids imageTag="${primary_tag}" >/dev/null 2>&1; then
             selected_tag="${primary_tag}"
@@ -125,13 +111,16 @@ jobs:
             -e PULUMI_SECRETS_PROVIDER='${{ vars.PULUMI_TEST_SECRETS_PROVIDER }}' \
             -e PULUMI_SKIP_UPDATE_CHECK="true" \
             '${{ steps.image.outputs.image_ref }}' \
-            bash -lc "./scripts/run_pulumi_command.sh '${{ inputs.command }}'" 2>&1 | tee out/pulumi-command.log
+            bash -lc "./scripts/run_pulumi_command.sh '${{ github.event.client_payload.command }}'" 2>&1 | tee out/pulumi-command.log
 
       - name: Upload Pulumi command log
         if: always()
         uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4
         with:
-          name: pulumi-${{ inputs.command }}-${{ inputs.pull_request_number }}-${{ inputs.head_sha }}
+          name: >-
+            pulumi-${{ github.event.client_payload.command }}-${{
+            github.event.client_payload.pull_request_number }}-${{
+            github.event.client_payload.head_sha }}
           path: out/pulumi-command.log
 
       - name: Comment command result
@@ -142,10 +131,10 @@ jobs:
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           body_file="$(mktemp)"
           {
-            echo "## Pulumi ${{ inputs.command }}: ${status_text}"
+            echo "## Pulumi ${{ github.event.client_payload.command }}: ${status_text}"
             echo
             echo "- Stack: \`test\`"
-            echo "- Commit: \`${{ inputs.head_sha }}\`"
+            echo "- Commit: \`${{ github.event.client_payload.head_sha }}\`"
             echo "- Runner image: \`${{ steps.image.outputs.image_ref }}\`"
             echo "- Workflow run: ${run_url}"
             echo
@@ -157,4 +146,4 @@ jobs:
             echo
             echo "</details>"
           } > "${body_file}"
-          gh pr comment ${{ inputs.pull_request_number }} --body-file "${body_file}"
+          gh pr comment ${{ github.event.client_payload.pull_request_number }} --body-file "${body_file}"

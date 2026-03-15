@@ -42,13 +42,13 @@ Guardrails:
 - only comments on pull requests are considered
 - only `OWNER`, `MEMBER`, and `COLLABORATOR` authors are accepted
 - only branches in the same repository are accepted; forks are rejected to avoid exposing AWS credentials
-- the `issue_comment` workflow only dispatches a trusted `workflow_dispatch` runner; it does not check out PR code itself
+- the `issue_comment` workflow only dispatches a trusted `repository_dispatch` runner; it does not check out PR code itself
 - the workflow uses the PR-head runner image tag when present and falls back to `main`
 
 The command flow is:
 
 1. Resolve the PR head SHA and repository.
-2. Dispatch `pulumi-pr-command-runner.yml` on the trusted default branch with the PR number, head SHA, and command.
+2. Dispatch `pulumi-pr-command-runner.yml` on the trusted default branch with the PR number, head SHA, and command payload.
 3. Re-validate that the PR head still matches the queued SHA.
 4. Assume the GitHub OIDC automation role in AWS.
 5. Pull the ECR runner image.

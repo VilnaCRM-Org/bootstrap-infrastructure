@@ -6,8 +6,7 @@ on:
       - created
 
 permissions:
-  actions: write
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
 
@@ -128,11 +127,11 @@ jobs:
           gh api \
             --method POST \
             -H "Accept: application/vnd.github+json" \
-            "repos/${GITHUB_REPOSITORY}/actions/workflows/pulumi-pr-command-runner.yml/dispatches" \
-            -f ref=main \
-            -f "inputs[pull_request_number]=${{ github.event.issue.number }}" \
-            -f "inputs[head_sha]=${{ steps.pr.outputs.head_sha }}" \
-            -f "inputs[command]=${{ steps.parse.outputs.command }}"
+            "repos/${GITHUB_REPOSITORY}/dispatches" \
+            -f event_type='pulumi-pr-command' \
+            -f "client_payload[pull_request_number]=${{ github.event.issue.number }}" \
+            -f "client_payload[head_sha]=${{ steps.pr.outputs.head_sha }}" \
+            -f "client_payload[command]=${{ steps.parse.outputs.command }}"
 
       - name: Comment on queued command
         if: >-
@@ -145,6 +144,6 @@ jobs:
           {
             echo "Queued \`pulumi ${{ steps.parse.outputs.command }}\` for \`${{ steps.pr.outputs.head_sha }}\`."
             echo
-            echo "A trusted \`workflow_dispatch\` runner workflow will execute the command and post the result back to this pull request."
+            echo "A trusted \`repository_dispatch\` runner workflow will execute the command and post the result back to this pull request."
           } > "${body_file}"
           gh pr comment ${{ github.event.issue.number }} --body-file "${body_file}"
