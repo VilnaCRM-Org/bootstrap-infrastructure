@@ -34,6 +34,7 @@ INTERROGATE_PATHS   = pulumi/infra/config.py pulumi/infra/utils pulumi/infra/iam
 VULTURE_PATHS       = pulumi/infra policy_pack scripts
 WILY_PATHS          = pulumi/infra policy_pack scripts
 QUALITY_REPORT_DIR ?= .quality-reports
+PREVIEW_ARTIFACT_DIR ?= out
 QLTY ?= qlty
 
 export COMPOSE_ENV_FILE := $(EFFECTIVE_ENV_FILE)
@@ -62,9 +63,9 @@ COVERAGE_DIR ?= .coverage-artifacts
         runner-image-build runner-image-smoke runner-image-push \
         check-format check-lint check-radon check-xenon check-imports check-deptry \
         check-spelling check-toml check-types check-ty check-package check-qlty \
-        check-bandit check-deps check-sbom check-secrets check-iam check-yaml check-actionlint \
+        check-bandit check-deps check-sbom check-secrets check-iam check-preview check-yaml check-actionlint \
         check-docker check-shell check-iac check-static check-security check-coverage \
-        report-wily report-vulture report-docstrings report-sbom ci \
+        report-wily report-vulture report-docstrings report-sbom report-drift ci ci-nightly \
         test-unit test-integration test-pulumi test-policy test-crossguard test-mutation test-e2e \
         test-bats test-cost test
 
@@ -224,6 +225,37 @@ check-secrets: ## Scan the repository for leaked secrets with Gitleaks.
 check-iam: ## Validate generated IAM and resource policies with AWS IAM Access Analyzer.
 	$(COMPOSE) run --rm -e REQUIRE_AWS_ACCESS_ANALYZER="$(REQUIRE_AWS_ACCESS_ANALYZER)" $(COMPOSE_SERVICE) bash -lc "$(UV_RUN) python scripts/validate_iam_policies.py"
 
+check-preview: ## Run local Pulumi preview parity and destructive-diff guardrails when preview env is configured.
+	@mkdir -p "$(PREVIEW_ARTIFACT_DIR)"
+	@stack_name="$${PULUMI_STACK:-test}"; \
+	backend_url="$${PULUMI_BACKEND_URL:-}"; \
+	secrets_provider="$${PULUMI_SECRETS_PROVIDER:-$${PULUMI_TEST_SECRETS_PROVIDER:-}}"; \
+	if [ -z "$$backend_url" ] && [ -n "$${PULUMI_STATE_BUCKET:-}" ]; then \
+	  backend_url="s3://$${PULUMI_STATE_BUCKET}/state/$$stack_name"; \
+	fi; \
+	if [ -z "$$backend_url" ] || [ -z "$$secrets_provider" ]; then \
+	  echo "Skipping local preview parity: set PULUMI_BACKEND_URL or PULUMI_STATE_BUCKET, and PULUMI_SECRETS_PROVIDER or PULUMI_TEST_SECRETS_PROVIDER."; \
+	  exit 0; \
+	fi; \
+	if [ -n "$${PULUMI_STATE_BUCKET:-}" ]; then \
+	  $(COMPOSE) run --rm $(COMPOSE_SERVICE) aws s3api head-bucket --bucket "$${PULUMI_STATE_BUCKET}" >/dev/null; \
+	fi; \
+	$(COMPOSE) run --rm \
+	  -e AWS_REGION="$(AWS_REGION)" \
+	  -e AWS_DEFAULT_REGION="$(AWS_REGION)" \
+	  -e PULUMI_STACK="$$stack_name" \
+	  -e PULUMI_DIR="$(PULUMI_DIR)" \
+	  -e PULUMI_BACKEND_URL="$$backend_url" \
+	  -e PULUMI_SECRETS_PROVIDER="$$secrets_provider" \
+	  -e PULUMI_REQUIRE_EXISTING_STACK="true" \
+	  -e PULUMI_PREVIEW_JSON_PATH="/workspace/$(PREVIEW_ARTIFACT_DIR)/pulumi-preview.json" \
+	  -e PULUMI_SKIP_UPDATE_CHECK="true" \
+	  $(COMPOSE_SERVICE) \
+	  bash -lc "./scripts/run_pulumi_command.sh plan"; \
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) \
+	  bash -lc "$(UV_RUN) python scripts/analyze_pulumi_preview.py --preview-file /workspace/$(PREVIEW_ARTIFACT_DIR)/pulumi-preview.json --summary-file /workspace/$(PREVIEW_ARTIFACT_DIR)/pulumi-preview-summary.md"; \
+	cat "$(PREVIEW_ARTIFACT_DIR)/pulumi-preview-summary.md"
+
 check-yaml: ## Lint GitHub Actions and Pulumi YAML manifests.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) yamllint -c .yamllint $(YAML_LINT_PATHS)
 
@@ -252,6 +284,32 @@ report-docstrings: ## Measure docstring coverage for reusable infra and guardrai
 report-sbom: ## Export a CycloneDX SBOM artifact from the locked uv dependency graph.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p '$(QUALITY_REPORT_DIR)' && uv export --preview-features sbom-export --frozen --all-groups --format cyclonedx1.5 --no-emit-project --output-file '$(QUALITY_REPORT_DIR)/sbom.cyclonedx.json' >/dev/null && python -m json.tool '$(QUALITY_REPORT_DIR)/sbom.cyclonedx.json' >/dev/null"
 
+report-drift: ## Run the scheduled Pulumi drift check locally when preview env is configured.
+	@stack_name="$${PULUMI_STACK:-test}"; \
+	backend_url="$${PULUMI_BACKEND_URL:-}"; \
+	secrets_provider="$${PULUMI_SECRETS_PROVIDER:-$${PULUMI_TEST_SECRETS_PROVIDER:-}}"; \
+	if [ -z "$$backend_url" ] && [ -n "$${PULUMI_STATE_BUCKET:-}" ]; then \
+	  backend_url="s3://$${PULUMI_STATE_BUCKET}/state/$$stack_name"; \
+	fi; \
+	if [ -z "$$backend_url" ] || [ -z "$$secrets_provider" ]; then \
+	  echo "Skipping local drift parity: set PULUMI_BACKEND_URL or PULUMI_STATE_BUCKET, and PULUMI_SECRETS_PROVIDER or PULUMI_TEST_SECRETS_PROVIDER."; \
+	  exit 0; \
+	fi; \
+	if [ -n "$${PULUMI_STATE_BUCKET:-}" ]; then \
+	  $(COMPOSE) run --rm $(COMPOSE_SERVICE) aws s3api head-bucket --bucket "$${PULUMI_STATE_BUCKET}" >/dev/null; \
+	fi; \
+	$(COMPOSE) run --rm \
+	  -e AWS_REGION="$(AWS_REGION)" \
+	  -e AWS_DEFAULT_REGION="$(AWS_REGION)" \
+	  -e PULUMI_STACK="$$stack_name" \
+	  -e PULUMI_DIR="$(PULUMI_DIR)" \
+	  -e PULUMI_BACKEND_URL="$$backend_url" \
+	  -e PULUMI_SECRETS_PROVIDER="$$secrets_provider" \
+	  -e PULUMI_REQUIRE_EXISTING_STACK="true" \
+	  -e PULUMI_SKIP_UPDATE_CHECK="true" \
+	  $(COMPOSE_SERVICE) \
+	  bash -lc "./scripts/run_pulumi_command.sh drift"
+
 check-static: ## Run static formatting, lint, type, and packaging checks.
 	$(MAKE) check-format
 	$(MAKE) check-lint
@@ -271,6 +329,7 @@ check-security: ## Run security and policy checks for code, manifests, and build
 	$(MAKE) check-sbom
 	$(MAKE) check-secrets
 	$(MAKE) check-iam
+	$(MAKE) check-preview
 	$(MAKE) check-yaml
 	$(MAKE) check-actionlint
 	$(MAKE) check-docker
@@ -299,6 +358,13 @@ ci: ## Run the full local CI battery, including static checks and tests.
 	$(MAKE) check-static
 	$(MAKE) check-security
 	$(MAKE) test
+
+ci-nightly: ## Run the scheduled advisory quality and drift checks locally.
+	$(MAKE) report-wily
+	$(MAKE) report-vulture
+	$(MAKE) report-docstrings
+	$(MAKE) report-sbom
+	$(MAKE) report-drift
 
 clean: ## Remove Docker Compose artifacts, Python caches, and build artifacts.
 	$(COMPOSE) down -v 2>/dev/null || true

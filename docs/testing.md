@@ -50,6 +50,7 @@ make check-deps
 make check-sbom
 make check-secrets
 make check-iam
+make check-preview
 make check-yaml
 make check-actionlint
 make check-docker
@@ -63,6 +64,7 @@ Coverage:
 - CycloneDX SBOM export from the locked dependency graph
 - Gitleaks secret scanning with the committed `.gitleaks.toml` configuration
 - IAM Access Analyzer validation for generated IAM/resource policies when AWS credentials are available
+- local Pulumi preview parity with destructive-diff analysis when `PULUMI_STATE_BUCKET` plus a KMS-backed secrets provider are configured
 - yamllint on workflows and stack manifests
 - actionlint on GitHub Actions workflows
 - hadolint on the Dockerfile
@@ -212,6 +214,8 @@ make report-wily
 make report-vulture
 make report-docstrings
 make report-sbom
+make report-drift
+make ci-nightly
 ```
 
 Coverage:
@@ -219,6 +223,7 @@ Coverage:
 - Vulture dead-code reporting at confidence `80`
 - `docstr-coverage` reporting for reusable modules with an advisory floor of `80%`
 - scheduled CycloneDX SBOM snapshots
+- local drift detection parity via `./scripts/run_pulumi_command.sh drift` when the same preview env vars are configured
 
 Implementation note:
 - `make report-wily` uses [run_wily_report.py](/home/kravtsov/Projects/bootstrap-infrastructure/scripts/run_wily_report.py). In CI it analyzes the clean checkout directly; on a dirty local worktree it falls back to a temporary clone of `HEAD` so the advisory report remains runnable.
@@ -246,7 +251,7 @@ GitHub Actions mirrors the local targets:
 - `python-quality.yml` -> `make check-format`, `make check-lint`, `make check-radon`, `make check-xenon`, `make check-imports`, `make check-deptry`, `make check-spelling`, `make check-toml`, `make check-types`, `make check-ty`, `make check-package`
 - `devsecops-guardrails.yml` -> `make check-bandit`, `make check-deps`, `make check-sbom`, `make check-secrets`, `make check-yaml`, `make check-actionlint`, `make check-docker`, `make check-shell`, `make check-iac`, `make check-qlty`, `make test-cost`
 - `dependency-review.yml` -> GitHub dependency review for changes to dependency metadata
-- `pulumi-preview.yml` -> `./scripts/run_pulumi_command.sh plan`, `scripts/analyze_pulumi_preview.py`, `make check-iam`
+- `pulumi-preview.yml` -> `make check-preview`, `scripts/analyze_pulumi_preview.py`, `make check-iam`
 - `codeql.yml` -> GitHub CodeQL for `python` and `actions`
 - `pulumi-structural.yml` -> `make test-pulumi`
 - `pulumi-policy.yml` -> `make test-crossguard`
@@ -258,6 +263,7 @@ GitHub Actions mirrors the local targets:
 - `bats-tests.yml` -> `make test-bats`
 - `pulumi-runner-image.yml` -> `make runner-image-build`, `make runner-image-smoke`, `make runner-image-push`
 - `pulumi-pr-commands.yml` -> validate and dispatch trusted PR command runs from `issue_comment`
+- `quality-monitoring.yml` and `pulumi-drift.yml` -> `make ci-nightly`
 - `pulumi-pr-command-runner.yml` -> `./scripts/run_pulumi_command.sh plan|up` inside the published ECR runner image
 - `pulumi-drift.yml` -> `./scripts/run_pulumi_command.sh drift` inside the published ECR runner image
 - `quality-monitoring.yml` -> `make report-wily`, `make report-vulture`, `make report-docstrings`, `make report-sbom`

@@ -144,6 +144,16 @@ Current limitation:
 - KMS key policies are not validated here because `ValidatePolicy` does not currently support `AWS::KMS::Key`
 - trust policies are not validated because Access Analyzer does not provide the same validation path for GitHub OIDC assume-role documents
 
+For local parity, run:
+
+- `make check-preview`
+- `make check-iam REQUIRE_AWS_ACCESS_ANALYZER=1`
+
+`make check-preview` uses the same Pulumi command runner plus destructive-diff analyzer as the PR workflow. It requires either:
+
+- `PULUMI_BACKEND_URL` and `PULUMI_SECRETS_PROVIDER`
+- or `PULUMI_STATE_BUCKET` and `PULUMI_TEST_SECRETS_PROVIDER`
+
 ## Pulumi Policy Guardrails
 
 The `pulumi-policy.yml` workflow runs `make test-crossguard` and validates the repo-local Pulumi CrossGuard policy pack in `policy_pack/`.
@@ -187,6 +197,14 @@ These checks are visibility-oriented and do not need to block PR merges:
 - `repo-health.yml`
 
 `pulumi-drift.yml` runs a non-destructive `pulumi refresh --preview-only --expect-no-changes` through the shared runner image so unexpected drift is surfaced without mutating stack state.
+
+For local parity, run `make ci-nightly`. That aggregate executes:
+
+- `make report-wily`
+- `make report-vulture`
+- `make report-docstrings`
+- `make report-sbom`
+- `make report-drift`
 
 ## Quality Monitoring
 

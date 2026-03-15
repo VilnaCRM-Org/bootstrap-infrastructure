@@ -23,6 +23,7 @@ assert_output_contains() {
   assert_output_contains "check-ty"
   assert_output_contains "check-secrets"
   assert_output_contains "check-iam"
+  assert_output_contains "check-preview"
   assert_output_contains "pulumi-preview"
   assert_output_contains "pulumi-plan-ci"
   assert_output_contains "runner-image-build"
@@ -36,6 +37,8 @@ assert_output_contains() {
   assert_output_contains "report-vulture"
   assert_output_contains "report-docstrings"
   assert_output_contains "report-sbom"
+  assert_output_contains "report-drift"
+  assert_output_contains "ci-nightly"
 }
 
 @test "make all resolves to help output" {
@@ -356,6 +359,14 @@ assert_output_contains() {
   assert_output_contains "scripts/validate_iam_policies.py"
 }
 
+@test "make check-preview runs local preview parity and diff analysis" {
+  run make -n check-preview PULUMI_STATE_BUCKET=pulumi-bootstrap-infrastructure-test-state PULUMI_TEST_SECRETS_PROVIDER=awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1
+  [ "$status" -eq 0 ]
+  assert_output_contains "./scripts/run_pulumi_command.sh plan"
+  assert_output_contains "scripts/analyze_pulumi_preview.py"
+  assert_output_contains "PULUMI_PREVIEW_JSON_PATH=\"/workspace/out/pulumi-preview.json\""
+}
+
 @test "make check-yaml runs yamllint" {
   run make -n check-yaml
   [ "$status" -eq 0 ]
@@ -413,6 +424,7 @@ assert_output_contains() {
   assert_output_contains "make check-sbom"
   assert_output_contains "make check-secrets"
   assert_output_contains "make check-iam"
+  assert_output_contains "make check-preview"
   assert_output_contains "make check-yaml"
   assert_output_contains "make check-actionlint"
   assert_output_contains "make check-docker"
@@ -427,4 +439,21 @@ assert_output_contains() {
   assert_output_contains "make check-static"
   assert_output_contains "make check-security"
   assert_output_contains "make test"
+}
+
+@test "make report-drift runs local drift parity" {
+  run make -n report-drift PULUMI_STATE_BUCKET=pulumi-bootstrap-infrastructure-test-state PULUMI_TEST_SECRETS_PROVIDER=awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1
+  [ "$status" -eq 0 ]
+  assert_output_contains "./scripts/run_pulumi_command.sh drift"
+  assert_output_contains "PULUMI_REQUIRE_EXISTING_STACK=\"true\""
+}
+
+@test "make ci-nightly runs the advisory monitoring aggregate" {
+  run make -n ci-nightly
+  [ "$status" -eq 0 ]
+  assert_output_contains "make report-wily"
+  assert_output_contains "make report-vulture"
+  assert_output_contains "make report-docstrings"
+  assert_output_contains "make report-sbom"
+  assert_output_contains "make report-drift"
 }

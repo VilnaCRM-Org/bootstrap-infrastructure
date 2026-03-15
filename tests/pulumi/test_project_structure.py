@@ -37,6 +37,7 @@ def test_makefile_exposes_full_test_matrix():
     assert "check-sbom" in makefile  # nosec B101
     assert "check-secrets" in makefile  # nosec B101
     assert "check-iam" in makefile  # nosec B101
+    assert "check-preview" in makefile  # nosec B101
     assert "check-yaml" in makefile  # nosec B101
     assert "check-actionlint" in makefile  # nosec B101
     assert "check-docker" in makefile  # nosec B101
@@ -46,6 +47,7 @@ def test_makefile_exposes_full_test_matrix():
     assert "report-vulture" in makefile  # nosec B101
     assert "report-docstrings" in makefile  # nosec B101
     assert "report-sbom" in makefile  # nosec B101
+    assert "report-drift" in makefile  # nosec B101
     assert "test-pulumi" in makefile  # nosec B101
     assert "test-cost" in makefile  # nosec B101
     assert "test-policy" in makefile  # nosec B101
@@ -57,6 +59,7 @@ def test_makefile_exposes_full_test_matrix():
     assert "test-bats" in makefile  # nosec B101
     assert "check-coverage" in makefile  # nosec B101
     assert "ci" in makefile  # nosec B101
+    assert "ci-nightly" in makefile  # nosec B101
 
 
 def test_deploy_stack_exports_pulumi_kms_outputs():
@@ -213,6 +216,8 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     assert "Deptry" in ci_doc  # nosec B101
     assert "shfmt" in ci_doc  # nosec B101
     assert "Qlty" in ci_doc  # nosec B101
+    assert "check-preview" in ci_doc  # nosec B101
+    assert "ci-nightly" in ci_doc  # nosec B101
     assert "uv" in ci_doc  # nosec B101
     assert "Ruff" in testing_doc  # nosec B101
     assert "Typos" in testing_doc  # nosec B101
@@ -232,6 +237,9 @@ def test_docs_cover_testing_and_bootstrap_architecture():
     assert "Mutation" in testing_doc  # nosec B101
     assert "CrossGuard" in testing_doc  # nosec B101
     assert "Coverage" in testing_doc  # nosec B101
+    assert "check-preview" in testing_doc  # nosec B101
+    assert "report-drift" in testing_doc  # nosec B101
+    assert "ci-nightly" in testing_doc  # nosec B101
     assert "Stage-0" in kms_doc  # nosec B101
     assert "pulumiSecretsProviderUrls" in kms_doc  # nosec B101
     assert "pulumi plan" in automation_doc  # nosec B101
