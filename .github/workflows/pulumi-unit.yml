@@ -21,7 +21,7 @@ jobs:
   unit:
     name: Unit
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
     steps:
