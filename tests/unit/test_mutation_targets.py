@@ -2,6 +2,7 @@ import hashlib
 import json
 from types import SimpleNamespace
 
+import infra.automation as automation
 from infra import config, pulumi_secrets
 from infra.iam import github_oidc
 
@@ -129,6 +130,22 @@ def test_mutation_target_pulumi_secrets_component(monkeypatch):
     assert registered_outputs["key_arns"] == secrets.key_arns  # nosec B101
     assert registered_outputs["alias_names"] == secrets.alias_names  # nosec B101
     assert registered_outputs["provider_urls"] == secrets.provider_urls  # nosec B101
+
+
+def test_mutation_target_github_automation_policy_uses_explicit_actions():
+    policy = json.loads(automation._automation_policy("123456789012"))
+    actions = {
+        action for statement in policy["Statement"] for action in statement["Action"]
+    }
+
+    assert "s3:*" not in actions  # nosec B101
+    assert "kms:*" not in actions  # nosec B101
+    assert "backup:*" not in actions  # nosec B101
+    assert "ecr:*" not in actions  # nosec B101
+    assert "s3:CreateBucket" in actions  # nosec B101
+    assert "kms:CreateKey" in actions  # nosec B101
+    assert "backup:CreateBackupPlan" in actions  # nosec B101
+    assert "ecr:CreateRepository" in actions  # nosec B101
 
 
 def test_mutation_target_github_oidc_role_name_limits_length():

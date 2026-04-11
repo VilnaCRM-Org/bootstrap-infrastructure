@@ -15,7 +15,8 @@ production_environments:
 
 allowlists:
   public_s3_buckets: []
-  wildcard_iam: []
+  wildcard_iam:
+    - github-automation-policy
 
 annotations:
   public_s3_tag: AllowPublicBucket
