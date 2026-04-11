@@ -48,8 +48,11 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
     main_text = (ROOT / "pulumi" / "__main__.py").read_text()
     for export_name in (
         "centralLogBucket",
+        "centralLogBucketArn",
+        "pulumiStateBuckets",
         "pulumiBackendUrls",
         "pulumiSecretsKeyArns",
+        "pulumiSecretsAliases",
         "pulumiSecretsProviderUrls",
         "deployRoleArns",
         "automationRoleArn",
@@ -68,9 +71,35 @@ def test_repository_uses_current_python_tooling_contract() -> None:
     assert not (ROOT / "poetry.lock").exists()  # nosec B101
 
 
-def test_ci_workflows_cover_current_local_targets() -> None:
+def test_quality_workflows_cover_current_local_targets() -> None:
     quality = (ROOT / ".github" / "workflows" / "python-quality.yml").read_text()
+
+    for target in (
+        "make test-ruff",
+        "make test-ty",
+        "make test-maintainability",
+        "make test-architecture",
+        "make test-dependency-hygiene",
+        "make test-coverage",
+    ):
+        assert target in quality  # nosec B101
+
+
+def test_security_workflows_cover_current_local_targets() -> None:
     security = (ROOT / ".github" / "workflows" / "security-scans.yml").read_text()
+
+    for target in (
+        "make test-secrets",
+        "make test-deps-security",
+        "make test-bandit",
+        "make test-actionlint",
+        "make test-yaml",
+        "make test-dockerfile",
+    ):
+        assert target in security  # nosec B101
+
+
+def test_pulumi_workflows_cover_current_local_targets() -> None:
     structural = (ROOT / ".github" / "workflows" / "pulumi-structural.yml").read_text()
     unit = (ROOT / ".github" / "workflows" / "pulumi-unit.yml").read_text()
     integration = (
@@ -83,33 +112,6 @@ def test_ci_workflows_cover_current_local_targets() -> None:
         ROOT / ".github" / "workflows" / "pulumi-pr-guardrails.yml"
     ).read_text()
     local_battery = (ROOT / ".github" / "workflows" / "pulumi-local.yml").read_text()
-    nightly_quality = (
-        ROOT / ".github" / "workflows" / "nightly-quality.yml"
-    ).read_text()
-    nightly_guardrails = (
-        ROOT / ".github" / "workflows" / "nightly-guardrails.yml"
-    ).read_text()
-    codeql = (ROOT / ".github" / "workflows" / "codeql.yml").read_text()
-
-    for target in (
-        "make test-ruff",
-        "make test-ty",
-        "make test-maintainability",
-        "make test-architecture",
-        "make test-dependency-hygiene",
-        "make test-coverage",
-    ):
-        assert target in quality  # nosec B101
-
-    for target in (
-        "make test-secrets",
-        "make test-deps-security",
-        "make test-bandit",
-        "make test-actionlint",
-        "make test-yaml",
-        "make test-dockerfile",
-    ):
-        assert target in security  # nosec B101
 
     assert "make test-pulumi" in structural  # nosec B101
     assert "make test-unit" in unit  # nosec B101
@@ -121,6 +123,17 @@ def test_ci_workflows_cover_current_local_targets() -> None:
     assert "make test-destructive-diff" in guardrails  # nosec B101
     assert "make test-iam-validation" in guardrails  # nosec B101
     assert "make ci-pr" in local_battery  # nosec B101
+
+
+def test_nightly_workflows_cover_current_local_targets() -> None:
+    nightly_quality = (
+        ROOT / ".github" / "workflows" / "nightly-quality.yml"
+    ).read_text()
+    nightly_guardrails = (
+        ROOT / ".github" / "workflows" / "nightly-guardrails.yml"
+    ).read_text()
+    codeql = (ROOT / ".github" / "workflows" / "codeql.yml").read_text()
+
     assert "make report-maintainability-trends" in nightly_quality  # nosec B101
     assert "make report-dead-code" in nightly_quality  # nosec B101
     assert "make report-docstrings" in nightly_quality  # nosec B101

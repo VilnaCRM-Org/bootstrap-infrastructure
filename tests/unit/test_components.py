@@ -15,6 +15,9 @@ from infra import (
 )
 from infra.iam import GitHubOidcRoles, github_oidc
 from infra.utils.outputs import future_output
+
+# Pulumi does not expose a public sync helper for Output values in tests, so keep
+# this internal import isolated here in case the SDK changes it later.
 from pulumi.runtime.sync_await import _sync_await
 
 import pulumi

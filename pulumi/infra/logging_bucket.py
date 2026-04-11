@@ -311,6 +311,8 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             f"{name}-replica-lifecycle",
             bucket=replica_bucket.id,
             rules=[
+                # Keep the replica as the longer-lived DR copy; only incomplete
+                # multipart uploads are cleaned up automatically here.
                 aws.s3.BucketLifecycleConfigurationRuleArgs(
                     id="replica-lifecycle",
                     status="Enabled",
