@@ -54,7 +54,7 @@ targets = ["pulumi", "policy", "scripts"]
 [tool.deptry]
 extend_exclude = [".artifacts", ".pulumi-backend"]
 ignore_notebooks = true
-known_first_party = ["_script_support", "app", "policy"]
+known_first_party = ["_script_support", "app", "infra", "policy"]
 
 [tool.deptry.package_module_name_map]
 pyyaml = ["yaml"]
@@ -150,4 +150,4 @@ forbidden_modules = ["pulumi", "pulumi_policy"]
 [tool.vulture]
 exclude = ["tests/", ".artifacts/", ".pulumi-backend/"]
 min_confidence = 80
-paths = ["pulumi/app", "policy", "scripts"]
+paths = ["pulumi/app", "pulumi/infra", "policy", "scripts"]

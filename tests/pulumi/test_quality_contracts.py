@@ -56,7 +56,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
     assert expected_tools.issubset(dev_dependencies)
     assert "C90" in ruff["select"]
     assert data["tool"]["ruff"]["lint"]["mccabe"]["max-complexity"] == 10
-    assert deptry["known_first_party"] == ["_script_support", "app", "policy"]
+    assert deptry["known_first_party"] == ["_script_support", "app", "infra", "policy"]
     assert deptry["package_module_name_map"]["pyyaml"] == ["yaml"]
     assert deptry["package_module_name_map"]["pulumi-policy"] == ["pulumi_policy"]
     assert deptry["per_rule_ignores"]["DEP002"] == ["pulumi-aws"]
@@ -112,6 +112,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
     ]
     assert data["tool"]["vulture"]["min_confidence"] == 80
     assert "pulumi/app" in data["tool"]["vulture"]["paths"]
+    assert "pulumi/infra" in data["tool"]["vulture"]["paths"]
 
 
 def test_security_scan_workflow_covers_repo_hygiene_and_dependency_review() -> None:

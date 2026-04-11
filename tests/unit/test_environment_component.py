@@ -90,6 +90,9 @@ def mocked_pulumi_context(
         config_instance.get.side_effect = lambda key, default=None: config_values.get(
             key, default
         )
+        config_instance.get_object.side_effect = lambda key, default=None: (
+            config_values.get(key, default)
+        )
 
         if project_name is not None:
             stack.enter_context(

@@ -7,7 +7,11 @@ import re
 from collections.abc import Callable
 
 import pytest
-from app.environment import EnvironmentSettings
+from app.environment import (
+    EnvironmentSettings,
+    _stack_metadata_from_outputs,
+    resolve_config_value,
+)
 from pulumi.runtime import mocks, settings, stack
 
 
@@ -59,6 +63,15 @@ def test_environment_settings_support_default_resolution_under_pulumi_mocks() ->
         EnvironmentSettings("integration-settings")
 
     _run_with_mocks(program)
+
+
+def test_environment_helpers_cover_configured_and_shape_guard_paths() -> None:
+    """Exercise integration-only helper branches kept behind the component layer."""
+    assert resolve_config_value(None, "configured", default="fallback") == "configured"  # nosec B101
+    with pytest.raises(
+        ValueError, match="expected service, environment, owner, and cost center"
+    ):
+        _stack_metadata_from_outputs(["service", "environment", "owner"])
 
 
 @pytest.mark.parametrize(
