@@ -73,6 +73,34 @@ def test_replication_role_suffix_includes_environment(monkeypatch):
     assert role_suffix == "bootstrap-infrastructure-smoke2"  # nosec B101
 
 
+def test_resource_options_include_import_id(monkeypatch):
+    captured = {}
+
+    def fake_resource_options(**kwargs):
+        captured.update(kwargs)
+        return kwargs
+
+    monkeypatch.setattr(pulumi_state.pulumi, "ResourceOptions", fake_resource_options)
+
+    options = pulumi_state._resource_options(object(), import_id="bucket-id")
+
+    assert options["import_"] == "bucket-id"  # nosec B101
+    assert captured["import_"] == "bucket-id"  # nosec B101
+
+
+def test_replica_import_id_returns_existing_bucket(monkeypatch):
+    monkeypatch.setattr(
+        pulumi_state, "_bucket_exists", lambda _name, provider=None: True
+    )
+
+    component = object.__new__(pulumi_state.PulumiStateBuckets)
+
+    assert (
+        component._replica_import_id("repo-state", replica_provider=object())
+        == "repo-state-replication"
+    )  # nosec B101
+
+
 def test_replica_bucket_name_length_guard(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(
         pulumi_state, "state_bucket_name_for_repo", lambda _repo: "a" * 60
