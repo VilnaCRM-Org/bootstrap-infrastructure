@@ -45,6 +45,7 @@ SECURITY_GROUP_TYPE_SUFFIX = "ec2/securityGroup:SecurityGroup"
 SECURITY_GROUP_INGRESS_RULE_TYPE_SUFFIX = (
     "vpc/securityGroupIngressRule:SecurityGroupIngressRule"
 )
+IAM_ROLE_TYPE_SUFFIX = "iam/role:Role"
 IDENTITY_POLICY_TYPE_SUFFIXES = (
     "iam/policy:Policy",
     "iam/rolePolicy:RolePolicy",
@@ -175,6 +176,9 @@ def logging_violations(resource_type: str, props: Mapping[str, Any]) -> list[str
     violations: list[str] = []
 
     if _matches_resource_type(resource_type, S3_BUCKET_TYPE_SUFFIX):
+        purpose = _string_value((extract_tags(props) or {}).get("Purpose"))
+        if purpose in {"central-logging", "central-logging-replica"}:
+            return violations
         logging_config = props.get("logging")
         if not isinstance(logging_config, Mapping) or not _string_value(
             logging_config.get("targetBucket")
@@ -299,26 +303,51 @@ def _policy_documents(
     resource_type: str, props: Mapping[str, Any]
 ) -> Sequence[tuple[str, Sequence[Mapping[str, Any]]]]:
     """Return every IAM policy document embedded in a resource."""
-    documents: list[tuple[str, Sequence[Mapping[str, Any]]]] = []
+    if _matches_any_resource_type(resource_type, IDENTITY_POLICY_TYPE_SUFFIXES):
+        return _named_policy_documents(props)
 
-    for field_name in ("policy", "policyDocument", "assumeRolePolicy"):
+    if not _matches_resource_type(resource_type, IAM_ROLE_TYPE_SUFFIX):
+        return []
+
+    return _role_policy_documents(props)
+
+
+def _named_policy_documents(
+    props: Mapping[str, Any]
+) -> Sequence[tuple[str, Sequence[Mapping[str, Any]]]]:
+    """Return identity-policy documents attached directly to a resource."""
+    documents: list[tuple[str, Sequence[Mapping[str, Any]]]] = []
+    for field_name in ("policy", "policyDocument"):
         statements = _policy_statements_from_value(props.get(field_name))
         if statements:
             documents.append((field_name, statements))
+    return documents
 
-    if _matches_any_resource_type(resource_type, IDENTITY_POLICY_TYPE_SUFFIXES):
-        return documents
+
+def _role_policy_documents(
+    props: Mapping[str, Any]
+) -> Sequence[tuple[str, Sequence[Mapping[str, Any]]]]:
+    """Return trust and inline policy documents embedded in IAM roles."""
+    documents: list[tuple[str, Sequence[Mapping[str, Any]]]] = []
+
+    assume_role_statements = _policy_statements_from_value(
+        props.get("assumeRolePolicy")
+    )
+    if assume_role_statements:
+        documents.append(("assumeRolePolicy", assume_role_statements))
 
     inline_policies = props.get("inlinePolicies")
-    if isinstance(inline_policies, Sequence) and not isinstance(
+    if not isinstance(inline_policies, Sequence) or isinstance(
         inline_policies, (str, bytes)
     ):
-        for index, policy in enumerate(inline_policies):
-            if not isinstance(policy, Mapping):
-                continue
-            statements = _policy_statements_from_value(policy.get("policy"))
-            if statements:
-                documents.append((f"inlinePolicies[{index}].policy", statements))
+        return documents
+
+    for index, policy in enumerate(inline_policies):
+        if not isinstance(policy, Mapping):
+            continue
+        statements = _policy_statements_from_value(policy.get("policy"))
+        if statements:
+            documents.append((f"inlinePolicies[{index}].policy", statements))
     return documents
 
 

@@ -227,6 +227,13 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         bucket = aws.s3.Bucket(
             f"{name}-primary",
             bucket=primary_bucket_name,
+            server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
+                rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                        sse_algorithm="AES256"
+                    )
+                )
+            ),
             tags=base_tags({"Purpose": "central-logging"}),
             opts=primary_bucket_opts,
         )
@@ -234,6 +241,13 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         replica_bucket = aws.s3.Bucket(
             f"{name}-replica",
             bucket=replica_bucket_name,
+            server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
+                rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                        sse_algorithm="AES256"
+                    )
+                )
+            ),
             tags=base_tags({"Purpose": "central-logging-replica"}),
             opts=replica_bucket_opts,
         )
@@ -253,32 +267,6 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
                 status="Enabled"
             ),
-            opts=replica_resource_opts,
-        )
-
-        aws.s3.BucketServerSideEncryptionConfiguration(
-            f"{name}-primary-sse",
-            bucket=bucket.id,
-            rules=[
-                aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                        sse_algorithm="AES256"
-                    )
-                )
-            ],
-            opts=primary_resource_opts,
-        )
-
-        aws.s3.BucketServerSideEncryptionConfiguration(
-            f"{name}-replica-sse",
-            bucket=replica_bucket.id,
-            rules=[
-                aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                        sse_algorithm="AES256"
-                    )
-                )
-            ],
             opts=replica_resource_opts,
         )
 

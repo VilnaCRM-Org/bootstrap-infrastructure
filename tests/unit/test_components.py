@@ -80,6 +80,38 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     assert oidc.deploy_role_arns  # nosec B101
     assert automation.repository.repository_url is not None  # nosec B101
 
+    _sync_await(future_output(logging.bucket.bucket))
+    _sync_await(future_output(state.backend_urls["repo"]))
+
+    resource_states = [state for _typ, _name, state in pulumi_mocks.resources]
+    central_logging_state = next(
+        state
+        for state in resource_states
+        if state.get("bucket") == "company-central-logs-us-east-1-test"
+    )
+    state_bucket_state = next(
+        state
+        for state in resource_states
+        if state.get("bucket") == "pulumi-repo-test-state"
+    )
+    replica_state_bucket_state = next(
+        state
+        for state in resource_states
+        if state.get("bucket") == "pulumi-repo-test-state-replication"
+    )
+
+    assert (
+        central_logging_state["serverSideEncryptionConfiguration"]["rule"] is not None
+    )  # nosec B101
+    assert (
+        state_bucket_state["logging"]["targetBucket"]
+        == "company-central-logs-us-east-1-test"
+    )  # nosec B101
+    assert (
+        replica_state_bucket_state["logging"]["targetBucket"]
+        == "company-central-logs-us-east-1-test-replication"
+    )  # nosec B101
+
 
 def test_state_buckets_reject_same_replication_region(  # noqa: ARG001
     monkeypatch, pulumi_mocks

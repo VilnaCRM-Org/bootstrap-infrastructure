@@ -13,6 +13,7 @@ import pulumi
 
 from .config import (
     ManagedRepository,
+    central_logging_bucket_name,
     managed_repositories,
     sanitize_bucket_component,
     settings,
@@ -226,6 +227,12 @@ def _replica_bucket_name(bucket_name: str) -> str:
     return replica_name
 
 
+def _state_access_log_bucket_names(primary_region: str) -> tuple[str, str]:
+    """Return deterministic primary/replica log-bucket names for state buckets."""
+    primary_logs_bucket = central_logging_bucket_name(primary_region)
+    return primary_logs_bucket, _replica_bucket_name(primary_logs_bucket)
+
+
 class PulumiStateBuckets(pulumi.ComponentResource):
     """Create primary and replica S3 buckets to store Pulumi state per repository."""
 
@@ -234,6 +241,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         name: str,
         *,
         repositories: Sequence[ManagedRepository] | None = None,
+        log_delivery_dependencies: Sequence[pulumi.Resource] | None = None,
         replication_region: str | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
@@ -244,10 +252,16 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         self.backend_urls: dict[str, pulumi.Output[str]] = {}
         self.bucket_resources: dict[str, aws.s3.Bucket] = {}
         self.bucket_arns: dict[str, pulumi.Output[str]] = {}
+        self._log_delivery_dependencies = (
+            list(log_delivery_dependencies) if log_delivery_dependencies else None
+        )
 
         primary_region = aws.get_region().name
         resolved_region = _resolved_replication_region(
             replication_region, primary_region
+        )
+        primary_logs_bucket, replica_logs_bucket = _state_access_log_bucket_names(
+            primary_region
         )
         replica_provider = aws.Provider(
             f"{name}-replica-provider",
@@ -262,6 +276,8 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             self._register_repository(
                 name,
                 repo,
+                primary_logs_bucket=primary_logs_bucket,
+                replica_logs_bucket=replica_logs_bucket,
                 resolved_region=resolved_region,
                 replica_provider=replica_provider,
             )
@@ -278,6 +294,8 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         component_name: str,
         repo: ManagedRepository,
         *,
+        primary_logs_bucket: str,
+        replica_logs_bucket: str,
         resolved_region: str,
         replica_provider: aws.Provider,
     ) -> None:
@@ -291,6 +309,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             lifecycle_rule_id="expire-old-versions",
             purpose="pulumi-state",
             repo_name=repo.name,
+            logging_target_bucket=primary_logs_bucket,
             access_block_name=f"{component_name}-pab-{suffix}",
             ownership_name=f"{component_name}-ownership-{suffix}",
             policy_name=f"{component_name}-policy-{suffix}",
@@ -302,6 +321,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             lifecycle_rule_id="replica-expire-old-versions",
             purpose="pulumi-state-replica",
             repo_name=repo.name,
+            logging_target_bucket=replica_logs_bucket,
             access_block_name=f"{component_name}-replica-pab-{suffix}",
             ownership_name=f"{component_name}-replica-ownership-{suffix}",
             policy_name=f"{component_name}-replica-policy-{suffix}",
@@ -342,6 +362,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         lifecycle_rule_id: str,
         purpose: str,
         repo_name: str,
+        logging_target_bucket: str,
         access_block_name: str,
         ownership_name: str,
         policy_name: str,
@@ -353,10 +374,19 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             resource_name,
             bucket=bucket_name,
             versioning=aws.s3.BucketVersioningArgs(enabled=True),
+            logging=aws.s3.BucketLoggingArgs(
+                target_bucket=logging_target_bucket,
+                target_prefix=f"server-access/{bucket_name}/",
+            ),
             lifecycle_rules=[_state_bucket_lifecycle_rule(lifecycle_rule_id)],
             server_side_encryption_configuration=_state_bucket_encryption(),
             tags=_state_bucket_tags(purpose, repo_name),
-            opts=_resource_options(self, provider=provider, import_id=import_id),
+            opts=_resource_options(
+                self,
+                provider=provider,
+                import_id=import_id,
+                depends_on=self._log_delivery_dependencies,
+            ),
         )
         self._configure_bucket_safeguards(
             access_block_name,

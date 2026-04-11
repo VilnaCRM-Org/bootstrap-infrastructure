@@ -29,7 +29,7 @@ if bootstrap_requested:
     from infra.iam import GitHubOidcRoles
 
     logging = CentralLoggingBuckets("central-logging")
-    state = PulumiStateBuckets("pulumi-state")
+    state = PulumiStateBuckets("pulumi-state", log_delivery_dependencies=[logging])
     secrets = PulumiSecretsKeys("pulumi-secrets")
     oidc = GitHubOidcRoles("github-oidc", secrets_key_arns=secrets.key_arns)
 

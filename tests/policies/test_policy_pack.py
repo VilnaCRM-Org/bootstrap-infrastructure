@@ -141,7 +141,7 @@ def test_repo_policy_config_declares_expected_defaults(
     assert config.production_environments == ("prod", "production", "live")
     assert config.annotations["public_s3_tag"] == "AllowPublicBucket"
     assert config.public_s3_bucket_allowlist == frozenset()
-    assert config.wildcard_iam_allowlist == frozenset()
+    assert config.wildcard_iam_allowlist == frozenset({"github-automation-policy"})
 
 
 def test_load_policy_config_defaults_optional_sections(
@@ -642,6 +642,13 @@ def test_storage_encryption_and_logging_violations_cover_supported_resources(
         )
         == []
     )
+    assert (
+        policy_runtime.logging_violations(
+            "aws:s3/bucket:Bucket",
+            {"tags": {"Purpose": "central-logging"}},
+        )
+        == []
+    )
     assert policy_runtime.logging_violations(
         "aws:lb/loadBalancer:LoadBalancer",
         {"accessLogs": {"enabled": False}},
@@ -748,6 +755,36 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
         },
         config,
     ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
+
+
+def test_wildcard_iam_violations_ignore_resource_policy_documents(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Only inspect IAM identity policies and role trust/inline policies."""
+    wildcard_policy = _json(
+        {
+            "Version": "2012-10-17",
+            "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}],
+        }
+    )
+    config = _custom_config(policy_runtime)
+
+    assert (
+        policy_runtime.wildcard_iam_violations(
+            "aws:s3/bucketPolicy:BucketPolicy",
+            {"policy": wildcard_policy, "bucket": "example"},
+            config,
+        )
+        == []
+    )
+    assert (
+        policy_runtime.wildcard_iam_violations(
+            "aws:kms/key:Key",
+            {"policy": wildcard_policy},
+            config,
+        )
+        == []
+    )
     assert policy_runtime.wildcard_iam_violations(
         "aws:iam/policy:Policy",
         {
