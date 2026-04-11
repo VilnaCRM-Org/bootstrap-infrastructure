@@ -67,9 +67,7 @@ def test_environment_settings_support_default_resolution_under_pulumi_mocks() ->
 
 def test_environment_helpers_cover_configured_and_shape_guard_paths() -> None:
     """Exercise integration-only helper branches kept behind the component layer."""
-    assert (
-        resolve_config_value(None, "configured", default="fallback") == "configured"
-    )  # nosec B101
+    assert resolve_config_value(None, "configured", default="fallback") == "configured"  # nosec B101
     with pytest.raises(
         ValueError, match="expected service, environment, owner, and cost center"
     ):
