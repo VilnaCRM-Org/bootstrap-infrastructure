@@ -103,6 +103,11 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     assert (
         central_logging_state["serverSideEncryptionConfiguration"]["rule"] is not None
     )  # nosec B101
+    assert central_logging_state["tags"]["LoggingExempt"] == "true"  # nosec B101
+    assert (
+        central_logging_state["tags"]["LoggingExemptReason"]
+        == "Centralized S3 access log sink"
+    )  # nosec B101
     assert (
         state_bucket_state["logging"]["targetBucket"]
         == "company-central-logs-us-east-1-test"

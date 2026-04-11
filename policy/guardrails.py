@@ -45,6 +45,7 @@ SECURITY_GROUP_TYPE_SUFFIX = "ec2/securityGroup:SecurityGroup"
 SECURITY_GROUP_INGRESS_RULE_TYPE_SUFFIX = (
     "vpc/securityGroupIngressRule:SecurityGroupIngressRule"
 )
+KMS_KEY_TYPE_SUFFIX = "kms/key:Key"
 IAM_ROLE_TYPE_SUFFIX = "iam/role:Role"
 IDENTITY_POLICY_TYPE_SUFFIXES = (
     "iam/policy:Policy",
@@ -52,6 +53,8 @@ IDENTITY_POLICY_TYPE_SUFFIXES = (
     "iam/groupPolicy:GroupPolicy",
     "iam/userPolicy:UserPolicy",
 )
+LOGGING_EXEMPT_TAG = "LoggingExempt"
+LOGGING_EXEMPT_REASON_TAG = "LoggingExemptReason"
 
 
 def extract_tags(props: Mapping[str, Any]) -> Mapping[str, Any] | None:
@@ -176,8 +179,10 @@ def logging_violations(resource_type: str, props: Mapping[str, Any]) -> list[str
     violations: list[str] = []
 
     if _matches_resource_type(resource_type, S3_BUCKET_TYPE_SUFFIX):
-        purpose = _string_value((extract_tags(props) or {}).get("Purpose"))
-        if purpose in {"central-logging", "central-logging-replica"}:
+        tags = extract_tags(props) or {}
+        if _truthy(tags.get(LOGGING_EXEMPT_TAG)) and _string_value(
+            tags.get(LOGGING_EXEMPT_REASON_TAG)
+        ):
             return violations
         logging_config = props.get("logging")
         if not isinstance(logging_config, Mapping) or not _string_value(
@@ -216,6 +221,8 @@ def wildcard_iam_violations(
     documents = list(_policy_documents(resource_type, props))
     violations: list[str] = []
     for field_name, statements in documents:
+        if _wildcard_iam_document_exempt(resource_type, field_name):
+            continue
         for statement in statements:
             if _statement_contains_wildcard_permissions(statement):
                 violations.append(
@@ -302,20 +309,17 @@ def _public_ingress_rules(rules: Sequence[object]) -> list[Mapping[str, Any]]:
 def _policy_documents(
     resource_type: str, props: Mapping[str, Any]
 ) -> Sequence[tuple[str, Sequence[Mapping[str, Any]]]]:
-    """Return every IAM policy document embedded in a resource."""
-    if _matches_any_resource_type(resource_type, IDENTITY_POLICY_TYPE_SUFFIXES):
-        return _named_policy_documents(props)
-
-    if not _matches_resource_type(resource_type, IAM_ROLE_TYPE_SUFFIX):
-        return []
-
-    return _role_policy_documents(props)
+    """Return every policy-like document embedded in a resource."""
+    documents = list(_named_policy_documents(props))
+    if _matches_resource_type(resource_type, IAM_ROLE_TYPE_SUFFIX):
+        documents.extend(_role_policy_documents(props))
+    return documents
 
 
 def _named_policy_documents(
     props: Mapping[str, Any],
 ) -> Sequence[tuple[str, Sequence[Mapping[str, Any]]]]:
-    """Return identity-policy documents attached directly to a resource."""
+    """Return policy documents attached directly to a resource."""
     documents: list[tuple[str, Sequence[Mapping[str, Any]]]] = []
     for field_name in ("policy", "policyDocument"):
         statements = _policy_statements_from_value(props.get(field_name))
@@ -349,6 +353,19 @@ def _role_policy_documents(
         if statements:
             documents.append((f"inlinePolicies[{index}].policy", statements))
     return documents
+
+
+def _wildcard_iam_document_exempt(resource_type: str, field_name: str) -> bool:
+    """Ignore known resource-policy shapes that legitimately require wildcards."""
+    if field_name not in {"policy", "policyDocument"}:
+        return False
+    return _matches_any_resource_type(
+        resource_type,
+        (
+            S3_BUCKET_POLICY_TYPE_SUFFIX,
+            KMS_KEY_TYPE_SUFFIX,
+        ),
+    )
 
 
 def _policy_statements(props: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:

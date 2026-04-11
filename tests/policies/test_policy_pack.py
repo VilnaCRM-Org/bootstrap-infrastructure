@@ -642,10 +642,19 @@ def test_storage_encryption_and_logging_violations_cover_supported_resources(
         )
         == []
     )
+    assert policy_runtime.logging_violations(
+        "aws:s3/bucket:Bucket",
+        {"tags": {"Purpose": "central-logging"}},
+    ) == ["S3 buckets must send access logs to a target bucket."]
     assert (
         policy_runtime.logging_violations(
             "aws:s3/bucket:Bucket",
-            {"tags": {"Purpose": "central-logging"}},
+            {
+                "tags": {
+                    "LoggingExempt": "true",
+                    "LoggingExemptReason": "Centralized S3 access log sink",
+                }
+            },
         )
         == []
     )
@@ -757,10 +766,10 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
     ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
 
 
-def test_wildcard_iam_violations_ignore_resource_policy_documents(
+def test_wildcard_iam_violations_ignore_targeted_resource_policy_exceptions(
     policy_runtime: SimpleNamespace,
 ) -> None:
-    """Only inspect IAM identity policies and role trust/inline policies."""
+    """Skip known bootstrap resource-policy exceptions but scan other carriers."""
     wildcard_policy = _json(
         {
             "Version": "2012-10-17",
@@ -785,6 +794,11 @@ def test_wildcard_iam_violations_ignore_resource_policy_documents(
         )
         == []
     )
+    assert policy_runtime.wildcard_iam_violations(
+        "aws:custom/policyCarrier:Carrier",
+        {"policy": wildcard_policy},
+        config,
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
     assert policy_runtime.wildcard_iam_violations(
         "aws:iam/policy:Policy",
         {

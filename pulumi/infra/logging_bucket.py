@@ -234,7 +234,13 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                     )
                 )
             ),
-            tags=base_tags({"Purpose": "central-logging"}),
+            tags=base_tags(
+                {
+                    "Purpose": "central-logging",
+                    "LoggingExempt": "true",
+                    "LoggingExemptReason": "Centralized S3 access log sink",
+                }
+            ),
             opts=primary_bucket_opts,
         )
 
@@ -248,7 +254,13 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                     )
                 )
             ),
-            tags=base_tags({"Purpose": "central-logging-replica"}),
+            tags=base_tags(
+                {
+                    "Purpose": "central-logging-replica",
+                    "LoggingExempt": "true",
+                    "LoggingExemptReason": "Centralized S3 access log sink replica",
+                }
+            ),
             opts=replica_bucket_opts,
         )
 
