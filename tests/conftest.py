@@ -115,12 +115,17 @@ def any_thread_event_loop_policy():
     asyncio.set_event_loop_policy(previous_policy)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def pulumi_mocks() -> TestMocks:
-    """Expose Pulumi mocks for tests that validate generated resources."""
+    """Expose isolated Pulumi mocks for tests that validate generated resources."""
     mocks = TestMocks()
     pulumi.runtime.set_mocks(mocks, project="bootstrap", stack="test", preview=False)
-    return mocks
+    try:
+        yield mocks
+    finally:
+        # Reset the synthetic root stack between tests so later modules can
+        # install their own Pulumi mock runtime without inheriting leaked state.
+        pulumi.runtime.settings.reset_options(project=None, stack=None)
 
 
 @pytest.fixture(scope="session", autouse=True)

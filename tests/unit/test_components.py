@@ -81,7 +81,9 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     assert automation.repository.repository_url is not None  # nosec B101
 
 
-def test_state_buckets_reject_same_replication_region(monkeypatch):
+def test_state_buckets_reject_same_replication_region(  # noqa: ARG001
+    monkeypatch, pulumi_mocks
+):
     monkeypatch.setattr(config.settings, "replication_region", "us-east-1")
 
     repos = [config.ManagedRepository(name="repo", default_branch="main")]
@@ -90,7 +92,9 @@ def test_state_buckets_reject_same_replication_region(monkeypatch):
         PulumiStateBuckets("pulumi-state-invalid", repositories=repos)
 
 
-def test_github_oidc_roles_with_existing_provider(monkeypatch):
+def test_github_oidc_roles_with_existing_provider(  # noqa: ARG001
+    monkeypatch, pulumi_mocks
+):
     class FakeProvider:
         arn = pulumi.Output.from_input(
             "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
@@ -238,7 +242,9 @@ def test_github_automation_requires_provider(monkeypatch):
         GitHubAutomation("github-automation-missing-provider")
 
 
-def test_github_oidc_roles_require_matching_kms_key(monkeypatch):
+def test_github_oidc_roles_require_matching_kms_key(  # noqa: ARG001
+    monkeypatch, pulumi_mocks
+):
     class FakeProvider:
         arn = pulumi.Output.from_input(
             "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
@@ -357,5 +363,104 @@ def test_stack_main_executes(pulumi_mocks, monkeypatch):  # noqa: ARG001
         stack_path = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
         # Keep a fast stack smoke test alongside the integration suite.
         runpy.run_path(str(stack_path))
+    finally:
+        config.managed_repositories.cache_clear()
+
+
+def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
+    pulumi_mocks, monkeypatch
+):
+    config.managed_repositories.cache_clear()
+    try:
+        monkeypatch.setattr(config.settings, "repo", "repo")
+        monkeypatch.setattr(config.settings, "org", "VilnaCRM-Org")
+        monkeypatch.setattr(config.settings, "environment", "test")
+        monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+        monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
+        monkeypatch.setattr(
+            config.settings,
+            "github_oidc_provider_arn",
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+        )
+
+        class FakeConfig:
+            def get(self, key, default=None):
+                values = {
+                    "environment": "test",
+                    "serviceName": "bootstrap-infrastructure",
+                    "repoSlug": "repo",
+                    "githubOrg": "VilnaCRM-Org",
+                    "githubBranch": "main",
+                    "githubOidcProviderArn": (
+                        "arn:aws:iam::123456789012:oidc-provider/"
+                        "token.actions.githubusercontent.com"
+                    ),
+                }
+                return values.get(key, default)
+
+            def get_object(self, key, default=None):
+                return {"managedRepositories": None}.get(key, default)
+
+        monkeypatch.setattr(pulumi, "Config", lambda: FakeConfig())
+        stack_path = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
+
+        module_globals = runpy.run_path(str(stack_path))
+
+        assert module_globals["state"].backend_urls  # nosec B101
+        assert module_globals["secrets"].provider_urls  # nosec B101
+        assert module_globals["oidc"].deploy_role_arns  # nosec B101
+        assert module_globals["automation"].repository.repository_url is not None  # nosec B101
+    finally:
+        config.managed_repositories.cache_clear()
+
+
+def test_stack_main_executes_managed_repository_mode_without_automation(  # noqa: ARG001
+    pulumi_mocks, monkeypatch
+):
+    config.managed_repositories.cache_clear()
+    try:
+        repo = config.ManagedRepository(name="repo-managed", default_branch="main")
+        monkeypatch.setattr(config.settings, "repo", None)
+        monkeypatch.setattr(config.settings, "org", "VilnaCRM-Org")
+        monkeypatch.setattr(config.settings, "environment", "test")
+        monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+        monkeypatch.setattr(config.settings, "managed_repo_overrides", [repo])
+        monkeypatch.setattr(
+            config.settings,
+            "github_oidc_provider_arn",
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+        )
+
+        class FakeConfig:
+            def get(self, key, default=None):
+                values = {
+                    "environment": "test",
+                    "serviceName": "bootstrap-infrastructure",
+                    "githubOrg": "VilnaCRM-Org",
+                    "githubBranch": "main",
+                    "githubOidcProviderArn": (
+                        "arn:aws:iam::123456789012:oidc-provider/"
+                        "token.actions.githubusercontent.com"
+                    ),
+                }
+                return values.get(key, default)
+
+            def get_object(self, key, default=None):
+                values = {
+                    "managedRepositories": [
+                        {"name": "repo-managed", "defaultBranch": "main"}
+                    ]
+                }
+                return values.get(key, default)
+
+        monkeypatch.setattr(pulumi, "Config", lambda: FakeConfig())
+        stack_path = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
+
+        module_globals = runpy.run_path(str(stack_path))
+
+        assert module_globals["state"].backend_urls  # nosec B101
+        assert module_globals["secrets"].provider_urls  # nosec B101
+        assert module_globals["oidc"].deploy_role_arns  # nosec B101
+        assert "automation" not in module_globals  # nosec B101
     finally:
         config.managed_repositories.cache_clear()
