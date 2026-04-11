@@ -1,0 +1,40 @@
+name: Template Sync with App
+
+on:
+  schedule:
+    - cron: '0 9 * * MON'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repo-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Generate token to read from source repo
+        id: generate_token
+        uses: tibdex/github-app-token@b2460eb018fd8846be59d8497dcb50af8af1d450
+        with:
+          app_id: ${{ secrets.VILNACRM_APP_ID }}
+          private_key: ${{ secrets.VILNACRM_APP_PRIVATE_KEY }}
+
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
+          persist-credentials: false
+
+      - name: actions-template-sync
+        uses: AndreasAugustin/actions-template-sync@8ec19a5f2721ffb81ff809aa340ddf75e6a85ea6
+        with:
+          github_token: ${{ steps.generate_token.outputs.token }}
+          source_repo_path: VilnaCRM-Org/infrastructure-template
+          upstream_branch: main
+          pr_labels: template_sync
+          is_force_push_pr: true

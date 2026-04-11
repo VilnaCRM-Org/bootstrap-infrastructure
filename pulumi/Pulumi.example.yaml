@@ -1,0 +1,6 @@
+# Initialize example stacks with an AWS KMS secrets provider before storing secrets.
+config:
+  aws:region: eu-central-1
+  bootstrap-infrastructure:amiId: ami-xxxxxxxxxxxxxxxxx
+  bootstrap-infrastructure:instanceType: t3.micro
+  bootstrap-infrastructure:nameTag: ExampleAppServerInstance

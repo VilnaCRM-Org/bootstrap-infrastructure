@@ -1,0 +1,120 @@
+name: Python Quality Checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    name: Ruff
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run Ruff suite inside Docker
+        run: make test-ruff
+
+  ty:
+    name: Ty
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run Ty suite inside Docker
+        run: make test-ty
+
+  maintainability:
+    name: Maintainability
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run maintainability gates inside Docker
+        run: make test-maintainability
+
+  architecture:
+    name: Architecture
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run architecture contracts inside Docker
+        run: make test-architecture
+
+  dependency_hygiene:
+    name: Dependency Hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run dependency hygiene checks inside Docker
+        run: make test-dependency-hygiene
+
+  coverage:
+    name: Coverage
+    if: >-
+      ${{
+        github.repository == 'VilnaCRM-Org/infrastructure-template' ||
+        vars.PULUMI_ENABLE_AUTOMATION_STACK_TESTS == 'true'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run coverage-bearing suites inside Docker
+        run: |
+          make test-unit
+          make test-integration
+          make test-policy
+          make test-coverage

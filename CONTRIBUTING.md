@@ -30,11 +30,11 @@ to help you get started with open source contributions:
 
 If you spot a problem with this template,
 [search if an issue already exists](https://docs.github.com/en/github/searching-for-information-on-github/searching-on-github/searching-issues-and-pull-requests#search-by-the-title-body-or-comments).
-If a related issue doesn't exist, you can open a new issue using a relevant [issue form](https://github.com/VilnaCRM-Org/infrastructure-template/issues/new).
+If a related issue doesn't exist, you can open a new issue using a relevant [issue form](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/issues/new).
 
 #### Solve an issue
 
-Scan through our [existing issues](https://github.com/VilnaCRM-Org/infrastructure-template/issues)
+Scan through our [existing issues](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/issues)
 to find one that interests you. You can narrow down the search using `labels` as filters.
 As a general rule, we don’t assign issues to anyone.
 If you find an issue to work on, you are welcome to open a PR with a fix.
@@ -46,15 +46,16 @@ If you find an issue to work on, you are welcome to open a PR with a fix.
 1. Fork the repository.
 
 - Using GitHub Desktop:
-    - [Getting started with GitHub Desktop](https://docs.github.com/en/desktop/installing-and-configuring-github-desktop/getting-started-with-github-desktop)
-      will guide you through setting up Desktop.
-    - Once Desktop is set up, you can use
-      it to [fork the repo](https://docs.github.com/en/desktop/contributing-and-collaborating-using-github-desktop/cloning-and-forking-repositories-from-github-desktop)!
+
+  - [Getting started with GitHub Desktop](https://docs.github.com/en/desktop/installing-and-configuring-github-desktop/getting-started-with-github-desktop)
+    will guide you through setting up Desktop.
+  - Once Desktop is set up, you can use
+    it to [fork the repo](https://docs.github.com/en/desktop/contributing-and-collaborating-using-github-desktop/cloning-and-forking-repositories-from-github-desktop)!
 
 - Using the command line:
-    - [Fork the repo](https://docs.github.com/en/github/getting-started-with-github/fork-a-repo#fork-an-example-repository)
-      so that you can make your changes without affecting the original project until
-      you're ready to merge them.
+  - [Fork the repo](https://docs.github.com/en/github/getting-started-with-github/fork-a-repo#fork-an-example-repository)
+    so that you can make your changes without affecting the original project until
+    you're ready to merge them.
 
 1. Install or update to **Docker** and **Docker compose**. For more information, see [the README](README.md).
 

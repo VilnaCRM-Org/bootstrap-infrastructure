@@ -1,0 +1,4 @@
+title = "VilnaCRM infrastructure-template Gitleaks configuration"
+
+[extend]
+useDefault = true

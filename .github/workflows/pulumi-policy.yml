@@ -1,0 +1,38 @@
+name: Pulumi Policy Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: Policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run policy suite inside Docker
+        env:
+          PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
+        run: make test-policy

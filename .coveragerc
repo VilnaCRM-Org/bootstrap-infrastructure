@@ -1,0 +1,23 @@
+[run]
+branch = True
+parallel = True
+
+[paths]
+pulumi =
+    pulumi
+    /workspace/pulumi
+    */pulumi
+    */pulumi-program
+policy =
+    policy
+    /workspace/policy
+    */policy
+scripts =
+    scripts
+    /workspace/scripts
+    */scripts
+
+[report]
+show_missing = True
+omit =
+    */site-packages/*

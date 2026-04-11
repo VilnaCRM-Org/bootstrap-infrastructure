@@ -1,0 +1,5 @@
+# Initialize with:
+# pulumi -C pulumi stack init dev --secrets-provider "$PULUMI_SECRETS_PROVIDER"
+config:
+  bootstrap-infrastructure:environment: dev
+  bootstrap-infrastructure:serviceName: bootstrap-infrastructure
