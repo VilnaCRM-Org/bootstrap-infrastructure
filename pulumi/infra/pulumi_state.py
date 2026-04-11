@@ -72,6 +72,14 @@ def _replication_role_name(role_suffix: str) -> str:
     return f"{_REPLICATION_ROLE_NAME_PREFIX}{_truncate_role_suffix(role_suffix)}"
 
 
+def _replication_role_suffix(repo_name: str, environment: str | None = None) -> str:
+    """Build an environment-scoped suffix for S3 replication IAM roles."""
+    env = sanitize_bucket_component(
+        environment or settings.environment, "environment"
+    ).replace(".", "-")
+    return f"{_resource_suffix(repo_name)}-{env}"
+
+
 def _bucket_policy(arn: str) -> str:
     """Return a bucket policy that enforces TLS for Pulumi state objects."""
     return f"""
@@ -276,6 +284,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         """Create state bucket resources for one managed repository."""
         bucket_name = state_bucket_name_for_repo(repo.name)
         suffix = _resource_suffix(repo.name)
+        role_suffix = _replication_role_suffix(repo.name)
         bucket = self._create_bucket(
             f"{component_name}-{suffix}",
             bucket_name=bucket_name,
@@ -303,6 +312,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             component_name,
             repo_name=repo.name,
             suffix=suffix,
+            role_suffix=role_suffix,
             bucket=bucket,
             replica_bucket=replica_bucket,
         )
@@ -406,13 +416,14 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         *,
         repo_name: str,
         suffix: str,
+        role_suffix: str,
         bucket: aws.s3.Bucket,
         replica_bucket: aws.s3.Bucket,
     ) -> tuple[aws.iam.Role, aws.iam.RolePolicy]:
         """Create the replication IAM role and inline policy for one bucket pair."""
         replication_role = aws.iam.Role(
             f"{component_name}-replication-role-{suffix}",
-            name=_replication_role_name(suffix),
+            name=_replication_role_name(role_suffix),
             assume_role_policy=apply_output(
                 bucket.arn, _replication_assume_role_policy
             ),
