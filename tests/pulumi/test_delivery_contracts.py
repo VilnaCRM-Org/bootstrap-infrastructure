@@ -29,7 +29,7 @@ PULL_REQUEST_WORKFLOW_TIMEOUTS = {
         "iam_validation": 15,
     },
     "pulumi-structural.yml": {"structural": 15},
-    "pulumi-unit.yml": {"unit": 15},
+    "pulumi-unit.yml": {"unit": 30},
     "python-quality.yml": {
         "ruff": 15,
         "ty": 15,

@@ -67,6 +67,12 @@ def test_replication_role_name_limits_length():
     assert len(role_name) <= pulumi_state._MAX_IAM_ROLE_NAME_LENGTH  # nosec B101
 
 
+def test_replication_role_suffix_includes_environment(monkeypatch):
+    monkeypatch.setattr(pulumi_state.settings, "environment", "smoke2")
+    role_suffix = pulumi_state._replication_role_suffix("bootstrap-infrastructure")
+    assert role_suffix == "bootstrap-infrastructure-smoke2"  # nosec B101
+
+
 def test_replica_bucket_name_length_guard(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(
         pulumi_state, "state_bucket_name_for_repo", lambda _repo: "a" * 60
