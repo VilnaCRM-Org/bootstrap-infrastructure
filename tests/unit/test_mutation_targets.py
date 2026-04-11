@@ -2,9 +2,10 @@ import hashlib
 import json
 from types import SimpleNamespace
 
-import pulumi
 from infra import config, pulumi_secrets
 from infra.iam import github_oidc
+
+import pulumi
 
 
 def test_mutation_target_pulumi_secrets_key_policy():

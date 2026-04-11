@@ -1,43 +1,12 @@
 # Parameters
 PROJECT            = bootstrap-infrastructure
 ENV_FILE           = .env
+EMPTY_ENV_FILE     = .env.empty
 COMPOSE_SERVICE   ?= pulumi
 PULUMI_DIR        ?= pulumi
-STACK             ?=
-PULUMI_SECRETS_PROVIDER ?=
-PULUMI_STACK      ?=
-AWS_REGION        ?= eu-central-1
-RUNNER_IMAGE_SOURCE ?= $(PROJECT)-pulumi:latest
-RUNNER_IMAGE_TAG  ?= local
-RUNNER_ECR_REPOSITORY ?=
-RUNNER_IMAGE_ADDITIONAL_TAGS ?=
-BATS_DOCKER_IMAGE ?= bats/bats:1.11.1
-EFFECTIVE_ENV_FILE := $(firstword $(wildcard $(ENV_FILE)))
-ACTIONLINT_IMAGE  ?= rhysd/actionlint:1.7.7
-CHECKOV_IMAGE     ?= bridgecrew/checkov:3.2.487
-GITLEAKS_IMAGE    ?= zricethezav/gitleaks:v8.30.0
-HADOLINT_IMAGE    ?= hadolint/hadolint:v2.14.0
-SHELLCHECK_IMAGE  ?= koalaman/shellcheck:stable
-SHFMT_IMAGE       ?= mvdan/shfmt:v3.11.0
-PYTHON_FORMAT_PATHS = pulumi/__main__.py pulumi/infra policy_pack scripts/*.py tests
-PYTHON_LINT_PATHS   = pulumi/__main__.py pulumi/infra policy_pack scripts/*.py tests
-PYTHON_TYPE_PATHS   = pulumi/__main__.py pulumi/infra policy_pack scripts/*.py
-PYTHON_TY_PATHS     = pulumi policy_pack scripts tests
-YAML_LINT_PATHS     = .github/workflows pulumi/Pulumi.yaml pulumi/Pulumi.test.yaml pulumi/Pulumi.test.yaml.example pulumi/Pulumi.prod.yaml.example
-SHELLCHECK_PATHS    = /work/scripts/run_mutation_tests.sh /work/scripts/run_pulumi_command.sh /work/scripts/publish_runner_image.sh
-SHFMT_PATHS        := scripts/*.sh
-SPELLCHECK_PATHS    = .
-TOML_LINT_PATHS     = pyproject.toml
-RADON_PATHS         = pulumi/infra policy_pack scripts
-XENON_IGNORE_PATHS  = .git,.venv,pulumi/venv,__pycache__,.coverage-artifacts,.quality-reports
-INTERROGATE_PATHS   = pulumi/infra/config.py pulumi/infra/utils pulumi/infra/iam pulumi/infra/pulumi_secrets.py scripts/analyze_pulumi_preview.py scripts/validate_iam_policies.py
-VULTURE_PATHS       = pulumi/infra policy_pack scripts
-WILY_PATHS          = pulumi/infra policy_pack scripts
-QUALITY_REPORT_DIR ?= .quality-reports
-PREVIEW_ARTIFACT_DIR ?= out
-QLTY ?= qlty
+EFFECTIVE_ENV_FILE := $(firstword $(wildcard $(ENV_FILE)) $(wildcard $(EMPTY_ENV_FILE)))
 
-export COMPOSE_ENV_FILE := $(EFFECTIVE_ENV_FILE)
+COMPOSE_ENV_FILE := $(if $(EFFECTIVE_ENV_FILE),$(EFFECTIVE_ENV_FILE),$(EMPTY_ENV_FILE))
 UID ?= $(shell id -u 2>/dev/null || echo 1000)
 GID ?= $(shell id -g 2>/dev/null || echo 1000)
 USER ?= $(shell id -un 2>/dev/null || echo dev)
@@ -48,326 +17,307 @@ export USER
 
 # Executables
 DOCKER_COMPOSE    = docker compose
-COMPOSE_ENV_FLAG  = $(if $(EFFECTIVE_ENV_FILE),--env-file $(EFFECTIVE_ENV_FILE),)
+COMPOSE_ENV_FLAG  = $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),)
 COMPOSE           = $(DOCKER_COMPOSE) $(COMPOSE_ENV_FLAG)
-UV_RUN            = uv run --frozen --no-sync
-PYTEST_COV_OPTS   = --cov=./pulumi --cov=./policy_pack --cov-branch --cov-report=
-COVERAGE_DIR ?= .coverage-artifacts
+COMPOSE_GITHUB_TOKEN = $(if $(GITHUB_TOKEN),-e GITHUB_TOKEN,)
+REPO_PYTHON      ?= python3
+PULUMI_CWD_FLAG   = --cwd $(PULUMI_DIR)
+POLICY_PACK_DIR   = /workspace/policy
+POLICY_PACK_FLAG  = --policy-pack $(POLICY_PACK_DIR)
+DEFAULT_PULUMI_STACK ?= $(shell find $(PULUMI_DIR) -maxdepth 1 -type f -name 'Pulumi.*.yaml' ! -name 'Pulumi.yaml' 2>/dev/null | sed -E 's#.*/Pulumi\.(.+)\.yaml$$#\1#' | sort | head -n 1)
+PULUMI_STACK     ?= $(DEFAULT_PULUMI_STACK)
+PULUMI_SECRETS_PROVIDER ?=
+PULUMI_LOGIN_CMD  = pulumi $(PULUMI_CWD_FLAG) login "$${PULUMI_BACKEND_URL:-file:///workspace/.pulumi-backend}" >/dev/null
+COVERAGE_OPTS            ?= --cov=./pulumi --cov-report=term-missing
+UNIT_COVERAGE_INCLUDE    ?= pulumi/*,scripts/*
+UNIT_COVERAGE_OPTS       ?= $(COVERAGE_OPTS) --cov=./scripts
+POLICY_COVERAGE_OPTS     ?= --cov=./policy --cov-report=
+INTEGRATION_COVERAGE_INCLUDE ?= pulumi/__main__.py,pulumi/app/*
+TOTAL_COVERAGE_INCLUDE   ?= pulumi/*,policy/*,scripts/*
+BRANCH_COVERAGE_MIN      ?= 100
+QUALITY_ARTIFACT_DIR     ?= .artifacts/quality
+SBOM_ARTIFACT_DIR        ?= .artifacts/sbom
+DOCSTRING_PATHS          ?= pulumi/app policy scripts/pulumi_ci_guardrails.py
+WILY_TARGETS             ?= pulumi policy scripts
+YAML_LINT_PATHS          ?= .github/workflows docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
+MUTATION_TEST_TARGETS    ?= tests/unit/test_environment_component.py tests/unit/test_guardrails.py
+MUTATION_TESTS_DIR       ?= tests/unit
+INTEGRATION_COVERAGE_ENV  = -e COVERAGE_FILE=/workspace/.coverage.integration \
+	-e COVERAGE_PROCESS_START=/workspace/.coveragerc \
+	-e COVERAGE_RCFILE=/workspace/.coveragerc
+UNIT_COVERAGE_ENV         = -e COVERAGE_FILE=/workspace/.coverage.unit \
+	-e COVERAGE_RCFILE=/workspace/.coveragerc
+POLICY_COVERAGE_ENV       = -e COVERAGE_FILE=/workspace/.coverage.policy \
+	-e COVERAGE_RCFILE=/workspace/.coveragerc
+TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
+	-e COVERAGE_RCFILE=/workspace/.coveragerc
 
 # Misc
 .DEFAULT_GOAL     = help
 .RECIPEPREFIX    +=
-.PHONY: all help start pulumi-preview pulumi-up pulumi-refresh pulumi-destroy \
-        pulumi-plan-ci pulumi-up-ci pulumi-drift-ci \
-        pulumi-stack-select pulumi-stack-migrate-secrets sh down clean \
-        runner-image-build runner-image-smoke runner-image-push \
-        check-format check-lint check-radon check-xenon check-imports check-deptry \
-        check-spelling check-toml check-types check-ty check-package check-qlty \
-        check-bandit check-deps check-sbom check-secrets check-iam check-preview check-yaml check-actionlint \
-        check-docker check-shell check-iac check-static check-security check-coverage \
-        report-wily report-vulture report-docstrings report-sbom report-drift ci ci-nightly \
-        test-unit test-integration test-pulumi test-policy test-crossguard test-mutation test-e2e \
-        test-bats test-cost test
+.PHONY: help doctor build start publish-pulumi-preview-summary pulumi-preview pulumi-up pulumi-refresh \
+        pulumi-destroy sh down ci ci-pr nightly-quality report-quality \
+        report-maintainability-trends report-dead-code report-docstrings \
+        report-sbom test-quality test-ruff test-ty test-maintainability \
+        test-architecture test-dependency-hygiene test-lockfile test-coverage \
+        test-bandit test-actionlint test-yaml test-dockerfile \
+        test-deps-security test-destructive-diff test-drift test-guardrails \
+        test-iam-validation test-preview test-security test-secrets \
+        test-repo-hygiene test-unit test-integration test-pulumi test-policy \
+        test-crossguard test-mutation test-battery test-cli test all clean
+
+pulumi-preview pulumi-up pulumi-refresh pulumi-destroy test-preview \
+test-destructive-diff test-iam-validation test-drift: export GITHUB_TOKEN := $(GITHUB_TOKEN)
 
 all: help ## Display help (default goal).
 
-help:
+help: ## Display the available Make targets.
 	@printf "\033[33mUsage:\033[0m\n  make [target] [arg=\"val\"...]\n\n\033[33mTargets:\033[0m\n"
 	@grep -E '^[-a-zA-Z0-9_\.\/]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[32m%-15s\033[0m %s\n", $$1, $$2}'
 
-start: ## Initialize and start the Pulumi development environment.
+doctor: ## Check local prerequisites and effective paths without printing secrets.
+	@COMPOSE_ENV_FILE="$(COMPOSE_ENV_FILE)" COMPOSE_SERVICE="$(COMPOSE_SERVICE)" PULUMI_DIR="$(PULUMI_DIR)" $(REPO_PYTHON) ./scripts/doctor.py
+
+build: ## Build the Pulumi development image used by local and CI checks.
+	$(COMPOSE) build $(COMPOSE_SERVICE)
+
+start: ## Prepare the Docker-backed workspace and start the Pulumi development environment.
+	$(REPO_PYTHON) ./scripts/prepare_docker_context.py
 	$(COMPOSE) up -d
 
+publish-pulumi-preview-summary: ## Generate Pulumi preview artifacts and publish the summary for CI.
+	$(REPO_PYTHON) ./scripts/publish_pulumi_preview_summary.py
+
 pulumi-preview: ## Preview infrastructure changes from inside the Pulumi container.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) preview
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '$(PULUMI_LOGIN_CMD); stack="$${PULUMI_STACK:-$(PULUMI_STACK)}"; if [ -z "$$stack" ]; then echo "error: set PULUMI_STACK or commit pulumi/Pulumi.<stack>.yaml" >&2; exit 1; fi; if ! pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" --non-interactive >/dev/null; then if [ -z "$${PULUMI_SECRETS_PROVIDER:-}" ]; then echo "error: stack $$stack does not exist; set PULUMI_SECRETS_PROVIDER to create it with AWS KMS." >&2; exit 1; fi; pulumi $(PULUMI_CWD_FLAG) stack init "$$stack" --non-interactive --secrets-provider "$${PULUMI_SECRETS_PROVIDER}" >/dev/null; fi; $(REPO_PYTHON) ./scripts/prepare_policy_pack.py && pulumi $(PULUMI_CWD_FLAG) preview --stack "$$stack" $(POLICY_PACK_FLAG)'
 
 pulumi-up: ## Apply the current Pulumi infrastructure plan.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) up
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '$(PULUMI_LOGIN_CMD); stack="$${PULUMI_STACK:-$(PULUMI_STACK)}"; if [ -z "$$stack" ]; then echo "error: set PULUMI_STACK or commit pulumi/Pulumi.<stack>.yaml" >&2; exit 1; fi; if ! pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" --non-interactive >/dev/null; then if [ -z "$${PULUMI_SECRETS_PROVIDER:-}" ]; then echo "error: stack $$stack does not exist; set PULUMI_SECRETS_PROVIDER to create it with AWS KMS." >&2; exit 1; fi; pulumi $(PULUMI_CWD_FLAG) stack init "$$stack" --non-interactive --secrets-provider "$${PULUMI_SECRETS_PROVIDER}" >/dev/null; fi; $(REPO_PYTHON) ./scripts/prepare_policy_pack.py && pulumi $(PULUMI_CWD_FLAG) up --stack "$$stack" $(POLICY_PACK_FLAG)'
 
 pulumi-refresh: ## Sync the Pulumi stack with live cloud resources.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) refresh
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '$(PULUMI_LOGIN_CMD); stack="$${PULUMI_STACK:-$(PULUMI_STACK)}"; if [ -z "$$stack" ]; then echo "error: set PULUMI_STACK or commit pulumi/Pulumi.<stack>.yaml" >&2; exit 1; fi; pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" --non-interactive >/dev/null; pulumi $(PULUMI_CWD_FLAG) refresh --stack "$$stack"'
 
 pulumi-destroy: ## Tear down the Pulumi stack (irreversible; use with caution).
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) destroy
-
-pulumi-plan-ci: ## Execute the GitHub automation Pulumi plan flow via the shared command runner.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "./scripts/run_pulumi_command.sh plan"
-
-pulumi-up-ci: ## Execute the GitHub automation Pulumi apply flow via the shared command runner.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "./scripts/run_pulumi_command.sh up"
-
-pulumi-drift-ci: ## Execute the GitHub automation drift check via the shared command runner.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "./scripts/run_pulumi_command.sh drift"
-
-define require_var
-@if [ -z "$($(1))" ]; then \
-  echo "$(1) is required." >&2; \
-  exit 1; \
-fi
-endef
-
-pulumi-stack-select: ## Select or create STACK with the AWS KMS secrets provider in PULUMI_SECRETS_PROVIDER.
-	$(call require_var,STACK)
-	$(call require_var,PULUMI_SECRETS_PROVIDER)
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc 'pulumi -C "$(PULUMI_DIR)" stack select "$(STACK)" --non-interactive || pulumi -C "$(PULUMI_DIR)" stack init "$(STACK)" --non-interactive --secrets-provider "$(PULUMI_SECRETS_PROVIDER)"'
-
-pulumi-stack-migrate-secrets: ## Migrate STACK to the AWS KMS secrets provider in PULUMI_SECRETS_PROVIDER.
-	$(call require_var,STACK)
-	$(call require_var,PULUMI_SECRETS_PROVIDER)
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) pulumi -C $(PULUMI_DIR) stack change-secrets-provider "$(PULUMI_SECRETS_PROVIDER)" --stack "$(STACK)" --non-interactive
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '$(PULUMI_LOGIN_CMD); stack="$${PULUMI_STACK:-$(PULUMI_STACK)}"; if [ -z "$$stack" ]; then echo "error: set PULUMI_STACK or commit pulumi/Pulumi.<stack>.yaml" >&2; exit 1; fi; pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" --non-interactive >/dev/null; pulumi $(PULUMI_CWD_FLAG) destroy --stack "$$stack"'
 
 sh: ## Open a shell inside the Pulumi container.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) sh
 
 down: ## Stop the Docker Compose environment.
-	$(COMPOSE) down
+	$(DOCKER_COMPOSE) down
 
-runner-image-build: ## Build the GitHub automation runner image locally.
-	$(COMPOSE) build $(COMPOSE_SERVICE)
+test-unit: ## Execute fast unit tests for the Pulumi application layer.
+	rm -f .coverage.unit .coverage.unit.*
+	$(COMPOSE) run --rm $(UNIT_COVERAGE_ENV) -e PYTEST_ADDOPTS="$(UNIT_COVERAGE_OPTS)" \
+		$(COMPOSE_SERVICE) uv run pytest -q tests/unit
+	$(COMPOSE) run --rm $(UNIT_COVERAGE_ENV) \
+		$(COMPOSE_SERVICE) uv run coverage report --show-missing --include='$(UNIT_COVERAGE_INCLUDE)' --fail-under=100
 
-runner-image-smoke: ## Verify the runner image includes the required CLI toolchain.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "pulumi version && aws --version && uv --version && typos --version && taplo --version"
+test-integration: ## Execute Pulumi automation-based integration tests.
+	rm -f .coverage.integration .coverage.integration.*
+	$(COMPOSE) run --rm $(INTEGRATION_COVERAGE_ENV) \
+		$(COMPOSE_SERVICE) uv run pytest -q tests/integration
+	$(COMPOSE) run --rm -e COVERAGE_FILE=/workspace/.coverage.integration \
+		-e COVERAGE_RCFILE=/workspace/.coveragerc \
+		$(COMPOSE_SERVICE) uv run coverage combine
+	$(COMPOSE) run --rm -e COVERAGE_FILE=/workspace/.coverage.integration \
+		-e COVERAGE_RCFILE=/workspace/.coveragerc \
+		$(COMPOSE_SERVICE) uv run coverage report --show-missing --fail-under=100 --include='$(INTEGRATION_COVERAGE_INCLUDE)'
 
-runner-image-push: ## Push the locally built runner image into ECR.
-	$(call require_var,RUNNER_ECR_REPOSITORY)
-	$(call require_var,RUNNER_IMAGE_TAG)
-	AWS_REGION="$(AWS_REGION)" RUNNER_IMAGE_SOURCE="$(RUNNER_IMAGE_SOURCE)" RUNNER_ECR_REPOSITORY="$(RUNNER_ECR_REPOSITORY)" RUNNER_IMAGE_TAG="$(RUNNER_IMAGE_TAG)" RUNNER_IMAGE_ADDITIONAL_TAGS="$(RUNNER_IMAGE_ADDITIONAL_TAGS)" ./scripts/publish_runner_image.sh
+test-pulumi: ## Perform structural checks on Pulumi project configuration.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run pytest -q tests/pulumi
 
-define run_or_skip
-@if [ -d "$(1)" ]; then \
-  $(COMPOSE) run --rm $(COMPOSE_SERVICE) $(2); \
-else \
-  echo "Skipping $(3): directory $(1) not found"; \
-fi
-endef
+test-policy: ## Execute Pulumi policy-pack tests and guardrail coverage.
+	rm -f .coverage.policy .coverage.policy.*
+	$(COMPOSE) run --rm $(POLICY_COVERAGE_ENV) -e PYTEST_ADDOPTS="$(POLICY_COVERAGE_OPTS)" \
+		$(COMPOSE_SERVICE) uv run pytest -q tests/policies
+	$(COMPOSE) run --rm $(POLICY_COVERAGE_ENV) \
+		$(COMPOSE_SERVICE) uv run coverage report --show-missing --include='policy/*' --fail-under=100
 
-define coverage_pytest
-bash -lc "mkdir -p \"$(COVERAGE_DIR)\" && COVERAGE_FILE=$(COVERAGE_DIR)/$(1) $(UV_RUN) pytest -q $(2) $(PYTEST_COV_OPTS)"
-endef
-
-test-unit: ## Execute fast unit tests for the Pulumi application layer (if present).
-	$(call run_or_skip,tests/unit,$(call coverage_pytest,.coverage.unit,tests/unit),"unit tests")
-
-test-integration: ## Execute Pulumi automation-based integration tests (if present).
-	$(call run_or_skip,tests/integration,$(call coverage_pytest,.coverage.integration,tests/integration tests/unit),"integration tests")
-
-test-pulumi: ## Perform structural checks on Pulumi project configuration (if present).
-	$(call run_or_skip,tests/pulumi,$(call coverage_pytest,.coverage.pulumi,tests/pulumi),"Pulumi structural tests")
-
-test-policy: ## Execute Pulumi Policy Pack guardrail tests (if present).
-	$(call run_or_skip,tests/policy,$(call coverage_pytest,.coverage.policy,tests/policy),"Pulumi policy tests")
-
-test-crossguard: ## Execute Pulumi CrossGuard policy tests (alias for test-policy).
+test-crossguard: ## Alias for the Pulumi CrossGuard policy-pack suite.
 	$(MAKE) test-policy
 
-test-mutation: ## Run mutation testing suite against Pulumi components (if present).
-	$(call run_or_skip,scripts,bash -lc "COVERAGE_FILE=$(COVERAGE_DIR)/.coverage.mutation ./scripts/run_mutation_tests.sh","mutation tests")
+test-ruff: ## Run Ruff lint and format checks against Python sources.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run ruff check pulumi policy scripts tests
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run ruff format --check pulumi policy scripts tests
 
-test-e2e: ## Execute end-to-end Pulumi CLI smoke tests (requires PULUMI_E2E_SECRETS_PROVIDER).
-	$(call run_or_skip,tests/e2e,$(call coverage_pytest,.coverage.e2e,tests/e2e),"e2e tests")
+# Ty still needs a few targeted ignores for Pulumi's dynamic resource APIs and
+# the coverage bootstrap shim: missing-argument, invalid-argument-type, and
+# conflicting-declarations are false positives there, not blanket suppressions.
+test-ty: ## Run the Ty static type checker against Python sources.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run ty check \
+		--extra-search-path policy \
+		--extra-search-path scripts \
+		--ignore missing-argument \
+		--ignore invalid-argument-type \
+		--ignore conflicting-declarations \
+		pulumi policy scripts
 
-test-bats: ## Execute Bats coverage for Make targets.
-	@if command -v bats >/dev/null 2>&1; then \
-	  bats tests/bats; \
-	else \
-	  docker run --rm -v "$(PWD):/code" -w /code --entrypoint /bin/sh $(BATS_DOCKER_IMAGE) -lc "apk add --no-cache make >/dev/null && bats tests/bats"; \
-	fi
+test-maintainability: ## Enforce pragmatic complexity and maintainability thresholds.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run radon cc -s -a pulumi policy scripts
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run radon mi -s -n B pulumi policy scripts
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run xenon --max-absolute B --max-modules B --max-average A pulumi policy scripts
 
-check-format: ## Verify Python formatting with Ruff.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p \"\$$HOME/.ruff_cache\" && RUFF_CACHE_DIR=\"\$$HOME/.ruff_cache\" $(UV_RUN) ruff format --check $(PYTHON_FORMAT_PATHS)"
+test-architecture: ## Enforce import-direction contracts for runtime and policy code.
+	$(COMPOSE) run --rm -e PYTHONPATH=/workspace/pulumi:/workspace \
+		$(COMPOSE_SERVICE) uv run lint-imports --config pyproject.toml
 
-check-lint: ## Run Python lint checks with Ruff.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p \"\$$HOME/.ruff_cache\" && RUFF_CACHE_DIR=\"\$$HOME/.ruff_cache\" $(UV_RUN) ruff check $(PYTHON_LINT_PATHS)"
+test-lockfile: ## Require dependency metadata and uv.lock to stay in sync.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv lock --check
 
-check-radon: ## Enforce Radon maintainability index thresholds for repo Python modules.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) python scripts/check_radon_maintainability.py
+test-dependency-hygiene: ## Catch stale, missing, and misplaced Python dependencies.
+	$(MAKE) test-lockfile
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run deptry .
 
-check-xenon: ## Enforce Xenon complexity ceilings for Pulumi, policy, and helper modules.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) xenon -a A -m A -b C -i "$(XENON_IGNORE_PATHS)" $(RADON_PATHS)
+test-coverage: ## Enforce combined branch coverage after runtime and policy suites run.
+	$(COMPOSE) run --rm $(TOTAL_COVERAGE_ENV) $(COMPOSE_SERVICE) bash -lc '\
+		if [ ! -f .coverage.unit ] || [ ! -f .coverage.integration ] || [ ! -f .coverage.policy ]; then \
+			echo "error: run test-unit, test-integration, and test-policy before test-coverage" >&2; \
+			exit 1; \
+		fi; \
+		uv run coverage combine --keep .coverage.unit .coverage.integration .coverage.policy >/dev/null \
+		&& uv run coverage report --show-missing --fail-under=$(BRANCH_COVERAGE_MIN) --include="$(TOTAL_COVERAGE_INCLUDE)"'
 
-check-imports: ## Enforce import-layer boundaries between infra, policy, and scripts packages.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) lint-imports --config .importlinter
+test-bandit: ## Lint Python sources for common security hazards.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run bandit -q -c pyproject.toml -r pulumi policy scripts
 
-check-deptry: ## Validate runtime and dev dependency hygiene against the uv project metadata.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) deptry .
+test-actionlint: ## Lint GitHub Actions workflows with actionlint.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) actionlint -color
 
-check-spelling: ## Run typo detection across repository sources.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) typos $(SPELLCHECK_PATHS)
+test-yaml: ## Lint GitHub workflows, Pulumi stacks, and operational YAML.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run yamllint -c .yamllint.yml $(YAML_LINT_PATHS)
 
-check-toml: ## Lint and format-check repository TOML manifests with Taplo.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "taplo lint $(TOML_LINT_PATHS) && taplo format --check $(TOML_LINT_PATHS)"
+test-dockerfile: ## Lint the development Dockerfile with hadolint.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) hadolint --config .hadolint.yaml Dockerfile
 
-check-types: ## Run static type checks for Pulumi Python code.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) mypy $(PYTHON_TYPE_PATHS)
+test-secrets: ## Scan tracked Git content for accidentally committed secrets.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) gitleaks git . --config .gitleaks.toml --no-banner --redact
 
-check-ty: ## Run Astral Ty static analysis across the policy pack and test code.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "$(UV_RUN) ty check --project . --extra-search-path /workspace/pulumi policy_pack scripts tests"
+test-deps-security: ## Audit Python dependencies for known vulnerabilities.
+	$(COMPOSE) run --rm -e XDG_CACHE_HOME=/tmp/xdg-cache $(COMPOSE_SERVICE) uv run pip-audit --strict
 
-check-package: ## Validate the uv lockfile, synced environment, and Python bytecode compilation.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "uv lock --check && uv sync --check --frozen --all-groups --no-install-project --no-editable && pycache_dir=\$$(mktemp -d \"\$$HOME/pycache.XXXXXX\") && trap 'rm -rf \"\$$pycache_dir\"' EXIT && PYTHONPYCACHEPREFIX=\$$pycache_dir python -m compileall -q $(PYTHON_FORMAT_PATHS)"
+test-preview: ## Generate non-destructive Pulumi previews for configured stacks.
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) \
+		$(REPO_PYTHON) ./scripts/run_pulumi_preview.py
 
-check-qlty: ## Run the repo-local Qlty code health configuration.
-	@command -v $(QLTY) >/dev/null 2>&1 || { echo "qlty CLI is required. Install it from https://qlty.sh" >&2; exit 1; }
-	$(QLTY) check --all --summary --no-progress --level note --fail-level note
+test-destructive-diff: ## Fail when Pulumi previews delete or replace critical resources.
+	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '\
+		event_arg=""; \
+		if [ -f .artifacts/github-event.json ]; then \
+			event_arg="--event-path .artifacts/github-event.json"; \
+		fi; \
+		if ! compgen -G ".artifacts/pulumi-preview/*.json" >/dev/null; then \
+			$(REPO_PYTHON) ./scripts/run_pulumi_preview.py >/dev/null; \
+		fi; \
+		uv run python ./scripts/pulumi_ci_guardrails.py destructive-gate $$event_arg .artifacts/pulumi-preview/*.json'
 
-check-bandit: ## Run Bandit security checks on Pulumi Python sources.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) bandit -q -r pulumi policy_pack -c pyproject.toml
+test-iam-validation: ## Validate previewed IAM policies with AWS IAM Access Analyzer.
+	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '\
+		if ! compgen -G ".artifacts/pulumi-preview/*.json" >/dev/null; then \
+			$(REPO_PYTHON) ./scripts/run_pulumi_preview.py >/dev/null; \
+		fi; \
+		uv run python ./scripts/pulumi_ci_guardrails.py validate-iam .artifacts/pulumi-preview/*.json'
 
-check-deps: ## Audit locked Python dependencies for known vulnerabilities.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p \"\$$TMPDIR\" && requirements_file=\$$(mktemp \"\$$TMPDIR/requirements.XXXXXX.txt\") && trap 'rm -f \"\$$requirements_file\"' EXIT && uv export --frozen --all-groups --format requirements.txt --no-emit-project --output-file \"\$$requirements_file\" >/dev/null && $(UV_RUN) python -m pip_audit -r \"\$$requirements_file\" --desc"
+test-security: ## Run secret, dependency, and workflow security checks.
+	$(MAKE) test-secrets
+	$(MAKE) test-deps-security
+	$(MAKE) test-bandit
 
-check-sbom: ## Export a CycloneDX SBOM from the locked uv dependency graph.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p \"\$$TMPDIR\" && sbom_file=\$$(mktemp \"\$$TMPDIR/sbom.XXXXXX.json\") && trap 'rm -f \"\$$sbom_file\"' EXIT && uv export --preview-features sbom-export --frozen --all-groups --format cyclonedx1.5 --no-emit-project --output-file \"\$$sbom_file\" >/dev/null && python -m json.tool \"\$$sbom_file\" >/dev/null"
+test-guardrails: ## Run the credential-free preview and destructive-diff guardrails.
+	$(MAKE) test-preview
+	$(MAKE) test-destructive-diff
 
-check-secrets: ## Scan the repository for leaked secrets with Gitleaks.
-	docker run --rm -v "$(CURDIR):/repo" -w /repo $(GITLEAKS_IMAGE) detect --no-banner --source . --config .gitleaks.toml --redact --exit-code 1
+test-drift: ## Perform a non-destructive drift check against configured shared stacks.
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) \
+		$(REPO_PYTHON) ./scripts/run_pulumi_drift_check.py
 
-check-iam: ## Validate generated IAM and resource policies with AWS IAM Access Analyzer.
-	$(COMPOSE) run --rm -e REQUIRE_AWS_ACCESS_ANALYZER="$(REQUIRE_AWS_ACCESS_ANALYZER)" $(COMPOSE_SERVICE) bash -lc "$(UV_RUN) python scripts/validate_iam_policies.py"
+test-quality: ## Run blocking Python quality, architecture, and dependency gates.
+	$(MAKE) test-ruff
+	$(MAKE) test-ty
+	$(MAKE) test-maintainability
+	$(MAKE) test-architecture
+	$(MAKE) test-dependency-hygiene
 
-check-preview: ## Run local Pulumi preview parity and destructive-diff guardrails when preview env is configured.
-	@mkdir -p "$(PREVIEW_ARTIFACT_DIR)"
-	@stack_name="$${PULUMI_STACK:-test}"; \
-	backend_url="$${PULUMI_BACKEND_URL:-}"; \
-	secrets_provider="$${PULUMI_SECRETS_PROVIDER:-$${PULUMI_TEST_SECRETS_PROVIDER:-}}"; \
-	if [ -z "$$backend_url" ] && [ -n "$${PULUMI_STATE_BUCKET:-}" ]; then \
-	  backend_url="s3://$${PULUMI_STATE_BUCKET}/state/$$stack_name"; \
-	fi; \
-	if [ -z "$$backend_url" ] || [ -z "$$secrets_provider" ]; then \
-	  echo "Skipping local preview parity: set PULUMI_BACKEND_URL or PULUMI_STATE_BUCKET, and PULUMI_SECRETS_PROVIDER or PULUMI_TEST_SECRETS_PROVIDER."; \
-	  exit 0; \
-	fi; \
-	if [ -n "$${PULUMI_STATE_BUCKET:-}" ]; then \
-	  $(COMPOSE) run --rm $(COMPOSE_SERVICE) aws s3api head-bucket --bucket "$${PULUMI_STATE_BUCKET}" >/dev/null; \
-	fi; \
+test-repo-hygiene: ## Lint GitHub Actions, YAML, and the Dockerfile.
+	$(MAKE) test-actionlint
+	$(MAKE) test-yaml
+	$(MAKE) test-dockerfile
+
+test-mutation: ## Run mutation testing suite against Pulumi components.
 	$(COMPOSE) run --rm \
-	  -e AWS_REGION="$(AWS_REGION)" \
-	  -e AWS_DEFAULT_REGION="$(AWS_REGION)" \
-	  -e PULUMI_STACK="$$stack_name" \
-	  -e PULUMI_DIR="$(PULUMI_DIR)" \
-	  -e PULUMI_BACKEND_URL="$$backend_url" \
-	  -e PULUMI_SECRETS_PROVIDER="$$secrets_provider" \
-	  -e PULUMI_REQUIRE_EXISTING_STACK="true" \
-	  -e PULUMI_PREVIEW_JSON_PATH="/workspace/$(PREVIEW_ARTIFACT_DIR)/pulumi-preview.json" \
-	  -e PULUMI_SKIP_UPDATE_CHECK="true" \
-	  $(COMPOSE_SERVICE) \
-	  bash -lc "./scripts/run_pulumi_command.sh plan"; \
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) \
-	  bash -lc "$(UV_RUN) python scripts/analyze_pulumi_preview.py --preview-file /workspace/$(PREVIEW_ARTIFACT_DIR)/pulumi-preview.json --summary-file /workspace/$(PREVIEW_ARTIFACT_DIR)/pulumi-preview-summary.md"; \
-	cat "$(PREVIEW_ARTIFACT_DIR)/pulumi-preview-summary.md"
+		$(if $(strip $(MUTATION_PATHS)),-e MUTATION_PATHS="$(MUTATION_PATHS)") \
+		-e MUTATION_TEST_TARGETS="$(MUTATION_TEST_TARGETS)" \
+		-e MUTATION_TESTS_DIR="$(MUTATION_TESTS_DIR)" \
+		$(if $(strip $(MUTATION_COVERAGE_TARGETS)),-e MUTATION_COVERAGE_TARGETS="$(MUTATION_COVERAGE_TARGETS)") \
+		$(if $(strip $(MUTATION_RUNNER)),-e MUTATION_RUNNER="$(MUTATION_RUNNER)") \
+		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_mutation_tests.py
 
-check-yaml: ## Lint GitHub Actions and Pulumi YAML manifests.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) yamllint -c .yamllint $(YAML_LINT_PATHS)
+test-cli: ## Validate Makefile front-ends via Bats.
+	COMPOSE_TARGET=test $(COMPOSE) run --build --rm $(COMPOSE_SERVICE) bats tests/unit
 
-check-actionlint: ## Lint GitHub Actions workflows.
-	docker run --rm -v "$(CURDIR):/work" -w /work $(ACTIONLINT_IMAGE) -color
-
-check-docker: ## Lint the Dockerfile with Hadolint.
-	docker run --rm -i $(HADOLINT_IMAGE) hadolint --failure-threshold error - < Dockerfile
-
-check-shell: ## Lint and format-check repository shell scripts with ShellCheck and shfmt.
-	docker run --rm -v "$(CURDIR):/work" $(SHELLCHECK_IMAGE) $(SHELLCHECK_PATHS)
-	docker run --rm -v "$(CURDIR):/work" -w /work $(SHFMT_IMAGE) -d -i 2 -ci -bn $(SHFMT_PATHS)
-
-check-iac: ## Run Checkov against GitHub Actions and Dockerfile definitions.
-	docker run --rm -v "$(CURDIR):/work" $(CHECKOV_IMAGE) -d /work --config-file /work/.checkov.yml
-
-report-wily: ## Build scheduled Wily maintainability trend reports.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) $(UV_RUN) python scripts/run_wily_report.py --report-dir '$(QUALITY_REPORT_DIR)/wily' $(WILY_PATHS)
-
-report-vulture: ## Produce a scheduled dead-code report with Vulture.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p '$(QUALITY_REPORT_DIR)' && $(UV_RUN) vulture $(VULTURE_PATHS) --min-confidence 80 | tee '$(QUALITY_REPORT_DIR)/vulture.txt'"
-
-report-docstrings: ## Measure docstring coverage for reusable infra and guardrail modules.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p '$(QUALITY_REPORT_DIR)' && $(UV_RUN) docstr-coverage --skip-file-doc --skip-private --fail-under 80 $(INTERROGATE_PATHS) | tee '$(QUALITY_REPORT_DIR)/docstr-coverage.txt'"
-
-report-sbom: ## Export a CycloneDX SBOM artifact from the locked uv dependency graph.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "mkdir -p '$(QUALITY_REPORT_DIR)' && uv export --preview-features sbom-export --frozen --all-groups --format cyclonedx1.5 --no-emit-project --output-file '$(QUALITY_REPORT_DIR)/sbom.cyclonedx.json' >/dev/null && python -m json.tool '$(QUALITY_REPORT_DIR)/sbom.cyclonedx.json' >/dev/null"
-
-report-drift: ## Run the scheduled Pulumi drift check locally when preview env is configured.
-	@stack_name="$${PULUMI_STACK:-test}"; \
-	backend_url="$${PULUMI_BACKEND_URL:-}"; \
-	secrets_provider="$${PULUMI_SECRETS_PROVIDER:-$${PULUMI_TEST_SECRETS_PROVIDER:-}}"; \
-	if [ -z "$$backend_url" ] && [ -n "$${PULUMI_STATE_BUCKET:-}" ]; then \
-	  backend_url="s3://$${PULUMI_STATE_BUCKET}/state/$$stack_name"; \
-	fi; \
-	if [ -z "$$backend_url" ] || [ -z "$$secrets_provider" ]; then \
-	  echo "Skipping local drift parity: set PULUMI_BACKEND_URL or PULUMI_STATE_BUCKET, and PULUMI_SECRETS_PROVIDER or PULUMI_TEST_SECRETS_PROVIDER."; \
-	  exit 0; \
-	fi; \
-	if [ -n "$${PULUMI_STATE_BUCKET:-}" ]; then \
-	  $(COMPOSE) run --rm $(COMPOSE_SERVICE) aws s3api head-bucket --bucket "$${PULUMI_STATE_BUCKET}" >/dev/null; \
-	fi; \
+report-maintainability-trends: ## Build and publish Wily maintainability trend reports.
+	mkdir -p $(QUALITY_ARTIFACT_DIR)
 	$(COMPOSE) run --rm \
-	  -e AWS_REGION="$(AWS_REGION)" \
-	  -e AWS_DEFAULT_REGION="$(AWS_REGION)" \
-	  -e PULUMI_STACK="$$stack_name" \
-	  -e PULUMI_DIR="$(PULUMI_DIR)" \
-	  -e PULUMI_BACKEND_URL="$$backend_url" \
-	  -e PULUMI_SECRETS_PROVIDER="$$secrets_provider" \
-	  -e PULUMI_REQUIRE_EXISTING_STACK="true" \
-	  -e PULUMI_SKIP_UPDATE_CHECK="true" \
-	  $(COMPOSE_SERVICE) \
-	  bash -lc "./scripts/run_pulumi_command.sh drift"
+		-e QUALITY_ARTIFACT_DIR="$(QUALITY_ARTIFACT_DIR)" \
+		-e WILY_TARGETS="$(WILY_TARGETS)" \
+		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/report_maintainability_trends.py
 
-check-static: ## Run static formatting, lint, type, and packaging checks.
-	$(MAKE) check-format
-	$(MAKE) check-lint
-	$(MAKE) check-radon
-	$(MAKE) check-xenon
-	$(MAKE) check-imports
-	$(MAKE) check-deptry
-	$(MAKE) check-spelling
-	$(MAKE) check-toml
-	$(MAKE) check-types
-	$(MAKE) check-ty
-	$(MAKE) check-package
+report-dead-code: ## Run the advisory dead-code report for reusable Python modules.
+	mkdir -p $(QUALITY_ARTIFACT_DIR)
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc '\
+		uv run vulture --config pyproject.toml > $(QUALITY_ARTIFACT_DIR)/vulture.txt; \
+		status=$$?; \
+		if [ "$$status" -ne 0 ] && [ "$$status" -ne 3 ]; then \
+			exit "$$status"; \
+		fi'
 
-check-security: ## Run security and policy checks for code, manifests, and build assets.
-	$(MAKE) check-bandit
-	$(MAKE) check-deps
-	$(MAKE) check-sbom
-	$(MAKE) check-secrets
-	$(MAKE) check-iam
-	$(MAKE) check-preview
-	$(MAKE) check-yaml
-	$(MAKE) check-actionlint
-	$(MAKE) check-docker
-	$(MAKE) check-shell
-	$(MAKE) check-iac
-	$(MAKE) check-qlty
+report-docstrings: ## Run the advisory docstring coverage report for reusable modules.
+	mkdir -p $(QUALITY_ARTIFACT_DIR)
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc '\
+		uv run docstr-coverage $(DOCSTRING_PATHS) > $(QUALITY_ARTIFACT_DIR)/docstr-coverage.txt'
 
-test-cost: ## Execute cost and governance guardrail tests for the Pulumi stack.
-	$(call run_or_skip,tests/cost,$(call coverage_pytest,.coverage.cost,tests/cost),"cost guardrail tests")
+report-sbom: ## Generate a CycloneDX SBOM for the synced Python environment.
+	mkdir -p $(SBOM_ARTIFACT_DIR)
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc '\
+		python_env="$${UV_PROJECT_ENVIRONMENT:-.venv}" \
+		&& uv run cyclonedx-py environment "$${python_env}" --pyproject pyproject.toml --output-reproducible --of JSON -o $(SBOM_ARTIFACT_DIR)/python-environment.cdx.json'
 
-check-coverage: ## Combine Python suite coverage and require 100% coverage for Pulumi and policy code.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc "shopt -s nullglob && files=( $(COVERAGE_DIR)/.coverage.* ) && if [ \$${#files[@]} -eq 0 ]; then echo 'No coverage artifacts found.' >&2; exit 1; fi && $(UV_RUN) coverage combine --keep \"\$${files[@]}\" && $(UV_RUN) coverage report --show-missing --fail-under=100"
-
-test: ## Run the complete Pulumi-focused test battery.
-	$(MAKE) test-pulumi
-	$(MAKE) test-cost
-	$(MAKE) test-policy
-	$(MAKE) test-unit
-	$(MAKE) test-integration
-	$(MAKE) test-mutation
-	$(MAKE) test-e2e
-	$(MAKE) test-bats
-	$(MAKE) check-coverage
-
-ci: ## Run the full local CI battery, including static checks and tests.
-	$(MAKE) check-static
-	$(MAKE) check-security
-	$(MAKE) test
-
-ci-nightly: ## Run the scheduled advisory quality and drift checks locally.
-	$(MAKE) report-wily
-	$(MAKE) report-vulture
+report-quality: ## Run scheduled quality reports and generate fresh artifacts.
+	$(MAKE) report-maintainability-trends
+	$(MAKE) report-dead-code
 	$(MAKE) report-docstrings
 	$(MAKE) report-sbom
-	$(MAKE) report-drift
+
+nightly-quality: ## Alias for the scheduled quality-report battery.
+	$(MAKE) report-quality
+
+test-battery:
+	$(MAKE) test-pulumi
+	$(MAKE) test-policy
+	$(MAKE) test-quality
+	$(MAKE) test-repo-hygiene
+	$(MAKE) test-unit
+	$(MAKE) test-integration
+	$(MAKE) test-coverage
+	$(MAKE) test-cli
+
+test: ## Run the faster developer battery without the image build or mutation suite.
+	$(MAKE) doctor
+	$(MAKE) test-battery
+
+ci-pr: ## Run the GitHub PR battery except the dedicated mutation workflow.
+	$(MAKE) doctor
+	$(MAKE) build
+	$(MAKE) test-battery
+	$(MAKE) test-security
+	$(MAKE) test-guardrails
+
+ci: ## Run the full local equivalent of all GitHub checks, including mutation.
+	$(MAKE) ci-pr
+	$(MAKE) test-mutation
 
 clean: ## Remove Docker Compose artifacts, Python caches, and build artifacts.
-	$(COMPOSE) down -v 2>/dev/null || true
+	$(DOCKER_COMPOSE) down -v 2>/dev/null || true
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	rm -rf .venv .mypy_cache .ruff_cache .coverage-artifacts .quality-reports .wily dist build *.egg-info 2>/dev/null || true
+	rm -rf .venv policy/.venv dist build *.egg-info 2>/dev/null || true

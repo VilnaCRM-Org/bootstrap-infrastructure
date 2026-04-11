@@ -1,193 +1,144 @@
+# Infrastructure Template for Modern DevOps applications
+
 [![SWUbanner](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-direct.svg)](https://supportukrainenow.org/)
 
-# Infrastructure template for modern DevOps applications
+[![Pulumi Unit Tests](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-unit.yml/badge.svg)](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-unit.yml)
+[![Pulumi Integration Tests](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-integration.yml/badge.svg)](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-integration.yml)
+[![Pulumi Structural Tests](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-structural.yml/badge.svg)](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-structural.yml)
+[![Pulumi Policy Tests](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-policy.yml/badge.svg)](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-policy.yml)
+[![Pulumi PR Guardrails](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-pr-guardrails.yml/badge.svg)](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-pr-guardrails.yml)
+[![Pulumi Mutation Tests](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-mutation.yml/badge.svg)](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/pulumi-mutation.yml)
+[![CLI Tests](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/bats-tests.yml/badge.svg)](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/bats-tests.yml)
+[![Python Quality Checks](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/python-quality.yml/badge.svg)](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/python-quality.yml)
+[![Security Scans](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/security-scans.yml/badge.svg)](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/workflows/security-scans.yml)
+
+Production-ready scaffold for teams that want to ship infrastructure-as-code with Pulumi and Docker from day zero.
 
 ## Possibilities
-- Pulumi-based AWS infrastructure for per-repo state, logging, and IAM
-- Built-in Docker environment and convenient `make` CLI commands
-- CI checks for Pulumi unit, integration, structural, and mutation testing
-- Static quality, DevSecOps, Pulumi policy-pack, preview, CodeQL, IAM validation, coverage, and cost guardrail checks for Pulumi/Python code
-- Configured testing tools
-- Much more!
 
-## Why you might need it
-Many DevOps engineers need to create new projects from scratch and spend a lot of time.
+- Pulumi (Python) starter that exports environment metadata and tagging helpers.
+- Reproducible Docker Compose workspace with a Pulumi-ready container and helper `make` tasks.
+- CI pipelines for structural, policy, preview, security, unit, integration, mutation, and CLI-level checks.
+- Release and template-sync automations to keep downstream repos aligned.
+- Documentation on AWS credential management for secure automation using GitHub OIDC and short-lived credentials.
 
-We decided to simplify this exhausting process and create a public template for modern infrastructures. This template is used for all our microservices in VilnaCRM.
+## Why You Might Need It
+
+Spin up consistent project infrastructure without wiring every component manually. This template gives DevOps teams a single source that:
+
+- Encodes best practices from VilnaCRM’s production stack.
+- Works out-of-the-box with AWS and Pulumi.
+- Keeps infrastructure changes reviewable with local Pulumi previews, policy-pack guardrails, and CI test suites before deploying.
 
 ## License
-This software is distributed under the [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/deed) license. Please read [LICENSE](https://github.com/VilnaCRM-Org/infrastructure-template/blob/main/LICENSE) for information on the software availability and distribution.
 
-### Minimal installation
-You can clone this repository locally or use GitHub's "Use this template" feature.
-
-Install the latest [docker](https://docs.docker.com/engine/install/) and [docker compose](https://docs.docker.com/compose/install/).
-
-Use `make` to see available commands and start the Pulumi container:
-```bash
-make start
-```
-
-Python dependencies and developer tooling are locked with `uv`.
-When you change Python dependencies, regenerate the lockfile with:
-```bash
-uv lock --python 3.11
-```
-Static quality checks also use Rust-native tooling where it is a good fit:
-`ruff` for Python format/lint, `typos` for repository spellchecking, and
-`taplo` plus Astral `ty` for TOML and static type validation.
-
-### Pulumi onboarding (per repository)
-Each repository gets its own state bucket named `pulumi-<repo>-<env>-state`.
-Each managed repository also gets its own customer-managed KMS key alias named `alias/pulumi-<repo>-<env>-secrets`.
-Use AWS KMS for all Pulumi secrets. Do not use `PULUMI_CONFIG_PASSPHRASE`.
-
-Recommended environment variables:
-```bash
-export PULUMI_BACKEND_URL="s3://pulumi-<repo>-<env>-state/state/<stack>"
-export PULUMI_SECRETS_PROVIDER="awskms://alias/pulumi-platform-bootstrap-<env>?region=eu-central-1"
-```
-
-Before the first deploy, initialize or select the stack with the KMS-backed secrets provider:
-```bash
-make pulumi-stack-select STACK=test PULUMI_SECRETS_PROVIDER="$PULUMI_SECRETS_PROVIDER"
-```
-
-If the stack was created with a Pulumi passphrase in the past, migrate it in place:
-```bash
-make pulumi-stack-migrate-secrets STACK=test PULUMI_SECRETS_PROVIDER="$PULUMI_SECRETS_PROVIDER"
-```
-
-This bootstrap stack provisions the per-repository KMS keys and grants the matching GitHub deploy role access to only its repository key for `kms:Encrypt`, `kms:Decrypt`, `kms:GenerateDataKey`, `kms:DescribeKey`, and `kms:ReEncrypt*`.
-Downstream repositories should use the exported `pulumiSecretsProviderUrls` value for their repository instead of creating a second Pulumi secrets key in the application stack.
-
-`bootstrap-infrastructure` itself is the stage-1 foundation stack, so it cannot rely on a KMS key that it creates during its own first deployment.
-Use a pre-existing account or platform bootstrap key for this repository, such as `alias/pulumi-platform-bootstrap-<env>`.
-If you later want `bootstrap-infrastructure` to use its own per-repo key, migrate it only after the stack has already created that key.
-
-Store non-secret stack configuration in `pulumi/Pulumi.<stack>.yaml` and set actual secrets with `pulumi config set --secret ...`.
-
-Required config values (namespace `bootstrap-infrastructure`):
-- `githubOrg`: GitHub organization name (e.g. `VilnaCRM-Org`)
-- `repoSlug`: Repository name (e.g. `bootstrap-infrastructure`)
-- `environment`: Stack environment (e.g. `test`, `prod`)
-- `owner`: Ownership tag (e.g. `platform`)
-- `costCenter`: Cost center tag (e.g. `core`)
-- `loggingPrefix`: Prefix for central logging buckets
-
-Optional config values:
-- `githubBranch`: Branch allowed for OIDC (defaults to repo default branch)
-- `managedRepositories`: List of repositories and default branches when managing multiple repos
-- `githubOidcProviderArn`: Pre-existing OIDC provider ARN (if you don't want Pulumi to create one)
-
-Example non-secret stack config (file: `pulumi/Pulumi.test.yaml.example`):
-```yaml
-config:
-  aws:region: eu-central-1
-  bootstrap-infrastructure:githubOrg: VilnaCRM-Org
-  bootstrap-infrastructure:repoSlug: bootstrap-infrastructure
-  bootstrap-infrastructure:environment: test
-  bootstrap-infrastructure:owner: platform
-  bootstrap-infrastructure:costCenter: core
-  bootstrap-infrastructure:githubBranch: main
-  bootstrap-infrastructure:managedRepositories:
-    - name: bootstrap-infrastructure
-      defaultBranch: main
-  bootstrap-infrastructure:githubOidcProviderArn: arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com
-```
-
-Backend URL format:
-```text
-s3://pulumi-<repo>-<env>-state/state/<stack>
-```
-
-CI requires setting the `PULUMI_STATE_BUCKET` repository variable to the bucket name that matches the
-configured repo/environment naming (for example: `pulumi-bootstrap-infrastructure-test-state`).
-CI also requires `PULUMI_TEST_SECRETS_PROVIDER` and `PULUMI_PROD_SECRETS_PROVIDER` repository variables, each containing an `awskms://...` URI for the matching environment.
-GitHub automation for PR comments also requires `PULUMI_TEST_ROLE_ARN` and `PULUMI_TEST_RUNNER_ECR_REPOSITORY`.
-The automation workflows use the `test` job environment subject for OIDC trust and pull a prebuilt ECR runner image before executing `pulumi plan`, `pulumi up`, or scheduled drift detection.
-Those command paths also apply the repo-local Pulumi CrossGuard Policy Pack from `policy_pack/`, so the same rules are enforced in local CI wrappers, deployment workflows, PR comment automation, and drift detection.
-PR preview safety uses the same OIDC model and blocks destructive diffs for critical resources unless a maintainer applies the reviewed PR label `pulumi-allow-destructive`.
-
-For repositories bootstrapped by this stack, the expected flow is:
-```text
-bootstrap-infrastructure stack
-  -> creates per-repo Pulumi state bucket
-  -> creates per-repo Pulumi secrets KMS key + alias
-  -> creates per-repo GitHub OIDC deploy role with S3 + KMS permissions
-  -> exports pulumiSecretsProviderUrls[repo]
-
-downstream repository
-  -> sets PULUMI_BACKEND_URL to its state bucket
-  -> sets PULUMI_SECRETS_PROVIDER to its exported awskms:// URI
-  -> runs pulumi stack init/select using those bootstrap outputs
-```
-
-### Running Pulumi
-Common commands (inside the Docker container via `make`):
-```bash
-make pulumi-preview
-make pulumi-up
-make pulumi-refresh
-make pulumi-destroy
-make pulumi-plan-ci
-make pulumi-up-ci
-make pulumi-drift-ci
-```
-
-Runner image commands:
-```bash
-make runner-image-build
-make runner-image-smoke
-make runner-image-push RUNNER_ECR_REPOSITORY=pulumi-runner/bootstrap-infrastructure-test RUNNER_IMAGE_TAG=sha-<commit>
-```
-
-Quality and security guardrails:
-```bash
-make check-static
-make check-security
-make check-secrets
-make check-iam
-make test-policy
-make test-crossguard
-make check-coverage
-make test-cost
-make check-ty
-make ci
-```
-
-Stack bootstrap helpers:
-```bash
-make pulumi-stack-select STACK=test PULUMI_SECRETS_PROVIDER="$PULUMI_SECRETS_PROVIDER"
-make pulumi-stack-migrate-secrets STACK=test PULUMI_SECRETS_PROVIDER="$PULUMI_SECRETS_PROVIDER"
-```
-
-## Using
-You can use `make` to control and work with the project locally.
-
-Execute `make` or `make help` to see the full list of project commands.
+This software is distributed under the [Creative Commons Zero v1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/deed) license. Please read [`LICENSE`](LICENSE) for details.
 
 ## Documentation
-Start reading at the [GitHub wiki](https://github.com/VilnaCRM-Org/infrastructure-template/wiki). If you're having trouble, head for [the troubleshooting guide](https://github.com/VilnaCRM-Org/infrastructure-template/wiki/Troubleshooting) as it's frequently updated.
 
-## Tests
-[Test status](https://github.com/VilnaCRM-Org/infrastructure-template/actions)
+All project docs live under `docs/` to keep everything version controlled. Start with the handbook and jump directly to common topics:
 
-If this isn't passing, is there something you can do to help?
+- [Quick Start](docs/README.md#quick-start)
+- [Local Tooling](docs/README.md#local-tooling)
+- [Development Environment](docs/README.md#development)
+- [PyCharm Autocomplete](docs/pycharm-autocomplete.md)
+- [CI/CD and Secrets](docs/README.md#cicd-and-secrets)
+- [CI Quality Gates](docs/ci-quality-gates.md)
+- [CI Guardrails](docs/ci-guardrails.md)
+- [CI Architecture](docs/ci-architecture.md)
+- [Security Baseline](docs/security-baseline.md)
+- [Pulumi Guardrails](docs/pulumi-guardrails.md)
+- [uv and Rust-native Python tooling](docs/uv-rust-python-tooling-plan.md)
+- [SRE Operations](docs/sre-operations.md)
+- [Testing and Validation](docs/README.md#testing-and-validation)
+- [Security](docs/README.md#security)
+- [Contributing](docs/README.md#contributing)
+- [Sponsorship](docs/README.md#sponsorship)
+
+Community Q&A lives under the [`vilnacrm` tag on Stack Overflow](https://stackoverflow.com/questions/tagged/vilnacrm). For questions or feature requests, open an issue.
+
+## Local Pulumi test suites
+
+Docker Compose CLI 2.24.0+ is required because `docker-compose.yml` uses the
+`env_file.required` flag (older Compose releases fail to parse it).
+
+## Environment files
+
+The Makefile resolves the effective env file as the first existing file from
+`.env` and `.env.empty`.
+
+- `.env` is git-ignored and should hold local secrets or developer-specific overrides.
+- `.env.empty` is committed and acts as the minimal fallback so Docker Compose and `make` targets still run in a fresh clone.
+- `.env.dist` remains an optional example/template file you can copy from when you want a fuller starting point; unlike `.env.empty`, it is not the automatic fallback used by the Makefile.
+
+For onboarding, create or update `.env` with any local overrides you need, keep
+`.env.empty` safe to commit, and refresh `.env.dist` only when the example
+values or documented setup flow changes.
+
+If you want a local `uv` environment outside Docker, seed it once so Pulumi's
+Automation API can still use `pip` for package discovery:
+
+```sh
+export UV_PROJECT_ENVIRONMENT="${HOME}/.venvs/bootstrap-infrastructure"
+uv venv --seed "${UV_PROJECT_ENVIRONMENT}"
+uv sync --all-groups
+```
+
+The Docker workspace already ships with an isolated seeded environment outside
+the bind-mounted repository tree, so the `make` targets remain the recommended
+way to run the different Pulumi-focused suites (see `docker-compose.yml` for
+the canonical workspace layout):
+
+```sh
+# Build the dev image used by the local and CI batteries
+make build
+
+# Configuration validation
+make test-pulumi
+
+# Rust-based quality gates
+make test-quality
+
+# Pulumi policy and guardrail validation
+make test-policy
+
+# Unit tests (pure Pulumi runtime with mocks)
+make test-unit
+
+# Automation-based integration tests
+make test-integration
+
+# Mutation analysis (time-consuming)
+make test-mutation
+```
+
+Use the local batteries that match the scope of your change:
+
+- `make test` runs the faster structural, policy, quality, repo-hygiene, unit, integration, coverage, and CLI battery.
+- `make test-security` and `make test-guardrails` focus on infrastructure safety controls.
+- `make ci-pr` mirrors the non-mutation GitHub pull-request battery before merge.
+- `make ci` runs the full local superset, including the prerequisite check, image build, preview guardrails, security scans, and mutation suite.
+- `make report-quality` generates the scheduled Wily, Vulture, docstring-coverage, and SBOM reports locally.
+
+If Pulumi provider plugin downloads hit GitHub rate limits during local preview
+or drift commands, pass `GITHUB_TOKEN="$(gh auth token)"` explicitly to that
+single Make invocation instead of exporting it globally.
+
+Run `make doctor` when you need a fast prerequisite check before debugging local
+Docker or Compose behavior.
+
+`make pulumi-preview` and `make pulumi-up` automatically enable the repository
+policy pack. If the shared `uv` environment inside the container is missing
+core Pulumi Python dependencies, the bootstrap helper resyncs it from
+`uv.lock` before Pulumi starts. The policy runtime is refreshed separately in
+`policy/.venv` from `policy/requirements.txt` so Pulumi starts the policy pack
+consistently in Docker, CI, and local shells. The interactive Pulumi targets
+also log into the configured backend automatically, falling back to the local
+file backend under `.pulumi-backend/` when no shared backend is configured,
+select the first committed `Pulumi.<stack>.yaml` file by default, and expect
+shared backends to use an AWS KMS-backed secrets provider instead of a
+passphrase-managed stack secret flow.
 
 ## Security
+
 Please disclose any vulnerabilities found responsibly – report security issues to the maintainers privately.
-
-See [SECURITY](https://github.com/VilnaCRM-Org/infrastructure-template/tree/main/SECURITY.md) and [Security advisories on GitHub](https://github.com/VilnaCRM-Org/infrastructure-template/security).
-
-## Contributing
-Please submit bug reports, suggestions, and pull requests to the [GitHub issue tracker](https://github.com/VilnaCRM-Org/infrastructure-template/issues).
-
-We're particularly interested in fixing edge cases, expanding test coverage, and updating translations.
-
-If you found a mistake in the docs, or want to add something, go ahead and amend the wiki – anyone can edit it.
-
-## Sponsorship
-Development time and resources for this repository are provided by [VilnaCRM](https://vilnacrm.com/), the free and opensource CRM system.
-
-Donations are very welcome, whether in beer 🍺, T-shirts 👕, or cold, hard cash 💰. Sponsorship through GitHub is a simple and convenient way to say "thank you" to maintainers and contributors – just click the "Sponsor" button [on the project page](https://github.com/VilnaCRM-Org/infrastructure-template). If your company uses this template, consider taking part in the VilnaCRM's enterprise support program.

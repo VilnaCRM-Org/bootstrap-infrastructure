@@ -1,0 +1,116 @@
+name: Nightly Quality
+
+on:
+  schedule:
+    - cron: "30 3 * * 2"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  maintainability_trends:
+    name: Wily Maintainability Trends
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Generate Wily report
+        run: make report-maintainability-trends
+
+      - name: Upload Wily artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          if-no-files-found: error
+          name: wily-maintainability
+          path: .artifacts/quality/wily-rank.txt
+
+  dead_code:
+    name: Vulture Dead Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Generate dead-code report
+        run: make report-dead-code
+
+      - name: Upload Vulture artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          if-no-files-found: error
+          name: vulture-report
+          path: .artifacts/quality/vulture.txt
+
+  docstrings:
+    name: Docstring Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Generate docstring report
+        run: make report-docstrings
+
+      - name: Upload docstring artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          if-no-files-found: error
+          name: docstr-coverage-report
+          path: .artifacts/quality/docstr-coverage.txt
+
+  sbom:
+    name: CycloneDX SBOM
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Start development environment
+        run: make start
+
+      - name: Generate SBOM
+        run: make report-sbom
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          if-no-files-found: error
+          name: python-environment-sbom
+          path: .artifacts/sbom/python-environment.cdx.json
+
+      - name: Attest SBOM provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32
+        with:
+          subject-path: .artifacts/sbom/python-environment.cdx.json

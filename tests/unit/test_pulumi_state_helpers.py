@@ -1,6 +1,5 @@
 import pulumi.errors as pulumi_errors
 import pytest
-
 from infra import config, pulumi_state
 
 
@@ -68,7 +67,7 @@ def test_replication_role_name_limits_length():
     assert len(role_name) <= pulumi_state._MAX_IAM_ROLE_NAME_LENGTH  # nosec B101
 
 
-def test_replica_bucket_name_length_guard(monkeypatch):
+def test_replica_bucket_name_length_guard(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(
         pulumi_state, "state_bucket_name_for_repo", lambda _repo: "a" * 60
     )

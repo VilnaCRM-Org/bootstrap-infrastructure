@@ -1,4 +1,4 @@
 name: bootstrap-infrastructure
 runtime:
   name: python
-description: Pulumi stack that provisions the AWS resources for the bootstrap infrastructure template.
+description: Base Pulumi stack for the infrastructure template project.

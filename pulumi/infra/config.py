@@ -73,6 +73,30 @@ _IPV4_PATTERN = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
 _IPV6_PATTERN = re.compile(r"^[0-9a-f:]+$")
 
 
+def _managed_repository_from_item(item: Any) -> ManagedRepository:
+    """Normalize one managedRepositories entry into a typed repository config."""
+    if isinstance(item, str):
+        name = item
+        default_branch = "main"
+    elif isinstance(item, dict):
+        name = item.get("name")
+        default_branch = item.get("defaultBranch") or "main"
+    else:
+        raise ValueError(
+            "Each managedRepositories entry must be a string or an object with 'name'."
+        )
+
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(
+            "Each managedRepositories entry must include a non-empty 'name'."
+        )
+    if not isinstance(default_branch, str) or not default_branch.strip():
+        raise ValueError(
+            "managedRepositories defaultBranch values must be non-empty strings."
+        )
+    return ManagedRepository(name=name.strip(), default_branch=default_branch.strip())
+
+
 def _load_managed_repo_overrides(raw: Any) -> list[ManagedRepository] | None:
     """Normalize managedRepositories config entries into structured objects."""
     if raw is None:
@@ -81,32 +105,7 @@ def _load_managed_repo_overrides(raw: Any) -> list[ManagedRepository] | None:
         raise ValueError(
             "managedRepositories config must be a list of repository names or objects."
         )
-    overrides: list[ManagedRepository] = []
-    for item in raw:
-        name: object
-        default_branch: object
-        if isinstance(item, str):
-            name = item
-            default_branch = "main"
-        elif isinstance(item, dict):
-            name = item.get("name")
-            default_branch = item.get("defaultBranch") or "main"
-        else:
-            raise ValueError(
-                "Each managedRepositories entry must be a string or an object "
-                "with 'name'."
-            )
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError(
-                "Each managedRepositories entry must include a non-empty 'name'."
-            )
-        if not isinstance(default_branch, str) or not default_branch.strip():
-            raise ValueError(
-                "managedRepositories defaultBranch values must be non-empty strings."
-            )
-        overrides.append(
-            ManagedRepository(name=name.strip(), default_branch=default_branch.strip())
-        )
+    overrides = [_managed_repository_from_item(item) for item in raw]
     if not overrides:
         raise ValueError("managedRepositories config cannot be empty.")
     return overrides

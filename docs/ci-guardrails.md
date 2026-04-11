@@ -1,279 +1,201 @@
 # CI Guardrails
 
-This repository treats Pulumi and AWS changes as high-risk changes. The CI layout is designed to catch the failure classes that autonomous agents are most likely to introduce: unsafe previews, destructive diffs, weak IAM, leaked secrets, and workflow-level security mistakes.
+This repository treats infrastructure pull requests as high-risk changes. The
+guardrail layer below is designed to catch the common failure modes of
+AI-generated Pulumi and AWS code before anyone merges or applies it.
 
-## Required PR Checks
+For the broader Python, dependency, workflow, Dockerfile, and scheduled
+maintainability checks, use [CI quality gates](ci-quality-gates.md).
 
-These checks should be marked as required in GitHub branch protection or rulesets:
+## Required PR checks
 
-- `Python Quality Checks`
-- `DevSecOps Guardrails`
-- `Dependency Review`
-- `Pulumi Structural Tests`
-- `Pulumi CrossGuard Tests`
-- `Pulumi Unit Tests`
-- `Pulumi Integration Tests`
-- `Pulumi Mutation Tests`
-- `Pulumi Coverage`
-- `CLI testing`
-- `Pulumi Preview Guardrails / Preview`
-- `Pulumi Preview Guardrails / IAM Policy Validation`
-- `CodeQL (python)`
-- `CodeQL (actions)`
+These checks are intended to be marked as required in branch protection:
 
-GitHub repository settings must be updated by a maintainer. Workflows alone do not make checks required.
+| Check | Local command | Purpose |
+| --- | --- | --- |
+| `Preview` | `make test-preview` | Produces a non-destructive Pulumi preview artifact for every configured stack |
+| `Destructive Diff Gate` | `make test-destructive-diff` | Blocks deletes and replacements of critical infrastructure unless explicitly approved |
+| `IAM Validation` | `make test-iam-validation` | Validates previewed IAM policies with AWS IAM Access Analyzer |
+| `Secrets Scan` | `make test-secrets` | Runs Gitleaks against tracked Git content |
+| `Dependency Audit` | `make test-deps-security` | Audits Python dependencies with `pip-audit --strict` |
+| `Bandit` | `make test-bandit` | Lints repository Python code for common security hazards |
+| `Actionlint` | `make test-actionlint` | Lints GitHub Actions workflow syntax and common security issues |
+| `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
+| `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |
 
-## Python Quality Checks
+`make test-security` aggregates Gitleaks, dependency audit, and Bandit.
+`make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
+`make test-guardrails` aggregates preview generation and destructive diff
+gating without requiring AWS credentials. `make ci-pr` and `make ci` include
+the credential-free guardrail battery, while IAM validation stays isolated in
+its dedicated OIDC-gated workflow/job.
 
-The `python-quality.yml` workflow enforces local operator commands:
+## Preview model
 
-- `make check-format`
-- `make check-lint`
-- `make check-radon`
-- `make check-xenon`
-- `make check-imports`
-- `make check-deptry`
-- `make check-spelling`
-- `make check-toml`
-- `make check-types`
-- `make check-ty`
-- `make check-package`
+The preview workflow uses the same Docker workspace and policy pack that local
+developers use:
 
-These checks keep the Pulumi Python code formatted, typed, spell-checked, and locked to the committed `uv.lock`.
-The format/lint layer is powered by Rust-native tooling where it gives fast feedback:
+1. `make start`
+2. `make publish-pulumi-preview-summary`
+3. `make test-destructive-diff`
+4. `make test-iam-validation`
 
-- `ruff`
-- `typos`
-- `taplo`
-- Astral `ty`
+Preview artifacts are written under `.artifacts/pulumi-preview/` and uploaded to
+GitHub Actions. The preview summary is appended to `GITHUB_STEP_SUMMARY` so
+reviewers can inspect the plan without digging through raw logs first.
 
-Additional PR-blocking quality gates in this workflow:
+Stack selection follows this order:
 
-- Ruff McCabe complexity via `C901` with `max-complexity = 12`
-- Radon maintainability index with a minimum accepted rank of `B`
-- Xenon complexity ceilings of `A` for module/average complexity and `C` for individual blocks
-- Import Linter contracts that keep `infra`, `policy_pack`, and `scripts` separated
-- Deptry dependency hygiene against `pyproject.toml`, `pulumi/requirements.txt`, and `uv.lock`
+1. `PULUMI_PREVIEW_STACKS` repo variable if set
+2. committed `pulumi/Pulumi.<stack>.yaml` files
 
-Lockfile freshness is enforced inside `make check-package` through `uv lock --check`.
+The current template ships with `Pulumi.dev.yaml`, so the default preview target
+is `dev`.
 
-## DevSecOps Guardrails
+If local Pulumi plugin downloads hit anonymous GitHub rate limits, pass a token
+explicitly only to the preview-oriented command you are running, for example:
 
-The `devsecops-guardrails.yml` workflow adds fast security checks that do not require cloud access:
+```bash
+GITHUB_TOKEN="$(gh auth token)" make test-preview
+```
 
-- `make check-bandit`
-- `make check-deps`
-- `make check-sbom`
-- `make check-secrets`
-- `make check-yaml`
-- `make check-actionlint`
-- `make check-docker`
-- `make check-shell`
-- `make check-iac`
-- `make check-qlty`
-- `make test-cost`
+The Docker workspace does not inject `GITHUB_TOKEN` by default.
 
-This combination covers:
+## Destructive change gate
 
-- Python security smells with Bandit
-- dependency CVEs with `pip-audit`
-- CycloneDX SBOM export
-- Gitleaks secret scanning
-- GitHub Actions linting with `actionlint`
-- Dockerfile linting with Hadolint
-- shell linting and formatting with ShellCheck plus `shfmt`
-- IaC and workflow policy scanning with Checkov
-- low-cost guardrails for the bootstrap stack
-- parity with the external `qlty check` status
+The destructive-diff gate fails when the preview proposes deletes or
+replacements against critical resource families such as:
 
-The repo-local `Qlty` command is still part of this layer because it mirrors the external quality gate that GitHub receives from the Qlty service.
-
-The repository commits [`.gitleaks.toml`](/home/kravtsov/Projects/bootstrap-infrastructure/.gitleaks.toml) with a single narrow allowlist for the encrypted Pulumi ciphertext in [Pulumi.test.yaml](/home/kravtsov/Projects/bootstrap-infrastructure/pulumi/Pulumi.test.yaml). Do not expand that allowlist casually.
-
-## Dependency Review
-
-The `dependency-review.yml` workflow runs GitHub's dependency review action on PRs that touch:
-
-- `pyproject.toml`
-- `uv.lock`
-- `pulumi/requirements.txt`
-
-That check is intentionally path-filtered so dependency review only runs when dependency metadata changes. It fails on newly introduced vulnerabilities with severity `moderate` or higher.
-
-## Pulumi Preview Guardrails
-
-The `pulumi-preview.yml` workflow is the PR safety layer for infrastructure changes.
-
-The `Preview` job:
-
-- runs only when infrastructure-related files changed
-- assumes an AWS role through GitHub OIDC
-- verifies that the shared state bucket already exists
-- runs `pulumi preview` in non-destructive mode
-- stores the raw preview JSON as an artifact
-- renders a markdown preview summary into the Actions job summary
-- blocks deletes or replacements for critical resource types by default
-
-The destructive diff gate fails the preview when Pulumi proposes destructive changes for resource families such as:
-
-- VPC and core networking primitives
+- VPC and networking primitives
 - IAM roles and policies
 - KMS keys
 - S3 buckets
-- Route53 resources
-- RDS resources
+- RDS and other database resources
 - Secrets Manager resources
+- Route53 records
 - EKS resources
 
-The only supported override is a maintainer-applied PR label:
+Intentional destructive changes must be reviewed manually and then approved with
+the pull-request label `allow-destructive-infra-change`. The label is the only
+supported override because it leaves an auditable trail in GitHub.
 
-- `pulumi-allow-destructive`
+## IAM validation
 
-That label must be used deliberately and only after a human reviews the preview artifact.
+`scripts/pulumi_ci_guardrails.py validate-iam` extracts IAM policy documents
+from the preview artifact and validates them with AWS IAM Access Analyzer.
 
-The `IAM Policy Validation` job:
+Current behavior:
 
-- assumes the same AWS role through OIDC
-- runs [scripts/validate_iam_policies.py](/home/kravtsov/Projects/bootstrap-infrastructure/scripts/validate_iam_policies.py)
-- validates generated IAM/resource policies with AWS IAM Access Analyzer
-- fails on `ERROR`, `WARNING`, and `SECURITY_WARNING` findings
+- No IAM policies in the preview: the check exits successfully and prints a
+  short note
+- IAM policies in the preview with valid AWS credentials: findings of type
+  `ERROR` and `SECURITY_WARNING` fail the check
+- IAM policies in the preview without valid AWS credentials: the check fails so
+  maintainers do not accidentally merge unvalidated IAM changes
 
-Current limitation:
+This complements the custom Pulumi CrossGuard pack. The policy pack blocks
+wildcard IAM permissions in repository code; Access Analyzer adds AWS-native
+semantic validation for the rendered policy documents.
 
-- Access Analyzer validation covers generated identity and resource policies
-- KMS key policies are not validated here because `ValidatePolicy` does not currently support `AWS::KMS::Key`
-- trust policies are not validated because Access Analyzer does not provide the same validation path for GitHub OIDC assume-role documents
+## OIDC-based AWS access
 
-For local parity, run:
+The guardrail workflows are OIDC-first. They do not use long-lived
+`AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` repository secrets.
 
-- `make check-preview`
-- `make check-iam REQUIRE_AWS_ACCESS_ANALYZER=1`
+Required repository variables:
 
-`make check-preview` uses the same Pulumi command runner plus destructive-diff analyzer as the PR workflow. It requires either:
+| Variable | Purpose |
+| --- | --- |
+| `AWS_OIDC_ROLE_ARN` | IAM role assumed by preview, IAM validation, and drift jobs |
 
-- `PULUMI_BACKEND_URL` and `PULUMI_SECRETS_PROVIDER`
-- or `PULUMI_STATE_BUCKET` and `PULUMI_TEST_SECRETS_PROVIDER`
+Optional or defaulted repository variables:
 
-## Pulumi Policy Guardrails
+| Variable | Purpose |
+| --- | --- |
+| `AWS_REGION` | AWS region used by `configure-aws-credentials`; defaults to `eu-central-1` |
+| `PULUMI_BACKEND_URL` | Shared Pulumi backend for OIDC-backed preview and drift checks; OIDC-backed preview and IAM validation are skipped when unset |
+| `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for preview |
+| `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks |
 
-The `pulumi-policy.yml` workflow runs `make test-crossguard` and validates the repo-local Pulumi CrossGuard policy pack in `policy_pack/`.
+Optional repository secrets:
 
-Those rules are also applied by [run_pulumi_command.sh](/home/kravtsov/Projects/bootstrap-infrastructure/scripts/run_pulumi_command.sh), so the same policy baseline is enforced in:
+| Secret | Purpose |
+| --- | --- |
+| `PULUMI_ACCESS_TOKEN` | Required only when the backend is the Pulumi Service |
 
-- `pulumi.yml`
-- `pulumi-prod.yml`
-- `pulumi-pr-commands.yml`
-- `pulumi-pr-command-runner.yml`
-- `pulumi-preview.yml`
+Shared backends should use an AWS KMS-backed Pulumi secrets provider rather
+than a passphrase-managed stack secret flow.
 
-This keeps local operator flows, deployment workflows, and PR automation on the same guardrail set.
+Fork pull requests always run the unprivileged file-backend preview and the
+destructive diff gate. Same-repo pull requests also fall back to the
+unprivileged artifact when `AWS_OIDC_ROLE_ARN` or `PULUMI_BACKEND_URL` is not
+configured yet. The AWS-backed preview and IAM validation jobs remain same-repo
+only because `aws accessanalyzer validate-policy` requires AWS credentials.
 
-## Code Scanning
+### Example IAM trust policy
 
-The `codeql.yml` workflow runs GitHub CodeQL for:
+Replace the account ID, organization, repository name, and any allowed branch
+names with your own values.
+`<ACCOUNT_ID>` must be the target 12-digit AWS account ID using digits only:
 
-- Python
-- GitHub Actions workflows (`actions`)
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": [
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request",
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:<BRANCH_REF>"
+          ]
+        }
+      }
+    }
+  ]
+}
+```
 
-This catches code-scanning issues that are not covered by Ruff, Bandit, or actionlint.
+Replace `<BRANCH_REF>` with each protected branch ref you authorize, for
+example `refs/heads/main`.
 
-## Coverage Gate
+## Nightly-only checks
 
-The `pulumi-coverage.yml` workflow runs the Python suites that exercise Pulumi and policy code, then executes `make check-coverage`.
+Nightly workflows are visible but do not block pull requests:
 
-That job enforces 100% combined coverage for:
+| Check | Purpose |
+| --- | --- |
+| `Drift Detection` | Runs `pulumi preview --refresh --expect-no-changes` against configured shared stacks |
+| `Scorecard` | Runs OpenSSF Scorecard and uploads SARIF results for repository health visibility |
 
-- `pulumi/`
-- `policy_pack/`
+Drift detection intentionally skips when `PULUMI_BACKEND_URL` is not configured
+for a shared backend. Running a drift job against an ephemeral file backend on a
+fresh GitHub runner would be misleading.
 
-Coverage is measured with branch coverage enabled. The current PR gate is 100% combined branch+line coverage for the Pulumi runtime and policy-pack code.
+## Manual maintainer follow-up
 
-## Nightly Checks
+The workflows are committed in this repository, but maintainers still need to:
 
-These checks are visibility-oriented and do not need to block PR merges:
+1. create the GitHub OIDC IAM role in AWS
+2. set the repository variables and optional secrets listed above
+3. mark the required PR checks in GitHub branch protection
+4. decide whether production repositories want stricter stack lists or narrower
+   IAM role scopes than the template defaults
 
-- `pulumi-drift.yml`
-- `quality-monitoring.yml`
-- `repo-health.yml`
+## Current limitations
 
-`pulumi-drift.yml` runs a non-destructive `pulumi refresh --preview-only --expect-no-changes` through the shared runner image so unexpected drift is surfaced without mutating stack state.
-
-For local parity, run `make ci-nightly`. That aggregate executes:
-
-- `make report-wily`
-- `make report-vulture`
-- `make report-docstrings`
-- `make report-sbom`
-- `make report-drift`
-
-## Quality Monitoring
-
-`quality-monitoring.yml` adds scheduled quality-drift reporting that would be too noisy or too expensive to make PR-blocking:
-
-- Wily maintainability trend reports
-- Vulture dead-code scans
-- docstring coverage for reusable modules via `docstr-coverage`
-- a scheduled CycloneDX SBOM snapshot artifact
-
-The Wily report is generated through [run_wily_report.py](/home/kravtsov/Projects/bootstrap-infrastructure/scripts/run_wily_report.py). On GitHub Actions it analyzes the clean checkout directly. On a dirty local worktree it falls back to a temporary clone of `HEAD` so the advisory report still runs instead of failing on Wily's `git` archiver precondition.
-
-The Vulture job is advisory and allowed to report findings without failing the whole monitoring workflow because dead-code detection is inherently more prone to false positives than the blocking PR gates.
-
-## Repository Health
-
-`repo-health.yml` runs OpenSSF Scorecard on a schedule and uploads SARIF so repository-health regressions stay visible in GitHub security surfaces.
-
-CodeQL also runs on a schedule so background analysis continues even when a class of files is not touched in current PRs.
-
-## Workflow Organization
-
-The workflow split is intentionally narrow:
-
-- `python-quality.yml`: formatting, lint, complexity, dependency hygiene, typing, and lockfile integrity
-- `devsecops-guardrails.yml`: secret scanning, vuln scanning, shell/YAML/Docker/workflow linting, IaC scanning, and cost controls
-- `pulumi-preview.yml`: OIDC-authenticated preview, destructive-diff gate, and IAM validation
-- `pulumi-*.yml`: structural, unit, integration, mutation, policy, coverage, and e2e test lanes
-- `quality-monitoring.yml`: scheduled maintainability and quality-drift reporting
-- `repo-health.yml`: scheduled Scorecard and background security visibility
-
-This keeps required PR gates separate from scheduled observability jobs without duplicating logic across many near-identical workflows.
-
-## OIDC And AWS Setup
-
-All AWS access in GitHub Actions uses GitHub OIDC and short-lived credentials. Static long-lived AWS keys must not be stored in repository secrets.
-
-Maintainers need to configure at least these repository or environment variables:
-
-- `PULUMI_TEST_ROLE_ARN`
-- `PULUMI_TEST_SECRETS_PROVIDER`
-- `PULUMI_STATE_BUCKET`
-- `PULUMI_PREVIEW_STACK` if the preview stack is not `test`
-
-The AWS IAM trust policy for the preview/deploy role must allow:
-
-- `sts:AssumeRoleWithWebIdentity`
-- audience `sts.amazonaws.com`
-- the repository subject for the GitHub environment or branch pattern used by the workflow
-
-The role must also be allowed to call:
-
-- the AWS APIs required by the bootstrap stack itself
-- AWS IAM Access Analyzer `ValidatePolicy`
-
-## Safe Exceptions
-
-Use these escape hatches sparingly:
-
-- destructive preview override: apply the `pulumi-allow-destructive` PR label after human review
-- Gitleaks exception: modify [`.gitleaks.toml`](/home/kravtsov/Projects/bootstrap-infrastructure/.gitleaks.toml) only for encrypted or synthetic test material, never for real credentials
-- IAM wildcard exception inside CrossGuard: use `VILNACRM_IAM_WILDCARD_ALLOWLIST_SIDS` only for a reviewed statement `Sid`, with the justification kept in code review and docs
-
-Quality thresholds should only be changed after maintainers review the current baseline and explicitly update the accompanying documentation and structural tests. Lowering a threshold to “make CI green” is not an acceptable operating model.
-
-## Current Limitations
-
-- The repo uses a custom Python Pulumi CrossGuard pack rather than the official shared AWS policy packs because the official packs would introduce an additional policy-runtime toolchain for this repository. The current custom pack is the enforced baseline.
-- SBOM generation is implemented locally and on schedule. Artifact provenance/attestation for the ECR runner image is not yet enforced because this repository currently publishes to ECR through a custom push path rather than a GitHub-native artifact release flow.
-- `docstr-coverage` is used instead of `interrogate` because `interrogate` currently brings in the vulnerable `py` package with no fixed upstream version available. The repo keeps the docstring-coverage signal without carrying a permanent audit suppression.
-
-If an exception is needed repeatedly, the policy should be redesigned instead of growing an unbounded allowlist.
+- CodeQL is GitHub-native; the repository keeps the workflow under structural
+  test coverage, but there is no local `make` equivalent
+- The custom VilnaCRM CrossGuard pack is the enforced policy-pack layer in this
+  template; the workflow does not vendor the Node-based AWSGuard package into
+  the Python/uv Docker image
+- IAM validation is only as complete as the preview artifact; policies that are
+  created entirely outside Pulumi still need separate review

@@ -6,31 +6,38 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
 permissions:
   contents: read
 
 jobs:
   integration:
     name: Integration
+    if: >-
+      ${{
+        github.repository == 'VilnaCRM-Org/infrastructure-template' ||
+        vars.PULUMI_ENABLE_AUTOMATION_STACK_TESTS == 'true'
+      }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
 
-      - name: Match container user to runner
-        run: |
-          {
-            echo "UID=$(id -u)"
-            echo "GID=$(id -g)"
-            echo "USER=$(id -un)"
-          } >> "$GITHUB_ENV"
+      - name: Start development environment
+        run: make start
 
-      - name: Build test container
-        run: docker compose build pulumi
-
-      - name: Prepare local Pulumi backend
-        run: mkdir -p .pulumi-backend
-
-      - name: Run integration suite
+      - name: Run integration suite inside Docker
         env:
           PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
         run: make test-integration

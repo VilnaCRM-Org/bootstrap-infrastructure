@@ -145,6 +145,41 @@ def _deploy_policy_from_values(values: Sequence[str | None]) -> str:
     )
 
 
+def _provider_resource(
+    name: str, parent: pulumi.ComponentResource
+) -> aws.iam.OpenIdConnectProvider:
+    """Return the shared GitHub Actions OIDC provider resource."""
+    if settings.github_oidc_provider_arn:
+        return aws.iam.OpenIdConnectProvider.get(
+            f"{name}-provider",
+            settings.github_oidc_provider_arn,
+            opts=pulumi.ResourceOptions(parent=parent),
+        )
+    return aws.iam.OpenIdConnectProvider(
+        f"{name}-provider",
+        client_id_lists=["sts.amazonaws.com"],
+        thumbprint_lists=[
+            "6938fd4d98bab03faadb97b34396831e3780aea1",
+            "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
+        ],
+        url="https://token.actions.githubusercontent.com",
+        opts=pulumi.ResourceOptions(parent=parent),
+    )
+
+
+def _required_secret_key_arn(
+    repo_name: str, secrets_key_arns: Mapping[str, pulumi.Input[str]] | None
+) -> pulumi.Input[str] | None:
+    """Return the secrets key ARN for one repository or raise when missing."""
+    if secrets_key_arns is None:
+        return None
+    if repo_name not in secrets_key_arns:
+        raise ValueError(
+            f"Missing Pulumi secrets KMS key ARN for managed repository '{repo_name}'."
+        )
+    return secrets_key_arns[repo_name]
+
+
 class GitHubOidcRoles(pulumi.ComponentResource):
     """Create the GitHub OIDC provider and per-repository deploy roles."""
 
@@ -159,96 +194,92 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         """Initialize OIDC provider and deploy roles for repositories."""
         super().__init__("bootstrap:iam:GitHubOidcRoles", name, None, opts)
 
+        self.provider = _provider_resource(name, self)
+        self.deploy_role_arns: dict[str, pulumi.Output[str]] = {}
+
         repos = (
             list(repositories) if repositories is not None else managed_repositories()
         )
-
-        if settings.github_oidc_provider_arn:
-            provider = aws.iam.OpenIdConnectProvider.get(
-                f"{name}-provider",
-                settings.github_oidc_provider_arn,
-                opts=pulumi.ResourceOptions(parent=self),
-            )
-        else:
-            provider = aws.iam.OpenIdConnectProvider(
-                f"{name}-provider",
-                client_id_lists=["sts.amazonaws.com"],
-                thumbprint_lists=[
-                    "6938fd4d98bab03faadb97b34396831e3780aea1",
-                    "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
-                ],
-                url="https://token.actions.githubusercontent.com",
-                opts=pulumi.ResourceOptions(parent=self),
-            )
-
-        self.provider = provider
-        self.deploy_role_arns: dict[str, pulumi.Output[str]] = {}
-
         for repo in repos:
-            bucket_name = state_bucket_name_for_repo(repo.name)
-            bucket_arn = pulumi.Output.from_input(f"arn:aws:s3:::{bucket_name}")
-            objects_arn = pulumi.Output.from_input(
-                f"arn:aws:s3:::{bucket_name}/state/*"
+            self.deploy_role_arns[repo.name] = self._create_deploy_role(
+                name,
+                repo,
+                secrets_key_arns=secrets_key_arns,
             )
-            branch = settings.github_branch or repo.default_branch or "main"
-
-            repo_suffix = _repo_suffix(repo.name)
-            role_name = _role_name_for_suffix(repo_suffix)
-
-            def build_assume_role_policy(
-                arn: str, repo_name: str = repo.name, branch_name: str = branch
-            ) -> str:
-                return _assume_role_policy_for_repo(
-                    arn,
-                    settings.org,
-                    repo_name,
-                    branch_name,
-                )
-
-            assume_role_policy = apply_output(provider.arn, build_assume_role_policy)
-            if _role_exists(role_name):
-                role = aws.iam.Role.get(
-                    f"{name}-role-{repo_suffix}",
-                    role_name,
-                    opts=pulumi.ResourceOptions(parent=self),
-                )
-            else:
-                role = aws.iam.Role(
-                    f"{name}-role-{repo_suffix}",
-                    name=role_name,
-                    assume_role_policy=assume_role_policy,
-                    tags=base_tags(
-                        {
-                            "Purpose": "pulumi-deploy",
-                            "Repository": repo.name,
-                            "App": repo.name,
-                        }
-                    ),
-                    opts=pulumi.ResourceOptions(parent=self),
-                )
-
-            if secrets_key_arns is not None and repo.name not in secrets_key_arns:
-                raise ValueError(
-                    "Missing Pulumi secrets KMS key ARN for managed "
-                    f"repository '{repo.name}'."
-                )
-
-            key_arn = secrets_key_arns.get(repo.name) if secrets_key_arns else None
-            policy = apply_output(
-                cast(
-                    pulumi.Output[Sequence[str | None]],
-                    pulumi.Output.all(bucket_arn, objects_arn, key_arn),
-                ),
-                _deploy_policy_from_values,
-            )
-
-            aws.iam.RolePolicy(
-                f"{name}-policy-{repo_suffix}",
-                role=role.id,
-                policy=policy,
-                opts=pulumi.ResourceOptions(parent=self),
-            )
-
-            self.deploy_role_arns[repo.name] = role.arn
 
         self.register_outputs({"deploy_role_arns": self.deploy_role_arns})
+
+    def _create_deploy_role(
+        self,
+        component_name: str,
+        repo: ManagedRepository,
+        *,
+        secrets_key_arns: Mapping[str, pulumi.Input[str]] | None,
+    ) -> pulumi.Output[str]:
+        """Create or import the deploy role and attach its least-privilege policy."""
+        bucket_name = state_bucket_name_for_repo(repo.name)
+        repo_suffix = _repo_suffix(repo.name)
+        role = self._deploy_role_resource(
+            component_name,
+            repo_name=repo.name,
+            repo_suffix=repo_suffix,
+            branch_name=settings.github_branch or repo.default_branch or "main",
+        )
+        key_arn = _required_secret_key_arn(repo.name, secrets_key_arns)
+        policy = apply_output(
+            cast(
+                pulumi.Output[Sequence[str | None]],
+                pulumi.Output.all(
+                    pulumi.Output.from_input(f"arn:aws:s3:::{bucket_name}"),
+                    pulumi.Output.from_input(f"arn:aws:s3:::{bucket_name}/state/*"),
+                    key_arn,
+                ),
+            ),
+            _deploy_policy_from_values,
+        )
+        aws.iam.RolePolicy(
+            f"{component_name}-policy-{repo_suffix}",
+            role=role.id,
+            policy=policy,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+        return role.arn
+
+    def _deploy_role_resource(
+        self,
+        component_name: str,
+        *,
+        repo_name: str,
+        repo_suffix: str,
+        branch_name: str,
+    ) -> aws.iam.Role:
+        """Create or import the IAM role used by GitHub Actions for one repo."""
+        role_name = _role_name_for_suffix(repo_suffix)
+        if _role_exists(role_name):
+            return aws.iam.Role.get(
+                f"{component_name}-role-{repo_suffix}",
+                role_name,
+                opts=pulumi.ResourceOptions(parent=self),
+            )
+        assume_role_policy = apply_output(
+            self.provider.arn,
+            lambda arn: _assume_role_policy_for_repo(
+                arn,
+                settings.org,
+                repo_name,
+                branch_name,
+            ),
+        )
+        return aws.iam.Role(
+            f"{component_name}-role-{repo_suffix}",
+            name=role_name,
+            assume_role_policy=assume_role_policy,
+            tags=base_tags(
+                {
+                    "Purpose": "pulumi-deploy",
+                    "Repository": repo_name,
+                    "App": repo_name,
+                }
+            ),
+            opts=pulumi.ResourceOptions(parent=self),
+        )

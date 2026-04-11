@@ -5,7 +5,14 @@ on:
     branches:
       - main
   pull_request:
-    branches: ['main']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
 
 permissions:
   contents: read
@@ -14,9 +21,19 @@ jobs:
   bats_tests:
     runs-on: ubuntu-latest
     name: Run Bats Tests
+    timeout-minutes: 15
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
 
-      - name: Run Bats suite
-        run: make test-bats
+      - name: Start development environment
+        run: make start
+
+      - name: Run CLI suite via Make
+        env:
+          PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
+        run: make test-cli

@@ -2,9 +2,6 @@ import runpy
 from pathlib import Path
 
 import pytest
-from pulumi.runtime.sync_await import _sync_await
-
-import pulumi
 from infra import (
     CentralLoggingBuckets,
     GitHubAutomation,
@@ -18,9 +15,14 @@ from infra import (
 )
 from infra.iam import GitHubOidcRoles, github_oidc
 from infra.utils.outputs import future_output
+from pulumi.runtime.sync_await import _sync_await
+
+import pulumi
 
 
-def test_central_logging_buckets_rejects_long_replica(monkeypatch):
+def test_central_logging_buckets_rejects_long_replica(  # noqa: ARG001
+    pulumi_mocks, monkeypatch
+):
     monkeypatch.setattr(
         logging_bucket, "central_logging_bucket_name", lambda _region: "a" * 60
     )
@@ -29,7 +31,9 @@ def test_central_logging_buckets_rejects_long_replica(monkeypatch):
         CentralLoggingBuckets("central-logs")
 
 
-def test_central_logging_buckets_reject_same_replication_region():
+def test_central_logging_buckets_reject_same_replication_region(  # noqa: ARG001
+    pulumi_mocks,
+):
     with pytest.raises(ValueError, match="must differ from primary region"):
         CentralLoggingBuckets("central-logs", replication_region="us-east-1")
 

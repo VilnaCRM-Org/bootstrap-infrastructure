@@ -6,35 +6,88 @@ on:
     paths-ignore:
       - 'CHANGELOG.md'
 
-permissions:
-  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CHANGELOG_BRANCH: ${{ github.ref_name }}
+      RELEASE_TOKEN: ${{ secrets.REPO_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
 
     permissions:
       contents: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: 'main'
+          ref: ${{ env.CHANGELOG_BRANCH }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Conventional Changelog Action
         id: changelog
-        uses: TriPSs/conventional-changelog-action@8118086024a5380b05b0d54ed2181516082e090f # v4
+        uses: TriPSs/conventional-changelog-action@8118086024a5380b05b0d54ed2181516082e090f
         with:
-          github-token: ${{ secrets.REPO_GITHUB_TOKEN }}
-          output-file: 'CHANGELOG.md'
+          github-token: ${{ env.RELEASE_TOKEN }}
+          output-file: 'false'
+          git-branch: ${{ env.CHANGELOG_BRANCH }}
+          skip-version-file: 'true'
+          skip-commit: 'true'
+
+      - name: Check if release already exists
+        id: release_check
+        if: ${{ steps.changelog.outputs.skipped == 'false' }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          TAG_NAME: ${{ steps.changelog.outputs.tag }}
+        with:
+          github-token: ${{ env.RELEASE_TOKEN }}
+          script: |
+            const tag = process.env.TAG_NAME;
+            if (!tag) {
+              core.setOutput('exists', 'false');
+              return;
+            }
+            const retryableStatuses = new Set([429, 500, 502, 503, 504]);
+            const maxAttempts = 3;
+            const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              try {
+                await github.rest.repos.getReleaseByTag({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag,
+                });
+                core.setOutput('exists', 'true');
+                return;
+              } catch (error) {
+                if (error.status === 404) {
+                  core.setOutput('exists', 'false');
+                  return;
+                }
+                if (!retryableStatuses.has(error.status) || attempt === maxAttempts) {
+                  throw error;
+                }
+                const backoffMs = 1000 * Math.pow(2, attempt);
+                core.warning(`Release lookup failed (attempt ${attempt}/${maxAttempts}). Retrying in ${backoffMs}ms...`);
+                await delay(backoffMs);
+              }
+            }
 
       - name: Create Release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
-        if: ${{ steps.changelog.outputs.skipped == 'false' }}
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b
+        if: ${{ steps.changelog.outputs.skipped == 'false' && steps.release_check.outputs.exists != 'true' && steps.changelog.outputs.tag != '' }}
         with:
           tag_name: ${{ steps.changelog.outputs.tag }}
-          name: ${{ steps.changelog.outputs.tag }}
           body: ${{ steps.changelog.outputs.clean_changelog }}
-          token: ${{ secrets.REPO_GITHUB_TOKEN }}
+          name: ${{ steps.changelog.outputs.tag }}
+          token: ${{ env.RELEASE_TOKEN }}

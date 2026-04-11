@@ -1,5 +1,11 @@
+"""Shared pytest fixtures for Pulumi automation and infra unit tests."""
+
+from __future__ import annotations
+
 import asyncio
 import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -10,15 +16,19 @@ from pulumi.runtime.mocks import MockCallArgs, MockResourceArgs
 
 import pulumi
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PULUMI_PROGRAM_ROOT = PROJECT_ROOT / "pulumi"
+_COVERAGE_CONFIG = PROJECT_ROOT / ".coveragerc"
+
 os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
-ROOT = Path(__file__).resolve().parents[1]
-PULUMI_DIR = ROOT / "pulumi"
-if str(PULUMI_DIR) not in sys.path:
-    sys.path.append(str(PULUMI_DIR))
+if str(PULUMI_PROGRAM_ROOT) not in sys.path:
+    sys.path.insert(0, str(PULUMI_PROGRAM_ROOT))
 
 
 class TestMocks(pulumi.runtime.Mocks):
+    """Pulumi mocks used by infra unit tests."""
+
     def __init__(self) -> None:
         self.resources: list[tuple[str, str, dict[str, Any]]] = []
 
@@ -42,15 +52,12 @@ class TestMocks(pulumi.runtime.Mocks):
             )
         elif type_ == "aws:ecr/repository:Repository":
             repository_name = inputs.get("name") or name
+            repository_url = (
+                f"123456789012.dkr.ecr.us-east-1.amazonaws.com/{repository_name}"
+            )
             state.setdefault("name", repository_name)
-            state.setdefault(
-                "repositoryUrl",
-                f"123456789012.dkr.ecr.us-east-1.amazonaws.com/{repository_name}",
-            )
-            state.setdefault(
-                "repository_url",
-                f"123456789012.dkr.ecr.us-east-1.amazonaws.com/{repository_name}",
-            )
+            state.setdefault("repositoryUrl", repository_url)
+            state.setdefault("repository_url", repository_url)
         elif type_ == "aws:kms/key:Key":
             state.setdefault("arn", f"arn:aws:kms:us-east-1:123456789012:key/{name}")
             state.setdefault("keyId", f"{name}-key-id")
@@ -82,7 +89,7 @@ class TestMocks(pulumi.runtime.Mocks):
 class AnyThreadEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
     """Create an event loop on demand for Pulumi mock worker threads."""
 
-    def get_event_loop(self):
+    def get_event_loop(self):  # type: ignore[override]
         try:
             return super().get_event_loop()
         except RuntimeError:
@@ -93,6 +100,7 @@ class AnyThreadEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
 
 @pytest.fixture(scope="session", autouse=True)
 def any_thread_event_loop_policy():
+    """Allow Pulumi mocks to create event loops from worker threads."""
     previous_policy = asyncio.get_event_loop_policy()
     policy = AnyThreadEventLoopPolicy()
     asyncio.set_event_loop_policy(policy)
@@ -107,8 +115,61 @@ def any_thread_event_loop_policy():
     asyncio.set_event_loop_policy(previous_policy)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def pulumi_mocks():
+@pytest.fixture(scope="session")
+def pulumi_mocks() -> TestMocks:
+    """Expose Pulumi mocks for tests that validate generated resources."""
     mocks = TestMocks()
     pulumi.runtime.set_mocks(mocks, project="bootstrap", stack="test", preview=False)
     return mocks
+
+
+@pytest.fixture(scope="session", autouse=True)
+def pulumi_automation_environment(tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Prepare a local backend while leaving secrets-provider control explicit."""
+    if shutil.which("pulumi") is None:
+        return
+
+    os.environ.setdefault("PULUMI_SKIP_UPDATE_CHECK", "true")
+    python_cmd = sys.executable
+
+    if _COVERAGE_CONFIG.exists():
+        os.environ.setdefault("COVERAGE_PROCESS_START", str(_COVERAGE_CONFIG))
+        os.environ.setdefault("COVERAGE_FILE", str(PROJECT_ROOT / ".coverage"))
+
+    os.environ.setdefault("PULUMI_PYTHON_CMD", python_cmd)
+    backend_url = os.environ.get("PULUMI_BACKEND_URL", "")
+
+    if os.environ.get("PULUMI_ACCESS_TOKEN"):
+        return
+    if backend_url:
+        return
+
+    backend_dir = tmp_path_factory.mktemp("pulumi-backend")
+    backend_uri = Path(backend_dir).resolve().as_uri()
+
+    env = os.environ.copy()
+    env["PULUMI_HOME"] = str(backend_dir)
+
+    subprocess.run(["pulumi", "login", backend_uri], check=True, env=env, timeout=30)
+
+    os.environ.setdefault("PULUMI_HOME", str(backend_dir))
+    os.environ.setdefault("PULUMI_BACKEND_URL", backend_uri)
+
+
+@pytest.fixture(scope="session")
+def ensure_pulumi_cli() -> None:
+    """Skip integration cases that require the Pulumi CLI when it is unavailable."""
+    if shutil.which("pulumi") is None:
+        pytest.skip("Pulumi CLI binary is not available in PATH.")
+
+
+@pytest.fixture(scope="session")
+def ensure_pulumi_secrets_provider() -> None:
+    """Require an explicit non-passphrase secrets provider for automation tests."""
+    if os.environ.get("PULUMI_ACCESS_TOKEN"):
+        return
+    if not os.environ.get("PULUMI_SECRETS_PROVIDER"):
+        pytest.skip(
+            "Set PULUMI_SECRETS_PROVIDER to run Pulumi automation tests without "
+            "passphrase-backed stacks."
+        )

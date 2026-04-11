@@ -9,6 +9,7 @@ import pulumi_aws as aws
 import pulumi
 
 from .config import automation_role_name, runner_ecr_repository_name, settings
+from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
 
@@ -134,6 +135,7 @@ class GitHubAutomation(pulumi.ComponentResource):
         self,
         name: str,
         *,
+        oidc_provider_arn: pulumi.Input[str] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize automation resources for this repository/environment."""
@@ -141,7 +143,8 @@ class GitHubAutomation(pulumi.ComponentResource):
 
         if not settings.repo:
             raise ValueError("repoSlug config is required for GitHub automation.")
-        if not settings.github_oidc_provider_arn:
+        provider_arn = oidc_provider_arn or settings.github_oidc_provider_arn
+        if provider_arn is None:
             raise ValueError(
                 "githubOidcProviderArn config is required for GitHub automation."
             )
@@ -206,11 +209,14 @@ class GitHubAutomation(pulumi.ComponentResource):
         role = aws.iam.Role(
             f"{name}-role",
             name=role_name,
-            assume_role_policy=_automation_assume_role_policy(
-                settings.github_oidc_provider_arn,
-                settings.org,
-                repo_name,
-                environment,
+            assume_role_policy=apply_output(
+                pulumi.Output.from_input(provider_arn),
+                lambda arn: _automation_assume_role_policy(
+                    arn,
+                    settings.org,
+                    repo_name,
+                    environment,
+                ),
             ),
             tags=base_tags(
                 {
