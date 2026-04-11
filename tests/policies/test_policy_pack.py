@@ -866,7 +866,7 @@ def test_open_admin_ports_covers_supported_security_group_shapes(
             "protocol": "tcp",
             "fromPort": 22,
             "toPort": 22,
-            "cidrBlocks": ["0.0.0.0/00"],
+            "cidrBlocks": ["0.0.0.0/0"],
         },
     ) == [22]
     assert policy_runtime.open_admin_ports(

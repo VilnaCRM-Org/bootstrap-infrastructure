@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: "pip"
-    directory: "pulumi"
+    directory: "/pulumi"
     schedule:
       interval: "weekly"
     commit-message:

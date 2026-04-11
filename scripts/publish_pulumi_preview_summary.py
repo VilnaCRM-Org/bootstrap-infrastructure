@@ -22,7 +22,8 @@ def main() -> int:
             )
             return 1
     else:
-        env.setdefault("PULUMI_BACKEND_URL", "file:///workspace/.pulumi-backend")
+        if not backend_url.strip():
+            env["PULUMI_BACKEND_URL"] = "file:///workspace/.pulumi-backend"
 
     run(
         ["make", "test-preview"],

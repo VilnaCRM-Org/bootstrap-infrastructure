@@ -73,7 +73,7 @@ def _preview_with_policy_pack(work_dir: Path) -> subprocess.CompletedProcess[str
     }
 
     subprocess.run(
-        ["python3", str(PREPARE_POLICY_PACK)],
+        ["uv", "run", "python", str(PREPARE_POLICY_PACK)],
         check=True,
         cwd=PROJECT_ROOT,
         env=env,

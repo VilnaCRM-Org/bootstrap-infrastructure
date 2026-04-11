@@ -13,7 +13,7 @@ an interpreter on disk.
 2. From the repository root, build the container and start it in the background:
 
    ```bash
-   docker compose up --build -d
+   make start
    ```
 
    The compose file defines a single service named `pulumi`. It mounts the
@@ -22,7 +22,7 @@ an interpreter on disk.
 3. (Optional) To drop into a shell inside the running container, use:
 
    ```bash
-   docker compose exec pulumi bash
+   make sh
    ```
 
    This is helpful if you want to verify that the Pulumi CLI and Python packages
@@ -42,7 +42,9 @@ an interpreter on disk.
    indexes the interpreter, and autocomplete should light up immediately.
 
 PyCharm remembers the interpreter selection. If it shows as "not connected",
-start the container again (`docker compose up -d`) and PyCharm will reconnect.
+start the container again (`make start`) and PyCharm will reconnect. If the
+workspace refuses to start, run `make doctor` before debugging Docker or Compose
+manually.
 
 ## 3. Optional: local virtual environment fallback
 
@@ -82,7 +84,8 @@ completions fail to appear:
 - Rebuild the Docker image if dependencies changed:
 
   ```bash
-  docker compose build pulumi
+  make build
+  make start
   ```
 
 - Use **File → Invalidate Caches / Restart…** in PyCharm to trigger re-indexing.
@@ -92,9 +95,8 @@ completions fail to appear:
 When you are done, you can stop the container:
 
 ```bash
-docker compose down
+make down
 ```
 
-This removes the running container but keeps the built image for the next
-session. Use `docker compose down --rmi all` if you also want to remove the
-image.
+This removes the running containers for the current workspace. Rebuild with
+`make build` if you need a fresh image afterward.

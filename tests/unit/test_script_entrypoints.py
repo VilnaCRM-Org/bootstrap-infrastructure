@@ -112,13 +112,25 @@ def test_doctor_main_reports_missing_and_ready_states(
         ),
     )
     assert module.main() == 1
-    assert "docker compose: missing" in capsys.readouterr().err
+    assert "docker: missing or not installed" in capsys.readouterr().err
 
     env_file = tmp_path / ".env"
     env_file.write_text("KEY=value\n", encoding="utf-8")
     monkeypatch.setenv("COMPOSE_ENV_FILE", str(env_file))
     monkeypatch.setenv("COMPOSE_SERVICE", "pulumi")
     monkeypatch.setenv("PULUMI_DIR", str(tmp_path / "missing"))
+    monkeypatch.setattr(
+        module,
+        "_version",
+        lambda command: (
+            (_ for _ in ()).throw(subprocess.CalledProcessError(1, command))
+            if "--short" in command
+            else "Docker version 1.0.0"
+        ),
+    )
+    assert module.main() == 1
+    assert "docker compose: missing" in capsys.readouterr().err
+
     monkeypatch.setattr(
         module,
         "_version",
@@ -321,6 +333,14 @@ def test_publish_pulumi_preview_summary_main_handles_backend_and_summary_paths(
     assert run_calls[-1][1] == repo_dir
     assert run_calls[-1][2]["PULUMI_BACKEND_URL"] == "file:///workspace/.pulumi-backend"
 
+    monkeypatch.setenv("PULUMI_BACKEND_URL", "")
+    assert module.main() == 0
+    assert run_calls[-1][2]["PULUMI_BACKEND_URL"] == "file:///workspace/.pulumi-backend"
+
+    monkeypatch.setenv("PULUMI_BACKEND_URL", "s3://configured-backend")
+    assert module.main() == 0
+    assert run_calls[-1][2]["PULUMI_BACKEND_URL"] == "s3://configured-backend"
+
     monkeypatch.setenv("PULUMI_REQUIRE_SHARED_BACKEND", "true")
     monkeypatch.setenv("PULUMI_BACKEND_URL", "s3://shared-backend")
     assert module.main() == 0
@@ -521,6 +541,24 @@ def test_run_pulumi_drift_check_main_handles_skip_and_success_paths(
     ]
     assert calls[2][3:6] == ["stack", "select", "dev"]
     assert "--expect-no-changes" in calls[3]
+
+    calls.clear()
+    relative_repo_dir = repo_dir / "nested"
+    relative_repo_dir.mkdir()
+    monkeypatch.setattr(module, "repo_root", lambda _: relative_repo_dir)
+    (relative_repo_dir / "relative-pulumi").mkdir()
+    (relative_repo_dir / "relative-policy").mkdir()
+    monkeypatch.setenv("PULUMI_DIR", "relative-pulumi")
+    monkeypatch.setenv("POLICY_PACK_DIR", "relative-policy")
+    assert module.main() == 0
+    assert calls[1][:5] == [
+        "pulumi",
+        "--cwd",
+        str((relative_repo_dir / "relative-pulumi").resolve()),
+        "login",
+        "--non-interactive",
+    ]
+    assert calls[3][-1] == str((relative_repo_dir / "relative-policy").resolve())
 
 
 def test_run_pulumi_preview_main_handles_empty_and_successful_runs(

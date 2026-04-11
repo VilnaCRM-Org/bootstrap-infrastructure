@@ -65,6 +65,9 @@ the safe path the easy path for normal day-to-day infrastructure work.
 ### Secrets and Identity
 
 - Local developer overrides belong in `.env`, which stays git-ignored.
+- Shared Pulumi backends for CI and maintainer workflows should use an AWS
+  KMS-backed secrets-provider by default (for example, `awskms://...`), not a
+  passphrase-backed shared backend.
 - `.env.empty` is the committed fallback used to keep the Docker and Make flows
   runnable without real credentials.
 - The shared Docker bootstrap script materializes `.env` with owner-only
@@ -112,7 +115,7 @@ When you extend this template, verify all of the following:
   behavior is explicitly documented
 - new AWS resource types are checked against the Pulumi policy pack when they
   should inherit the repository guardrails
-- new secrets are added to [GitHub Actions Secrets](github-actions-secrets.md)
+- new secrets are added to [GitHub Actions Secrets](./github-actions-secrets.md)
   and referenced from the relevant operator guide
 - structural tests are updated so the security contract stays enforced
 

@@ -15,6 +15,9 @@ DEFAULT_COST_CENTER = "engineering"
 
 def _stack_metadata_from_outputs(parts: list[str]) -> tuple[str, str, str, str]:
     """Narrow Pulumi's list-shaped Output.all result to a stable tuple."""
+    # Keep this shape aligned with the Output.all(service, environment, owner,
+    # cost_center) call below so tag metadata cannot silently drift by position.
+    assert len(parts) == 4, "expected service, environment, owner, and cost center"
     return parts[0], parts[1], parts[2], parts[3]
 
 

@@ -29,6 +29,11 @@ def main() -> int:
 
     try:
         docker_version = _version(["docker", "--version"])
+    except subprocess.CalledProcessError:
+        print("docker: missing or not installed", file=sys.stderr)
+        return 1
+
+    try:
         compose_version = _version(["docker", "compose", "version", "--short"])
     except subprocess.CalledProcessError:
         print("docker compose: missing", file=sys.stderr)

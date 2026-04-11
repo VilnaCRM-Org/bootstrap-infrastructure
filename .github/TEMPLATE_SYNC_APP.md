@@ -12,10 +12,10 @@ By configuring a GitHub App, you can automate repository synchronization while e
 
 1. **GitHub App Configuration**:
 
-   - Create and configure the GitHub App with the following specific permissions:
-     - Repository Administration: Read & Write (for managing repository settings)
+   - Create and configure the GitHub App with the minimum branch/PR scopes
+     required for template synchronization:
      - Repository Contents: Read & Write (for creating PRs and commits)
-     - Issues: Read & Write (for creating linked issues if needed)
+     - Issues: Read & Write (optional; only if failure issues are auto-created)
      - Metadata: Read-only (minimum required permission)
      - Pull Requests: Read & Write (for creating and managing sync PRs)
 
@@ -30,9 +30,9 @@ By configuring a GitHub App, you can automate repository synchronization while e
    - Ensure "Allow force pushes" is enabled for the GitHub App
 
 4. **Workflow Permissions**:
-   - Go to your project's **Settings** > **Actions** > **General**
-   - Under the **Workflow permissions** section, check the box for **Allow GitHub Actions to create and approve pull requests**
-     > **Security Note**: Enabling this permission allows any workflow in the repository to create and approve pull requests. Ensure all workflows are properly secured and reviewed before enabling this setting.
+   - Prefer GitHub App installation tokens for PR creation and updates.
+   - Do **not** enable the repository-wide **Allow GitHub Actions to create and approve pull requests** setting unless you explicitly depend on `GITHUB_TOKEN` for that behavior.
+     > **Security Note**: That repository-wide checkbox expands trust for every workflow in the repository. Prefer an installation token or another narrowly scoped credential instead.
 
 ### GitHub Action Configuration
 
@@ -62,10 +62,10 @@ jobs:
     steps:
       - name: Generate token to read from source repo
         id: generate_token
-        uses: tibdex/github-app-token@v2
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3
         with:
-          app_id: ${{ secrets.TEMPLATE_SYNC_APP_ID }}
-          private_key: ${{ secrets.TEMPLATE_SYNC_PRIVATE_KEY }}
+          app-id: ${{ secrets.TEMPLATE_SYNC_APP_ID }}
+          private-key: ${{ secrets.TEMPLATE_SYNC_PRIVATE_KEY }}
 
       - name: Checkout
         uses: actions/checkout@v4

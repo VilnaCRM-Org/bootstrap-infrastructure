@@ -15,7 +15,7 @@ Currently, the `GITHUB_TOKEN` cannot be granted workflow permissions by default.
 3. Configure the checkout action to use the token in secrets, as shown below:
 
    ```yaml
-   # File: .github/workflows/template-sync-app.yml
+   # File: .github/workflows/template-sync-pat.yml
 
    on:
      # cronjob trigger
@@ -38,16 +38,20 @@ Currently, the `GITHUB_TOKEN` cannot be granted workflow permissions by default.
            uses: actions/checkout@v4
            with:
              # submodules: true
-             token: ${{ secrets.<secret_name> }}
+             token: ${{ secrets.TEMPLATE_SYNC_PAT }}
 
          - name: actions-template-sync
            uses: AndreasAugustin/actions-template-sync@v2
            with:
-             github_token: ${{ secrets.GITHUB_TOKEN }}
+             github_token: ${{ secrets.TEMPLATE_SYNC_PAT }}
              source_repo_path: <owner/repo>
              upstream_branch: <target_branch> # defaults to main
              pr_labels: <label1>,<label2>[,...] # optional, no default
    ```
+
+   Use the same PAT secret referenced by `.github/workflows/template-sync-pat.yml`
+   for both checkout and the template-sync action so the example matches the
+   dedicated PAT workflow.
 
 4. If you encounter the error `pull request create failed: Actions is not permitted to create or approve pull requests (createPullRequest)`, follow these additional steps:
 

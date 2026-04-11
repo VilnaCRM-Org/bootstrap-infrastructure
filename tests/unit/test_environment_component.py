@@ -456,11 +456,12 @@ def test_main_exports_expected_outputs() -> None:
 
     def program() -> None:
         """Run the pulumi __main__ module inside the mocked runtime."""
-        sys.path.insert(0, str(PROJECT_ROOT / "pulumi"))
+        inserted_path = str(PROJECT_ROOT / "pulumi")
+        sys.path.insert(0, inserted_path)
         try:
             module_globals = runpy.run_path(str(PULUMI_MAIN))
         finally:
-            sys.path.pop(0)
+            sys.path.remove(inserted_path)
 
         env_settings = module_globals["settings"]
         _assert_output_value(env_settings.environment, "dev")

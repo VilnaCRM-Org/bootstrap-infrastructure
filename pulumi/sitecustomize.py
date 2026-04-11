@@ -7,7 +7,7 @@ coverage_module: Any | None
 
 try:
     import coverage as coverage_module
-except Exception:
+except ImportError:
     coverage_module = None
 
 if coverage_module is not None:

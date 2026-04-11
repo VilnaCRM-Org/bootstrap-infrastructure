@@ -10,9 +10,14 @@ from _script_support import discover_stacks, repo_root, run
 
 def main() -> int:
     root_dir = repo_root(__file__)
-    pulumi_dir = Path(os.environ.get("PULUMI_DIR", root_dir / "pulumi"))
-    policy_pack_dir = Path(os.environ.get("POLICY_PACK_DIR", root_dir / "policy"))
+    pulumi_dir = Path(os.environ.get("PULUMI_DIR", str(root_dir / "pulumi")))
+    policy_pack_dir = Path(os.environ.get("POLICY_PACK_DIR", str(root_dir / "policy")))
     backend_url = os.environ.get("PULUMI_BACKEND_URL", "")
+
+    if not pulumi_dir.is_absolute():
+        pulumi_dir = (root_dir / pulumi_dir).resolve()
+    if not policy_pack_dir.is_absolute():
+        policy_pack_dir = (root_dir / policy_pack_dir).resolve()
 
     if not pulumi_dir.is_dir():
         print(f"error: PULUMI_DIR '{pulumi_dir}' does not exist", file=sys.stderr)

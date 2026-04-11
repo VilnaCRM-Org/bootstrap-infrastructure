@@ -1,4 +1,9 @@
-"""Structural tests for the AI-safe CI/CD guardrail layer."""
+"""Structural tests for the AI-safe CI/CD guardrail layer.
+
+These checks intentionally mirror the workflow structure closely. Update them
+alongside `.github/workflows/pulumi-pr-guardrails.yml` when job names, step
+ordering, or `if` expressions change.
+"""
 
 from __future__ import annotations
 
@@ -111,7 +116,10 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     assert "if" not in preview_oidc_step
     assert "if" not in iam_oidc_step
     assert preview_run_step["run"] == "make publish-pulumi-preview-summary"
-    assert preview_run_step["env"] == {"PULUMI_REQUIRE_SHARED_BACKEND": "true"}
+    assert preview_run_step["env"] == {
+        "PULUMI_REQUIRE_SHARED_BACKEND": "true",
+        "GITHUB_TOKEN": "${{ github.token }}",
+    }
     assert any(step.get("run") == "make start" for step in jobs["preview"]["steps"])
     assert preview_download_step is not None
     assert preview_download_step["with"]["name"] == "pulumi-preview"

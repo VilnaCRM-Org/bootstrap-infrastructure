@@ -40,7 +40,6 @@ jobs:
       PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
       PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
-      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -59,6 +58,7 @@ jobs:
       - name: Run preview guardrail
         env:
           PULUMI_REQUIRE_SHARED_BACKEND: "true"
+          GITHUB_TOKEN: ${{ github.token }}
         run: make publish-pulumi-preview-summary
 
       - name: Upload preview artifact

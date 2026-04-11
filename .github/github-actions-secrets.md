@@ -1,34 +1,60 @@
 # GitHub Actions Secrets for Pulumi Workflows
 
-This repository uses GitHub Actions workflows in `.github/workflows/pulumi-preview.yml` and `.github/workflows/pulumi-deploy.yml` to run Pulumi previews and deployments. Both workflows rely on AWS and Pulumi credentials that must be stored as encrypted repository secrets before the jobs can succeed.
+This repository prefers GitHub OpenID Connect (OIDC) for AWS authentication in
+workflows that need cloud access. Use static AWS keys only as a legacy fallback
+when OIDC is not available.
 
-## Required Secrets
+## Required Authentication Configuration
 
-- `AWS_ACCESS_KEY_ID` – Access key for the AWS IAM user or role that Pulumi should use.
+### Preferred: GitHub OIDC for AWS
+
+1. Create an IAM role in AWS that trusts `token.actions.githubusercontent.com`.
+2. Grant that role the permissions required for the Pulumi preview, apply, or
+   drift workflow you are running.
+3. Configure the workflow to assume the role with
+   `aws-actions/configure-aws-credentials`, for example:
+
+   ```yaml
+   - uses: aws-actions/configure-aws-credentials@v4
+     with:
+       role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+       role-session-name: gha-pulumi-${{ github.run_id }}
+       aws-region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+   ```
+
+4. Store the role ARN as a repository or organization variable such as
+   `AWS_OIDC_ROLE_ARN`.
+
+### Fallback: Static Credentials
+
+Use these secrets only when OIDC cannot be used:
+
+- `AWS_ACCESS_KEY_ID` – Access key for the IAM user or role that Pulumi should use.
 - `AWS_SECRET_ACCESS_KEY` – Secret key paired with the access key above.
-- `PULUMI_ACCESS_TOKEN` – Access token for the Pulumi Service account that owns the target stack.
-
-> These secrets are consumed by the `aws-actions/configure-aws-credentials@v4` and `pulumi/actions@v4` steps. Without them, the AWS step fails with “Could not load credentials from any providers,” preventing Pulumi from running.
+- `PULUMI_ACCESS_TOKEN` – Required only when the workflow uses Pulumi Cloud for
+  state or authentication.
 
 ## How to Configure the Secrets
 
 1. Open the repository in GitHub.
 2. Navigate to **Settings → Secrets and variables → Actions**.
-3. Use **New repository secret** to add each value listed above.
-4. Re-run the workflow to verify that credentials are loaded successfully.
+3. Prefer configuring `AWS_OIDC_ROLE_ARN` under **Variables** and wiring that
+   value into `aws-actions/configure-aws-credentials`.
+4. Add `PULUMI_ACCESS_TOKEN` only if your workflow uses Pulumi Cloud-backed
+   state or Pulumi Cloud authentication.
+5. Add `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` only as a legacy fallback
+   when OIDC cannot be used.
+6. Re-run the workflow to verify that credentials are loaded successfully.
 
 ## Why the Secrets Are Needed
 
-`aws-actions/configure-aws-credentials@v4` expects either static access keys or an assumable role with GitHub OpenID Connect. The current workflows specify only the region, so GitHub Actions must load the AWS credentials from repository secrets. If the secrets are missing, the action cannot obtain temporary AWS credentials, and the workflow stops before Pulumi executes.
+With OIDC configured, GitHub Actions exchanges a short-lived GitHub identity
+token for AWS credentials at runtime, removing the need to keep long-lived AWS
+keys in repository secrets.
 
-Similarly, `pulumi/actions@v4` uses `PULUMI_ACCESS_TOKEN` to authenticate against the Pulumi Service. Without the token, the action cannot access the stack state, so every deployment fails.
+If OIDC is unavailable, `aws-actions/configure-aws-credentials@v4` can still
+load static access keys from repository secrets. That path should be treated as
+legacy compatibility, not the default.
 
-## Considering OIDC Instead of Static Keys
-
-If you prefer not to store long-lived AWS keys, you can switch to GitHub’s OpenID Connect flow:
-
-1. Create an IAM role in AWS that trusts `token.actions.githubusercontent.com`.
-2. Grant the role the permissions required for your Pulumi stack.
-3. Replace the static key inputs in the workflow with `role-to-assume` (and optionally `role-session-name`).
-
-With OIDC configured, GitHub Actions exchanges a short-lived token for AWS credentials at runtime, removing the need to keep secret keys in the repository.
+`PULUMI_ACCESS_TOKEN` is only needed when the workflow authenticates against the
+Pulumi Service. Self-managed backends do not need it.
