@@ -292,6 +292,15 @@ def test_github_oidc_role_exists_false(monkeypatch):
     assert github_oidc._role_exists("PulumiDeploy-repo") is False  # nosec B101
 
 
+def test_github_oidc_role_exists_false_for_missing_resource(monkeypatch):
+    def raise_missing(**_kwargs):
+        raise RuntimeError("couldn't find resource")
+
+    monkeypatch.setattr(github_oidc.aws.iam, "get_role", raise_missing)
+
+    assert github_oidc._role_exists("PulumiDeploy-repo") is False  # nosec B101
+
+
 def test_github_oidc_role_exists_raises_unexpected(monkeypatch):
     def raise_other(**_kwargs):
         raise RuntimeError("boom")
@@ -333,7 +342,7 @@ def test_task_roles_module_has_no_exports():
     assert task_roles.__all__ == []  # nosec B101
 
 
-def test_stack_main_executes(monkeypatch):
+def test_stack_main_executes(pulumi_mocks, monkeypatch):  # noqa: ARG001
     config.managed_repositories.cache_clear()
     try:
         monkeypatch.setattr(config.settings, "repo", "repo")

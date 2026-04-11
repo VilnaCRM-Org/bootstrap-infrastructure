@@ -12,6 +12,22 @@ def test_logging_bucket_exists_true(monkeypatch):
     assert logging_bucket._bucket_exists("bucket") is True  # nosec B101
 
 
+def test_logging_bucket_exists_passes_provider(monkeypatch):
+    captured = {}
+    provider = object()
+
+    def fake_get_bucket(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(logging_bucket.aws.s3, "get_bucket", fake_get_bucket)
+
+    assert logging_bucket._bucket_exists("bucket", provider=provider) is True  # nosec B101
+    assert captured["bucket"] == "bucket"  # nosec B101
+    assert captured["opts"] is not None  # nosec B101
+    assert captured["opts"].provider is provider  # nosec B101
+
+
 def test_logging_bucket_exists_not_found(monkeypatch):
     def raise_not_found(**_kwargs):
         raise RuntimeError("NoSuchBucket: missing")
