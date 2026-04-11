@@ -1,0 +1,96 @@
+name: Nightly Guardrails
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+  drift_detection:
+    name: Drift Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Validate drift detection prerequisites
+        run: |
+          missing=()
+          if [[ -z "${{ vars.AWS_OIDC_ROLE_ARN }}" ]]; then
+            missing+=("vars.AWS_OIDC_ROLE_ARN")
+          fi
+          if [[ -z "${PULUMI_BACKEND_URL}" ]]; then
+            missing+=("vars.PULUMI_BACKEND_URL")
+          fi
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            printf 'error: nightly drift detection requires %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          role-session-name: gha-drift-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run drift detection
+        run: make test-drift
+
+  scorecard:
+    name: Scorecard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Run OpenSSF Scorecard
+        uses: ossf/scorecard-action@62b2cac7ed8198b15735ed49ab1e5cf35480ba46
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload Scorecard artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: scorecard-results
+          path: scorecard.sarif
+
+      - name: Upload Scorecard SARIF
+        uses: github/codeql-action/upload-sarif@ce28f5bb42b7a9f2c824e633a3f6ee835bab6858
+        with:
+          sarif_file: scorecard.sarif

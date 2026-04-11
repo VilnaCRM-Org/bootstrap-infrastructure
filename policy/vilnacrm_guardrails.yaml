@@ -1,0 +1,23 @@
+required_tags:
+  - Project
+  - Environment
+  - Owner
+  - CostCenter
+
+allowed_regions:
+  - eu-central-1
+  - eu-west-1
+
+production_environments:
+  - prod
+  - production
+  - live
+
+allowlists:
+  public_s3_buckets: []
+  wildcard_iam: []
+
+annotations:
+  public_s3_tag: AllowPublicBucket
+  wildcard_iam_tag: AllowWildcardIam
+  wildcard_iam_reason_tag: AllowWildcardIamReason

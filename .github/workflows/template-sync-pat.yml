@@ -1,0 +1,35 @@
+name: Template Sync with PAT
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repo-sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: ${{ github.repository != 'VilnaCRM-Org/infrastructure-template' }}
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          persist-credentials: false
+
+      - name: actions-template-sync
+        uses: AndreasAugustin/actions-template-sync@8ec19a5f2721ffb81ff809aa340ddf75e6a85ea6
+        with:
+          github_token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+          source_repo_path: VilnaCRM-Org/infrastructure-template
+          upstream_branch: main
+          pr_labels: template_sync
+          is_force_push_pr: true
