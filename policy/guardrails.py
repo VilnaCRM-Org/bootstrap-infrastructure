@@ -313,7 +313,7 @@ def _policy_documents(
 
 
 def _named_policy_documents(
-    props: Mapping[str, Any]
+    props: Mapping[str, Any],
 ) -> Sequence[tuple[str, Sequence[Mapping[str, Any]]]]:
     """Return identity-policy documents attached directly to a resource."""
     documents: list[tuple[str, Sequence[Mapping[str, Any]]]] = []
@@ -325,7 +325,7 @@ def _named_policy_documents(
 
 
 def _role_policy_documents(
-    props: Mapping[str, Any]
+    props: Mapping[str, Any],
 ) -> Sequence[tuple[str, Sequence[Mapping[str, Any]]]]:
     """Return trust and inline policy documents embedded in IAM roles."""
     documents: list[tuple[str, Sequence[Mapping[str, Any]]]] = []

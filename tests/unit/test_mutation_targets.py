@@ -135,9 +135,7 @@ def test_mutation_target_pulumi_secrets_component(monkeypatch):
 def test_mutation_target_github_automation_policy_uses_explicit_actions():
     policy = json.loads(automation._automation_policy("123456789012"))
     actions = {
-        action
-        for statement in policy["Statement"]
-        for action in statement["Action"]
+        action for statement in policy["Statement"] for action in statement["Action"]
     }
 
     assert "s3:*" not in actions  # nosec B101
