@@ -386,6 +386,14 @@ def test_stack_metadata_helpers_keep_the_four_field_layout() -> None:
     }
 
 
+def test_stack_metadata_helpers_reject_shape_drift() -> None:
+    """Reject unexpected Output.all shapes before indexing tag metadata."""
+    with pytest.raises(
+        ValueError, match=r"^expected service, environment, owner, and cost center$"
+    ):
+        _stack_metadata_from_outputs(["billing", "qa", "team-platform"])
+
+
 def _assert_config_error(config_values: dict[str, object], message: str) -> None:
     """Assert invalid config is rejected inside the mocked Pulumi runtime."""
 
