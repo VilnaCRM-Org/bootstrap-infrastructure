@@ -201,7 +201,8 @@ def _state_bucket_lifecycle_rule(
     )
 
 
-def _state_bucket_encryption_rules() -> list[aws.s3.BucketServerSideEncryptionConfigurationRuleArgs]:
+def _state_bucket_encryption_rules(
+) -> list[aws.s3.BucketServerSideEncryptionConfigurationRuleArgs]:
     """Return the shared AES256 bucket encryption policy."""
     return [
         aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
