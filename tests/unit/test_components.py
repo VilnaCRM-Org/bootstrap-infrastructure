@@ -425,6 +425,33 @@ def test_github_oidc_roles_use_injected_settings_repositories(
     assert "repo-managed" in roles.deploy_role_arns  # nosec B101
 
 
+def test_github_oidc_roles_use_global_repositories_without_injected_settings(
+    monkeypatch, pulumi_mocks
+):  # noqa: ARG001
+    class FakeProvider:
+        arn = pulumi.Output.from_input(
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+        )
+
+    monkeypatch.setattr(
+        github_oidc.settings, "github_oidc_provider_arn", "arn:existing"
+    )
+    monkeypatch.setattr(
+        github_oidc.aws.iam.OpenIdConnectProvider,
+        "get",
+        lambda *_args, **_kwargs: FakeProvider(),
+    )
+    monkeypatch.setattr(
+        github_oidc,
+        "managed_repositories",
+        lambda: [config.ManagedRepository(name="repo-global", default_branch="main")],
+    )
+
+    roles = GitHubOidcRoles("github-oidc-global")
+
+    assert "repo-global" in roles.deploy_role_arns  # nosec B101
+
+
 def test_github_oidc_role_name_limits_length():
     long_suffix = "a" * 70
     role_name = github_oidc._role_name_for_suffix(long_suffix)

@@ -266,6 +266,34 @@ def _resource_dependencies(resource: Any, property_name: str) -> Sequence[Any]:
     return cast(Sequence[Any], getattr(resource, "dependencies", []) or [])
 
 
+def _s3_encryption_rule_items(props: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return concrete inline and split encryption rules from one resource."""
+    rule_items: list[Mapping[str, Any]] = []
+    rule = props.get("rule")
+    if isinstance(rule, Mapping):
+        rule_items.append(rule)
+
+    rules = props.get("rules")
+    if not isinstance(rules, Sequence):
+        return rule_items
+
+    rule_items.extend(
+        candidate for candidate in rules if isinstance(candidate, Mapping)
+    )
+    return rule_items
+
+
+def _has_default_s3_encryption_rule(props: Mapping[str, Any]) -> bool:
+    """Return True when any encryption rule declares a default SSE algorithm."""
+    for candidate in _s3_encryption_rule_items(props):
+        default_encryption = candidate.get("applyServerSideEncryptionByDefault")
+        if not isinstance(default_encryption, Mapping):
+            continue
+        if _string_value(default_encryption.get("sseAlgorithm")):
+            return True
+    return False
+
+
 def _s3_encryption_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]]:
     """Collect bucket names and URNs protected by standalone S3 encryption resources."""
     encrypted_bucket_names: set[str] = set()
@@ -280,31 +308,7 @@ def _s3_encryption_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]
             continue
 
         props = cast(Mapping[str, Any], getattr(resource, "props", {}))
-        rule = props.get("rule")
-        rules = props.get("rules")
-        rule_items: list[Mapping[str, Any]] = []
-        if isinstance(rule, Mapping):
-            rule_items.append(rule)
-        if isinstance(rules, Sequence):
-            rule_items.extend(
-                candidate for candidate in rules if isinstance(candidate, Mapping)
-            )
-        has_default_encryption = any(
-            isinstance(
-                candidate.get("applyServerSideEncryptionByDefault"),
-                Mapping,
-            )
-            and bool(
-                _string_value(
-                    cast(
-                        Mapping[str, Any],
-                        candidate["applyServerSideEncryptionByDefault"],
-                    ).get("sseAlgorithm")
-                )
-            )
-            for candidate in rule_items
-        )
-        if not has_default_encryption:
+        if not _has_default_s3_encryption_rule(props):
             continue
 
         bucket_name = _string_value(props.get("bucket"))
