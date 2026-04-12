@@ -1032,6 +1032,42 @@ def test_storage_encryption_stack_violations_require_real_split_rules(
     )
 
 
+def test_storage_encryption_stack_violations_ignore_invalid_rules_before_valid_one(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Mixed split-rule payloads should only count concrete SSE defaults."""
+    bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "mixed-encryption-bucket"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::mixed-encryption-bucket"
+        ),
+    )
+    encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={
+            "bucket": "mixed-encryption-bucket",
+            "rules": [
+                {},
+                {"applyServerSideEncryptionByDefault": "AES256"},
+                {"applyServerSideEncryptionByDefault": {"sseAlgorithm": ""}},
+                {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}},
+            ],
+        },
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/"
+            "bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2::mixed-encryption"
+        ),
+        dependencies=[bucket],
+        property_dependencies={"bucket": [bucket]},
+    )
+
+    assert (
+        policy_runtime.storage_encryption_stack_violations([bucket, encryption]) == []
+    )
+
+
 def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
     policy_runtime: SimpleNamespace,
 ) -> None:
