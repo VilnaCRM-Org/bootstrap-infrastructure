@@ -14,6 +14,13 @@ class ManagedRepository:
     project: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.name, str):
+            raise TypeError("Managed repository name must be a string.")
+        if not isinstance(self.default_branch, str):
+            raise TypeError("Managed repository default_branch must be a string.")
+        if self.project is not None and not isinstance(self.project, str):
+            raise TypeError("Managed repository project must be a string when set.")
+
         normalized_name = self.name.strip()
         normalized_branch = self.default_branch.strip()
         normalized_project = (

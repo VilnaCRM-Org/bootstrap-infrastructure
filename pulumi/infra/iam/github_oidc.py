@@ -14,6 +14,7 @@ import pulumi
 from ..bootstrap_settings import BootstrapSettings
 from ..config import managed_repositories, settings
 from ..managed_repository import ManagedRepository
+from ..repository_catalog import ManagedRepositoryCatalog
 from ..utils.outputs import apply_output
 from ..utils.tags import base_tags
 
@@ -201,9 +202,12 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         self.provider = _provider_resource(name, self, self._settings)
         self.deploy_role_arns: dict[str, pulumi.Output[str]] = {}
 
-        repos = (
-            list(repositories) if repositories is not None else managed_repositories()
-        )
+        if repositories is not None:
+            repos = list(repositories)
+        elif settings is not None:
+            repos = ManagedRepositoryCatalog.from_settings(self._settings).repositories
+        else:
+            repos = managed_repositories()
         for repo in repos:
             self.deploy_role_arns[repo.name] = self._create_deploy_role(
                 name,

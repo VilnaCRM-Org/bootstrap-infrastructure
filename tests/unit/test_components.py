@@ -383,6 +383,48 @@ def test_github_oidc_roles_create_provider_when_missing(monkeypatch, pulumi_mock
     assert roles.deploy_role_arns  # nosec B101
 
 
+def test_github_oidc_roles_use_injected_settings_repositories(
+    monkeypatch, pulumi_mocks
+):  # noqa: ARG001
+    class FakeProvider:
+        arn = pulumi.Output.from_input(
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+        )
+
+    injected_settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo=None,
+        environment="test",
+        owner="platform",
+        cost_center="engineering",
+        github_branch=None,
+        logging_prefix="company",
+        replication_region="us-west-2",
+        github_token=None,
+        github_oidc_provider_arn="arn:existing",
+        managed_repo_overrides=[
+            config.ManagedRepository(name="repo-managed", default_branch="main")
+        ],
+    )
+
+    monkeypatch.setattr(
+        github_oidc.aws.iam.OpenIdConnectProvider,
+        "get",
+        lambda *_args, **_kwargs: FakeProvider(),
+    )
+    monkeypatch.setattr(
+        github_oidc,
+        "managed_repositories",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("should not use global managed repositories")
+        ),
+    )
+
+    roles = GitHubOidcRoles("github-oidc-injected", settings=injected_settings)
+
+    assert "repo-managed" in roles.deploy_role_arns  # nosec B101
+
+
 def test_github_oidc_role_name_limits_length():
     long_suffix = "a" * 70
     role_name = github_oidc._role_name_for_suffix(long_suffix)

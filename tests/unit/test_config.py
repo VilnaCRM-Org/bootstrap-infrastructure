@@ -26,6 +26,22 @@ from infra.config import (
 )
 
 
+class DummyPulumiConfig:
+    def __init__(self, *, values=None, objects=None, secrets=None):
+        self._values = values or {}
+        self._objects = objects or {}
+        self._secrets = secrets or {}
+
+    def get(self, key):
+        return self._values.get(key)
+
+    def get_object(self, key):
+        return self._objects.get(key)
+
+    def get_secret(self, key):
+        return self._secrets.get(key)
+
+
 def _bootstrap_settings(**overrides) -> BootstrapSettings:
     defaults = {
         "org": "VilnaCRM-Org",
@@ -86,6 +102,11 @@ def test_sanitize_bucket_component_rejects_ipv6():
         _sanitize_bucket_component(
             "2001:0db8:85a3:0000:0000:8a2e:0370:7334", "repoSlug"
         )
+
+
+def test_sanitize_bucket_component_allows_non_ipv6_hex_colons():
+    """Non-address colon-delimited strings should sanitize like normal input."""
+    assert _sanitize_bucket_component("face:feed", "repoSlug") == "face-feed"  # nosec B101
 
 
 def test_sanitize_bucket_component_rejects_dot_hyphen_adjacency():
@@ -162,6 +183,109 @@ def test_bootstrap_settings_require_config_value_raises(monkeypatch):
     monkeypatch.delenv("PULUMI_ALLOW_TEST_DEFAULTS", raising=False)
     with pytest.raises(pulumi.ConfigMissingError):
         BootstrapSettings.require_config_value(DummyCfg(), "missing", "fallback")
+
+
+def test_bootstrap_settings_from_pulumi_config_uses_defaults_and_stack_fallback(
+    monkeypatch,
+):
+    """BootstrapSettings should honor Pulumi defaults and secret-aware token reads."""
+    github_token = pulumi.Output.from_input("token")
+    config_obj = DummyPulumiConfig(secrets={"githubToken": github_token})
+
+    monkeypatch.setenv("PULUMI_ALLOW_TEST_DEFAULTS", "1")
+    monkeypatch.setattr(pulumi, "get_stack", lambda: "test")
+
+    settings_obj = BootstrapSettings.from_pulumi_config(config_obj)
+
+    assert settings_obj.org == "test-org"  # nosec B101
+    assert settings_obj.repo is None  # nosec B101
+    assert settings_obj.environment == "test"  # nosec B101
+    assert settings_obj.owner == "platform"  # nosec B101
+    assert settings_obj.cost_center == "core"  # nosec B101
+    assert settings_obj.github_branch is None  # nosec B101
+    assert settings_obj.logging_prefix == "company"  # nosec B101
+    assert settings_obj.replication_region is None  # nosec B101
+    assert settings_obj.github_token is github_token  # nosec B101
+    assert settings_obj.github_oidc_provider_arn is None  # nosec B101
+    assert settings_obj.repository_catalog_path is None  # nosec B101
+
+
+def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch):
+    """Explicit config values should override defaults in BootstrapSettings."""
+    github_token = pulumi.Output.from_input("token")
+    config_obj = DummyPulumiConfig(
+        values={
+            "githubOrg": "VilnaCRM-Org",
+            "repoSlug": "core-service-infrastructure",
+            "environment": "prod.eu",
+            "owner": "sre",
+            "costCenter": "platform",
+            "githubBranch": "release",
+            "loggingPrefix": "vilna",
+            "replicationRegion": "eu-west-1",
+            "githubOidcProviderArn": "arn:aws:iam::123456789012:oidc-provider/test",
+            "repositoryCatalogPath": "repositories.json",
+        },
+        secrets={"githubToken": github_token},
+    )
+
+    monkeypatch.delenv("PULUMI_ALLOW_TEST_DEFAULTS", raising=False)
+
+    settings_obj = BootstrapSettings.from_pulumi_config(config_obj)
+
+    assert settings_obj.org == "VilnaCRM-Org"  # nosec B101
+    assert settings_obj.repo == "core-service-infrastructure"  # nosec B101
+    assert settings_obj.environment == "prod.eu"  # nosec B101
+    assert settings_obj.owner == "sre"  # nosec B101
+    assert settings_obj.cost_center == "platform"  # nosec B101
+    assert settings_obj.github_branch == "release"  # nosec B101
+    assert settings_obj.logging_prefix == "vilna"  # nosec B101
+    assert settings_obj.replication_region == "eu-west-1"  # nosec B101
+    assert settings_obj.github_token is github_token  # nosec B101
+    assert (
+        settings_obj.github_oidc_provider_arn
+        == "arn:aws:iam::123456789012:oidc-provider/test"
+    )  # nosec B101
+    assert settings_obj.repository_catalog_path == "repositories.json"  # nosec B101
+
+
+@pytest.mark.parametrize(
+    ("settings_overrides", "managed_repositories", "expected"),
+    [
+        ({"repo": "repo"}, None, True),
+        ({"repo": None, "repository_catalog_path": "repositories.json"}, None, True),
+        (
+            {
+                "repo": None,
+                "managed_repo_overrides": [
+                    config.ManagedRepository(name="repo", default_branch="main")
+                ],
+            },
+            None,
+            True,
+        ),
+        ({"repo": None}, [{"name": "repo", "defaultBranch": "main"}], True),
+        (
+            {
+                "repo": None,
+                "repository_catalog_path": None,
+                "managed_repo_overrides": None,
+            },
+            None,
+            False,
+        ),
+    ],
+)
+def test_bootstrap_settings_bootstrap_requested(
+    settings_overrides, managed_repositories, expected
+):
+    """BootstrapSettings should only bootstrap when at least one source is set."""
+    settings_obj = _bootstrap_settings(**settings_overrides)
+    config_obj = DummyPulumiConfig(
+        objects={"managedRepositories": managed_repositories}
+    )
+
+    assert settings_obj.bootstrap_requested(config_obj) is expected  # nosec B101
 
 
 def test_load_managed_repo_overrides_validation():
@@ -363,6 +487,53 @@ def test_managed_repository_catalog_requires_non_empty_project_name():
         )
 
 
+def test_managed_repository_catalog_normalizes_string_entries():
+    """Bare repository names should be trimmed before use."""
+    repository = ManagedRepositoryCatalog.repository_from_item(" repo ")
+
+    assert repository.name == "repo"  # nosec B101
+    assert repository.default_branch == "main"  # nosec B101
+    assert repository.project_name == "repo"  # nosec B101
+
+
+def test_managed_repository_catalog_rejects_blank_string_entries():
+    """Whitespace-only repository names should fail fast."""
+    with pytest.raises(ValueError, match="non-empty string"):
+        ManagedRepositoryCatalog.repository_from_item("   ")
+
+
+def test_managed_repository_catalog_normalizes_mapping_entries():
+    """Mapping repository entries should be stripped before validation."""
+    repository = ManagedRepositoryCatalog.repository_from_item(
+        {
+            "name": " repo ",
+            "defaultBranch": " main ",
+            "project": " platform ",
+        }
+    )
+
+    assert repository.name == "repo"  # nosec B101
+    assert repository.default_branch == "main"  # nosec B101
+    assert repository.project_name == "platform"  # nosec B101
+
+
+def test_managed_repository_catalog_rejects_duplicate_names():
+    """Duplicate repository names should be rejected regardless of case."""
+    with pytest.raises(ValueError, match="must be unique"):
+        ManagedRepositoryCatalog.load_from_items(["Repo", " repo "])
+
+
+def test_managed_repository_catalog_constructor_rejects_duplicate_names():
+    """Direct catalog construction should reject duplicate repository names."""
+    with pytest.raises(ValueError, match="must be unique"):
+        ManagedRepositoryCatalog(
+            [
+                config.ManagedRepository(name="Repo", default_branch="main"),
+                config.ManagedRepository(name="repo", default_branch="main"),
+            ]
+        )
+
+
 def test_state_bucket_name_length_guard(monkeypatch):
     """Repo + environment should not exceed S3 length limits."""
     monkeypatch.setattr(settings, "environment", "e" * 40)
@@ -376,6 +547,15 @@ def test_pulumi_secrets_alias_name_for_repo(monkeypatch):
     assert (
         pulumi_secrets_alias_name_for_repo("My.Repo")
         == "alias/pulumi-my-repo-test-secrets"
+    )  # nosec B101
+
+
+def test_pulumi_secrets_alias_name_for_repo_normalizes_environment_dots(monkeypatch):
+    """KMS aliases should replace environment dots with hyphens."""
+    monkeypatch.setattr(settings, "environment", "test.env")
+    assert (
+        pulumi_secrets_alias_name_for_repo("repo")
+        == "alias/pulumi-repo-test-env-secrets"
     )  # nosec B101
 
 
@@ -433,6 +613,19 @@ def test_managed_repository_validation_rejects_blank_default_branch():
 def test_managed_repository_validation_rejects_blank_project():
     with pytest.raises(ValueError, match="project must be non-empty"):
         config.ManagedRepository(name="repo", default_branch="main", project=" ")
+
+
+def test_managed_repository_validation_rejects_non_string_fields():
+    with pytest.raises(TypeError, match="name must be a string"):
+        config.ManagedRepository(name=123, default_branch="main")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="default_branch must be a string"):
+        config.ManagedRepository(name="repo", default_branch=123)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="project must be a string"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            project=123,  # type: ignore[arg-type]
+        )
 
 
 def test_primary_logging_bucket_name_uses_injected_settings():

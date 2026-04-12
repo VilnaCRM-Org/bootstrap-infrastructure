@@ -18,6 +18,7 @@ class ManagedRepositoryCatalog:
     def __init__(self, repositories: list[ManagedRepository]) -> None:
         if not repositories:
             raise ValueError("Managed repository catalog cannot be empty.")
+        self._validate_unique_names(repositories)
         self._repositories = repositories
 
     @property
@@ -77,6 +78,7 @@ class ManagedRepositoryCatalog:
         repositories = [cls.repository_from_item(item) for item in raw]
         if not repositories:
             raise ValueError("managedRepositories config cannot be empty.")
+        cls._validate_unique_names(repositories)
         return repositories
 
     @classmethod
@@ -101,27 +103,39 @@ class ManagedRepositoryCatalog:
     @staticmethod
     def _repository_from_string(name: str) -> ManagedRepository:
         """Build a repository definition from a bare repository name."""
-        return ManagedRepository(name=name, default_branch="main", project=name)
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise ValueError(
+                "Each managedRepositories entry must be a non-empty string."
+            )
+        return ManagedRepository(
+            name=normalized_name,
+            default_branch="main",
+            project=normalized_name,
+        )
 
     @staticmethod
     def _repository_from_mapping(item: dict[str, Any]) -> ManagedRepository:
         """Build a repository definition from a mapping entry."""
-        name = item.get("name")
-        default_branch = item.get("defaultBranch") or "main"
-        project = item.get("project") or name
+        raw_name = item.get("name")
+        raw_default_branch = item.get("defaultBranch") or "main"
+        raw_project = item.get("project") or raw_name
 
-        if not isinstance(name, str) or not name.strip():
+        if not isinstance(raw_name, str) or not raw_name.strip():
             raise ValueError(
                 "Each managedRepositories entry must include a non-empty 'name'."
             )
-        if not isinstance(default_branch, str) or not default_branch.strip():
+        if not isinstance(raw_default_branch, str) or not raw_default_branch.strip():
             raise ValueError(
                 "managedRepositories defaultBranch values must be non-empty strings."
             )
-        if not isinstance(project, str) or not project.strip():
+        if not isinstance(raw_project, str) or not raw_project.strip():
             raise ValueError(
                 "Each managedRepositories entry must include a non-empty 'project'."
             )
+        name = raw_name.strip()
+        default_branch = raw_default_branch.strip()
+        project = raw_project.strip()
 
         return ManagedRepository(
             name=name,
@@ -139,3 +153,23 @@ class ManagedRepositoryCatalog:
         raise ValueError(
             "Each managedRepositories entry must be a string or an object with 'name'."
         )
+
+    @staticmethod
+    def _validate_unique_names(repositories: list[ManagedRepository]) -> None:
+        """Reject duplicate repository names before downstream maps overwrite keys."""
+        seen: dict[str, str] = {}
+        duplicates: set[str] = set()
+
+        for repository in repositories:
+            normalized_name = repository.name.casefold()
+            if normalized_name in seen:
+                duplicates.add(seen[normalized_name])
+                duplicates.add(repository.name)
+            else:
+                seen[normalized_name] = repository.name
+
+        if duplicates:
+            duplicate_names = ", ".join(sorted(duplicates, key=str.casefold))
+            raise ValueError(
+                f"Managed repository names must be unique: {duplicate_names}."
+            )

@@ -279,7 +279,35 @@ def _s3_encryption_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]
         ):
             continue
 
-        bucket_name = _string_value(getattr(resource, "props", {}).get("bucket"))
+        props = cast(Mapping[str, Any], getattr(resource, "props", {}))
+        rule = props.get("rule")
+        rules = props.get("rules")
+        rule_items: list[Mapping[str, Any]] = []
+        if isinstance(rule, Mapping):
+            rule_items.append(rule)
+        if isinstance(rules, Sequence):
+            rule_items.extend(
+                candidate for candidate in rules if isinstance(candidate, Mapping)
+            )
+        has_default_encryption = any(
+            isinstance(
+                candidate.get("applyServerSideEncryptionByDefault"),
+                Mapping,
+            )
+            and bool(
+                _string_value(
+                    cast(
+                        Mapping[str, Any],
+                        candidate["applyServerSideEncryptionByDefault"],
+                    ).get("sseAlgorithm")
+                )
+            )
+            for candidate in rule_items
+        )
+        if not has_default_encryption:
+            continue
+
+        bucket_name = _string_value(props.get("bucket"))
         if bucket_name:
             encrypted_bucket_names.add(bucket_name)
 

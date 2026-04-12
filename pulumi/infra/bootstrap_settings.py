@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import os
 import re
 from dataclasses import dataclass
@@ -18,7 +19,6 @@ _SEQUENTIAL_DOTS = re.compile(r"\.{2,}")
 _SEQUENTIAL_HYPHENS = re.compile(r"-{2,}")
 _DOT_HYPHEN_ADJACENT = re.compile(r"\.-|-\.")
 _IPV4_PATTERN = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
-_IPV6_PATTERN = re.compile(r"^[0-9a-f:]+$")
 
 
 @dataclass
@@ -33,7 +33,7 @@ class BootstrapSettings:
     github_branch: str | None
     logging_prefix: str
     replication_region: str | None
-    github_token: str | None
+    github_token: pulumi.Output[str] | None
     github_oidc_provider_arn: str | None
     repository_catalog_path: str | None = None
     managed_repo_overrides: list["ManagedRepository"] | None = None
@@ -54,7 +54,7 @@ class BootstrapSettings:
             github_branch=config.get("githubBranch"),
             logging_prefix=config.get("loggingPrefix") or "company",
             replication_region=config.get("replicationRegion"),
-            github_token=config.get("githubToken"),
+            github_token=config.get_secret("githubToken"),
             github_oidc_provider_arn=config.get("githubOidcProviderArn"),
             repository_catalog_path=config.get("repositoryCatalogPath"),
         )
@@ -95,7 +95,11 @@ class BootstrapSettings:
 
         if _IPV4_PATTERN.match(normalized):
             raise ValueError(f"{label} cannot be an IPv4 address.")
-        if ":" in normalized and _IPV6_PATTERN.match(normalized):
+        try:
+            parsed_address = ipaddress.ip_address(normalized)
+        except ValueError:
+            parsed_address = None
+        if isinstance(parsed_address, ipaddress.IPv6Address):
             raise ValueError(f"{label} cannot be an IPv6 address.")
 
         candidate = normalized
@@ -149,7 +153,10 @@ class BootstrapSettings:
             ".",
             "-",
         )
-        env_part = self.sanitize_bucket_component(self.environment, "environment")
+        env_part = self.sanitize_bucket_component(
+            self.environment,
+            "environment",
+        ).replace(".", "-")
         return f"alias/pulumi-{repo_part}-{env_part}-secrets"
 
     def pulumi_secrets_provider_for_repo(self, repo_name: str, region: str) -> str:

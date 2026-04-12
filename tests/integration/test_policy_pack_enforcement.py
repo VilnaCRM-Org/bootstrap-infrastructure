@@ -26,23 +26,23 @@ class BucketStub(pulumi.CustomResource):
 BucketStub("bucket")
 """
 
-INLINE_ENCRYPTION_PROPS = """{
+INLINE_ENCRYPTION_PROPS = """{{
                 "acl": "{acl}",
-                "logging": {"targetBucket": "audit-logs", "targetPrefix": "bucket/"},
-                "serverSideEncryptionConfiguration": {
-                    "rule": {
-                        "applyServerSideEncryptionByDefault": {
+                "logging": {{"targetBucket": "audit-logs", "targetPrefix": "bucket/"}},
+                "serverSideEncryptionConfiguration": {{
+                    "rule": {{
+                        "applyServerSideEncryptionByDefault": {{
                             "sseAlgorithm": "AES256"
-                        }
-                    }
-                },
-                "tags": {
+                        }}
+                    }}
+                }},
+                "tags": {{
                     "Project": "demo",
                     "Environment": "dev",
                     "Owner": "platform",
                     "CostCenter": "engineering",
-                },
-            }"""
+                }},
+            }}"""
 
 SEPARATE_S3_SETTINGS_TEMPLATE = """import pulumi
 
@@ -54,7 +54,6 @@ class BucketStub(pulumi.CustomResource):
             name,
             {{
                 "acl": "{acl}",
-                "logging": {{"targetBucket": "audit-logs", "targetPrefix": "bucket/"}},
                 "tags": {{
                     "Project": "demo",
                     "Environment": "dev",

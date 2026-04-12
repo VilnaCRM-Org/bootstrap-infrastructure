@@ -957,6 +957,81 @@ def test_logging_stack_violations_cover_missing_inline_exempt_and_name_only_path
     )
 
 
+def test_storage_encryption_stack_violations_require_real_split_rules(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Split encryption resources should only count when they configure SSE."""
+    invalid_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "invalid-encryption-bucket"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::invalid-encryption-bucket"
+        ),
+    )
+    invalid_encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={"bucket": "invalid-encryption-bucket", "rules": []},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/"
+            "bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2::invalid-encryption"
+        ),
+        dependencies=[invalid_bucket],
+        property_dependencies={"bucket": [invalid_bucket]},
+    )
+    expected_violation = [
+        (
+            invalid_bucket.urn,
+            "S3 buckets must enable default server-side encryption.",
+        )
+    ]
+
+    assert (
+        policy_runtime.storage_encryption_stack_violations(
+            [invalid_bucket, invalid_encryption]
+        )
+        == expected_violation
+    )
+    assert (
+        _collect_stack_violations(
+            policy_runtime.require_storage_encryption_stack,
+            resources=[invalid_bucket, invalid_encryption],
+        )
+        == expected_violation
+    )
+
+    valid_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "valid-encryption-bucket"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::valid-encryption-bucket"
+        ),
+    )
+    valid_encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={
+            "bucket": "valid-encryption-bucket",
+            "rules": [
+                {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}}
+            ],
+        },
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/"
+            "bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2::valid-encryption"
+        ),
+        dependencies=[valid_bucket],
+        property_dependencies={"bucket": [valid_bucket]},
+    )
+
+    assert (
+        policy_runtime.storage_encryption_stack_violations(
+            [valid_bucket, valid_encryption]
+        )
+        == []
+    )
+
+
 def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
     policy_runtime: SimpleNamespace,
 ) -> None:
