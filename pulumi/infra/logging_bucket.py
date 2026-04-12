@@ -10,9 +10,71 @@ import pulumi_aws as aws
 
 import pulumi
 
-from .config import central_logging_bucket_name, settings
+from .bootstrap_settings import BootstrapSettings
+from .config import settings
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
+
+
+def central_logging_bucket_name(region: str) -> str:
+    """Compatibility wrapper for central logging bucket naming."""
+    return settings.central_logging_bucket_name(region)
+
+
+def _resolved_replication_region(
+    replication_region: str | None,
+    *,
+    settings_obj: BootstrapSettings,
+    primary_region: str,
+) -> str:
+    """Resolve and validate the replica region for centralized logging."""
+    resolved_region = (
+        replication_region or settings_obj.replication_region or "us-east-1"
+    )
+    if resolved_region == primary_region:
+        raise ValueError(
+            "replication_region "
+            f"'{resolved_region}' must differ from primary region "
+            f"'{primary_region}'."
+        )
+    return resolved_region
+
+
+def _primary_bucket_name(settings_obj: BootstrapSettings, region_name: str) -> str:
+    """Resolve the primary logging bucket name for the active settings source."""
+    if settings_obj is globals()["settings"]:
+        return central_logging_bucket_name(region_name)
+    return settings_obj.central_logging_bucket_name(region_name)
+
+
+def _replica_bucket_name(primary_bucket_name: str) -> str:
+    """Build the replica logging bucket name while enforcing S3 limits."""
+    replica_bucket_name = f"{primary_bucket_name}-replication"
+    if len(replica_bucket_name) > 63:
+        raise ValueError("Replica logging bucket name exceeds S3 63-character limit.")
+    return replica_bucket_name
+
+
+def _import_id_if_bucket_exists(
+    name: str, *, provider: aws.Provider | None = None
+) -> str | None:
+    """Return the import ID when the S3 bucket already exists."""
+    return name if _bucket_exists(name, provider=provider) else None
+
+
+def _resource_options(
+    parent: pulumi.Resource,
+    *,
+    provider: aws.Provider | None = None,
+    import_id: str | None = None,
+) -> pulumi.ResourceOptions:
+    """Build consistent resource options for logging-bucket resources."""
+    kwargs: dict[str, object] = {"parent": parent}
+    if provider is not None:
+        kwargs["provider"] = provider
+    if import_id is not None:
+        kwargs["import_"] = import_id
+    return pulumi.ResourceOptions(**kwargs)
 
 
 def _bucket_exists(name: str, *, provider: aws.Provider | None = None) -> bool:
@@ -167,62 +229,44 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         self,
         name: str,
         *,
+        settings: BootstrapSettings | None = None,
         replication_region: str | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize the central logging buckets component."""
         super().__init__("bootstrap:logging:CentralLoggingBuckets", name, None, opts)
 
+        configured_settings = settings or globals()["settings"]
         region = aws.get_region()
         account = aws.get_caller_identity()
-        resolved_region = (
-            replication_region or settings.replication_region or "us-east-1"
+        resolved_region = _resolved_replication_region(
+            replication_region,
+            settings_obj=configured_settings,
+            primary_region=region.region,
         )
-        if resolved_region == region.region:
-            raise ValueError(
-                "replication_region "
-                f"'{resolved_region}' must differ from primary region "
-                f"'{region.region}'."
-            )
         replica_provider = aws.Provider(
             f"{name}-replica-provider",
             region=resolved_region,
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        primary_bucket_name = central_logging_bucket_name(region.region)
-        replica_bucket_name = f"{primary_bucket_name}-replication"
-        if len(replica_bucket_name) > 63:
-            raise ValueError(
-                "Replica logging bucket name exceeds S3 63-character limit."
-            )
+        primary_bucket_name = _primary_bucket_name(configured_settings, region.region)
+        replica_bucket_name = _replica_bucket_name(primary_bucket_name)
 
-        primary_import_id = (
-            primary_bucket_name if _bucket_exists(primary_bucket_name) else None
+        primary_bucket_opts = _resource_options(
+            self,
+            import_id=_import_id_if_bucket_exists(primary_bucket_name),
         )
-        replica_import_id = (
-            replica_bucket_name
-            if _bucket_exists(replica_bucket_name, provider=replica_provider)
-            else None
-        )
-        primary_bucket_opts = (
-            pulumi.ResourceOptions(parent=self, import_=primary_import_id)
-            if primary_import_id
-            else pulumi.ResourceOptions(parent=self)
-        )
-        primary_resource_opts = pulumi.ResourceOptions(parent=self)
-        replica_bucket_opts = (
-            pulumi.ResourceOptions(
-                parent=self,
+        primary_resource_opts = _resource_options(self)
+        replica_bucket_opts = _resource_options(
+            self,
+            provider=replica_provider,
+            import_id=_import_id_if_bucket_exists(
+                replica_bucket_name,
                 provider=replica_provider,
-                import_=replica_import_id,
-            )
-            if replica_import_id
-            else pulumi.ResourceOptions(parent=self, provider=replica_provider)
+            ),
         )
-        replica_resource_opts = pulumi.ResourceOptions(
-            parent=self, provider=replica_provider
-        )
+        replica_resource_opts = _resource_options(self, provider=replica_provider)
 
         bucket = aws.s3.Bucket(
             f"{name}-primary",
@@ -232,7 +276,8 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                     "Purpose": "central-logging",
                     "LoggingExempt": "true",
                     "LoggingExemptReason": "Centralized S3 access log sink",
-                }
+                },
+                settings=configured_settings,
             ),
             opts=primary_bucket_opts,
         )
@@ -245,7 +290,8 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                     "Purpose": "central-logging-replica",
                     "LoggingExempt": "true",
                     "LoggingExemptReason": "Centralized S3 access log sink replica",
-                }
+                },
+                settings=configured_settings,
             ),
             opts=replica_bucket_opts,
         )
@@ -386,7 +432,10 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             assume_role_policy=apply_output(
                 bucket.arn, _replication_assume_role_policy
             ),
-            tags=base_tags({"Purpose": "central-logs-replication"}),
+            tags=base_tags(
+                {"Purpose": "central-logs-replication"},
+                settings=configured_settings,
+            ),
             opts=primary_resource_opts,
         )
 

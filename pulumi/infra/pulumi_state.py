@@ -11,19 +11,24 @@ import pulumi_aws as aws
 
 import pulumi
 
-from .config import (
-    ManagedRepository,
-    central_logging_bucket_name,
-    managed_repositories,
-    sanitize_bucket_component,
-    settings,
-    state_bucket_name_for_repo,
-)
+from .bootstrap_settings import BootstrapSettings
+from .config import managed_repositories, settings
+from .managed_repository import ManagedRepository
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
 _REPLICATION_ROLE_NAME_PREFIX = "PulumiStateRepl-"
 _MAX_IAM_ROLE_NAME_LENGTH = 64
+
+
+def central_logging_bucket_name(region: str) -> str:
+    """Compatibility wrapper for log-bucket naming."""
+    return settings.central_logging_bucket_name(region)
+
+
+def state_bucket_name_for_repo(repo_name: str) -> str:
+    """Compatibility wrapper for state-bucket naming."""
+    return settings.state_bucket_name_for_repo(repo_name)
 
 
 def _bucket_exists(name: str, *, provider: aws.Provider | None = None) -> bool:
@@ -48,9 +53,15 @@ def _bucket_exists(name: str, *, provider: aws.Provider | None = None) -> bool:
         return True
 
 
-def _resource_suffix(repo_name: str) -> str:
+def _resource_suffix(
+    repo_name: str, settings_obj: BootstrapSettings | None = None
+) -> str:
     """Convert a repo name into a safe Pulumi resource suffix."""
-    base = sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+    active_settings = settings_obj or globals()["settings"]
+    base = active_settings.sanitize_bucket_component(repo_name, "repoSlug").replace(
+        ".",
+        "-",
+    )
     normalized = repo_name.strip().lower()
     if normalized == base:
         return base
@@ -73,12 +84,17 @@ def _replication_role_name(role_suffix: str) -> str:
     return f"{_REPLICATION_ROLE_NAME_PREFIX}{_truncate_role_suffix(role_suffix)}"
 
 
-def _replication_role_suffix(repo_name: str, environment: str | None = None) -> str:
+def _replication_role_suffix(
+    repo_name: str,
+    environment: str | None = None,
+    settings_obj: BootstrapSettings | None = None,
+) -> str:
     """Build an environment-scoped suffix for S3 replication IAM roles."""
-    env = sanitize_bucket_component(
-        environment or settings.environment, "environment"
+    active_settings = settings_obj or globals()["settings"]
+    env = active_settings.sanitize_bucket_component(
+        environment or active_settings.environment, "environment"
     ).replace(".", "-")
-    return f"{_resource_suffix(repo_name)}-{env}"
+    return f"{_resource_suffix(repo_name, active_settings)}-{env}"
 
 
 def _bucket_policy(arn: str) -> str:
@@ -154,10 +170,15 @@ def _replication_role_policy(arns: Sequence[str]) -> str:
 
 
 def _resolved_replication_region(
-    replication_region: str | None, primary_region: str
+    replication_region: str | None,
+    primary_region: str,
+    settings_obj: BootstrapSettings | None = None,
 ) -> str:
     """Resolve and validate the replica region for state buckets."""
-    resolved_region = replication_region or settings.replication_region or "us-east-1"
+    active_settings = settings_obj or globals()["settings"]
+    resolved_region = (
+        replication_region or active_settings.replication_region or "us-east-1"
+    )
     if resolved_region == primary_region:
         raise ValueError(
             "replication_region "
@@ -214,14 +235,20 @@ def _state_bucket_encryption_rules() -> list[
     ]
 
 
-def _state_bucket_tags(purpose: str, repo_name: str) -> dict[str, str]:
+def _state_bucket_tags(
+    purpose: str,
+    repo: ManagedRepository,
+    settings_obj: BootstrapSettings | None = None,
+) -> dict[str, str]:
     """Return standard tags for state-bucket resources."""
     return base_tags(
         {
             "Purpose": purpose,
-            "Repository": repo_name,
-            "App": repo_name,
-        }
+            "Repository": repo.name,
+            "App": repo.name,
+            "RepositoryProject": repo.project_name,
+        },
+        settings=settings_obj,
     )
 
 
@@ -233,9 +260,16 @@ def _replica_bucket_name(bucket_name: str) -> str:
     return replica_name
 
 
-def _state_access_log_bucket_names(primary_region: str) -> tuple[str, str]:
+def _state_access_log_bucket_names(
+    primary_region: str, settings_obj: BootstrapSettings | None = None
+) -> tuple[str, str]:
     """Return deterministic primary/replica log-bucket names for state buckets."""
-    primary_logs_bucket = central_logging_bucket_name(primary_region)
+    active_settings = settings_obj or globals()["settings"]
+    primary_logs_bucket = (
+        central_logging_bucket_name(primary_region)
+        if active_settings is globals()["settings"]
+        else active_settings.central_logging_bucket_name(primary_region)
+    )
     return primary_logs_bucket, _replica_bucket_name(primary_logs_bucket)
 
 
@@ -248,12 +282,14 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         *,
         repositories: Sequence[ManagedRepository] | None = None,
         log_delivery_dependencies: Sequence[pulumi.Resource] | None = None,
+        settings: BootstrapSettings | None = None,
         replication_region: str | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize state buckets for all managed repositories."""
         super().__init__("bootstrap:pulumi:PulumiStateBuckets", name, None, opts)
 
+        self._settings = settings or globals()["settings"]
         self.state_buckets: dict[str, pulumi.Output[str]] = {}
         self.backend_urls: dict[str, pulumi.Output[str]] = {}
         self.bucket_resources: dict[str, aws.s3.Bucket] = {}
@@ -264,10 +300,10 @@ class PulumiStateBuckets(pulumi.ComponentResource):
 
         primary_region = aws.get_region().region
         resolved_region = _resolved_replication_region(
-            replication_region, primary_region
+            replication_region, primary_region, self._settings
         )
         primary_logs_bucket, replica_logs_bucket = _state_access_log_bucket_names(
-            primary_region
+            primary_region, self._settings
         )
         replica_provider = aws.Provider(
             f"{name}-replica-provider",
@@ -306,15 +342,19 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         replica_provider: aws.Provider,
     ) -> None:
         """Create state bucket resources for one managed repository."""
-        bucket_name = state_bucket_name_for_repo(repo.name)
-        suffix = _resource_suffix(repo.name)
-        role_suffix = _replication_role_suffix(repo.name)
+        bucket_name = (
+            state_bucket_name_for_repo(repo.name)
+            if self._settings is globals()["settings"]
+            else self._settings.state_bucket_name_for_repo(repo.name)
+        )
+        suffix = _resource_suffix(repo.name, self._settings)
+        role_suffix = _replication_role_suffix(repo.name, settings_obj=self._settings)
         bucket = self._create_bucket(
             f"{component_name}-{suffix}",
             bucket_name=bucket_name,
             lifecycle_rule_id="expire-old-versions",
             purpose="pulumi-state",
-            repo_name=repo.name,
+            repo=repo,
             logging_target_bucket=primary_logs_bucket,
             access_block_name=f"{component_name}-pab-{suffix}",
             ownership_name=f"{component_name}-ownership-{suffix}",
@@ -326,7 +366,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             bucket_name=_replica_bucket_name(bucket_name),
             lifecycle_rule_id="replica-expire-old-versions",
             purpose="pulumi-state-replica",
-            repo_name=repo.name,
+            repo=repo,
             logging_target_bucket=replica_logs_bucket,
             access_block_name=f"{component_name}-replica-pab-{suffix}",
             ownership_name=f"{component_name}-replica-ownership-{suffix}",
@@ -336,7 +376,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         )
         replication_role, replication_role_policy = self._create_replication_role(
             component_name,
-            repo_name=repo.name,
+            repo=repo,
             suffix=suffix,
             role_suffix=role_suffix,
             bucket=bucket,
@@ -367,7 +407,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         bucket_name: str,
         lifecycle_rule_id: str,
         purpose: str,
-        repo_name: str,
+        repo: ManagedRepository,
         logging_target_bucket: str,
         access_block_name: str,
         ownership_name: str,
@@ -379,7 +419,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         bucket = aws.s3.Bucket(
             resource_name,
             bucket=bucket_name,
-            tags=_state_bucket_tags(purpose, repo_name),
+            tags=_state_bucket_tags(purpose, repo, self._settings),
             opts=_resource_options(
                 self,
                 provider=provider,
@@ -492,7 +532,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         self,
         component_name: str,
         *,
-        repo_name: str,
+        repo: ManagedRepository,
         suffix: str,
         role_suffix: str,
         bucket: aws.s3.Bucket,
@@ -505,7 +545,11 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             assume_role_policy=apply_output(
                 bucket.arn, _replication_assume_role_policy
             ),
-            tags=_state_bucket_tags("pulumi-state-replication", repo_name),
+            tags=_state_bucket_tags(
+                "pulumi-state-replication",
+                repo,
+                self._settings,
+            ),
             opts=_resource_options(self),
         )
         replication_role_policy = aws.iam.RolePolicy(

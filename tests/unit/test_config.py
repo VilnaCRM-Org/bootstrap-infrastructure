@@ -1,5 +1,6 @@
 """Unit tests for Pulumi configuration helpers."""
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -12,7 +13,7 @@ os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / "pulumi"))
 
-from infra import config
+from infra import BootstrapSettings, ManagedRepositoryCatalog, config, logging_bucket
 from infra.config import (
     _sanitize_bucket_component,
     automation_role_name,
@@ -23,6 +24,25 @@ from infra.config import (
     settings,
     state_bucket_name_for_repo,
 )
+
+
+def _bootstrap_settings(**overrides) -> BootstrapSettings:
+    defaults = {
+        "org": "VilnaCRM-Org",
+        "repo": "bootstrap-infrastructure",
+        "environment": "dev",
+        "owner": "platform",
+        "cost_center": "engineering",
+        "github_branch": None,
+        "logging_prefix": "company",
+        "replication_region": "us-west-2",
+        "github_token": None,
+        "github_oidc_provider_arn": None,
+        "repository_catalog_path": None,
+        "managed_repo_overrides": None,
+    }
+    defaults.update(overrides)
+    return BootstrapSettings(**defaults)
 
 
 def test_sanitize_bucket_component_normalizes_case_and_invalid_chars():
@@ -76,6 +96,11 @@ def test_sanitize_bucket_component_rejects_dot_hyphen_adjacency():
         _sanitize_bucket_component("my.-repo", "repoSlug")
 
 
+def test_public_sanitize_bucket_component_wrapper():
+    """The public compatibility wrapper delegates to the typed settings object."""
+    assert config.sanitize_bucket_component("My_App.repo", "repoSlug") == "my-app.repo"  # nosec B101
+
+
 def test_require_config_value_fallback(monkeypatch):
     """Fallbacks are used when test defaults are allowed."""
 
@@ -113,6 +138,32 @@ def test_require_config_value_returns_value(monkeypatch):
     assert config._require_config_value("present", "fallback") == "value"  # nosec B101
 
 
+def test_bootstrap_settings_require_config_value_returns_value(monkeypatch):
+    """Typed settings helpers should return configured values unchanged."""
+
+    class DummyCfg:
+        def get(self, key):
+            return "value"
+
+    monkeypatch.delenv("PULUMI_ALLOW_TEST_DEFAULTS", raising=False)
+    assert (
+        BootstrapSettings.require_config_value(DummyCfg(), "present", "fallback")
+        == "value"
+    )  # nosec B101
+
+
+def test_bootstrap_settings_require_config_value_raises(monkeypatch):
+    """Typed settings helpers should raise when defaults are disabled."""
+
+    class DummyCfg:
+        def get(self, key):
+            return None
+
+    monkeypatch.delenv("PULUMI_ALLOW_TEST_DEFAULTS", raising=False)
+    with pytest.raises(pulumi.ConfigMissingError):
+        BootstrapSettings.require_config_value(DummyCfg(), "missing", "fallback")
+
+
 def test_load_managed_repo_overrides_validation():
     """managedRepositories input validation enforces structure."""
     assert config._load_managed_repo_overrides(None) is None  # nosec B101
@@ -133,13 +184,22 @@ def test_load_managed_repo_overrides_validation():
 def test_load_managed_repo_overrides_success():
     """Valid managedRepositories values are normalized."""
     overrides = config._load_managed_repo_overrides(
-        ["repo", {"name": "repo2", "defaultBranch": "dev"}]
+        [
+            "repo",
+            {
+                "name": "repo2",
+                "defaultBranch": "dev",
+                "project": "core-service",
+            },
+        ]
     )
     assert overrides is not None  # nosec B101
     assert overrides[0].name == "repo"  # nosec B101
     assert overrides[0].default_branch == "main"  # nosec B101
+    assert overrides[0].project_name == "repo"  # nosec B101
     assert overrides[1].name == "repo2"  # nosec B101
     assert overrides[1].default_branch == "dev"  # nosec B101
+    assert overrides[1].project_name == "core-service"  # nosec B101
 
 
 def test_state_bucket_name_requires_repo(monkeypatch):
@@ -178,6 +238,129 @@ def test_managed_repositories_fallbacks(monkeypatch):
     monkeypatch.setattr(settings, "repo", None)
     with pytest.raises(ValueError):
         config.managed_repositories()
+
+
+def test_managed_repositories_support_repository_catalog_path(tmp_path, monkeypatch):
+    """managed_repositories can be loaded from a JSON repository catalog."""
+    config.managed_repositories.cache_clear()
+    catalog_path = tmp_path / "repositories.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "repositories": [
+                    {
+                        "name": "user-service-infrastructure",
+                        "defaultBranch": "main",
+                        "project": "user-service",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(settings, "managed_repo_overrides", None)
+    monkeypatch.setattr(settings, "repo", None)
+    monkeypatch.setattr(settings, "repository_catalog_path", str(catalog_path))
+
+    repos = config.managed_repositories()
+
+    assert repos[0].name == "user-service-infrastructure"  # nosec B101
+    assert repos[0].default_branch == "main"  # nosec B101
+    assert repos[0].project_name == "user-service"  # nosec B101
+
+    config.managed_repositories.cache_clear()
+    monkeypatch.setattr(settings, "repository_catalog_path", None)
+
+
+def test_managed_repository_catalog_rejects_empty_list():
+    """Repository catalogs must contain at least one repository."""
+    with pytest.raises(ValueError):
+        ManagedRepositoryCatalog([])
+
+
+def test_managed_repository_catalog_load_from_items_none():
+    """`None` input is treated as an unset inline config value."""
+    assert ManagedRepositoryCatalog.load_from_items(None) == []  # nosec B101
+
+
+def test_managed_repository_catalog_from_settings_uses_inline_config():
+    """Inline Pulumi config can define the managed repository catalog."""
+
+    class DummyCfg:
+        def get_object(self, key):
+            if key == "managedRepositories":
+                return [
+                    {
+                        "name": "core-service-infrastructure",
+                        "defaultBranch": "main",
+                        "project": "core-service",
+                    }
+                ]
+            return None
+
+    catalog = ManagedRepositoryCatalog.from_settings(
+        _bootstrap_settings(repo=None),
+        DummyCfg(),
+    )
+
+    assert catalog.project_mapping() == {"core-service-infrastructure": "core-service"}  # nosec B101
+
+
+def test_managed_repository_catalog_load_from_json_relative_path(tmp_path, monkeypatch):
+    """Relative repository catalog paths resolve from the current working directory."""
+    catalog_path = tmp_path / "repositories.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "repositories": [
+                    {
+                        "name": "user-service-infrastructure",
+                        "defaultBranch": "main",
+                        "project": "user-service",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(tmp_path)
+    repositories = ManagedRepositoryCatalog.load_from_json_file("repositories.json")
+
+    assert repositories[0].project_name == "user-service"  # nosec B101
+
+
+def test_managed_repository_catalog_load_from_json_requires_file(tmp_path):
+    """Repository catalog paths must point to an existing JSON file."""
+    with pytest.raises(ValueError, match="must point to a JSON file"):
+        ManagedRepositoryCatalog.load_from_json_file(str(tmp_path / "missing.json"))
+
+
+def test_managed_repository_catalog_load_from_json_requires_object(tmp_path):
+    """Repository catalog files must contain an object payload."""
+    catalog_path = tmp_path / "repositories.json"
+    catalog_path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be an object"):
+        ManagedRepositoryCatalog.load_from_json_file(str(catalog_path))
+
+
+def test_managed_repository_catalog_load_from_json_requires_repositories_key(tmp_path):
+    """Repository catalog files must expose the `repositories` key."""
+    catalog_path = tmp_path / "repositories.json"
+    catalog_path.write_text(json.dumps({"items": []}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must include 'repositories'"):
+        ManagedRepositoryCatalog.load_from_json_file(str(catalog_path))
+
+
+def test_managed_repository_catalog_requires_non_empty_project_name():
+    """Repository catalog entries must define a non-empty project name."""
+    with pytest.raises(ValueError, match="non-empty 'project'"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "defaultBranch": "main", "project": " "}
+        )
 
 
 def test_state_bucket_name_length_guard(monkeypatch):
@@ -235,6 +418,35 @@ def test_automation_role_name_length_guard(monkeypatch):
     monkeypatch.setattr(settings, "environment", "e" * 40)
     with pytest.raises(ValueError):
         automation_role_name("r" * 40)
+
+
+def test_managed_repository_validation_rejects_blank_name():
+    with pytest.raises(ValueError, match="name must be a non-empty string"):
+        config.ManagedRepository(name=" ", default_branch="main")
+
+
+def test_managed_repository_validation_rejects_blank_default_branch():
+    with pytest.raises(ValueError, match="default_branch must be non-empty"):
+        config.ManagedRepository(name="repo", default_branch=" ")
+
+
+def test_managed_repository_validation_rejects_blank_project():
+    with pytest.raises(ValueError, match="project must be non-empty"):
+        config.ManagedRepository(name="repo", default_branch="main", project=" ")
+
+
+def test_primary_logging_bucket_name_uses_injected_settings():
+    """The logging bucket helper can resolve names from injected settings."""
+    injected_settings = _bootstrap_settings(
+        repo=None,
+        environment="test",
+        logging_prefix="company",
+    )
+
+    assert (
+        logging_bucket._primary_bucket_name(injected_settings, "eu-central-1")
+        == "company-central-logs-eu-central-1-test"
+    )  # nosec B101
 
 
 def test_central_logging_bucket_length_guard(monkeypatch):

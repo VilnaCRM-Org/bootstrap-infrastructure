@@ -4,8 +4,11 @@ from pathlib import Path
 
 import pytest
 from infra import (
+    BootstrapInfrastructure,
+    BootstrapInfrastructureDependencies,
     CentralLoggingBuckets,
     GitHubAutomation,
+    ManagedRepositoryCatalog,
     PulumiSecretsKeys,
     PulumiStateBuckets,
     S3BackupPlan,
@@ -124,6 +127,65 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
         replica_state_bucket_logging_state["targetBucket"]
         == "company-central-logs-us-east-1-test-replication"
     )  # nosec B101
+
+
+def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypatch):  # noqa: ARG001
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    monkeypatch.setattr(config.settings, "repo", "core-service-infrastructure")
+    monkeypatch.setattr(config.settings, "org", "VilnaCRM-Org")
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+    monkeypatch.setattr(
+        config.settings,
+        "github_oidc_provider_arn",
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+    )
+    monkeypatch.setattr(
+        pulumi_state, "_bucket_exists", lambda _name, provider=None: False
+    )
+    monkeypatch.setattr(
+        logging_bucket, "_bucket_exists", lambda _name, provider=None: False
+    )
+    monkeypatch.setattr(github_oidc, "_role_exists", lambda _name: False)
+
+    repository_catalog = ManagedRepositoryCatalog(
+        [
+            config.ManagedRepository(
+                name="core-service-infrastructure",
+                default_branch="main",
+                project="core-service",
+            )
+        ]
+    )
+    bootstrap = BootstrapInfrastructure(
+        "bootstrap",
+        settings=config.settings,
+        repository_catalog=repository_catalog,
+        dependencies=BootstrapInfrastructureDependencies(),
+    )
+
+    assert bootstrap.outputs["managedRepositoryProjects"] == {
+        "core-service-infrastructure": "core-service"
+    }  # nosec B101
+
+    assert bootstrap.automation is not None  # nosec B101
+    _sync_await(future_output(bootstrap.automation.repository.repository_url))
+    _sync_await(future_output(bootstrap.automation.role.arn))
+
+    repository_state = next(
+        state
+        for resource_type, _name, state in pulumi_mocks.resources
+        if resource_type == "aws:ecr/repository:Repository"
+    )
+    role_state = next(
+        state
+        for resource_type, _name, state in pulumi_mocks.resources
+        if resource_type == "aws:iam/role:Role"
+        and state.get("name") == "PulumiAutomation-core-service-infrastructure-test"
+    )
+
+    assert repository_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
+    assert role_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
 
 
 def test_state_buckets_reject_same_replication_region(  # noqa: ARG001

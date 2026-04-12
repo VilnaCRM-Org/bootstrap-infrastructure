@@ -1,20 +1,17 @@
 """Tagging helpers for infrastructure resources."""
 
-import pulumi
+from __future__ import annotations
 
-from ..config import settings
+from ..bootstrap_settings import BootstrapSettings
+from ..config import settings as default_settings
 
 
-def base_tags(extra: dict[str, str] | None = None) -> dict[str, str]:
+def base_tags(
+    extra: dict[str, str] | None = None,
+    *,
+    settings: BootstrapSettings | None = None,
+    app_name: str | None = None,
+) -> dict[str, str]:
     """Return the standard tag set merged with optional extra tags."""
-    tags = {
-        "Project": pulumi.get_project(),
-        "Environment": settings.environment,
-        "Owner": settings.owner,
-        "CostCenter": settings.cost_center,
-    }
-    if settings.repo:
-        tags["App"] = settings.repo
-    if extra:
-        tags.update(extra)
-    return tags
+    active_settings = settings or default_settings
+    return active_settings.base_tags(extra, app_name=app_name)

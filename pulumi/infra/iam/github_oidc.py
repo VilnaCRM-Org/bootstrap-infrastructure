@@ -11,13 +11,9 @@ import pulumi_aws as aws
 
 import pulumi
 
-from ..config import (
-    ManagedRepository,
-    managed_repositories,
-    sanitize_bucket_component,
-    settings,
-    state_bucket_name_for_repo,
-)
+from ..bootstrap_settings import BootstrapSettings
+from ..config import managed_repositories, settings
+from ..managed_repository import ManagedRepository
 from ..utils.outputs import apply_output
 from ..utils.tags import base_tags
 
@@ -38,9 +34,13 @@ def _role_exists(name: str) -> bool:
         return True
 
 
-def _repo_suffix(repo_name: str) -> str:
+def _repo_suffix(repo_name: str, settings_obj: BootstrapSettings | None = None) -> str:
     """Return a readable role suffix that stays unique after normalization."""
-    base = sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+    active_settings = settings_obj or settings
+    base = active_settings.sanitize_bucket_component(repo_name, "repoSlug").replace(
+        ".",
+        "-",
+    )
     normalized = repo_name.strip().lower()
     if normalized == base:
         return base
@@ -146,13 +146,15 @@ def _deploy_policy_from_values(values: Sequence[str | None]) -> str:
 
 
 def _provider_resource(
-    name: str, parent: pulumi.ComponentResource
+    name: str,
+    parent: pulumi.ComponentResource,
+    settings_obj: BootstrapSettings,
 ) -> aws.iam.OpenIdConnectProvider:
     """Return the shared GitHub Actions OIDC provider resource."""
-    if settings.github_oidc_provider_arn:
+    if settings_obj.github_oidc_provider_arn:
         return aws.iam.OpenIdConnectProvider.get(
             f"{name}-provider",
-            settings.github_oidc_provider_arn,
+            settings_obj.github_oidc_provider_arn,
             opts=pulumi.ResourceOptions(parent=parent),
         )
     return aws.iam.OpenIdConnectProvider(
@@ -189,12 +191,14 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         *,
         repositories: Sequence[ManagedRepository] | None = None,
         secrets_key_arns: Mapping[str, pulumi.Input[str]] | None = None,
+        settings: BootstrapSettings | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize OIDC provider and deploy roles for repositories."""
         super().__init__("bootstrap:iam:GitHubOidcRoles", name, None, opts)
 
-        self.provider = _provider_resource(name, self)
+        self._settings = settings or globals()["settings"]
+        self.provider = _provider_resource(name, self, self._settings)
         self.deploy_role_arns: dict[str, pulumi.Output[str]] = {}
 
         repos = (
@@ -217,13 +221,14 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         secrets_key_arns: Mapping[str, pulumi.Input[str]] | None,
     ) -> pulumi.Output[str]:
         """Create or import the deploy role and attach its least-privilege policy."""
-        bucket_name = state_bucket_name_for_repo(repo.name)
-        repo_suffix = _repo_suffix(repo.name)
+        bucket_name = self._settings.state_bucket_name_for_repo(repo.name)
+        repo_suffix = _repo_suffix(repo.name, self._settings)
         role = self._deploy_role_resource(
             component_name,
             repo_name=repo.name,
             repo_suffix=repo_suffix,
-            branch_name=settings.github_branch or repo.default_branch or "main",
+            branch_name=self._settings.github_branch or repo.default_branch or "main",
+            repository_project=repo.project_name,
         )
         key_arn = _required_secret_key_arn(repo.name, secrets_key_arns)
         policy = apply_output(
@@ -252,6 +257,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         repo_name: str,
         repo_suffix: str,
         branch_name: str,
+        repository_project: str,
     ) -> aws.iam.Role:
         """Create or import the IAM role used by GitHub Actions for one repo."""
         role_name = _role_name_for_suffix(repo_suffix)
@@ -265,7 +271,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
             self.provider.arn,
             lambda arn: _assume_role_policy_for_repo(
                 arn,
-                settings.org,
+                self._settings.org,
                 repo_name,
                 branch_name,
             ),
@@ -279,7 +285,9 @@ class GitHubOidcRoles(pulumi.ComponentResource):
                     "Purpose": "pulumi-deploy",
                     "Repository": repo_name,
                     "App": repo_name,
-                }
+                    "RepositoryProject": repository_project,
+                },
+                settings=self._settings,
             ),
             opts=pulumi.ResourceOptions(parent=self),
         )
