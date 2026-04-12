@@ -470,6 +470,31 @@ def test_managed_repository_catalog_load_from_json_requires_object(tmp_path):
         ManagedRepositoryCatalog.load_from_json_file(str(catalog_path))
 
 
+def test_managed_repository_catalog_load_from_json_requires_valid_json(tmp_path):
+    """Repository catalog files must contain valid JSON."""
+    catalog_path = tmp_path / "repositories.json"
+    catalog_path.write_text("{not-json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="is not valid JSON"):
+        ManagedRepositoryCatalog.load_from_json_file(str(catalog_path))
+
+
+def test_managed_repository_catalog_load_from_json_normalizes_read_failures(
+    tmp_path, monkeypatch
+):
+    """Repository catalog read errors should surface as ValueError."""
+    catalog_path = tmp_path / "repositories.json"
+    catalog_path.write_text("{}", encoding="utf-8")
+
+    def raise_os_error(*_args, **_kwargs):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(Path, "read_text", raise_os_error)
+
+    with pytest.raises(ValueError, match="Unable to read repository catalog JSON"):
+        ManagedRepositoryCatalog.load_from_json_file(str(catalog_path))
+
+
 def test_managed_repository_catalog_load_from_json_requires_repositories_key(tmp_path):
     """Repository catalog files must expose the `repositories` key."""
     catalog_path = tmp_path / "repositories.json"
@@ -484,6 +509,22 @@ def test_managed_repository_catalog_requires_non_empty_project_name():
     with pytest.raises(ValueError, match="non-empty 'project'"):
         ManagedRepositoryCatalog.repository_from_item(
             {"name": "repo", "defaultBranch": "main", "project": " "}
+        )
+
+
+def test_managed_repository_catalog_rejects_explicit_empty_default_branch():
+    """Explicit empty defaultBranch values should not fall back to main."""
+    with pytest.raises(ValueError, match="defaultBranch values must be non-empty"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "defaultBranch": "", "project": "platform"}
+        )
+
+
+def test_managed_repository_catalog_rejects_explicit_empty_project():
+    """Explicit empty project values should not fall back to the repo name."""
+    with pytest.raises(ValueError, match="non-empty 'project'"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "defaultBranch": "main", "project": ""}
         )
 
 

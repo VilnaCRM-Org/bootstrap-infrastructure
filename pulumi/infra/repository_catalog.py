@@ -92,7 +92,16 @@ class ManagedRepositoryCatalog:
                 f"repositoryCatalogPath '{resolved_path}' must point to a JSON file."
             )
 
-        payload = json.loads(resolved_path.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(resolved_path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise ValueError(
+                f"Unable to read repository catalog JSON '{resolved_path}'."
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Repository catalog JSON '{resolved_path}' is not valid JSON."
+            ) from exc
         if not isinstance(payload, dict):
             raise ValueError("Repository catalog JSON must be an object.")
         repositories = payload.get("repositories")
@@ -118,8 +127,12 @@ class ManagedRepositoryCatalog:
     def _repository_from_mapping(item: dict[str, Any]) -> ManagedRepository:
         """Build a repository definition from a mapping entry."""
         raw_name = item.get("name")
-        raw_default_branch = item.get("defaultBranch") or "main"
-        raw_project = item.get("project") or raw_name
+        raw_default_branch = item.get("defaultBranch")
+        if raw_default_branch is None:
+            raw_default_branch = "main"
+        raw_project = item.get("project")
+        if raw_project is None:
+            raw_project = raw_name
 
         if not isinstance(raw_name, str) or not raw_name.strip():
             raise ValueError(
