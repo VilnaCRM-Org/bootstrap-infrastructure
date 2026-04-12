@@ -1,3 +1,4 @@
+import asyncio
 import runpy
 from pathlib import Path
 
@@ -21,6 +22,16 @@ from infra.utils.outputs import future_output
 from pulumi.runtime.sync_await import _sync_await
 
 import pulumi
+
+
+def _resource_state_by_name(pulumi_mocks, name: str) -> dict:
+    """Wait briefly for an asynchronously registered mock resource to appear."""
+    for _ in range(50):
+        for _typ, resource_name, state in pulumi_mocks.resources:
+            if resource_name == name:
+                return state
+        asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.01))
+    pytest.fail(f"Expected mock resource {name!r} to be registered.")
 
 
 def test_central_logging_buckets_rejects_long_replica(  # noqa: ARG001
@@ -89,31 +100,28 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
         for state in resource_states
         if state.get("bucket") == "company-central-logs-us-east-1-test"
     )
-    state_bucket_state = next(
-        state
-        for state in resource_states
-        if state.get("bucket") == "pulumi-repo-test-state"
+    central_logging_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "central-logging-primary-encryption"
     )
-    replica_state_bucket_state = next(
-        state
-        for state in resource_states
-        if state.get("bucket") == "pulumi-repo-test-state-replication"
+    state_bucket_logging_state = _resource_state_by_name(
+        pulumi_mocks, "pulumi-state-repo-logging"
+    )
+    replica_state_bucket_logging_state = _resource_state_by_name(
+        pulumi_mocks, "pulumi-state-replica-repo-logging"
     )
 
-    assert (
-        central_logging_state["serverSideEncryptionConfiguration"]["rule"] is not None
-    )  # nosec B101
+    assert central_logging_encryption_state["rules"] is not None  # nosec B101
     assert central_logging_state["tags"]["LoggingExempt"] == "true"  # nosec B101
     assert (
         central_logging_state["tags"]["LoggingExemptReason"]
         == "Centralized S3 access log sink"
     )  # nosec B101
     assert (
-        state_bucket_state["logging"]["targetBucket"]
+        state_bucket_logging_state["targetBucket"]
         == "company-central-logs-us-east-1-test"
     )  # nosec B101
     assert (
-        replica_state_bucket_state["logging"]["targetBucket"]
+        replica_state_bucket_logging_state["targetBucket"]
         == "company-central-logs-us-east-1-test-replication"
     )  # nosec B101
 

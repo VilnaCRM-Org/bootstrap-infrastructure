@@ -185,27 +185,31 @@ def _resource_options(
     return pulumi.ResourceOptions(**kwargs)
 
 
-def _state_bucket_lifecycle_rule(rule_id: str) -> aws.s3.BucketLifecycleRuleArgs:
+def _state_bucket_lifecycle_rule(
+    rule_id: str,
+) -> aws.s3.BucketLifecycleConfigurationRuleArgs:
     """Return the shared lifecycle rule for Pulumi state buckets."""
-    return aws.s3.BucketLifecycleRuleArgs(
+    return aws.s3.BucketLifecycleConfigurationRuleArgs(
         id=rule_id,
-        enabled=True,
-        abort_incomplete_multipart_upload_days=7,
-        noncurrent_version_expiration=aws.s3.BucketLifecycleRuleNoncurrentVersionExpirationArgs(
-            days=365
+        status="Enabled",
+        abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
+            days_after_initiation=7
+        ),
+        noncurrent_version_expiration=aws.s3.BucketLifecycleConfigurationRuleNoncurrentVersionExpirationArgs(
+            noncurrent_days=365
         ),
     )
 
 
-def _state_bucket_encryption() -> aws.s3.BucketServerSideEncryptionConfigurationArgs:
+def _state_bucket_encryption_rules() -> list[aws.s3.BucketServerSideEncryptionConfigurationRuleArgs]:
     """Return the shared AES256 bucket encryption policy."""
-    return aws.s3.BucketServerSideEncryptionConfigurationArgs(
-        rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+    return [
+        aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
             apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                 sse_algorithm="AES256"
             )
         )
-    )
+    ]
 
 
 def _state_bucket_tags(purpose: str, repo_name: str) -> dict[str, str]:
@@ -256,7 +260,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             list(log_delivery_dependencies) if log_delivery_dependencies else None
         )
 
-        primary_region = aws.get_region().name
+        primary_region = aws.get_region().region
         resolved_region = _resolved_replication_region(
             replication_region, primary_region
         )
@@ -373,13 +377,6 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         bucket = aws.s3.Bucket(
             resource_name,
             bucket=bucket_name,
-            versioning=aws.s3.BucketVersioningArgs(enabled=True),
-            logging=aws.s3.BucketLoggingArgs(
-                target_bucket=logging_target_bucket,
-                target_prefix=f"server-access/{bucket_name}/",
-            ),
-            lifecycle_rules=[_state_bucket_lifecycle_rule(lifecycle_rule_id)],
-            server_side_encryption_configuration=_state_bucket_encryption(),
             tags=_state_bucket_tags(purpose, repo_name),
             opts=_resource_options(
                 self,
@@ -387,6 +384,13 @@ class PulumiStateBuckets(pulumi.ComponentResource):
                 import_id=import_id,
                 depends_on=self._log_delivery_dependencies,
             ),
+        )
+        self._configure_bucket_settings(
+            resource_name,
+            bucket=bucket,
+            lifecycle_rule_id=lifecycle_rule_id,
+            logging_target_bucket=logging_target_bucket,
+            provider=provider,
         )
         self._configure_bucket_safeguards(
             access_block_name,
@@ -396,6 +400,48 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             provider=provider,
         )
         return bucket
+
+    def _configure_bucket_settings(
+        self,
+        resource_name: str,
+        *,
+        bucket: aws.s3.Bucket,
+        lifecycle_rule_id: str,
+        logging_target_bucket: str,
+        provider: aws.Provider | None = None,
+    ) -> None:
+        """Attach versioning, logging, lifecycle, and encryption resources."""
+        aws.s3.BucketVersioning(
+            f"{resource_name}-versioning",
+            bucket=bucket.id,
+            versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
+                status="Enabled"
+            ),
+            opts=_resource_options(self, provider=provider, depends_on=[bucket]),
+        )
+        aws.s3.BucketLogging(
+            f"{resource_name}-logging",
+            bucket=bucket.id,
+            target_bucket=logging_target_bucket,
+            target_prefix=pulumi.Output.format("server-access/{}/", bucket.bucket),
+            opts=_resource_options(
+                self,
+                provider=provider,
+                depends_on=[bucket, *(self._log_delivery_dependencies or [])],
+            ),
+        )
+        aws.s3.BucketLifecycleConfiguration(
+            f"{resource_name}-lifecycle",
+            bucket=bucket.id,
+            rules=[_state_bucket_lifecycle_rule(lifecycle_rule_id)],
+            opts=_resource_options(self, provider=provider, depends_on=[bucket]),
+        )
+        aws.s3.BucketServerSideEncryptionConfiguration(
+            f"{resource_name}-encryption",
+            bucket=bucket.id,
+            rules=_state_bucket_encryption_rules(),
+            opts=_resource_options(self, provider=provider, depends_on=[bucket]),
+        )
 
     def _configure_bucket_safeguards(
         self,

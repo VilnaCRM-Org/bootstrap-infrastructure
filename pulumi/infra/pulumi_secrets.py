@@ -55,7 +55,7 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
             list(repositories) if repositories is not None else managed_repositories()
         )  # pragma: no mutate
         account_id = aws.get_caller_identity().account_id  # pragma: no mutate
-        region = aws.get_region().name  # pragma: no mutate
+        region = aws.get_region().region  # pragma: no mutate
 
         self.key_arns: dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
         self.alias_names: dict[str, pulumi.Output[str]] = {}  # pragma: no mutate

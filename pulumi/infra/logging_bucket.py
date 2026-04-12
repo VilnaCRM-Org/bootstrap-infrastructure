@@ -178,11 +178,11 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         resolved_region = (
             replication_region or settings.replication_region or "us-east-1"
         )
-        if resolved_region == region.name:
+        if resolved_region == region.region:
             raise ValueError(
                 "replication_region "
                 f"'{resolved_region}' must differ from primary region "
-                f"'{region.name}'."
+                f"'{region.region}'."
             )
         replica_provider = aws.Provider(
             f"{name}-replica-provider",
@@ -190,7 +190,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             opts=pulumi.ResourceOptions(parent=self),
         )
 
-        primary_bucket_name = central_logging_bucket_name(region.name)
+        primary_bucket_name = central_logging_bucket_name(region.region)
         replica_bucket_name = f"{primary_bucket_name}-replication"
         if len(replica_bucket_name) > 63:
             raise ValueError(
@@ -227,13 +227,6 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         bucket = aws.s3.Bucket(
             f"{name}-primary",
             bucket=primary_bucket_name,
-            server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
-                rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                        sse_algorithm="AES256"
-                    )
-                )
-            ),
             tags=base_tags(
                 {
                     "Purpose": "central-logging",
@@ -247,13 +240,6 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         replica_bucket = aws.s3.Bucket(
             f"{name}-replica",
             bucket=replica_bucket_name,
-            server_side_encryption_configuration=aws.s3.BucketServerSideEncryptionConfigurationArgs(
-                rule=aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
-                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
-                        sse_algorithm="AES256"
-                    )
-                )
-            ),
             tags=base_tags(
                 {
                     "Purpose": "central-logging-replica",
@@ -262,6 +248,32 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 }
             ),
             opts=replica_bucket_opts,
+        )
+
+        aws.s3.BucketServerSideEncryptionConfiguration(
+            f"{name}-primary-encryption",
+            bucket=bucket.id,
+            rules=[
+                aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                        sse_algorithm="AES256"
+                    )
+                )
+            ],
+            opts=primary_resource_opts,
+        )
+
+        aws.s3.BucketServerSideEncryptionConfiguration(
+            f"{name}-replica-encryption",
+            bucket=replica_bucket.id,
+            rules=[
+                aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
+                        sse_algorithm="AES256"
+                    )
+                )
+            ],
+            opts=replica_resource_opts,
         )
 
         aws.s3.BucketVersioning(
@@ -289,7 +301,6 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 aws.s3.BucketLifecycleConfigurationRuleArgs(
                     id="logs-lifecycle",
                     status="Enabled",
-                    prefix="",
                     abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
                         days_after_initiation=7
                     ),
@@ -316,7 +327,6 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 aws.s3.BucketLifecycleConfigurationRuleArgs(
                     id="replica-lifecycle",
                     status="Enabled",
-                    prefix="",
                     abort_incomplete_multipart_upload=aws.s3.BucketLifecycleConfigurationRuleAbortIncompleteMultipartUploadArgs(
                         days_after_initiation=7
                     ),
