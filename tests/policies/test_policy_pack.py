@@ -69,10 +69,14 @@ def policy_runtime(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             iam_policy_identifier=guardrails.iam_policy_identifier,
             invalid_region=guardrails.invalid_region,
             is_public_bucket_allowlisted=guardrails.is_public_bucket_allowlisted,
+            logging_stack_violations=guardrails.logging_stack_violations,
             logging_violations=guardrails.logging_violations,
             missing_required_tags=guardrails.missing_required_tags,
             open_admin_ports=guardrails.open_admin_ports,
             production_database_violations=guardrails.production_database_violations,
+            storage_encryption_stack_violations=(
+                guardrails.storage_encryption_stack_violations
+            ),
             storage_encryption_violations=guardrails.storage_encryption_violations,
             wildcard_iam_violations=guardrails.wildcard_iam_violations,
             POLICY_PACK_NAME=pack.POLICY_PACK_NAME,
@@ -83,8 +87,10 @@ def policy_runtime(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             enforce_allowed_regions=pack.enforce_allowed_regions,
             require_default_tags=pack.require_default_tags,
             require_logging=pack.require_logging,
+            require_logging_stack=pack.require_logging_stack,
             require_production_database_safety=pack.require_production_database_safety,
             require_storage_encryption=pack.require_storage_encryption,
+            require_storage_encryption_stack=pack.require_storage_encryption_stack,
         )
     finally:
         for module_name in injected_modules:
@@ -122,6 +128,37 @@ def _collect_violations(
     """Run a validator and capture every reported violation."""
     violations: list[str] = []
     validator(_policy_args(resource_type, props), violations.append)
+    return violations
+
+
+def _stack_resource(
+    resource_type: str,
+    props: dict[str, Any],
+    *,
+    urn: str,
+    dependencies: list[Any] | None = None,
+    property_dependencies: dict[str, list[Any]] | None = None,
+) -> SimpleNamespace:
+    """Create the subset of a PolicyResource used by stack validators."""
+    return SimpleNamespace(
+        resource_type=resource_type,
+        props=props,
+        urn=urn,
+        dependencies=dependencies or [],
+        property_dependencies=property_dependencies or {},
+    )
+
+
+def _collect_stack_violations(
+    validator, *, resources: list[Any]
+) -> list[tuple[str | None, str]]:
+    """Run a stack validator and capture every reported violation."""
+    violations: list[tuple[str | None, str]] = []
+
+    def report_violation(message: str, urn: str | None = None) -> None:
+        violations.append((urn, message))
+
+    validator(SimpleNamespace(resources=resources), report_violation)
     return violations
 
 
@@ -671,6 +708,45 @@ def test_storage_encryption_and_logging_violations_cover_supported_resources(
     )
 
 
+def test_logging_stack_violations_support_split_s3_logging(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Allow S3 buckets covered by standalone logging resources."""
+    bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={
+            "bucket": "logs-bucket",
+            "tags": {
+                "Project": "demo",
+                "Environment": "dev",
+                "Owner": "platform",
+                "CostCenter": "engineering",
+            },
+        },
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::logs-bucket",
+    )
+    logging = _stack_resource(
+        "aws:s3/bucketLogging:BucketLogging",
+        props={
+            "bucket": "logs-bucket",
+            "targetBucket": "audit-logs",
+            "targetPrefix": "server-access/logs-bucket/",
+        },
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucketLogging:BucketLogging::logs-bucket-logging",
+        dependencies=[bucket],
+        property_dependencies={"bucket": [bucket]},
+    )
+
+    assert policy_runtime.logging_stack_violations([bucket, logging]) == []
+    assert (
+        _collect_stack_violations(
+            policy_runtime.require_logging_stack,
+            resources=[bucket, logging],
+        )
+        == []
+    )
+
+
 def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
     policy_runtime: SimpleNamespace,
 ) -> None:
@@ -1075,6 +1151,32 @@ def test_pack_validators_report_expected_messages(
         props={"encrypted": False},
     )
     assert violations == ["EBS volumes must enable encryption at rest."]
+
+    bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "logs-bucket"},
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::logs",
+    )
+    encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={
+            "bucket": "logs-bucket",
+            "rule": {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}},
+        },
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2::logs-encryption",
+        dependencies=[bucket],
+        property_dependencies={"bucket": [bucket]},
+    )
+    assert (
+        policy_runtime.storage_encryption_stack_violations([bucket, encryption]) == []
+    )
+    assert (
+        _collect_stack_violations(
+            policy_runtime.require_storage_encryption_stack,
+            resources=[bucket, encryption],
+        )
+        == []
+    )
 
     violations = _collect_violations(
         policy_runtime.require_logging,
