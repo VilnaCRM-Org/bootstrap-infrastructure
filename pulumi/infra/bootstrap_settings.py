@@ -118,9 +118,9 @@ class BootstrapSettings:
             raise ValueError(
                 f"{label} cannot be fully sanitized; please use a different value."
             )
-        if len(candidate) < 3 or len(candidate) > 63:
+        if len(candidate) > 63:
             raise ValueError(
-                f"{label} must resolve to between 3 and 63 characters for S3 buckets."
+                f"{label} must resolve to no more than 63 characters for S3 buckets."
             )
 
         return candidate

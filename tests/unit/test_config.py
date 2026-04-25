@@ -78,10 +78,15 @@ def test_sanitize_bucket_component_rejects_empty_result():
         _sanitize_bucket_component("???", "repoSlug")
 
 
-def test_sanitize_bucket_component_length_constraints():
-    """Sanitizer should reject values shorter than 3 chars."""
+def test_sanitize_bucket_component_allows_short_components():
+    """Short components are valid when the final bucket name is long enough."""
+    assert _sanitize_bucket_component("aa", "repoSlug") == "aa"  # nosec B101
+
+
+def test_sanitize_bucket_component_rejects_long_components():
+    """Sanitizer should reject components longer than S3 bucket names allow."""
     with pytest.raises(ValueError):
-        _sanitize_bucket_component("aa", "repoSlug")
+        _sanitize_bucket_component("a" * 64, "repoSlug")
 
 
 def test_sanitize_bucket_component_rejects_ipv4():

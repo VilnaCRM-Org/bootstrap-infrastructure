@@ -14,7 +14,7 @@ PREPARE_POLICY_PACK = PROJECT_ROOT / "scripts" / "prepare_policy_pack.py"
 MAIN_PY_TEMPLATE = """import pulumi
 
 
-class BucketStub(pulumi.CustomResource):
+class BucketStub(pulumi.ComponentResource):
     def __init__(self, name: str) -> None:
         super().__init__(
             "tests:s3/bucket:Bucket",
@@ -27,6 +27,7 @@ BucketStub("bucket")
 """
 
 INLINE_ENCRYPTION_PROPS = """{{
+                "bucket": "bucket",
                 "acl": "{acl}",
                 "logging": {{"targetBucket": "audit-logs", "targetPrefix": "bucket/"}},
                 "serverSideEncryptionConfiguration": {{
@@ -47,12 +48,13 @@ INLINE_ENCRYPTION_PROPS = """{{
 SEPARATE_S3_SETTINGS_TEMPLATE = """import pulumi
 
 
-class BucketStub(pulumi.CustomResource):
+class BucketStub(pulumi.ComponentResource):
     def __init__(self, name: str) -> None:
         super().__init__(
             "tests:s3/bucket:Bucket",
             name,
             {{
+                "bucket": "bucket",
                 "acl": "{acl}",
                 "tags": {{
                     "Project": "demo",
@@ -64,8 +66,8 @@ class BucketStub(pulumi.CustomResource):
         )
 
 
-class BucketLoggingStub(pulumi.CustomResource):
-    def __init__(self, name: str, bucket: pulumi.Input[str]) -> None:
+class BucketLoggingStub(pulumi.ComponentResource):
+    def __init__(self, name: str, bucket: str) -> None:
         super().__init__(
             "tests:s3/bucketLogging:BucketLogging",
             name,
@@ -77,8 +79,8 @@ class BucketLoggingStub(pulumi.CustomResource):
         )
 
 
-class BucketEncryptionStub(pulumi.CustomResource):
-    def __init__(self, name: str, bucket: pulumi.Input[str]) -> None:
+class BucketEncryptionStub(pulumi.ComponentResource):
+    def __init__(self, name: str, bucket: str) -> None:
         super().__init__(
             "tests:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
             name,
@@ -93,9 +95,9 @@ class BucketEncryptionStub(pulumi.CustomResource):
         )
 
 
-bucket = BucketStub("bucket")
-BucketLoggingStub("bucket-logging", bucket.id)
-BucketEncryptionStub("bucket-encryption", bucket.id)
+BucketStub("bucket")
+BucketLoggingStub("bucket-logging", "bucket")
+BucketEncryptionStub("bucket-encryption", "bucket")
 """
 
 pytestmark = pytest.mark.usefixtures(

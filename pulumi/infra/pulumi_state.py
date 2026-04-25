@@ -349,7 +349,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         )
         suffix = _resource_suffix(repo.name, self._settings)
         role_suffix = _replication_role_suffix(repo.name, settings_obj=self._settings)
-        bucket = self._create_bucket(
+        bucket, bucket_versioning = self._create_bucket(
             f"{component_name}-{suffix}",
             bucket_name=bucket_name,
             lifecycle_rule_id="expire-old-versions",
@@ -361,7 +361,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             policy_name=f"{component_name}-policy-{suffix}",
             import_id=bucket_name if _bucket_exists(bucket_name) else None,
         )
-        replica_bucket = self._create_bucket(
+        replica_bucket, replica_bucket_versioning = self._create_bucket(
             f"{component_name}-replica-{suffix}",
             bucket_name=_replica_bucket_name(bucket_name),
             lifecycle_rule_id="replica-expire-old-versions",
@@ -396,7 +396,14 @@ class PulumiStateBuckets(pulumi.ComponentResource):
                     ),
                 )
             ],
-            opts=_resource_options(self, depends_on=[replication_role_policy]),
+            opts=_resource_options(
+                self,
+                depends_on=[
+                    replication_role_policy,
+                    bucket_versioning,
+                    replica_bucket_versioning,
+                ],
+            ),
         )
         self._record_repo_outputs(repo.name, bucket)
 
@@ -414,7 +421,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         policy_name: str,
         provider: aws.Provider | None = None,
         import_id: str | None = None,
-    ) -> aws.s3.Bucket:
+    ) -> tuple[aws.s3.Bucket, aws.s3.BucketVersioning]:
         """Create one managed Pulumi state bucket and baseline safeguards."""
         bucket = aws.s3.Bucket(
             resource_name,
@@ -427,7 +434,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
                 depends_on=self._log_delivery_dependencies,
             ),
         )
-        self._configure_bucket_settings(
+        versioning = self._configure_bucket_settings(
             resource_name,
             bucket=bucket,
             lifecycle_rule_id=lifecycle_rule_id,
@@ -441,7 +448,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             bucket=bucket,
             provider=provider,
         )
-        return bucket
+        return bucket, versioning
 
     def _configure_bucket_settings(
         self,
@@ -451,9 +458,9 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         lifecycle_rule_id: str,
         logging_target_bucket: str,
         provider: aws.Provider | None = None,
-    ) -> None:
+    ) -> aws.s3.BucketVersioning:
         """Attach versioning, logging, lifecycle, and encryption resources."""
-        aws.s3.BucketVersioning(
+        versioning = aws.s3.BucketVersioning(
             f"{resource_name}-versioning",
             bucket=bucket.id,
             versioning_configuration=aws.s3.BucketVersioningVersioningConfigurationArgs(
@@ -484,6 +491,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             rules=_state_bucket_encryption_rules(),
             opts=_resource_options(self, provider=provider, depends_on=[bucket]),
         )
+        return versioning
 
     def _configure_bucket_safeguards(
         self,

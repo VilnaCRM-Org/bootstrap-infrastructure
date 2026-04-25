@@ -3,14 +3,6 @@
 from __future__ import annotations
 
 from app import EnvironmentSettings
-from infra import (
-    BootstrapInfrastructure,
-    BootstrapInfrastructureDependencies,
-    ManagedRepositoryCatalog,
-)
-from infra import (
-    config as bootstrap_config,
-)
 
 import pulumi
 
@@ -22,11 +14,24 @@ pulumi.export("serviceName", settings.service_name)
 pulumi.export("stackTag", settings.stack_tag)
 pulumi.export("defaultTags", settings.default_tags)
 
-bootstrap_settings = bootstrap_config.settings
-cfg = bootstrap_config.cfg
-bootstrap_requested = bootstrap_settings.bootstrap_requested(cfg)
+cfg = pulumi.Config()
+bootstrap_requested = bool(
+    cfg.get("repoSlug")
+    or cfg.get("repositoryCatalogPath")
+    or cfg.get_object("managedRepositories")
+)
 
 if bootstrap_requested:
+    from infra import (
+        BootstrapInfrastructure,
+        BootstrapInfrastructureDependencies,
+        ManagedRepositoryCatalog,
+    )
+    from infra import (
+        config as bootstrap_config,
+    )
+
+    bootstrap_settings = bootstrap_config.settings
     repository_catalog = ManagedRepositoryCatalog.from_settings(bootstrap_settings, cfg)
     dependencies = BootstrapInfrastructureDependencies()
     bootstrap = BootstrapInfrastructure(

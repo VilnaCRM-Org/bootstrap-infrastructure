@@ -16,6 +16,7 @@ from .config import (
 )  # pragma: no mutate
 from .managed_repository import ManagedRepository  # pragma: no mutate
 from .pulumi_state import _resource_suffix  # pragma: no mutate
+from .repository_catalog import ManagedRepositoryCatalog  # pragma: no mutate
 from .utils.tags import base_tags  # pragma: no mutate
 
 
@@ -60,9 +61,14 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
         )  # pragma: no mutate
 
         configured_settings = settings or globals()["settings"]  # pragma: no mutate
-        repos = (
-            list(repositories) if repositories is not None else managed_repositories()
-        )  # pragma: no mutate
+        if repositories is not None:  # pragma: no mutate
+            repos = list(repositories)  # pragma: no mutate
+        elif settings is not None:  # pragma: no mutate
+            repos = ManagedRepositoryCatalog.from_settings(
+                configured_settings
+            ).repositories  # pragma: no mutate
+        else:  # pragma: no mutate
+            repos = managed_repositories()  # pragma: no mutate
         account_id = aws.get_caller_identity().account_id  # pragma: no mutate
         region = aws.get_region().region  # pragma: no mutate
 
