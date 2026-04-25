@@ -46,12 +46,7 @@ jobs:
         run: make start
 
       - name: Audit Python dependencies
-        run: |
-          docker compose --env-file .env run --rm -e XDG_CACHE_HOME=/tmp/xdg-cache pulumi \
-            uv run pip-audit --strict \
-              --ignore-vuln CVE-2026-41066 \
-              --ignore-vuln CVE-2026-3219 \
-              --ignore-vuln CVE-2025-71176
+        run: make test-deps-security
 
   bandit:
     name: Bandit

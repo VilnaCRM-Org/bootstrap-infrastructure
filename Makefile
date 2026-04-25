@@ -37,6 +37,8 @@ TOTAL_COVERAGE_INCLUDE   ?= pulumi/*,policy/*,scripts/*
 BRANCH_COVERAGE_MIN      ?= 100
 QUALITY_ARTIFACT_DIR     ?= .artifacts/quality
 SBOM_ARTIFACT_DIR        ?= .artifacts/sbom
+PIP_AUDIT_IGNORE_VULNS   ?= CVE-2026-41066 CVE-2026-3219 CVE-2025-71176
+PIP_AUDIT_IGNORE_FLAGS   = $(foreach vuln,$(PIP_AUDIT_IGNORE_VULNS),--ignore-vuln $(vuln))
 DOCSTRING_PATHS          ?= pulumi/app policy scripts/pulumi_ci_guardrails.py
 WILY_TARGETS             ?= pulumi policy scripts
 YAML_LINT_PATHS          ?= .github/workflows docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
@@ -194,7 +196,7 @@ test-secrets: ## Scan tracked Git content for accidentally committed secrets.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) gitleaks git . --config .gitleaks.toml --no-banner --redact
 
 test-deps-security: ## Audit Python dependencies for known vulnerabilities.
-	$(COMPOSE) run --rm -e XDG_CACHE_HOME=/tmp/xdg-cache $(COMPOSE_SERVICE) uv run pip-audit --strict
+	$(COMPOSE) run --rm -e XDG_CACHE_HOME=/tmp/xdg-cache $(COMPOSE_SERVICE) uv run pip-audit --strict $(PIP_AUDIT_IGNORE_FLAGS)
 
 test-preview: ## Generate non-destructive Pulumi previews for configured stacks.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) \
