@@ -285,6 +285,50 @@ def test_pulumi_secrets_keys_emit_expected_resources_and_outputs(
     assert alias_state["name"] == "alias/pulumi-repo-test-secrets"  # nosec B101
 
 
+def test_pulumi_secrets_keys_derives_repositories_without_explicit_list(
+    pulumi_mocks, monkeypatch
+):  # noqa: ARG001
+    injected_settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="settings-repo",
+        environment="review",
+        owner="platform",
+        cost_center="core",
+        github_branch="release",
+        logging_prefix="company",
+        replication_region="us-west-2",
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(
+        pulumi_secrets,
+        "managed_repositories",
+        lambda: [config.ManagedRepository(name="global-repo", default_branch="main")],
+    )
+
+    settings_secrets = PulumiSecretsKeys(
+        "pulumi-secrets-settings", settings=injected_settings
+    )
+    global_secrets = PulumiSecretsKeys("pulumi-secrets-global")
+
+    settings_provider_url = _sync_await(
+        future_output(settings_secrets.provider_urls["settings-repo"])
+    )
+    global_provider_url = _sync_await(
+        future_output(global_secrets.provider_urls["global-repo"])
+    )
+
+    assert (  # nosec B101
+        settings_provider_url
+        == "awskms://alias/pulumi-settings-repo-review-secrets?region=us-east-1"
+    )
+    assert (  # nosec B101
+        global_provider_url
+        == "awskms://alias/pulumi-global-repo-test-secrets?region=us-east-1"
+    )
+
+
 def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(config.settings, "repo", "bootstrap-infrastructure")
     monkeypatch.setattr(config.settings, "environment", "test")
