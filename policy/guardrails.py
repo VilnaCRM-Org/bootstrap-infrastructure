@@ -318,7 +318,9 @@ def _s3_encryption_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]
         for dependency in _resource_dependencies(resource, "bucket"):
             dependency_type = getattr(dependency, "resource_type", "")
             if _matches_resource_type(dependency_type, S3_BUCKET_TYPE_SUFFIX):
-                encrypted_bucket_urns.add(getattr(dependency, "urn", ""))
+                dependency_urn = getattr(dependency, "urn", "")
+                if dependency_urn:
+                    encrypted_bucket_urns.add(dependency_urn)
 
     return encrypted_bucket_names, encrypted_bucket_urns
 
