@@ -419,6 +419,19 @@ def test_validate_repository_catalogs_handles_empty_and_invalid_inputs(
     assert module.main(["--schema", str(schema_path), str(bad_catalog)]) == 1
     assert "Expecting property name" in capsys.readouterr().err
 
+    invalid_schema = tmp_path / "repositories.schema.json"
+    invalid_schema.write_text(json.dumps({"type": 123}), encoding="utf-8")
+    valid_catalog = tmp_path / "repositories.json"
+    valid_catalog.write_text(
+        json.dumps({"repositories": ["user-service-infrastructure"]}),
+        encoding="utf-8",
+    )
+
+    assert module.main(["--schema", str(invalid_schema), str(valid_catalog)]) == 1
+    error_output = capsys.readouterr().err
+    assert str(invalid_schema) in error_output
+    assert "invalid repository catalog schema" in error_output
+
 
 def test_publish_pulumi_preview_summary_main_handles_backend_and_summary_paths(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]

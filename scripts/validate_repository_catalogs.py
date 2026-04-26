@@ -9,7 +9,7 @@ from typing import Any, Mapping, Sequence
 
 from _script_support import repo_root
 from jsonschema import Draft202012Validator
-from jsonschema.exceptions import ValidationError
+from jsonschema.exceptions import SchemaError, ValidationError
 
 ROOT_DIR = repo_root(__file__)
 
@@ -113,7 +113,12 @@ def validate_catalog(catalog_path: Path, schema_path: Path) -> Path:
     """Validate one repository catalog against JSON Schema and loader semantics."""
     schema = _load_json(schema_path)
     payload = _load_json(catalog_path)
-    Draft202012Validator.check_schema(schema)
+    try:
+        Draft202012Validator.check_schema(schema)
+    except SchemaError as exc:
+        raise ValueError(
+            f"{schema_path}: invalid repository catalog schema: {exc.message}"
+        ) from exc
     validator = Draft202012Validator(schema)
     errors = sorted(validator.iter_errors(payload), key=lambda item: item.json_path)
     if errors:
