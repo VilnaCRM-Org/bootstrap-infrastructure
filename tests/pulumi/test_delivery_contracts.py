@@ -503,6 +503,7 @@ def test_bats_suite_covers_every_public_make_target() -> None:
         "make -n test-lockfile",
         "make -n test-maintainability",
         "make -n test-repo-hygiene",
+        "make -n test-repository-catalogs",
         "make -n test-security",
         "make -n test-secrets",
         "make -n test-yaml",
@@ -571,7 +572,10 @@ def test_ci_workflows_keep_make_entrypoints_in_sync() -> None:
             "make test-destructive-diff",
             "make test-iam-validation",
         ],
-        "pulumi-structural.yml": ["make test-pulumi"],
+        "pulumi-structural.yml": [
+            "make test-pulumi",
+            "make test-repository-catalogs",
+        ],
         "pulumi-unit.yml": ["make test-unit"],
         "python-quality.yml": [
             "make test-ruff",

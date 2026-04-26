@@ -1,4 +1,5 @@
 {
+  "$schema": "./repositories.schema.json",
   "repositories": [
     {
       "name": "user-service-infrastructure",

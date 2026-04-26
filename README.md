@@ -95,6 +95,7 @@ make build
 
 # Configuration validation
 make test-pulumi
+make test-repository-catalogs
 
 # Rust-based quality gates
 make test-quality
@@ -114,7 +115,7 @@ make test-mutation
 
 Use the local batteries that match the scope of your change:
 
-- `make test` runs the faster structural, policy, quality, repo-hygiene, unit, integration, coverage, and CLI battery.
+- `make test` runs the faster structural, repository-catalog, policy, quality, repo-hygiene, unit, integration, coverage, and CLI battery.
 - `make test-security` and `make test-guardrails` focus on infrastructure safety controls.
 - `make ci-pr` mirrors the non-mutation GitHub pull-request battery before merge.
 - `make ci` runs the full local superset, including the prerequisite check, image build, preview guardrails, security scans, and mutation suite.

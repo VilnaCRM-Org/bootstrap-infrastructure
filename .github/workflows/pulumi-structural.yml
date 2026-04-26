@@ -36,3 +36,6 @@ jobs:
         env:
           PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
         run: make test-pulumi
+
+      - name: Validate repository catalog JSON files
+        run: make test-repository-catalogs

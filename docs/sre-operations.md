@@ -117,7 +117,7 @@ When something looks wrong:
 
 Map failures back to their local commands:
 
-- `Structural` -> `make test-pulumi`
+- `Structural` -> `make test-pulumi && make test-repository-catalogs`
 - `Policy` -> `make test-policy`
 - `Ruff` -> `make test-ruff`
 - `Ty` -> `make test-ty`

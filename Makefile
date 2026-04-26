@@ -64,8 +64,8 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         test-deps-security test-destructive-diff test-drift test-guardrails \
         test-guardrails-unprivileged test-iam-validation \
         test-iam-validation-unprivileged test-preview test-preview-unprivileged \
-        test-security test-secrets test-repo-hygiene test-unit test-integration \
-        test-integration-unprivileged test-pulumi test-policy \
+        test-security test-secrets test-repo-hygiene test-repository-catalogs \
+        test-unit test-integration test-integration-unprivileged test-pulumi test-policy \
         test-crossguard test-mutation test-battery test-cli test all clean
 
 pulumi-preview pulumi-up pulumi-refresh pulumi-destroy test-preview \
@@ -137,6 +137,9 @@ test-integration-unprivileged: ## Execute credential-free integration contracts.
 
 test-pulumi: ## Perform structural checks on Pulumi project configuration.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run pytest -q tests/pulumi
+
+test-repository-catalogs: ## Validate repository catalog JSON files against schema and loader rules.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run python ./scripts/validate_repository_catalogs.py
 
 test-policy: ## Execute Pulumi policy-pack tests and guardrail coverage.
 	rm -f .coverage.policy .coverage.policy.*
@@ -323,6 +326,7 @@ nightly-quality: ## Alias for the scheduled quality-report battery.
 
 test-battery:
 	$(MAKE) test-pulumi
+	$(MAKE) test-repository-catalogs
 	$(MAKE) test-policy
 	$(MAKE) test-quality
 	$(MAKE) test-repo-hygiene
@@ -346,6 +350,7 @@ ci-pr-unprivileged: ## Run the PR battery without AWS-backed Pulumi credentials.
 	$(MAKE) doctor
 	$(MAKE) build
 	$(MAKE) test-pulumi
+	$(MAKE) test-repository-catalogs
 	$(MAKE) test-policy
 	$(MAKE) test-quality
 	$(MAKE) test-repo-hygiene

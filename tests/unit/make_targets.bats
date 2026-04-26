@@ -72,6 +72,7 @@ assert_help_target() {
     test-preview
     test-preview-unprivileged
     test-repo-hygiene
+    test-repository-catalogs
     test-ruff
     test-security
     test-secrets
@@ -219,6 +220,13 @@ assert_help_target() {
   [ "$status" -eq 0 ]
   assert_compose_env_file
   [[ "$output" == *"pytest -q tests/pulumi"* ]]
+}
+
+@test "make test-repository-catalogs validates repository catalog JSON" {
+  run make -n test-repository-catalogs
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  [[ "$output" == *"uv run python ./scripts/validate_repository_catalogs.py"* ]]
 }
 
 @test "make test-policy executes the policy suite with full coverage" {

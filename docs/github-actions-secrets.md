@@ -14,6 +14,7 @@ Add these under **Settings → Secrets and variables → Actions → Variables �
 | `AWS_OIDC_ROLE_ARN` | IAM role assumed by preview, IAM validation, and drift jobs | Repository variable, not a secret |
 | `AWS_REGION` | Region used by `configure-aws-credentials` | Optional; defaults to `eu-central-1` |
 | `PULUMI_BACKEND_URL` | Shared backend used by real previews and drift checks | Required |
+| `PULUMI_SECRETS_PROVIDER` | AWS KMS secrets provider URI used by real preview stacks | Required |
 | `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for PR previews | Optional; defaults to committed `Pulumi.<stack>.yaml` files |
 | `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks | Optional; defaults to committed `Pulumi.<stack>.yaml` files |
 
@@ -56,8 +57,8 @@ Choose one authentication strategy for the template sync workflows:
 ## Setting Secrets and Variables
 
 1. Navigate to **Settings → Secrets and variables → Actions** in your GitHub repository.
-2. Add `AWS_OIDC_ROLE_ARN`, `PULUMI_BACKEND_URL`, `PULUMI_PREVIEW_STACKS`, and `PULUMI_DRIFT_STACKS` under **Variables → Repository variables**. Add `AWS_REGION` there only if you need a region other than the default `eu-central-1`.
+2. Add `AWS_OIDC_ROLE_ARN`, `PULUMI_BACKEND_URL`, `PULUMI_SECRETS_PROVIDER`, `PULUMI_PREVIEW_STACKS`, and `PULUMI_DRIFT_STACKS` under **Variables → Repository variables**. Add `AWS_REGION` there only if you need a region other than the default `eu-central-1`.
 3. Add `PULUMI_ACCESS_TOKEN` and any release or template-sync credentials under **Secrets → Repository secrets**.
-4. If several repositories share the same guardrail configuration, use organization variables for `AWS_OIDC_ROLE_ARN`, `PULUMI_BACKEND_URL`, `PULUMI_PREVIEW_STACKS`, and `PULUMI_DRIFT_STACKS`. Add `AWS_REGION` at the organization level only if you want to override the default `eu-central-1`. Use organization secrets for `PULUMI_ACCESS_TOKEN` and any release or template-sync credentials.
+4. If several repositories share the same guardrail configuration, use organization variables for `AWS_OIDC_ROLE_ARN`, `PULUMI_BACKEND_URL`, `PULUMI_SECRETS_PROVIDER`, `PULUMI_PREVIEW_STACKS`, and `PULUMI_DRIFT_STACKS`. Add `AWS_REGION` at the organization level only if you want to override the default `eu-central-1`. Use organization secrets for `PULUMI_ACCESS_TOKEN` and any release or template-sync credentials.
 
 Rotate credentials regularly and audit workflow runs for unexpected usage.

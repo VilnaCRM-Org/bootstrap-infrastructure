@@ -17,12 +17,14 @@ Run with:
 
 ```bash
 make test-pulumi
+make test-repository-catalogs
 ```
 
 Coverage:
 
 - Every public Make target is exercised through dry-run or help-output assertions
 - `pulumi/Pulumi.yaml`
+- `pulumi/repositories.schema.json` and committed `pulumi/repositories*.json` catalogs
 - `policy/PulumiPolicy.yaml`
 - Release workflow contracts
 - Dockerfile supply-chain safeguards
