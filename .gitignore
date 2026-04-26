@@ -15,3 +15,12 @@ __pycache__/
 .pulumi-home/
 .coverage*
 !.coveragerc
+
+# BMAD/BMALPH generated tooling stays local. Commit planning docs under specs/.
+_bmad/
+_bmad-output/
+bmalph/
+.ralph/
+.bmad/
+.bmad-core/
+.agents/skills/bmad-*/

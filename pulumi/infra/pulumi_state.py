@@ -19,6 +19,7 @@ from .utils.tags import base_tags
 
 _REPLICATION_ROLE_NAME_PREFIX = "PulumiStateRepl-"
 _MAX_IAM_ROLE_NAME_LENGTH = 64
+DEFAULT_REPLICATION_REGION = "eu-west-1"
 
 
 def central_logging_bucket_name(region: str) -> str:
@@ -177,7 +178,9 @@ def _resolved_replication_region(
     """Resolve and validate the replica region for state buckets."""
     active_settings = settings_obj or globals()["settings"]
     resolved_region = (
-        replication_region or active_settings.replication_region or "us-east-1"
+        replication_region
+        or active_settings.replication_region
+        or DEFAULT_REPLICATION_REGION
     )
     if resolved_region == primary_region:
         raise ValueError(

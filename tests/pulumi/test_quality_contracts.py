@@ -56,7 +56,14 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
     assert expected_tools.issubset(dev_dependencies)
     assert "C90" in ruff["select"]
     assert data["tool"]["ruff"]["lint"]["mccabe"]["max-complexity"] == 10
-    assert deptry["known_first_party"] == ["_script_support", "app", "infra", "policy"]
+    expected_first_party = [
+        "_pulumi_command_support",
+        "_script_support",
+        "app",
+        "infra",
+        "policy",
+    ]
+    assert deptry["known_first_party"] == expected_first_party  # nosec B101
     assert deptry["package_module_name_map"]["pyyaml"] == ["yaml"]
     assert deptry["package_module_name_map"]["pulumi-policy"] == ["pulumi_policy"]
     assert deptry["per_rule_ignores"]["DEP002"] == ["pulumi-aws"]

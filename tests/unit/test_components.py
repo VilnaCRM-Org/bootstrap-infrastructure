@@ -1,4 +1,5 @@
 import asyncio
+import json
 import runpy
 from pathlib import Path
 
@@ -167,6 +168,13 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert bootstrap.outputs["managedRepositoryProjects"] == {
         "core-service-infrastructure": "core-service"
     }  # nosec B101
+    log_delivery_dependencies = bootstrap.state._log_delivery_dependencies  # noqa: SLF001
+    expected_log_delivery_dependencies = [
+        bootstrap.logging.bucket,
+        bootstrap.logging.replica_bucket,
+    ]
+    if log_delivery_dependencies != expected_log_delivery_dependencies:
+        raise AssertionError("state buckets must depend on central logging buckets")
 
     assert bootstrap.automation is not None  # nosec B101
     _sync_await(future_output(bootstrap.automation.repository.repository_url))
@@ -361,6 +369,7 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         if type_ == "aws:iam/role:Role"
         and state.get("name") == "PulumiAutomation-bootstrap-infrastructure-test"
     )
+    policy_state = _resource_state_by_name(pulumi_mocks, "github-automation-policy")
 
     assert repository_type == "aws:ecr/repository:Repository"  # nosec B101
     assert repository_state["name"] == "pulumi-runner/bootstrap-infrastructure-test"  # nosec B101
@@ -371,6 +380,24 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
         in role_state["assumeRolePolicy"]
     )  # nosec B101
+    automation_policy = json.loads(policy_state["policy"])
+    statements = {
+        statement["Sid"]: statement for statement in automation_policy["Statement"]
+    }
+    assert statements["ManageBootstrapEcr"]["Resource"] == [  # nosec B101
+        "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
+        "bootstrap-infrastructure-test"
+    ]
+    assert (  # nosec B101
+        "arn:aws:iam::123456789012:role/PulumiAutomation-"
+        "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
+    )
+    assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
+        "arn:aws:s3:::pulumi-*-test-state",
+        "arn:aws:s3:::pulumi-*-test-state-replication",
+        "arn:aws:s3:::company-central-logs-*-test",
+        "arn:aws:s3:::company-central-logs-*-test-replication",
+    ]
 
 
 def test_github_automation_requires_repo(monkeypatch):
@@ -420,11 +447,21 @@ def test_github_oidc_roles_require_matching_kms_key(  # noqa: ARG001
 def test_github_oidc_roles_create_provider_when_missing(monkeypatch, pulumi_mocks):  # noqa: ARG001
     monkeypatch.setattr(github_oidc.settings, "github_oidc_provider_arn", None)
     monkeypatch.setattr(github_oidc.settings, "org", "VilnaCRM-Org")
+    monkeypatch.setattr(github_oidc.settings, "environment", "test")
 
     repos = [config.ManagedRepository(name="repo3", default_branch="main")]
     roles = GitHubOidcRoles("github-oidc-created", repositories=repos)
 
     assert roles.deploy_role_arns  # nosec B101
+
+    provider_state = _resource_state_by_name(
+        pulumi_mocks, "github-oidc-created-provider"
+    )
+    assert provider_state["tags"]["Project"] == "bootstrap"  # nosec B101
+    assert provider_state["tags"]["Environment"] == "test"  # nosec B101
+    assert provider_state["tags"]["Owner"] == "platform"  # nosec B101
+    assert provider_state["tags"]["CostCenter"] == "core"  # nosec B101
+    assert provider_state["tags"]["Purpose"] == "github-actions-oidc"  # nosec B101
 
 
 def test_github_oidc_roles_use_injected_settings_repositories(

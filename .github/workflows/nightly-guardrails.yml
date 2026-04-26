@@ -17,18 +17,25 @@ permissions:
   contents: read
 
 jobs:
-  drift_detection:
-    name: Drift Detection
+  test_drift_detection:
+    name: Test Drift Detection
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    concurrency:
+      group: bootstrap-infrastructure-test-state
+      cancel-in-progress: false
+    environment: test
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
       PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
       PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
@@ -39,23 +46,128 @@ jobs:
       - name: Validate drift detection prerequisites
         run: |
           missing=()
-          if [[ -z "${{ vars.AWS_OIDC_ROLE_ARN }}" ]]; then
-            missing+=("vars.AWS_OIDC_ROLE_ARN")
+          for name in \
+            AWS_ACCOUNT_ID \
+            AWS_DRIFT_ROLE_ARN \
+            PULUMI_BACKEND_URL \
+            PULUMI_SECRETS_PROVIDER \
+            PULUMI_DRIFT_STACKS; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            printf 'error: test drift detection requires %s\n' "${missing[*]}" >&2
+            exit 1
           fi
-          if [[ -z "${PULUMI_BACKEND_URL}" ]]; then
-            missing+=("vars.PULUMI_BACKEND_URL")
+          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
+            echo "error: AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
+            exit 1
           fi
-          if [[ ${#missing[@]} -gt 0 ]]; then
-            printf 'error: nightly drift detection requires %s\n' "${missing[*]}" >&2
+          if [[ "${PULUMI_BACKEND_URL}" != s3://* ]]; then
+            echo "error: PULUMI_BACKEND_URL must use an s3:// backend." >&2
+            exit 1
+          fi
+          if [[ "${PULUMI_SECRETS_PROVIDER}" != awskms://* ]]; then
+            echo "error: PULUMI_SECRETS_PROVIDER must use an awskms:// URI." >&2
             exit 1
           fi
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
-          role-session-name: gha-drift-${{ github.run_id }}
-          aws-region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+          role-to-assume: ${{ env.AWS_DRIFT_ROLE_ARN }}
+          role-session-name: gha-test-drift-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+
+      - name: Emit drift evidence
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "GitHub environment: test"
+          echo "Commit SHA: ${GITHUB_SHA}"
+          echo "AWS account ID: ${account_id}"
+          echo "Pulumi stacks: ${PULUMI_DRIFT_STACKS}"
+          echo "Role purpose: drift"
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run drift detection
+        run: make test-drift
+
+  prod_drift_detection:
+    name: Prod Drift Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: bootstrap-infrastructure-prod-state
+      cancel-in-progress: false
+    environment: prod-preview
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
+      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Validate drift detection prerequisites
+        run: |
+          missing=()
+          for name in \
+            AWS_ACCOUNT_ID \
+            AWS_DRIFT_ROLE_ARN \
+            PULUMI_BACKEND_URL \
+            PULUMI_SECRETS_PROVIDER \
+            PULUMI_DRIFT_STACKS; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            printf 'error: prod drift detection requires %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
+            echo "error: AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
+            exit 1
+          fi
+          if [[ "${PULUMI_BACKEND_URL}" != s3://* ]]; then
+            echo "error: PULUMI_BACKEND_URL must use an s3:// backend." >&2
+            exit 1
+          fi
+          if [[ "${PULUMI_SECRETS_PROVIDER}" != awskms://* ]]; then
+            echo "error: PULUMI_SECRETS_PROVIDER must use an awskms:// URI." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ env.AWS_DRIFT_ROLE_ARN }}
+          role-session-name: gha-prod-drift-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+
+      - name: Emit drift evidence
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "GitHub environment: prod-preview"
+          echo "Commit SHA: ${GITHUB_SHA}"
+          echo "AWS account ID: ${account_id}"
+          echo "Pulumi stacks: ${PULUMI_DRIFT_STACKS}"
+          echo "Role purpose: drift"
 
       - name: Start development environment
         run: make start
@@ -89,6 +201,7 @@ jobs:
         with:
           name: scorecard-results
           path: scorecard.sarif
+          retention-days: 7
 
       - name: Upload Scorecard SARIF
         uses: github/codeql-action/upload-sarif@ce28f5bb42b7a9f2c824e633a3f6ee835bab6858

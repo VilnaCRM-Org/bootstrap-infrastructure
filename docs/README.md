@@ -134,9 +134,13 @@ CI checks are split into focused workflows that run inside the Docker workspace:
 These checks do not require AWS or Pulumi credentials by default. They use
 concurrency groups, bounded job timeouts, pinned actions, and a shared
 `make start` bootstrap path so local and GitHub-hosted
-validation stay aligned. If you add deploy workflows or provision real cloud
-resources, follow the [GitHub Actions Secrets guide](github-actions-secrets.md)
-to configure the required secrets.
+validation stay aligned.
+
+Privileged issue 18 workflows use GitHub environments for account separation:
+`test` for trusted PR preview, test apply, and test drift; `prod-preview` for
+production preview and drift; and protected `prod` for production apply.
+Configure account-local variables, OIDC roles, Pulumi backend URLs, and AWS
+KMS-backed Pulumi secrets providers in the [GitHub Actions Secrets guide](github-actions-secrets.md).
 
 ## CI Quality Gates
 
@@ -148,7 +152,8 @@ maintainability monitoring.
 
 Use the [CI guardrails guide](ci-guardrails.md) for the PR-blocking preview,
 destructive diff, IAM validation, secret scanning, dependency audit, CodeQL,
-and nightly drift/Scorecard contracts.
+nightly drift/Scorecard contracts, production approval boundaries, sanitized
+evidence, and OIDC role expectations.
 
 ## CI Architecture
 
@@ -199,7 +204,9 @@ Continuous integration runs automatically on every pull request. You can also va
 ## SRE Operations
 
 Use the [SRE operations guide](sre-operations.md) for preview/apply/refresh
-flows, stack strategy, failure triage, release hygiene, and cleanup guidance.
+flows, stack strategy, replica-region migration, safe AWS metadata validation,
+production approval checks, failure triage, release hygiene, and cleanup
+guidance.
 
 ## Detailed Test Matrix
 

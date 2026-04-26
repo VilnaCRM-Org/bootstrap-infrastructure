@@ -46,7 +46,7 @@ def test_script_support_helpers_cover_local_script_utilities(
     assert module.repo_root("/tmp/repo/scripts/tool.py") == Path("/tmp/repo")
     assert module.split_values(None) == []
     assert module.split_values('dev, "qa env"') == ["dev", "qa env"]
-    assert module.discover_stacks(pulumi_dir, None) == ["dev", "example"]
+    assert module.discover_stacks(pulumi_dir, None) == ["dev"]  # nosec B101
     assert module.discover_stacks(pulumi_dir, "prod staging") == ["prod", "staging"]
     assert backend_dir.is_dir()
     assert command_result.stdout == "ok\n"
@@ -474,6 +474,14 @@ def test_publish_pulumi_preview_summary_main_handles_backend_and_summary_paths(
 
     monkeypatch.setenv("PULUMI_REQUIRE_SHARED_BACKEND", "true")
     monkeypatch.setenv("PULUMI_BACKEND_URL", "s3://shared-backend")
+    monkeypatch.delenv("PULUMI_SECRETS_PROVIDER", raising=False)
+    assert module.main() == 1  # nosec B101
+    assert "privileged previews require an awskms://" in capsys.readouterr().err  # nosec B101
+
+    monkeypatch.setenv(
+        "PULUMI_SECRETS_PROVIDER",
+        "awskms://alias/bootstrap-preview?region=eu-central-1",
+    )
     assert module.main() == 0
     assert run_calls[-1][2]["PULUMI_BACKEND_URL"] == "s3://shared-backend"
 
@@ -661,17 +669,18 @@ def test_run_pulumi_drift_check_main_handles_skip_and_success_paths(
 
     calls.clear()
     monkeypatch.setattr(module, "discover_stacks", lambda *args: ["dev"])
-    assert module.main() == 0
-    assert calls[0][0] == sys.executable
-    assert calls[1][:5] == [
+    assert module.main() == 0  # nosec B101
+    assert calls[0][0] == sys.executable  # nosec B101
+    expected_login_command = [
         "pulumi",
-        "--cwd",
+        "-C",
         str(pulumi_dir),
         "login",
         "--non-interactive",
     ]
-    assert calls[2][3:6] == ["stack", "select", "dev"]
-    assert "--expect-no-changes" in calls[3]
+    assert calls[1][:5] == expected_login_command  # nosec B101
+    assert calls[2][3:6] == ["stack", "select", "dev"]  # nosec B101
+    assert "--expect-no-changes" in calls[3]  # nosec B101
 
     calls.clear()
     relative_repo_dir = repo_dir / "nested"
@@ -681,15 +690,16 @@ def test_run_pulumi_drift_check_main_handles_skip_and_success_paths(
     (relative_repo_dir / "relative-policy").mkdir()
     monkeypatch.setenv("PULUMI_DIR", "relative-pulumi")
     monkeypatch.setenv("POLICY_PACK_DIR", "relative-policy")
-    assert module.main() == 0
-    assert calls[1][:5] == [
+    assert module.main() == 0  # nosec B101
+    relative_login_command = [
         "pulumi",
-        "--cwd",
+        "-C",
         str((relative_repo_dir / "relative-pulumi").resolve()),
         "login",
         "--non-interactive",
     ]
-    assert calls[3][-1] == str((relative_repo_dir / "relative-policy").resolve())
+    assert calls[1][:5] == relative_login_command  # nosec B101
+    assert calls[3][-1] == str((relative_repo_dir / "relative-policy").resolve())  # nosec B101
 
 
 def test_run_pulumi_preview_main_handles_empty_and_successful_runs(
@@ -773,12 +783,12 @@ def test_run_pulumi_preview_main_handles_empty_and_successful_runs(
         len(command) > 1 and "prepare_policy_pack.py" in str(command[1])
         for command, _, _ in run_calls
     )
-    assert any(
-        command[:5]
-        == ["pulumi", "--cwd", str(pulumi_dir), "login", "--non-interactive"]
+    login_called = any(
+        command[:5] == ["pulumi", "-C", str(pulumi_dir), "login", "--non-interactive"]
         for command, _, _ in run_calls
     )
-    assert any(
+    assert login_called  # nosec B101
+    initialized_dev = any(
         command[3:10]
         == [
             "stack",
@@ -790,6 +800,7 @@ def test_run_pulumi_preview_main_handles_empty_and_successful_runs(
         ]
         for command, _, _ in run_calls
     )
+    assert initialized_dev  # nosec B101
 
 
 def test_run_pulumi_preview_artifact_stems_add_a_hash_to_avoid_collisions(
@@ -804,6 +815,405 @@ def test_run_pulumi_preview_artifact_stems_add_a_hash_to_avoid_collisions(
     assert slash_stack.startswith("org_prod-")
     assert underscore_stack.startswith("org_prod-")
     assert slash_stack != underscore_stack
+
+
+def test_run_pulumi_command_builds_expected_pulumi_invocations(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep the generic Pulumi command helper explicit and argument-safe."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    pulumi_dir = tmp_path / "pulumi"
+    policy_dir = tmp_path / "policy"
+    plan_path = tmp_path / "plan"
+    context = module.CommandContext(
+        root_dir=tmp_path,
+        env={},
+        pulumi_dir=pulumi_dir,
+        policy_pack_dir=policy_dir,
+        plan_dir=tmp_path / "plans",
+        preview_artifact_dir=tmp_path / "previews",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+    )
+
+    configured_stacks = module._configured_stack_names(
+        "preview", pulumi_dir, {"PULUMI_STACK": "test"}
+    )
+    assert configured_stacks == ["test"]  # nosec B101
+    drift_stacks = module._configured_stack_names(
+        "drift", pulumi_dir, {"PULUMI_DRIFT_STACKS": "prod"}
+    )
+    assert drift_stacks == ["prod"]  # nosec B101
+    assert module._validate_secrets_provider("not-kms") == 1  # nosec B101
+    assert module._validate_secrets_provider("") == 1  # nosec B101
+    assert (  # nosec B101
+        module._validate_secrets_provider("awskms://alias/example") is None
+    )
+    assert module._uses_file_backend("file:///tmp/backend") is True  # nosec B101
+    assert module._uses_file_backend("s3://bucket/state") is False  # nosec B101
+
+    expected_preview_command = [
+        "pulumi",
+        "-C",
+        str(pulumi_dir),
+        "preview",
+        "--stack",
+        "test",
+        "--non-interactive",
+        "--policy-pack",
+        str(policy_dir),
+    ]
+    preview_command = module._pulumi_command(
+        context, module.StackCommand("preview", "test")
+    )
+    assert preview_command == expected_preview_command  # nosec B101
+    assert "--save-plan" in module._pulumi_command(  # nosec B101
+        context, module.StackCommand("plan", "test", plan_path=plan_path)
+    )
+    assert "--plan" in module._pulumi_command(  # nosec B101
+        context, module.StackCommand("up-plan", "test", plan_path=plan_path)
+    )
+    drift_command = module._pulumi_command(
+        context, module.StackCommand("drift", "test")
+    )
+    up_command = module._pulumi_command(context, module.StackCommand("up", "test"))
+    refresh_command = module._pulumi_command(
+        context, module.StackCommand("refresh", "test")
+    )
+    destroy_command = module._pulumi_command(
+        context, module.StackCommand("destroy", "test")
+    )
+    assert "--yes" in up_command  # nosec B101
+    assert "--yes" in refresh_command  # nosec B101
+    assert "--expect-no-changes" in drift_command  # nosec B101
+    assert "--yes" in destroy_command  # nosec B101
+
+    with pytest.raises(ValueError, match="plan command requires"):
+        module._pulumi_command(context, module.StackCommand("plan", "test"))
+    with pytest.raises(ValueError, match="up-plan command requires"):
+        module._pulumi_command(context, module.StackCommand("up-plan", "test"))
+    with pytest.raises(ValueError, match="unsupported"):
+        module._pulumi_command(context, module.StackCommand("unknown", "test"))
+
+
+def test_run_pulumi_command_prefers_configured_stack_lists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Multi-stack commands should not be masked by Make's default PULUMI_STACK."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    pulumi_dir = tmp_path / "pulumi"
+    pulumi_dir.mkdir()
+
+    preview_stacks = module._configured_stack_names(
+        "preview",
+        pulumi_dir,
+        {"PULUMI_STACK": "default", "PULUMI_PREVIEW_STACKS": "test prod/eu"},
+    )
+    drift_stacks = module._configured_stack_names(
+        "drift",
+        pulumi_dir,
+        {"PULUMI_STACK": "default", "PULUMI_DRIFT_STACKS": "prod"},
+    )
+    up_plan_stacks = module._configured_stack_names(
+        "up-plan",
+        pulumi_dir,
+        {"PULUMI_STACK": "default", "PULUMI_PREVIEW_STACKS": "test prod/eu"},
+    )
+
+    assert preview_stacks == ["test", "prod/eu"]  # nosec B101
+    assert drift_stacks == ["prod"]  # nosec B101
+    assert up_plan_stacks == ["test", "prod/eu"]  # nosec B101
+
+
+def test_run_pulumi_command_safe_artifact_stem_handles_empty_sanitized_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Artifact names should still be stable when no stack characters are safe."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+
+    stem = module._safe_artifact_stem("")
+
+    assert stem.startswith("stack-")  # nosec B101
+    assert len(stem) == len("stack-") + 8  # nosec B101
+
+
+def test_run_pulumi_command_branch_helpers_return_select_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Cover helper branches that short-circuit before invoking Pulumi."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    pulumi_dir = repo_dir / "pulumi"
+    policy_dir = repo_dir / "policy"
+    plan_dir = repo_dir / ".artifacts" / "pulumi-plan"
+    preview_dir = repo_dir / ".artifacts" / "pulumi-preview"
+    pulumi_dir.mkdir(parents=True)
+    policy_dir.mkdir()
+    plan_dir.mkdir(parents=True)
+    preview_dir.mkdir(parents=True)
+    context = module.CommandContext(
+        root_dir=repo_dir,
+        env={},
+        pulumi_dir=pulumi_dir,
+        policy_pack_dir=policy_dir,
+        plan_dir=plan_dir,
+        preview_artifact_dir=preview_dir,
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+    )
+
+    default_plan = module._selected_plan_path(context, None, "test")
+    assert default_plan == module._plan_file(plan_dir, "test")  # nosec B101
+
+    monkeypatch.setattr(module, "_select_or_init_stack", lambda *args: 7)
+    assert module._run_plan_command(context, ["test"]) == 7  # nosec B101
+
+    monkeypatch.setattr(module, "_select_or_init_stack", lambda *args: 9)
+    assert module._run_up_plan_command(context, ["test"]) == 9  # nosec B101
+
+
+def test_select_or_init_stack_requires_file_backend_secrets_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """File-backed stack initialization should fail before init without a provider."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    pulumi_dir = repo_dir / "pulumi"
+    pulumi_dir.mkdir(parents=True)
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stderr="missing stack\n")
+
+    context = module.CommandContext(
+        root_dir=repo_dir,
+        env={},
+        pulumi_dir=pulumi_dir,
+        policy_pack_dir=repo_dir / "policy",
+        plan_dir=repo_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=repo_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="",
+        runner=fake_run,
+    )
+
+    assert module._select_or_init_stack(context, "test") == 1  # nosec B101
+    assert "set PULUMI_SECRETS_PROVIDER" in capsys.readouterr().err  # nosec B101
+
+
+def test_run_pulumi_command_plan_handles_multiple_configured_stacks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A configured stack list should create one saved plan per stack."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    pulumi_dir = repo_dir / "pulumi"
+    policy_dir = repo_dir / "policy"
+    output_file = repo_dir / "github-output.txt"
+    preview_dir = repo_dir / ".artifacts" / "pulumi-preview"
+    pulumi_dir.mkdir(parents=True)
+    policy_dir.mkdir()
+    preview_dir.mkdir(parents=True)
+    (preview_dir / "stale.json").write_text("{}", encoding="utf-8")
+    (preview_dir / "summary.md").write_text("old summary\n", encoding="utf-8")
+    monkeypatch.setattr(module, "repo_root", lambda _: repo_dir)
+    monkeypatch.setenv("PULUMI_STACK", "default")
+    monkeypatch.setenv("PULUMI_PREVIEW_STACKS", "test prod/eu")
+    monkeypatch.setenv(
+        "PULUMI_SECRETS_PROVIDER",
+        "awskms://alias/bootstrap-preview?region=eu-central-1",
+    )
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output_file))
+
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[0] == "pulumi" and command[3:6] == ["stack", "select", "test"]:
+            return subprocess.CompletedProcess(command, 1, stderr="missing test\n")
+        if command[0] == "pulumi" and command[3:6] == [
+            "stack",
+            "select",
+            "prod/eu",
+        ]:
+            return subprocess.CompletedProcess(command, 1, stderr="missing prod\n")
+        if command[0] == "pulumi" and command[3] == "preview":
+            stdout = kwargs.get("stdout")
+            if stdout is not None:
+                stdout.write('{"changeSummary": {"create": 1}, "steps": []}')
+            return subprocess.CompletedProcess(command, 0)
+        if command[:3] == ["uv", "--project", str(repo_dir)]:
+            return subprocess.CompletedProcess(
+                command, 0, stdout=f"summary for {Path(command[-1]).stem}\n"
+            )
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", fake_run)
+    assert module.main(["plan"]) == 0  # nosec B101
+
+    test_stem = module._safe_artifact_stem("test")
+    prod_stem = module._safe_artifact_stem("prod/eu")
+    output = capsys.readouterr().out
+    output_values = output_file.read_text(encoding="utf-8")
+    assert f"summary for {test_stem}" in output  # nosec B101
+    assert f"summary for {prod_stem}" in output  # nosec B101
+    assert f"{test_stem}.plan" in output_values  # nosec B101
+    assert f"{prod_stem}.plan" in output_values  # nosec B101
+    assert "old summary" not in output  # nosec B101
+    assert not (preview_dir / "stale.json").exists()  # nosec B101
+    initialized_prod = any(
+        command[3:10]
+        == [
+            "stack",
+            "init",
+            "prod/eu",
+            "--non-interactive",
+            "--secrets-provider",
+            "awskms://alias/bootstrap-preview?region=eu-central-1",
+        ]
+        for command in calls
+    )
+    assert initialized_prod  # nosec B101
+
+
+def test_run_pulumi_command_handles_error_paths_and_plan_application(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Cover stack-safety failures and saved-plan application."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    pulumi_dir = repo_dir / "pulumi"
+    policy_dir = repo_dir / "policy"
+    plan_dir = repo_dir / ".artifacts" / "pulumi-plan"
+    pulumi_dir.mkdir(parents=True)
+    policy_dir.mkdir()
+    plan_dir.mkdir(parents=True)
+    monkeypatch.setattr(module, "repo_root", lambda _: repo_dir)
+
+    monkeypatch.setenv("PULUMI_SECRETS_PROVIDER", "local")
+    assert module.main(["preview"]) == 1  # nosec B101
+    assert "awskms://" in capsys.readouterr().err  # nosec B101
+
+    monkeypatch.setenv(
+        "PULUMI_SECRETS_PROVIDER", "awskms://alias/example?region=eu-central-1"
+    )
+    monkeypatch.setattr(module, "discover_stacks", lambda *args: [])
+    assert module.main(["preview"]) == 1  # nosec B101
+    assert "set PULUMI_STACK" in capsys.readouterr().err  # nosec B101
+
+    def shared_run(command, **kwargs):
+        if command[0] == "pulumi" and command[3:6] == ["stack", "select", "test"]:
+            return subprocess.CompletedProcess(command, 255, stderr="missing\n")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "discover_stacks", lambda *args: ["test"])
+    monkeypatch.setattr(module, "run", shared_run)
+    monkeypatch.setenv("PULUMI_BACKEND_URL", "s3://shared-state")
+    assert module.main(["refresh"]) == 255  # nosec B101
+    assert "shared backend stack test does not exist" in capsys.readouterr().err  # nosec B101
+
+    def missing_provider_run(command, **kwargs):
+        if command[0] == "pulumi" and command[3:6] == ["stack", "select", "test"]:
+            return subprocess.CompletedProcess(command, 1, stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", missing_provider_run)
+    monkeypatch.setenv("PULUMI_BACKEND_URL", "file:///tmp/backend")
+    monkeypatch.delenv("PULUMI_SECRETS_PROVIDER", raising=False)
+    module._emit_stderr("")
+    assert module.main(["refresh"]) == 1  # nosec B101
+    assert "PULUMI_SECRETS_PROVIDER must be set" in capsys.readouterr().err  # nosec B101
+
+    def init_failure_run(command, **kwargs):
+        if command[0] == "pulumi" and command[3:6] == ["stack", "select", "test"]:
+            return subprocess.CompletedProcess(command, 1, stderr="")
+        if command[0] == "pulumi" and command[3:6] == ["stack", "init", "test"]:
+            return subprocess.CompletedProcess(command, 42, stderr="kms denied\n")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", init_failure_run)
+    monkeypatch.setenv(
+        "PULUMI_SECRETS_PROVIDER", "awskms://alias/example?region=eu-central-1"
+    )
+    assert module.main(["refresh"]) == 42  # nosec B101
+    assert "kms denied" in capsys.readouterr().err  # nosec B101
+
+    def ok_run(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", ok_run)
+    monkeypatch.setenv("PULUMI_BACKEND_URL", "file:///tmp/backend")
+    monkeypatch.setenv("PULUMI_PLAN_FILE", str(plan_dir / "single.plan"))
+    monkeypatch.setattr(module, "discover_stacks", lambda *args: ["test", "prod"])
+    assert module.main(["up-plan"]) == 1  # nosec B101
+    assert "single selected stack" in capsys.readouterr().err  # nosec B101
+
+    monkeypatch.setattr(module, "discover_stacks", lambda *args: ["test"])
+    assert module.main(["up-plan"]) == 1  # nosec B101
+    assert "Pulumi plan file not found" in capsys.readouterr().err  # nosec B101
+
+    selected_plan = plan_dir / "single.plan"
+    selected_plan.write_text("plan", encoding="utf-8")
+    applied: list[list[str]] = []
+
+    def apply_run(command, **kwargs):
+        applied.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", apply_run)
+    assert module.main(["up-plan"]) == 0  # nosec B101
+    applied_selected_plan = any(
+        "--plan" in command and str(selected_plan) in command for command in applied
+    )
+    assert applied_selected_plan  # nosec B101
+
+    single_output = repo_dir / "single-output.txt"
+    module._write_plan_outputs(str(single_output), [selected_plan], plan_dir)
+    assert f"plan_file={selected_plan}" in single_output.read_text(encoding="utf-8")  # nosec B101
+
+
+def test_run_pulumi_command_runs_generic_and_plan_without_github_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Cover non-plan command dispatch and plan summaries without GitHub outputs."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    pulumi_dir = repo_dir / "pulumi"
+    policy_dir = repo_dir / "policy"
+    pulumi_dir.mkdir(parents=True)
+    policy_dir.mkdir()
+    monkeypatch.setattr(module, "repo_root", lambda _: repo_dir)
+    monkeypatch.setenv("PULUMI_STACK", "test")
+    monkeypatch.setenv(
+        "PULUMI_SECRETS_PROVIDER", "awskms://alias/example?region=eu-central-1"
+    )
+    monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[0] == "pulumi" and command[3] == "preview":
+            stdout = kwargs.get("stdout")
+            if stdout is not None:
+                stdout.write('{"changeSummary": {}, "steps": []}')
+            return subprocess.CompletedProcess(command, 0)
+        if command[:3] == ["uv", "--project", str(repo_dir)]:
+            return subprocess.CompletedProcess(command, 0, stdout="summary\n")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", fake_run)
+    assert module.main(["preview"]) == 0  # nosec B101
+    preview_called = any(
+        len(command) > 3 and command[3] == "preview" for command in calls
+    )
+    assert preview_called  # nosec B101
+
+    calls.clear()
+    assert module.main(["plan"]) == 0  # nosec B101
+    assert "summary" in capsys.readouterr().out  # nosec B101
+    assert all("plan_files<<EOF" not in str(command) for command in calls)  # nosec B101
 
 
 def test_select_stack_for_preview_returns_none_for_existing_stack(
@@ -828,11 +1238,13 @@ def test_select_stack_for_preview_returns_none_for_existing_stack(
         secrets_provider="awskms://alias/example?region=eu-central-1",
     )
 
-    assert result is None
-    assert calls == [
+    assert result is None, (  # nosec B101
+        f"expected existing stack select to return None, got {result}"
+    )
+    expected_calls = [
         [
             "pulumi",
-            "--cwd",
+            "-C",
             str(pulumi_dir),
             "stack",
             "select",
@@ -840,6 +1252,7 @@ def test_select_stack_for_preview_returns_none_for_existing_stack(
             "--non-interactive",
         ]
     ]
+    assert calls == expected_calls, f"unexpected stack select calls: {calls!r}"  # nosec B101
 
 
 def test_run_pulumi_preview_main_keeps_shared_backends_read_only(
@@ -876,16 +1289,18 @@ def test_run_pulumi_preview_main_keeps_shared_backends_read_only(
         return subprocess.CompletedProcess(command, 0, stdout="")
 
     monkeypatch.setattr(module, "run", fake_run)
-    assert module.main() == 255
+    assert module.main() == 255  # nosec B101
 
     error_output = capsys.readouterr().err
-    assert "shared-backend previews will not create missing stacks" in error_output
-    assert "no stack named missing-stack found" in error_output
-    assert any(
+    assert "shared-backend previews will not create missing stacks" in error_output  # nosec B101
+    assert "no stack named missing-stack found" in error_output  # nosec B101
+    selected_missing_stack = any(
         command[3:7] == ["stack", "select", "missing-stack", "--non-interactive"]
         for command, _ in run_calls
     )
-    assert not any("--create" in command for command, _ in run_calls)
+    created_stack = any("--create" in command for command, _ in run_calls)
+    assert selected_missing_stack  # nosec B101
+    assert not created_stack  # nosec B101
 
 
 def test_run_pulumi_preview_main_returns_file_backend_select_failures(
@@ -918,15 +1333,16 @@ def test_run_pulumi_preview_main_returns_file_backend_select_failures(
         return subprocess.CompletedProcess(command, 0, stdout="")
 
     monkeypatch.setattr(module, "run", fake_run)
-    assert module.main() == 1
+    assert module.main() == 1  # nosec B101
 
     error_output = capsys.readouterr().err
-    assert "file-backed previews require PULUMI_SECRETS_PROVIDER" in error_output
-    assert "shared-backend previews will not create missing stacks" not in error_output
-    assert any(
+    assert "file-backed previews require PULUMI_SECRETS_PROVIDER" in error_output  # nosec B101
+    assert "shared-backend previews will not create missing stacks" not in error_output  # nosec B101
+    selected_dev_stack = any(
         command[3:7] == ["stack", "select", "dev", "--non-interactive"]
         for command in run_calls
     )
+    assert selected_dev_stack  # nosec B101
 
 
 def test_select_stack_for_preview_surfaces_stack_init_failures(

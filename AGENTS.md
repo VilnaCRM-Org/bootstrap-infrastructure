@@ -25,6 +25,16 @@ This repository is a Pulumi-based infrastructure template. Agents should keep ch
 19. Prefer Make targets plus Python helpers under `scripts/*.py`; do not introduce new repository bash helper scripts for CI orchestration.
 20. Treat shared Pulumi backends as KMS-backed for CI and maintainer docs; do not document passphrase-backed shared backends as the default path.
 
+## BMAD/BMALPH planning
+
+1. Keep BMAD and BMALPH planning artifacts under `specs/`.
+2. Create one `specs/<issue-or-feature-slug>/` directory per planned change, and put PRDs, architecture notes, epics/stories, readiness reports, and review scorecards there.
+3. When asking BMAD agents or BMALPH workflows to create or update planning docs, explicitly tell them to use `specs/<issue-or-feature-slug>/` as the planning output directory.
+4. If a local BMAD installation generates `_bmad/config.yaml`, set `output_folder: specs` and `planning_artifacts: specs` before generating planning documents.
+5. Treat `.ralph/specs/` as BMALPH/Ralph generated implementation input only; do not use it as the canonical planning source.
+6. Do not commit generated BMAD/BMALPH/Ralph framework or state files such as `_bmad/`, `_bmad-output/`, `bmalph/`, `.ralph/`, or `.agents/skills/bmad-*`.
+7. Do not commit alternate planning roots such as `docs/planning/`, top-level `planning/`, `.bmad/`, or `.bmad-core/`.
+
 ## Secret handling
 
 These rules are mandatory for AI coding agents in this repository.

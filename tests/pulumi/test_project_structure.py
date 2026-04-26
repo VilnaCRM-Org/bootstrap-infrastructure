@@ -3,6 +3,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
+LEGACY_PULUMI_PASSPHRASE_ENV = "_".join(("PULUMI", "CONFIG", "PASSPHRASE"))
 
 
 def test_pulumi_project_manifest_uses_python_runtime() -> None:
@@ -12,11 +13,58 @@ def test_pulumi_project_manifest_uses_python_runtime() -> None:
     assert "options" not in manifest["runtime"]  # nosec B101
 
 
-def test_example_stack_files_avoid_legacy_passphrase_metadata() -> None:
-    for stack_file in ("Pulumi.dev.yaml", "Pulumi.example.yaml"):
+def test_example_stack_file_avoids_legacy_passphrase_metadata() -> None:
+    stack_text = (ROOT / "pulumi" / "Pulumi.example.yaml").read_text()
+
+    assert "encryptionsalt" not in stack_text  # nosec B101
+    assert LEGACY_PULUMI_PASSPHRASE_ENV not in stack_text  # nosec B101
+
+
+def test_multi_account_stack_files_use_test_and_prod_contract() -> None:
+    """Require real environment stacks while keeping examples out of discovery."""
+    stack_file_names = {path.name for path in (ROOT / "pulumi").glob("Pulumi.*.yaml")}
+
+    assert "Pulumi.test.yaml" in stack_file_names  # nosec B101
+    assert "Pulumi.prod.yaml" in stack_file_names  # nosec B101
+    assert "Pulumi.example.yaml" in stack_file_names  # nosec B101
+    assert "Pulumi.dev.yaml" not in stack_file_names  # nosec B101
+
+
+def test_multi_account_stack_files_are_non_secret() -> None:
+    """Committed shared stack files should contain non-secret config only."""
+    for stack_file in ("Pulumi.test.yaml", "Pulumi.prod.yaml"):
         stack_text = (ROOT / "pulumi" / stack_file).read_text()
+        stack_config = yaml.safe_load(stack_text)
+
+        assert "secure:" not in stack_text  # nosec B101
+        assert "encryptedkey" not in stack_text  # nosec B101
         assert "encryptionsalt" not in stack_text  # nosec B101
-        assert "PULUMI_CONFIG_PASSPHRASE" not in stack_text  # nosec B101
+        assert LEGACY_PULUMI_PASSPHRASE_ENV not in stack_text  # nosec B101
+        assert "--secrets-provider" in stack_text  # nosec B101
+        assert stack_config["secretsprovider"].startswith("awskms://")  # nosec B101
+
+
+def test_multi_account_stack_replication_regions_match_policy_allowlist() -> None:
+    """Committed stack defaults must pass the repository region guardrail."""
+    policy_config = yaml.safe_load(
+        (ROOT / "policy" / "vilnacrm_guardrails.yaml").read_text()
+    )
+    allowed_regions = set(policy_config["allowed_regions"])
+
+    for stack_file in ("Pulumi.test.yaml", "Pulumi.prod.yaml"):
+        config = yaml.safe_load((ROOT / "pulumi" / stack_file).read_text())["config"]
+        primary_region = config["aws:region"]
+        replication_region = config["bootstrap-infrastructure:replicationRegion"]
+
+        assert primary_region in allowed_regions  # nosec B101
+        assert replication_region in allowed_regions  # nosec B101
+        assert replication_region != primary_region  # nosec B101
+
+
+def test_committed_stack_discovery_ignores_example_stack_file() -> None:
+    script_support = (ROOT / "scripts" / "_script_support.py").read_text()
+
+    assert '"Pulumi.example.yaml"' in script_support  # nosec B101
 
 
 def test_makefile_exposes_current_ci_targets() -> None:
@@ -24,7 +72,9 @@ def test_makefile_exposes_current_ci_targets() -> None:
     for target in (
         "publish-pulumi-preview-summary",
         "pulumi-preview",
+        "pulumi-plan",
         "pulumi-up",
+        "pulumi-up-plan",
         "test-pulumi",
         "test-policy",
         "test-crossguard",
@@ -155,6 +205,7 @@ def test_nightly_workflows_cover_current_local_targets() -> None:
 def test_docs_cover_current_testing_and_guardrail_guidance() -> None:
     docs_index = (ROOT / "docs" / "README.md").read_text()
     ci_doc = (ROOT / "docs" / "ci-guardrails.md").read_text()
+    operations_doc = (ROOT / "docs" / "sre-operations.md").read_text()
     testing_doc = (ROOT / "docs" / "testing.md").read_text()
 
     for doc_name in (
@@ -177,6 +228,18 @@ def test_docs_cover_current_testing_and_guardrail_guidance() -> None:
         "CrossGuard",
     ):
         assert phrase in ci_doc  # nosec B101
+
+    migration_doc = f"{docs_index}\n{operations_doc}"
+    for phrase in (
+        "replica-region migration",
+        "Replica Region Migration",
+        "bootstrap-infrastructure:replicationRegion: us-east-1",
+        "manual replica drain",
+        "pulumi/infra/pulumi_state.py",
+        "pulumi/infra/logging_bucket.py",
+    ):
+        if phrase not in migration_doc:
+            raise AssertionError(f"missing migration guidance phrase: {phrase}")
 
     for phrase in (
         "make test-pulumi",
@@ -214,6 +277,58 @@ def test_repository_tracks_current_policy_and_guardrail_support_files() -> None:
     assert (scripts_dir / "run_pulumi_drift_check.py").exists()  # nosec B101
     assert (scripts_dir / "validate_repository_catalogs.py").exists()  # nosec B101
     assert (ROOT / "pulumi" / "repositories.schema.json").exists()  # nosec B101
+
+
+def test_bmad_bmalph_planning_uses_specs_directory() -> None:
+    specs_dir = ROOT / "specs"
+    agent_instructions = (ROOT / "AGENTS.md").read_text()
+    gitignore = (ROOT / ".gitignore").read_text()
+    planning_doc_names = {
+        "architecture.md",
+        "epics.md",
+        "implementation-readiness-report.md",
+        "prd.md",
+        "well-architected-review.md",
+    }
+
+    assert specs_dir.is_dir()  # nosec B101
+    assert planning_doc_names <= {path.name for path in specs_dir.rglob("*.md")}  # nosec B101
+
+    for phrase in (
+        "Keep BMAD and BMALPH planning artifacts under `specs/`.",
+        "specs/<issue-or-feature-slug>/",
+        "output_folder: specs",
+        "planning_artifacts: specs",
+        "Do not commit generated BMAD/BMALPH/Ralph framework or state files",
+        "Do not commit alternate planning roots",
+    ):
+        assert phrase in agent_instructions  # nosec B101
+
+    for ignored_path in (
+        "_bmad/",
+        "_bmad-output/",
+        "bmalph/",
+        ".ralph/",
+        ".bmad/",
+        ".bmad-core/",
+        ".agents/skills/bmad-*/",
+    ):
+        assert ignored_path in gitignore  # nosec B101
+
+    for forbidden_root in (
+        "_bmad",
+        "_bmad-output",
+        "bmalph",
+        ".ralph",
+        "docs/planning",
+        "planning",
+        ".bmad",
+        ".bmad-core",
+    ):
+        assert not (ROOT / forbidden_root).exists()  # nosec B101
+
+    bmad_skill_dirs = list((ROOT / ".agents" / "skills").glob("bmad-*"))
+    assert bmad_skill_dirs == []  # nosec B101
 
 
 def test_removed_legacy_scaffold_paths_stay_absent() -> None:

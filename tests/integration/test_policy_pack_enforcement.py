@@ -148,10 +148,10 @@ def _preview_with_policy_pack(work_dir: Path) -> subprocess.CompletedProcess[str
         timeout=120,
     )
     try:
-        subprocess.run(
+        subprocess.run(  # nosec B603, B607
             [
                 "pulumi",
-                "--cwd",
+                "-C",
                 str(work_dir),
                 "stack",
                 "init",
@@ -168,10 +168,10 @@ def _preview_with_policy_pack(work_dir: Path) -> subprocess.CompletedProcess[str
             timeout=120,
         )
 
-        return subprocess.run(
+        return subprocess.run(  # nosec B603, B607
             [
                 "pulumi",
-                "--cwd",
+                "-C",
                 str(work_dir),
                 "preview",
                 "--stack",
@@ -188,8 +188,8 @@ def _preview_with_policy_pack(work_dir: Path) -> subprocess.CompletedProcess[str
             timeout=120,
         )
     finally:
-        subprocess.run(
-            ["pulumi", "--cwd", str(work_dir), "stack", "rm", "dev", "--yes"],
+        subprocess.run(  # nosec B603, B607
+            ["pulumi", "-C", str(work_dir), "stack", "rm", "dev", "--yes"],
             check=False,
             cwd=PROJECT_ROOT,
             env=env,

@@ -110,6 +110,72 @@ _AUTOMATION_ECR_ACTIONS = (
 )
 
 
+def _environment_resource_part(settings: BootstrapSettings) -> str:
+    """Return the environment as it appears in resource names."""
+    return settings.sanitize_bucket_component(settings.environment, "environment")
+
+
+def _automation_s3_resources(settings: BootstrapSettings) -> list[str]:
+    """Scope bootstrap S3 management to state and central logging buckets."""
+    environment = _environment_resource_part(settings)
+    logging_prefix = settings.sanitize_bucket_component(
+        settings.logging_prefix,
+        "loggingPrefix",
+    )
+    bucket_names = (
+        f"pulumi-*-{environment}-state",
+        f"pulumi-*-{environment}-state-replication",
+        f"{logging_prefix}-central-logs-*-{environment}",
+        f"{logging_prefix}-central-logs-*-{environment}-replication",
+    )
+    return [f"arn:aws:s3:::{bucket_name}" for bucket_name in bucket_names]
+
+
+def _automation_kms_alias_resources(
+    account_id: str, settings: BootstrapSettings
+) -> list[str]:
+    """Scope KMS alias management to Pulumi secrets aliases for this environment."""
+    environment = _environment_resource_part(settings).replace(".", "-")
+    return [f"arn:aws:kms:*:{account_id}:alias/pulumi-*-{environment}-secrets"]
+
+
+def _automation_kms_key_resources(account_id: str) -> list[str]:
+    """Scope KMS key management to keys tagged by the bootstrap stack."""
+    return [f"arn:aws:kms:*:{account_id}:key/*"]
+
+
+def _automation_ecr_resources(
+    account_id: str, settings: BootstrapSettings, repo_name: str
+) -> list[str]:
+    """Scope ECR management to this repository's runner image repository."""
+    repository_name = settings.runner_ecr_repository_name(repo_name)
+    return [f"arn:aws:ecr:*:{account_id}:repository/{repository_name}"]
+
+
+def _automation_iam_role_resources(
+    account_id: str, settings: BootstrapSettings, repo_name: str
+) -> list[str]:
+    """Scope IAM management to deterministic bootstrap role families."""
+    automation_role_name = settings.automation_role_name(repo_name)
+    return [
+        f"arn:aws:iam::{account_id}:role/{automation_role_name}",
+        f"arn:aws:iam::{account_id}:role/PulumiDeploy-*",
+        f"arn:aws:iam::{account_id}:role/PulumiStateRepl-*",
+        f"arn:aws:iam::{account_id}:role/central-logging-replication-role-*",
+        f"arn:aws:iam::{account_id}:role/s3-backup-role-*",
+    ]
+
+
+def _automation_backup_resources(account_id: str) -> list[str]:
+    """Scope Backup management to account-local AWS Backup resource families."""
+    return [
+        f"arn:aws:backup:*:{account_id}:backup-plan:*",
+        f"arn:aws:backup:*:{account_id}:backup-selection:*",
+        f"arn:aws:backup:*:{account_id}:backup-vault:*",
+        f"arn:aws:backup:*:{account_id}:recovery-point:*",
+    ]
+
+
 def _automation_assume_role_policy(
     oidc_provider_arn: str, org: str, repo_name: str, environment: str
 ) -> str:
@@ -138,12 +204,32 @@ def _automation_assume_role_policy(
     )
 
 
-def _automation_policy(account_id: str) -> str:
+def _automation_policy(
+    account_id: str, settings: BootstrapSettings, repo_name: str
+) -> str:
     """Return the policy used by GitHub automation for bootstrap operations."""
-    role_arn = f"arn:aws:iam::{account_id}:role/*"
     oidc_provider_arn = (
         f"arn:aws:iam::{account_id}:oidc-provider/token.actions.githubusercontent.com"
     )
+    iam_role_resources = _automation_iam_role_resources(account_id, settings, repo_name)
+    kms_tag_condition = {
+        "StringEquals": {
+            "aws:ResourceTag/Environment": settings.environment,
+            "aws:ResourceTag/Purpose": "pulumi-secrets",
+        }
+    }
+    kms_request_tag_condition = {
+        "StringEquals": {
+            "aws:RequestTag/Environment": settings.environment,
+            "aws:RequestTag/Purpose": "pulumi-secrets",
+        }
+    }
+    kms_alias_condition = {
+        "StringEqualsIfExists": {
+            "aws:ResourceTag/Environment": settings.environment,
+            "aws:ResourceTag/Purpose": "pulumi-secrets",
+        }
+    }
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -158,13 +244,52 @@ def _automation_policy(account_id: str) -> str:
                     "Sid": "ManageBootstrapS3",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_S3_ACTIONS),
+                    "Resource": _automation_s3_resources(settings),
+                },
+                {
+                    "Sid": "CreateBootstrapKmsKeys",
+                    "Effect": "Allow",
+                    "Action": ["kms:CreateKey"],
+                    "Resource": "*",
+                    "Condition": kms_request_tag_condition,
+                },
+                {
+                    "Sid": "ListBootstrapKmsAliases",
+                    "Effect": "Allow",
+                    "Action": ["kms:ListAliases"],
                     "Resource": "*",
                 },
                 {
-                    "Sid": "ManageBootstrapKms",
+                    "Sid": "ManageBootstrapKmsAliases",
                     "Effect": "Allow",
-                    "Action": list(_AUTOMATION_KMS_ACTIONS),
-                    "Resource": "*",
+                    "Action": [
+                        "kms:CreateAlias",
+                        "kms:DeleteAlias",
+                        "kms:UpdateAlias",
+                    ],
+                    "Resource": [
+                        *_automation_kms_alias_resources(account_id, settings),
+                        *_automation_kms_key_resources(account_id),
+                    ],
+                    "Condition": kms_alias_condition,
+                },
+                {
+                    "Sid": "ManageBootstrapKmsKeys",
+                    "Effect": "Allow",
+                    "Action": [
+                        action
+                        for action in _AUTOMATION_KMS_ACTIONS
+                        if action
+                        not in {
+                            "kms:CreateAlias",
+                            "kms:CreateKey",
+                            "kms:DeleteAlias",
+                            "kms:ListAliases",
+                            "kms:UpdateAlias",
+                        }
+                    ],
+                    "Resource": _automation_kms_key_resources(account_id),
+                    "Condition": kms_tag_condition,
                 },
                 {
                     "Sid": "ManageBootstrapIam",
@@ -180,7 +305,6 @@ def _automation_policy(account_id: str) -> str:
                         "iam:GetRole",
                         "iam:GetRolePolicy",
                         "iam:ListAttachedRolePolicies",
-                        "iam:ListOpenIDConnectProviders",
                         "iam:ListRolePolicies",
                         "iam:ListRoleTags",
                         "iam:PutRolePolicy",
@@ -191,7 +315,7 @@ def _automation_policy(account_id: str) -> str:
                         "iam:UpdateAssumeRolePolicy",
                         "iam:UpdateOpenIDConnectProviderThumbprint",
                     ],
-                    "Resource": [role_arn, oidc_provider_arn],
+                    "Resource": [*iam_role_resources, oidc_provider_arn],
                 },
                 {
                     "Sid": "CreateBootstrapOidcProvider",
@@ -200,10 +324,16 @@ def _automation_policy(account_id: str) -> str:
                     "Resource": "*",
                 },
                 {
+                    "Sid": "ListBootstrapOidcProviders",
+                    "Effect": "Allow",
+                    "Action": ["iam:ListOpenIDConnectProviders"],
+                    "Resource": "*",
+                },
+                {
                     "Sid": "PassBootstrapRolesToBackup",
                     "Effect": "Allow",
                     "Action": ["iam:PassRole"],
-                    "Resource": role_arn,
+                    "Resource": [f"arn:aws:iam::{account_id}:role/s3-backup-role-*"],
                     "Condition": {
                         "StringEquals": {"iam:PassedToService": "backup.amazonaws.com"}
                     },
@@ -212,13 +342,15 @@ def _automation_policy(account_id: str) -> str:
                     "Sid": "ManageBootstrapBackup",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_BACKUP_ACTIONS),
-                    "Resource": "*",
+                    "Resource": _automation_backup_resources(account_id),
                 },
                 {
                     "Sid": "ManageBootstrapEcr",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_ECR_ACTIONS),
-                    "Resource": "*",
+                    "Resource": _automation_ecr_resources(
+                        account_id, settings, repo_name
+                    ),
                 },
             ],
         }
@@ -337,7 +469,11 @@ class GitHubAutomation(pulumi.ComponentResource):
             f"{name}-policy",
             name=f"{name}-policy",
             role=role.id,
-            policy=_automation_policy(aws.get_caller_identity().account_id),
+            policy=_automation_policy(
+                aws.get_caller_identity().account_id,
+                configured_settings,
+                repo_name,
+            ),
             opts=base_opts,
         )
 

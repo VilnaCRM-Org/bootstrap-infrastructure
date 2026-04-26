@@ -51,7 +51,7 @@ def discover_stacks(pulumi_dir: Path, configured_stacks: str | None) -> list[str
     return sorted(
         path.name.removeprefix("Pulumi.").removesuffix(".yaml")
         for path in pulumi_dir.glob("Pulumi.*.yaml")
-        if path.name != "Pulumi.yaml"
+        if path.name not in {"Pulumi.yaml", "Pulumi.example.yaml"}
     )
 
 

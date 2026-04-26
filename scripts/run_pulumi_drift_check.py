@@ -43,7 +43,7 @@ def main() -> int:
     )
 
     run(
-        ["pulumi", "--cwd", str(pulumi_dir), "login", "--non-interactive", backend_url],
+        ["pulumi", "-C", str(pulumi_dir), "login", "--non-interactive", backend_url],
         env=env,
     )
 
@@ -52,7 +52,7 @@ def main() -> int:
         run(
             [
                 "pulumi",
-                "--cwd",
+                "-C",
                 str(pulumi_dir),
                 "stack",
                 "select",
@@ -64,7 +64,7 @@ def main() -> int:
         run(
             [
                 "pulumi",
-                "--cwd",
+                "-C",
                 str(pulumi_dir),
                 "preview",
                 "--stack",

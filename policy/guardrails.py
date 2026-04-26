@@ -577,6 +577,25 @@ def _wildcard_iam_document_exempt(resource_type: str, field_name: str) -> bool:
     )
 
 
+_UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
+    {
+        "iam:createopenidconnectprovider",
+        "iam:listopenidconnectproviders",
+        "kms:createkey",
+        "kms:listaliases",
+        "sts:getcalleridentity",
+    }
+)
+_RESOURCE_WILDCARD_ACTION_REQUIRED_CONDITION_KEYS = {
+    "kms:createkey": frozenset(
+        {
+            "aws:RequestTag/Environment",
+            "aws:RequestTag/Purpose",
+        }
+    )
+}
+
+
 def _policy_statements(props: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
     """Extract policy statements from common Pulumi resource property shapes."""
     documents: list[Mapping[str, Any]] = []
@@ -662,14 +681,60 @@ def _statement_contains_wildcard_permissions(statement: Mapping[str, Any]) -> bo
     if effect != "Allow":
         return False
 
-    return (
+    if (
         _contains_action_wildcard(statement.get("Action"))
         or _contains_action_wildcard(statement.get("NotAction"))
         or _has_negated_policy_scope(statement.get("NotAction"))
-        or _contains_resource_wildcard(statement.get("Resource"))
         or _contains_resource_wildcard(statement.get("NotResource"))
         or _has_negated_policy_scope(statement.get("NotResource"))
-    )
+    ):
+        return True
+    return _contains_resource_wildcard(
+        statement.get("Resource")
+    ) and not _resource_wildcard_allowed_for_unscopable_actions(statement)
+
+
+def _resource_wildcard_allowed_for_unscopable_actions(
+    statement: Mapping[str, Any],
+) -> bool:
+    """Allow Resource='*' only for AWS actions that cannot be ARN-scoped."""
+    actions = frozenset(_normalized_action_values(statement.get("Action")))
+    if not actions or actions.difference(_UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS):
+        return False
+
+    for action in actions:
+        required_keys = _RESOURCE_WILDCARD_ACTION_REQUIRED_CONDITION_KEYS.get(action)
+        if required_keys and not _condition_has_concrete_keys(
+            statement.get("Condition"), required_keys
+        ):
+            return False
+    return True
+
+
+def _normalized_action_values(value: object) -> tuple[str, ...]:
+    """Return normalized IAM action strings from scalar or list-shaped input."""
+    if isinstance(value, str):
+        return (value.lower(),)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return tuple(item.lower() for item in value if isinstance(item, str))
+    return ()
+
+
+def _condition_has_concrete_keys(
+    condition: object, required_keys: frozenset[str]
+) -> bool:
+    """Return True when a condition provides all required keys with real values."""
+    if not isinstance(condition, Mapping):
+        return False
+
+    found: set[str] = set()
+    for condition_value in condition.values():
+        if not isinstance(condition_value, Mapping):
+            continue
+        for key, value in condition_value.items():
+            if key in required_keys and _condition_values_are_concrete(value):
+                found.add(key)
+    return required_keys <= found
 
 
 def _contains_action_wildcard(value: object) -> bool:

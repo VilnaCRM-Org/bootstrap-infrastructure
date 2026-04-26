@@ -93,12 +93,103 @@ Treat destroy as irreversible unless you have a tested restore path.
 
 Recommended stack patterns:
 
-- `dev` for shared baseline development
+- `test` for the shared test AWS account
+- `prod` for the protected production AWS account
+- `dev` for local or shared baseline development when the repository still uses it
 - `pr-<number>` for short-lived validation environments
 - `smoke` for manual release verification
 
 Avoid mixing unrelated validation work into one long-lived shared stack. It
 makes previews noisy and rollback decisions ambiguous.
+
+Shared `test` and `prod` stacks are not scratch space. Use ephemeral stacks for
+experiments and destroy them after validation. Automation does not implicitly
+create missing stacks in shared backends; initialize or migrate shared stacks
+explicitly with the configured AWS KMS Pulumi secrets provider:
+
+```bash
+pulumi -C pulumi stack init <stack> --secrets-provider "$PULUMI_SECRETS_PROVIDER"
+```
+
+Use the stack-targeted migration command for legacy stacks that need to move to
+AWS KMS-backed secrets:
+
+```bash
+pulumi -C pulumi stack change-secrets-provider \
+  "awskms://alias/ALIAS_NAME?region=REGION" \
+  --stack <stack>
+```
+
+Replace `ALIAS_NAME` and `REGION` with the target AWS KMS key alias or key ID
+and AWS Region.
+
+## Replica Region Migration
+
+Committed `test` and `prod` stack files pin
+`bootstrap-infrastructure:replicationRegion: eu-west-1` so future code defaults
+cannot silently relocate replica buckets. That setting drives both the Pulumi
+state replica buckets in `pulumi/infra/pulumi_state.py` and the central logging
+replica bucket in `pulumi/infra/logging_bucket.py`.
+
+Existing stacks that relied on the old implicit default need an explicit
+migration choice before their next `pulumi up`:
+
+1. Preserve the existing replica region by setting
+   `bootstrap-infrastructure:replicationRegion: us-east-1` in that stack's
+   `pulumi/Pulumi.<stack>.yaml`, then run a normal preview. If the policy
+   allow-list blocks that legacy region, carry a reviewed migration exception
+   with the same change instead of bypassing CrossGuard.
+2. Move to `eu-west-1` by performing a manual replica drain first. Confirm S3
+   replication is caught up, retain or copy any required objects from the old
+   state and logging replicas, then update the stack config and review the
+   preview during a maintenance window.
+
+Do not run targeted or partial updates that include `pulumi-state` while
+omitting `central-logging` during this migration. State bucket logging depends
+on the concrete central logging bucket resources, so a full-stack preview/apply
+keeps the logging and state replica changes ordered together.
+
+## GitHub Environment Operations
+
+The deployment boundary is the GitHub environment:
+
+- `test` handles trusted PR previews, main-branch test applies, and test drift
+- `prod-preview` handles production preview and drift without production apply
+  permissions
+- `prod` handles production apply and must require reviewers plus deployment
+  branch restrictions
+
+Before approving `prod`, compare the reviewed commit SHA with the apply SHA and
+review the preview summary, destructive diff result, IAM validation result, AWS
+account evidence, stack name, and role purpose. Do not approve a production
+apply from a different SHA than the preview you reviewed.
+
+Privileged runs should preserve evidence that is useful but not sensitive:
+GitHub environment, account ID, region, OIDC role purpose, backend type, stack
+names, guardrail mode, commit SHA, and artifact names. Evidence must not include
+stack exports, decrypted secret values, access keys, tokens, or private keys.
+
+## Safe AWS Validation
+
+Use metadata-only checks when validating account setup:
+
+```bash
+aws sts get-caller-identity
+aws s3api head-bucket --bucket <state-bucket>
+aws kms describe-key --key-id alias/<pulumi-secrets-key-alias>
+aws iam get-role --role-name <github-oidc-role-name>
+```
+
+These commands confirm identity and bootstrap dependencies without reading
+secret payloads. Keep Pulumi validation non-secret as well:
+
+```bash
+pulumi -C pulumi stack ls
+pulumi -C pulumi config
+```
+
+Do not use secret-revealing flags or raw stack export commands for routine
+evidence collection.
 
 ## Incident and Drift Triage
 

@@ -1,0 +1,14 @@
+# Initialize with:
+# pulumi -C pulumi stack init prod --secrets-provider "$PULUMI_SECRETS_PROVIDER"
+config:
+  aws:region: eu-central-1
+  bootstrap-infrastructure:costCenter: core
+  bootstrap-infrastructure:environment: prod
+  bootstrap-infrastructure:githubBranch: main
+  bootstrap-infrastructure:githubOrg: VilnaCRM-Org
+  bootstrap-infrastructure:loggingPrefix: company
+  bootstrap-infrastructure:owner: platform
+  bootstrap-infrastructure:repoSlug: bootstrap-infrastructure
+  bootstrap-infrastructure:replicationRegion: eu-west-1
+  bootstrap-infrastructure:serviceName: bootstrap-infrastructure
+secretsprovider: awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1

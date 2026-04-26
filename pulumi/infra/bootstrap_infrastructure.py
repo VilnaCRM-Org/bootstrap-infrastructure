@@ -39,7 +39,10 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             "pulumi-state",
             settings=settings,
             repositories=repositories,
-            log_delivery_dependencies=[self.logging],
+            log_delivery_dependencies=[
+                self.logging.bucket,
+                self.logging.replica_bucket,
+            ],
             opts=child_opts,
         )
         self.secrets = self.dependencies.secrets_keys_cls(
