@@ -7,6 +7,7 @@ import pulumi_aws as aws
 
 import pulumi
 
+from .bootstrap_settings import BootstrapSettings
 from .utils.tags import base_tags
 
 
@@ -17,17 +18,19 @@ class S3BackupPlan(pulumi.ComponentResource):
         self,
         name: str,
         *,
+        settings: BootstrapSettings | None = None,
         backup_target_arns: Sequence[pulumi.Input[str]],
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize the AWS Backup plan for S3 resources."""
         super().__init__("bootstrap:backup:S3BackupPlan", name, None, opts)
 
+        configured_settings = settings
         base_opts = pulumi.ResourceOptions(parent=self)
 
         backup_vault = aws.backup.Vault(
             f"{name}-vault",
-            tags=base_tags({"Purpose": "s3-backup"}),
+            tags=base_tags({"Purpose": "s3-backup"}, settings=configured_settings),
             opts=base_opts,
         )
 
@@ -45,7 +48,7 @@ class S3BackupPlan(pulumi.ComponentResource):
                     ],
                 }
             ),
-            tags=base_tags({"Purpose": "s3-backup"}),
+            tags=base_tags({"Purpose": "s3-backup"}, settings=configured_settings),
             opts=base_opts,
         )
 
@@ -66,10 +69,13 @@ class S3BackupPlan(pulumi.ComponentResource):
                     start_window=60,
                     completion_window=120,
                     lifecycle=aws.backup.PlanRuleLifecycleArgs(delete_after=90),
-                    recovery_point_tags=base_tags({"Purpose": "s3-backup"}),
+                    recovery_point_tags=base_tags(
+                        {"Purpose": "s3-backup"},
+                        settings=configured_settings,
+                    ),
                 )
             ],
-            tags=base_tags({"Purpose": "s3-backup"}),
+            tags=base_tags({"Purpose": "s3-backup"}, settings=configured_settings),
             opts=base_opts,
         )
 

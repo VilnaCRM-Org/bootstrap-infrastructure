@@ -32,6 +32,11 @@ POSITIVE_PUBLIC_ACCESS_OPERATORS = frozenset(
 )
 AWS_PROVIDER_TYPE_SUFFIX = "pulumi:providers:aws"
 S3_BUCKET_TYPE_SUFFIX = "s3/bucket:Bucket"
+S3_BUCKET_ENCRYPTION_TYPE_SUFFIXES = (
+    "s3/bucketServerSideEncryptionConfiguration:BucketServerSideEncryptionConfiguration",
+    "s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+)
+S3_BUCKET_LOGGING_TYPE_SUFFIXES = ("s3/bucketLogging:BucketLogging",)
 S3_BUCKET_ACL_TYPE_SUFFIX = "s3/bucketAcl:BucketAcl"
 S3_BUCKET_ACL_V2_TYPE_SUFFIX = "s3/bucketAclV2:BucketAclV2"
 S3_BUCKET_POLICY_TYPE_SUFFIX = "s3/bucketPolicy:BucketPolicy"
@@ -174,15 +179,39 @@ def storage_encryption_violations(
     return violations
 
 
+def storage_encryption_stack_violations(
+    resources: Sequence[Any],
+) -> list[tuple[str | None, str]]:
+    """Return stack-wide encryption issues, including split S3 resources."""
+    encrypted_bucket_names, encrypted_bucket_urns = _s3_encryption_targets(resources)
+
+    violations: list[tuple[str | None, str]] = []
+    for resource in resources:
+        resource_type = getattr(resource, "resource_type", "")
+        props = cast(Mapping[str, Any], getattr(resource, "props", {}))
+        urn = cast(str | None, getattr(resource, "urn", None))
+
+        if _s3_bucket_is_covered(
+            resource_type,
+            props,
+            urn,
+            encrypted_bucket_names,
+            encrypted_bucket_urns,
+        ):
+            continue
+
+        for violation in storage_encryption_violations(resource_type, props):
+            violations.append((urn, violation))
+
+    return violations
+
+
 def logging_violations(resource_type: str, props: Mapping[str, Any]) -> list[str]:
     """Return logging configuration issues for supported resource types."""
     violations: list[str] = []
 
     if _matches_resource_type(resource_type, S3_BUCKET_TYPE_SUFFIX):
-        tags = extract_tags(props) or {}
-        if _truthy(tags.get(LOGGING_EXEMPT_TAG)) and _string_value(
-            tags.get(LOGGING_EXEMPT_REASON_TAG)
-        ):
+        if _bucket_logging_exempt(props):
             return violations
         logging_config = props.get("logging")
         if not isinstance(logging_config, Mapping) or not _string_value(
@@ -198,6 +227,186 @@ def logging_violations(resource_type: str, props: Mapping[str, Any]) -> list[str
             violations.append("Load balancers must enable access logs.")
 
     return violations
+
+
+def logging_stack_violations(resources: Sequence[Any]) -> list[tuple[str | None, str]]:
+    """Return stack-wide logging issues, including split S3 logging resources."""
+    logged_bucket_names, logged_bucket_urns = _s3_logging_targets(resources)
+
+    violations: list[tuple[str | None, str]] = []
+    for resource in resources:
+        resource_type = getattr(resource, "resource_type", "")
+        props = cast(Mapping[str, Any], getattr(resource, "props", {}))
+        urn = cast(str | None, getattr(resource, "urn", None))
+
+        if _s3_bucket_logging_is_covered(
+            resource_type,
+            props,
+            urn,
+            logged_bucket_names,
+            logged_bucket_urns,
+        ):
+            continue
+
+        for violation in logging_violations(resource_type, props):
+            violations.append((urn, violation))
+
+    return violations
+
+
+def _resource_dependencies(resource: Any, property_name: str) -> Sequence[Any]:
+    """Return resource dependencies for one property, falling back to general deps."""
+    property_dependencies = cast(
+        Mapping[str, Sequence[Any]],
+        getattr(resource, "property_dependencies", {}) or {},
+    )
+    dependencies = list(property_dependencies.get(property_name, []))
+    if dependencies:
+        return dependencies
+    return cast(Sequence[Any], getattr(resource, "dependencies", []) or [])
+
+
+def _s3_encryption_rule_items(props: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Return concrete inline and split encryption rules from one resource."""
+    rule_items: list[Mapping[str, Any]] = []
+    rule = props.get("rule")
+    if isinstance(rule, Mapping):
+        rule_items.append(rule)
+
+    rules = props.get("rules")
+    if not isinstance(rules, Sequence):
+        return rule_items
+
+    rule_items.extend(
+        candidate for candidate in rules if isinstance(candidate, Mapping)
+    )
+    return rule_items
+
+
+def _has_default_s3_encryption_rule(props: Mapping[str, Any]) -> bool:
+    """Return True when any encryption rule declares a default SSE algorithm."""
+    for candidate in _s3_encryption_rule_items(props):
+        default_encryption = candidate.get("applyServerSideEncryptionByDefault")
+        if not isinstance(default_encryption, Mapping):
+            continue
+        if _string_value(default_encryption.get("sseAlgorithm")):
+            return True
+    return False
+
+
+def _s3_encryption_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]]:
+    """Collect bucket names and URNs protected by standalone S3 encryption resources."""
+    encrypted_bucket_names: set[str] = set()
+    encrypted_bucket_urns: set[str] = set()
+
+    for resource in resources:
+        resource_type = getattr(resource, "resource_type", "")
+        if not _matches_any_resource_type(
+            resource_type,
+            S3_BUCKET_ENCRYPTION_TYPE_SUFFIXES,
+        ):
+            continue
+
+        props = cast(Mapping[str, Any], getattr(resource, "props", {}))
+        if not _has_default_s3_encryption_rule(props):
+            continue
+
+        bucket_name = _string_value(props.get("bucket"))
+        if bucket_name:
+            encrypted_bucket_names.add(bucket_name)
+
+        for dependency in _resource_dependencies(resource, "bucket"):
+            dependency_type = getattr(dependency, "resource_type", "")
+            if _matches_resource_type(dependency_type, S3_BUCKET_TYPE_SUFFIX):
+                dependency_urn = getattr(dependency, "urn", "")
+                encrypted_bucket_urns.update(filter(None, (dependency_urn,)))
+
+    return encrypted_bucket_names, encrypted_bucket_urns
+
+
+def _s3_bucket_is_covered(
+    resource_type: str,
+    props: Mapping[str, Any],
+    urn: str | None,
+    encrypted_bucket_names: set[str],
+    encrypted_bucket_urns: set[str],
+) -> bool:
+    """Return True when an S3 bucket is protected by inline or split encryption."""
+    if not _matches_resource_type(resource_type, S3_BUCKET_TYPE_SUFFIX):
+        return False
+
+    encryption = props.get("serverSideEncryptionConfiguration")
+    if isinstance(encryption, Mapping):
+        return True
+
+    bucket_name = _string_value(props.get("bucket"))
+    if urn in encrypted_bucket_urns:
+        return True
+    return bool(bucket_name and bucket_name in encrypted_bucket_names)
+
+
+def _s3_logging_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]]:
+    """Collect bucket names and URNs covered by standalone S3 logging resources."""
+    logged_bucket_names: set[str] = set()
+    logged_bucket_urns: set[str] = set()
+
+    for resource in resources:
+        resource_type = getattr(resource, "resource_type", "")
+        if not _matches_any_resource_type(
+            resource_type,
+            S3_BUCKET_LOGGING_TYPE_SUFFIXES,
+        ):
+            continue
+
+        props = cast(Mapping[str, Any], getattr(resource, "props", {}))
+        if not _string_value(props.get("targetBucket")):
+            continue
+
+        bucket_name = _string_value(props.get("bucket"))
+        if bucket_name:
+            logged_bucket_names.add(bucket_name)
+
+        for dependency in _resource_dependencies(resource, "bucket"):
+            dependency_type = getattr(dependency, "resource_type", "")
+            if _matches_resource_type(dependency_type, S3_BUCKET_TYPE_SUFFIX):
+                logged_bucket_urns.add(getattr(dependency, "urn", ""))
+
+    return logged_bucket_names, logged_bucket_urns
+
+
+def _s3_bucket_logging_is_covered(
+    resource_type: str,
+    props: Mapping[str, Any],
+    urn: str | None,
+    logged_bucket_names: set[str],
+    logged_bucket_urns: set[str],
+) -> bool:
+    """Return True when an S3 bucket has inline or split access logging."""
+    if not _matches_resource_type(resource_type, S3_BUCKET_TYPE_SUFFIX):
+        return False
+
+    if _bucket_logging_exempt(props):
+        return True
+
+    logging_config = props.get("logging")
+    if isinstance(logging_config, Mapping) and _string_value(
+        logging_config.get("targetBucket")
+    ):
+        return True
+
+    bucket_name = _string_value(props.get("bucket"))
+    if urn in logged_bucket_urns:
+        return True
+    return bool(bucket_name and bucket_name in logged_bucket_names)
+
+
+def _bucket_logging_exempt(props: Mapping[str, Any]) -> bool:
+    """Return True when the bucket is tagged as intentionally log-exempt."""
+    tags = extract_tags(props) or {}
+    return bool(
+        _truthy(tags.get(LOGGING_EXEMPT_TAG))
+        and _string_value(tags.get(LOGGING_EXEMPT_REASON_TAG))
+    )
 
 
 def wildcard_iam_violations(

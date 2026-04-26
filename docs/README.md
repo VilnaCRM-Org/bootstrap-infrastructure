@@ -71,6 +71,7 @@ test              Run the aggregate structural, policy, quality, repo-hygiene, u
 test-coverage     Combined 100% branch-coverage gate after unit, integration, and policy suites.
 test-crossguard   Alias for the Pulumi CrossGuard policy-pack suite.
 test-pulumi       Structural validation for manifests, workflows, and supply-chain guards.
+test-repository-catalogs  Validate repository catalog JSON against schema and loader rules.
 test-policy       Pulumi policy-pack tests and guardrail coverage.
 test-quality      Blocking Python quality, maintainability, architecture, and dependency checks.
 test-repo-hygiene Workflow, YAML, and Dockerfile linting.

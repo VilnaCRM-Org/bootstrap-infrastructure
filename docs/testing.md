@@ -17,12 +17,14 @@ Run with:
 
 ```bash
 make test-pulumi
+make test-repository-catalogs
 ```
 
 Coverage:
 
 - Every public Make target is exercised through dry-run or help-output assertions
 - `pulumi/Pulumi.yaml`
+- `pulumi/repositories.schema.json` and committed `pulumi/repositories*.json` catalogs
 - `policy/PulumiPolicy.yaml`
 - Release workflow contracts
 - Dockerfile supply-chain safeguards
@@ -96,8 +98,10 @@ Coverage:
 - `make test-deps-security` runs `pip-audit --strict`
 - `make test-bandit` runs Bandit against repository Python code
 - `make test-preview` generates the Pulumi preview artifact consumed by later checks
+- `make test-preview-unprivileged` generates the fallback artifact used when AWS-backed preview variables are absent
 - `make test-destructive-diff` blocks deletes and replacements of critical infrastructure without an explicit PR override label
-- `make test-guardrails` keeps the credential-free preview and destructive-diff flow reproducible locally
+- `make test-guardrails` keeps the real preview and destructive-diff flow reproducible locally
+- `make test-guardrails-unprivileged` keeps the fallback preview, destructive-diff, and IAM-input extraction path reproducible locally
 - `make test-iam-validation` validates previewed IAM policies with AWS IAM Access Analyzer when AWS credentials are intentionally configured
 
 Dependency Review, CodeQL, SBOM attestations, and OpenSSF Scorecard are
@@ -131,6 +135,11 @@ Run with:
 ```bash
 make test-integration
 ```
+
+Use `make test-integration-unprivileged` when AWS-backed Pulumi secrets
+provider access is not configured. That target runs the credential-free
+integration contracts and still produces `.coverage.integration` for the
+combined coverage gate.
 
 Coverage:
 
@@ -240,9 +249,18 @@ make ci-pr
 make ci
 ```
 
-Run `make test` during normal iteration when you want the fast structural, policy, quality, repo-hygiene, unit, integration, coverage, and CLI suites after a prerequisite sanity check. For the same non-mutation battery that GitHub runs in `pulumi-local.yml`, run `make ci-pr`. Before pushing, execute `make ci` to run the full local equivalent of every GitHub check, including the prerequisite check, Docker build, and mutation suite.
+Run `make test` during normal iteration when you want the fast structural,
+policy, quality, repo-hygiene, unit, integration, coverage, and CLI suites after
+a prerequisite sanity check. For the real non-mutation battery, run
+`make ci-pr`; when AWS-backed Pulumi variables are not configured, run
+`make ci-pr-unprivileged`, which mirrors the default pull-request fallback path.
+Before pushing, execute `make ci` to run the full local equivalent of every
+GitHub check, including the prerequisite check, Docker build, and mutation
+suite.
 
-GitHub Actions now mirrors `make ci-pr` through the `Pulumi Local Test Battery` workflow, while `Pulumi Mutation Tests` keeps mutation analysis isolated as a separate check.
+GitHub Actions now runs either `make ci-pr` or `make ci-pr-unprivileged`
+through the `Pulumi Local Test Battery` workflow, while `Pulumi Mutation Tests`
+keeps mutation analysis isolated as a separate check.
 The `Pulumi Policy Tests` workflow runs the policy-pack coverage suite, and the
 `Python Quality Checks` workflow runs Ruff, Ty, maintainability, architecture,
 dependency-hygiene, and coverage gates. `Pulumi PR Guardrails` runs preview,

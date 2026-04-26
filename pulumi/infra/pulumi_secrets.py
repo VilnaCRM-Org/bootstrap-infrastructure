@@ -9,14 +9,22 @@ import pulumi_aws as aws  # pragma: no mutate
 
 import pulumi  # pragma: no mutate
 
+from .bootstrap_settings import BootstrapSettings  # pragma: no mutate
 from .config import (
-    ManagedRepository,
     managed_repositories,
-    pulumi_secrets_alias_name_for_repo,
-    pulumi_secrets_provider_for_repo,
+    settings,
 )  # pragma: no mutate
+from .managed_repository import ManagedRepository  # pragma: no mutate
 from .pulumi_state import _resource_suffix  # pragma: no mutate
+from .repository_catalog import ManagedRepositoryCatalog  # pragma: no mutate
 from .utils.tags import base_tags  # pragma: no mutate
+
+
+def pulumi_secrets_provider_for_repo(  # pragma: no mutate
+    repo_name: str, region: str
+) -> str:
+    """Compatibility wrapper for Pulumi KMS secrets provider URLs."""
+    return settings.pulumi_secrets_provider_for_repo(repo_name, region)
 
 
 def _key_policy(account_id: str) -> str:
@@ -45,25 +53,34 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
         name: str,  # pragma: no mutate
         *,  # pragma: no mutate
         repositories: Sequence[ManagedRepository] | None = None,  # pragma: no mutate
+        settings: BootstrapSettings | None = None,  # pragma: no mutate
         opts: pulumi.ResourceOptions | None = None,  # pragma: no mutate
     ) -> None:  # pragma: no mutate
         super().__init__(
             "bootstrap:kms:PulumiSecretsKeys", name, None, opts
         )  # pragma: no mutate
 
-        repos = (
-            list(repositories) if repositories is not None else managed_repositories()
-        )  # pragma: no mutate
+        configured_settings = settings or globals()["settings"]  # pragma: no mutate
+        if repositories is not None:  # pragma: no mutate
+            repos = list(repositories)  # pragma: no mutate
+        elif settings is not None:  # pragma: no mutate
+            repos = ManagedRepositoryCatalog.from_settings(
+                configured_settings
+            ).repositories  # pragma: no mutate
+        else:  # pragma: no mutate
+            repos = managed_repositories()  # pragma: no mutate
         account_id = aws.get_caller_identity().account_id  # pragma: no mutate
-        region = aws.get_region().name  # pragma: no mutate
+        region = aws.get_region().region  # pragma: no mutate
 
         self.key_arns: dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
         self.alias_names: dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
         self.provider_urls: dict[str, pulumi.Output[str]] = {}  # pragma: no mutate
 
         for repo in repos:  # pragma: no mutate
-            suffix = _resource_suffix(repo.name)  # pragma: no mutate
-            alias_name = pulumi_secrets_alias_name_for_repo(
+            suffix = _resource_suffix(
+                repo.name, configured_settings
+            )  # pragma: no mutate
+            alias_name = configured_settings.pulumi_secrets_alias_name_for_repo(
                 repo.name
             )  # pragma: no mutate
 
@@ -80,7 +97,9 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
                         "Purpose": "pulumi-secrets",
                         "Repository": repo.name,
                         "App": repo.name,
-                    }
+                        "RepositoryProject": repo.project_name,
+                    },
+                    settings=configured_settings,
                 ),  # pragma: no mutate
                 opts=pulumi.ResourceOptions(parent=self),  # pragma: no mutate
             )  # pragma: no mutate
@@ -96,9 +115,11 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
             self.alias_names[repo.name] = alias.name  # pragma: no mutate
             self.provider_urls[repo.name] = (
                 pulumi.Output.from_input(  # pragma: no mutate
-                    pulumi_secrets_provider_for_repo(
+                    pulumi_secrets_provider_for_repo(repo.name, region)
+                    if configured_settings is globals()["settings"]
+                    else configured_settings.pulumi_secrets_provider_for_repo(
                         repo.name, region
-                    )  # pragma: no mutate
+                    )
                 )
             )  # pragma: no mutate
 

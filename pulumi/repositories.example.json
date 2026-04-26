@@ -1,0 +1,15 @@
+{
+  "$schema": "./repositories.schema.json",
+  "repositories": [
+    {
+      "name": "user-service-infrastructure",
+      "defaultBranch": "main",
+      "project": "user-service"
+    },
+    {
+      "name": "core-service-infrastructure",
+      "defaultBranch": "main",
+      "project": "core-service"
+    }
+  ]
+}

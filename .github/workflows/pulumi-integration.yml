@@ -20,15 +20,11 @@ permissions:
 jobs:
   integration:
     name: Integration
-    if: >-
-      ${{
-        github.repository == 'VilnaCRM-Org/infrastructure-template' ||
-        vars.PULUMI_ENABLE_AUTOMATION_STACK_TESTS == 'true'
-      }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_ENABLE_AUTOMATION_STACK_TESTS: ${{ vars.PULUMI_ENABLE_AUTOMATION_STACK_TESTS }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -40,4 +36,9 @@ jobs:
       - name: Run integration suite inside Docker
         env:
           PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
-        run: make test-integration
+        run: |
+          if [[ "${PULUMI_ENABLE_AUTOMATION_STACK_TESTS}" == "true" ]]; then
+            make test-integration
+          else
+            make test-integration-unprivileged
+          fi

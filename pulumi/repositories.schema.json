@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/blob/main/pulumi/repositories.schema.json",
+  "title": "Bootstrap infrastructure repository catalog",
+  "description": "Repository catalog consumed by bootstrap-infrastructure:repositoryCatalogPath.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repositories"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repositories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/nonBlankString"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "$ref": "#/$defs/nonBlankString"
+              },
+              "defaultBranch": {
+                "$ref": "#/$defs/nonBlankString"
+              },
+              "project": {
+                "$ref": "#/$defs/nonBlankString"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S",
+      "minLength": 1
+    }
+  }
+}

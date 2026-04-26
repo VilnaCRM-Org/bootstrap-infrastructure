@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 try:
     from policy.config import load_policy_config
     from policy.guardrails import (
@@ -10,10 +12,12 @@ try:
         has_public_s3_bucket_policy,
         invalid_region,
         is_public_bucket_allowlisted,
+        logging_stack_violations,
         logging_violations,
         missing_required_tags,
         open_admin_ports,
         production_database_violations,
+        storage_encryption_stack_violations,
         storage_encryption_violations,
         wildcard_iam_violations,
     )
@@ -27,10 +31,12 @@ except ModuleNotFoundError as exc:  # pragma: no cover - direct script startup.
         has_public_s3_bucket_policy,
         invalid_region,
         is_public_bucket_allowlisted,
+        logging_stack_violations,
         logging_violations,
         missing_required_tags,
         open_admin_ports,
         production_database_violations,
+        storage_encryption_stack_violations,
         storage_encryption_violations,
         wildcard_iam_violations,
     )
@@ -39,6 +45,8 @@ from pulumi_policy import (
     ReportViolation,
     ResourceValidationArgs,
     ResourceValidationPolicy,
+    StackValidationArgs,
+    StackValidationPolicy,
 )
 
 POLICY_PACK_NAME = "vilnacrm-guardrails"
@@ -104,12 +112,26 @@ def require_storage_encryption(
         report_violation(violation)
 
 
+def require_storage_encryption_stack(
+    args: StackValidationArgs, report_violation
+) -> None:
+    """Require encryption at rest across the full stack resource graph."""
+    for urn, violation in storage_encryption_stack_violations(args.resources):
+        report_violation(violation, urn)
+
+
 def require_logging(
     args: ResourceValidationArgs, report_violation: ReportViolation
 ) -> None:
     """Require logging on supported resources."""
     for violation in logging_violations(args.resource_type, args.props):
         report_violation(violation)
+
+
+def require_logging_stack(args: StackValidationArgs, report_violation) -> None:
+    """Require logging across the full stack resource graph."""
+    for urn, violation in logging_stack_violations(args.resources):
+        report_violation(violation, urn)
 
 
 def block_wildcard_iam(
@@ -143,7 +165,7 @@ def block_open_admin_ports(
         )
 
 
-def build_policies() -> list[ResourceValidationPolicy]:
+def build_policies() -> list[Any]:
     """Construct the policy list exported by the Pulumi policy pack."""
     return [
         ResourceValidationPolicy(
@@ -164,17 +186,17 @@ def build_policies() -> list[ResourceValidationPolicy]:
             enforcement_level=EnforcementLevel.MANDATORY,
             validate=block_public_s3_exposure,
         ),
-        ResourceValidationPolicy(
+        StackValidationPolicy(
             name="critical-storage-encrypted",
             description="Require encryption at rest for critical storage resources.",
             enforcement_level=EnforcementLevel.MANDATORY,
-            validate=require_storage_encryption,
+            validate=require_storage_encryption_stack,
         ),
-        ResourceValidationPolicy(
+        StackValidationPolicy(
             name="supported-resources-logging-enabled",
             description="Require access logging for supported AWS resources.",
             enforcement_level=EnforcementLevel.MANDATORY,
-            validate=require_logging,
+            validate=require_logging_stack,
         ),
         ResourceValidationPolicy(
             name="iam-no-wildcards",

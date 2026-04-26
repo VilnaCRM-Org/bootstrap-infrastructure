@@ -27,6 +27,7 @@ assert_help_target() {
     build
     ci
     ci-pr
+    ci-pr-unprivileged
     clean
     doctor
     down
@@ -57,8 +58,11 @@ assert_help_target() {
     test-destructive-diff
     test-drift
     test-guardrails
+    test-guardrails-unprivileged
     test-iam-validation
+    test-iam-validation-unprivileged
     test-integration
+    test-integration-unprivileged
     test-lockfile
     test-maintainability
     test-mutation
@@ -66,7 +70,9 @@ assert_help_target() {
     test-pulumi
     test-quality
     test-preview
+    test-preview-unprivileged
     test-repo-hygiene
+    test-repository-catalogs
     test-ruff
     test-security
     test-secrets
@@ -214,6 +220,13 @@ assert_help_target() {
   [ "$status" -eq 0 ]
   assert_compose_env_file
   [[ "$output" == *"pytest -q tests/pulumi"* ]]
+}
+
+@test "make test-repository-catalogs validates repository catalog JSON" {
+  run make -n test-repository-catalogs
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  [[ "$output" == *"uv run python ./scripts/validate_repository_catalogs.py"* ]]
 }
 
 @test "make test-policy executes the policy suite with full coverage" {

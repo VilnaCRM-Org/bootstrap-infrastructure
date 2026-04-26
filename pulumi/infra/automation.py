@@ -8,7 +8,8 @@ import pulumi_aws as aws
 
 import pulumi
 
-from .config import automation_role_name, runner_ecr_repository_name, settings
+from .bootstrap_settings import BootstrapSettings
+from .config import settings as default_settings
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
@@ -231,24 +232,28 @@ class GitHubAutomation(pulumi.ComponentResource):
         self,
         name: str,
         *,
+        settings: BootstrapSettings | None = None,
+        repository_project: str | None = None,
         oidc_provider_arn: pulumi.Input[str] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize automation resources for this repository/environment."""
         super().__init__("bootstrap:github:Automation", name, None, opts)
 
-        if not settings.repo:
+        configured_settings = settings or default_settings
+        if not configured_settings.repo:
             raise ValueError("repoSlug config is required for GitHub automation.")
-        provider_arn = oidc_provider_arn or settings.github_oidc_provider_arn
+        provider_arn = oidc_provider_arn or configured_settings.github_oidc_provider_arn
         if provider_arn is None:
             raise ValueError(
                 "githubOidcProviderArn config is required for GitHub automation."
             )
 
-        repo_name = settings.repo
-        environment = settings.environment
-        ecr_repository_name = runner_ecr_repository_name(repo_name)
-        role_name = automation_role_name(repo_name)
+        repo_name = configured_settings.repo
+        environment = configured_settings.environment
+        repo_project = repository_project or repo_name
+        ecr_repository_name = configured_settings.runner_ecr_repository_name(repo_name)
+        role_name = configured_settings.automation_role_name(repo_name)
         base_opts = pulumi.ResourceOptions(parent=self)
 
         repository = aws.ecr.Repository(
@@ -263,7 +268,9 @@ class GitHubAutomation(pulumi.ComponentResource):
                     "Purpose": "pulumi-automation-runner",
                     "Repository": repo_name,
                     "App": repo_name,
-                }
+                    "RepositoryProject": repo_project,
+                },
+                settings=configured_settings,
             ),
             opts=base_opts,
         )
@@ -309,7 +316,7 @@ class GitHubAutomation(pulumi.ComponentResource):
                 pulumi.Output.from_input(provider_arn),
                 lambda arn: _automation_assume_role_policy(
                     arn,
-                    settings.org,
+                    configured_settings.org,
                     repo_name,
                     environment,
                 ),
@@ -319,7 +326,9 @@ class GitHubAutomation(pulumi.ComponentResource):
                     "Purpose": "pulumi-automation",
                     "Repository": repo_name,
                     "App": repo_name,
-                }
+                    "RepositoryProject": repo_project,
+                },
+                settings=configured_settings,
             ),
             opts=base_opts,
         )

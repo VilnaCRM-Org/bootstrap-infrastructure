@@ -15,7 +15,7 @@ Docker-backed pull request checks use the same Docker workspace and the same
 
 | Workflow | Primary command | Purpose |
 | --- | --- | --- |
-| `pulumi-structural.yml` | `make test-pulumi` | Validates Pulumi metadata, workflow contracts, and Dockerfile safeguards |
+| `pulumi-structural.yml` | `make test-pulumi`, `make test-repository-catalogs` | Validates Pulumi metadata, workflow contracts, repository catalogs, and Dockerfile safeguards |
 | `pulumi-policy.yml` | `make test-policy` | Validates the Pulumi policy pack and AWS guardrail coverage |
 | `pulumi-pr-guardrails.yml` | `make test-preview`, `make test-destructive-diff`, `make test-iam-validation` | Generates the PR preview artifact and enforces destructive/IAM guardrails |
 | `security-scans.yml` | `make test-secrets`, `make test-deps-security`, `make test-bandit`, `make test-actionlint`, `make test-yaml`, `make test-dockerfile` | Runs blocking security and repo-hygiene checks plus GitHub dependency review |
@@ -70,7 +70,7 @@ releases, or pull requests.
 The repository intentionally avoids workflow-only logic for the core validation
 battery.
 
-- `make test` is the fast inner-loop command for the prerequisite sanity check, Pulumi structural tests, policy, quality, repo hygiene, unit, integration, coverage, and CLI checks.
+- `make test` is the fast inner-loop command for the prerequisite sanity check, Pulumi structural tests, repository catalog validation, policy, quality, repo hygiene, unit, integration, coverage, and CLI checks.
 - `make ci-pr` matches the non-mutation GitHub pull-request battery, including preview and security guardrails.
 - `make ci` is the full local superset, including the dedicated mutation suite.
 - `make report-quality` mirrors the scheduled quality-report workflow locally.

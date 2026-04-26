@@ -41,7 +41,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
 
     expected_tools = {
         "bandit[toml]>=1.8,<2",
-        "cyclonedx-bom>=4.1,<5",
+        "cyclonedx-bom>=5,<6",
         "deptry>=0.23,<0.24",
         "docstr-coverage>=2.3,<3",
         "import-linter>=2.4,<3",

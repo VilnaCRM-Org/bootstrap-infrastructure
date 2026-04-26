@@ -6,6 +6,7 @@ import importlib.util
 import json
 import runpy
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any, cast
@@ -19,7 +20,9 @@ POLICY_MAIN = POLICY_DIR / "__main__.py"
 
 
 @pytest.fixture
-def policy_runtime(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+def policy_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[SimpleNamespace, None, None]:
     """Import the policy modules without leaking globals across tests."""
     module_names = (
         "config",
@@ -69,10 +72,14 @@ def policy_runtime(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             iam_policy_identifier=guardrails.iam_policy_identifier,
             invalid_region=guardrails.invalid_region,
             is_public_bucket_allowlisted=guardrails.is_public_bucket_allowlisted,
+            logging_stack_violations=guardrails.logging_stack_violations,
             logging_violations=guardrails.logging_violations,
             missing_required_tags=guardrails.missing_required_tags,
             open_admin_ports=guardrails.open_admin_ports,
             production_database_violations=guardrails.production_database_violations,
+            storage_encryption_stack_violations=(
+                guardrails.storage_encryption_stack_violations
+            ),
             storage_encryption_violations=guardrails.storage_encryption_violations,
             wildcard_iam_violations=guardrails.wildcard_iam_violations,
             POLICY_PACK_NAME=pack.POLICY_PACK_NAME,
@@ -83,8 +90,10 @@ def policy_runtime(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
             enforce_allowed_regions=pack.enforce_allowed_regions,
             require_default_tags=pack.require_default_tags,
             require_logging=pack.require_logging,
+            require_logging_stack=pack.require_logging_stack,
             require_production_database_safety=pack.require_production_database_safety,
             require_storage_encryption=pack.require_storage_encryption,
+            require_storage_encryption_stack=pack.require_storage_encryption_stack,
         )
     finally:
         for module_name in injected_modules:
@@ -122,6 +131,37 @@ def _collect_violations(
     """Run a validator and capture every reported violation."""
     violations: list[str] = []
     validator(_policy_args(resource_type, props), violations.append)
+    return violations
+
+
+def _stack_resource(
+    resource_type: str,
+    props: dict[str, Any],
+    *,
+    urn: str,
+    dependencies: list[Any] | None = None,
+    property_dependencies: dict[str, list[Any]] | None = None,
+) -> SimpleNamespace:
+    """Create the subset of a PolicyResource used by stack validators."""
+    return SimpleNamespace(
+        resource_type=resource_type,
+        props=props,
+        urn=urn,
+        dependencies=dependencies or [],
+        property_dependencies=property_dependencies or {},
+    )
+
+
+def _collect_stack_violations(
+    validator, *, resources: list[Any]
+) -> list[tuple[str | None, str]]:
+    """Run a stack validator and capture every reported violation."""
+    violations: list[tuple[str | None, str]] = []
+
+    def report_violation(message: str, urn: str | None = None) -> None:
+        violations.append((urn, message))
+
+    validator(SimpleNamespace(resources=resources), report_violation)
     return violations
 
 
@@ -671,6 +711,371 @@ def test_storage_encryption_and_logging_violations_cover_supported_resources(
     )
 
 
+def test_logging_stack_violations_support_split_s3_logging(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Allow S3 buckets covered by standalone logging resources."""
+    bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={
+            "bucket": "logs-bucket",
+            "tags": {
+                "Project": "demo",
+                "Environment": "dev",
+                "Owner": "platform",
+                "CostCenter": "engineering",
+            },
+        },
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::logs-bucket",
+    )
+    logging = _stack_resource(
+        "aws:s3/bucketLogging:BucketLogging",
+        props={
+            "bucket": "logs-bucket",
+            "targetBucket": "audit-logs",
+            "targetPrefix": "server-access/logs-bucket/",
+        },
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucketLogging:BucketLogging::logs-bucket-logging",
+        dependencies=[bucket],
+        property_dependencies={"bucket": [bucket]},
+    )
+
+    assert policy_runtime.logging_stack_violations([bucket, logging]) == []  # nosec B101
+    assert (  # nosec B101
+        _collect_stack_violations(
+            policy_runtime.require_logging_stack,
+            resources=[bucket, logging],
+        )
+        == []
+    )
+
+
+def test_storage_encryption_stack_violations_cover_missing_inline_and_name_only_paths(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Cover stack validation paths for missing and name-only S3 encryption."""
+    missing_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "unencrypted-bucket"},
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::unencrypted-bucket",
+    )
+    expected_violation = [
+        (
+            missing_bucket.urn,
+            "S3 buckets must enable default server-side encryption.",
+        )
+    ]
+
+    assert (  # nosec B101
+        policy_runtime.storage_encryption_stack_violations([missing_bucket])
+        == expected_violation
+    )
+    assert (  # nosec B101
+        _collect_stack_violations(
+            policy_runtime.require_storage_encryption_stack,
+            resources=[missing_bucket],
+        )
+        == expected_violation
+    )
+
+    inline_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={
+            "bucket": "inline-encrypted-bucket",
+            "serverSideEncryptionConfiguration": {"rule": "AES256"},
+        },
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::inline-encrypted-bucket"
+        ),
+    )
+    assert (
+        policy_runtime.storage_encryption_stack_violations(  # nosec B101
+            [inline_bucket]
+        )
+        == []
+    )
+
+    non_bucket_dependency = _stack_resource(
+        "aws:iam/role:Role",
+        props={},
+        urn="urn:pulumi:dev::bootstrap::aws:iam/role:Role::not-a-bucket",
+    )
+    name_only_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "name-only-encrypted-bucket"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::"
+            "name-only-encrypted-bucket"
+        ),
+    )
+    name_only_encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={
+            "bucket": "name-only-encrypted-bucket",
+            "rule": {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}},
+        },
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/"
+            "bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2::name-only-encryption"
+        ),
+        dependencies=[non_bucket_dependency],
+    )
+    assert (  # nosec B101
+        policy_runtime.storage_encryption_stack_violations(
+            [name_only_bucket, name_only_encryption]
+        )
+        == []
+    )
+
+    dependency_only_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "dependency-only-encrypted-bucket"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::"
+            "dependency-only-encrypted-bucket"
+        ),
+    )
+    dependency_only_encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={
+            "rule": {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}},
+        },
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/"
+            "bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2::dependency-only-encryption"
+        ),
+        dependencies=[dependency_only_bucket],
+    )
+    assert (  # nosec B101
+        policy_runtime.storage_encryption_stack_violations(
+            [dependency_only_bucket, dependency_only_encryption]
+        )
+        == []
+    )
+
+
+def test_logging_stack_violations_cover_missing_inline_exempt_and_name_only_paths(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Cover stack validation paths for missing and split S3 logging."""
+    missing_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "missing-logs-bucket"},
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::missing-logs-bucket",
+    )
+    expected_violation = [
+        (
+            missing_bucket.urn,
+            "S3 buckets must send access logs to a target bucket.",
+        )
+    ]
+
+    assert (  # nosec B101
+        policy_runtime.logging_stack_violations([missing_bucket]) == expected_violation
+    )
+    assert (  # nosec B101
+        _collect_stack_violations(
+            policy_runtime.require_logging_stack,
+            resources=[missing_bucket],
+        )
+        == expected_violation
+    )
+
+    exempt_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={
+            "bucket": "exempt-logs-bucket",
+            "tags": {
+                "LoggingExempt": "true",
+                "LoggingExemptReason": "Centralized S3 access log sink",
+            },
+        },
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::exempt-logs-bucket",
+    )
+    inline_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={
+            "bucket": "inline-logs-bucket",
+            "logging": {"targetBucket": "audit-logs"},
+        },
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::inline-logs-bucket",
+    )
+    assert policy_runtime.logging_stack_violations([exempt_bucket]) == []  # nosec B101
+    assert policy_runtime.logging_stack_violations([inline_bucket]) == []  # nosec B101
+
+    ignored_logging = _stack_resource(
+        "aws:s3/bucketLogging:BucketLogging",
+        props={"bucket": "missing-logs-bucket"},
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucketLogging:BucketLogging::ignored",
+        dependencies=[missing_bucket],
+    )
+    assert (  # nosec B101
+        policy_runtime.logging_stack_violations([missing_bucket, ignored_logging])
+        == expected_violation
+    )
+
+    non_bucket_dependency = _stack_resource(
+        "aws:iam/role:Role",
+        props={},
+        urn="urn:pulumi:dev::bootstrap::aws:iam/role:Role::not-a-bucket",
+    )
+    name_only_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "name-only-logs-bucket"},
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::name-only-logs-bucket",
+    )
+    name_only_logging = _stack_resource(
+        "aws:s3/bucketLogging:BucketLogging",
+        props={
+            "bucket": "name-only-logs-bucket",
+            "targetBucket": "audit-logs",
+        },
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucketLogging:BucketLogging::name-only",
+        dependencies=[non_bucket_dependency],
+    )
+    assert (  # nosec B101
+        policy_runtime.logging_stack_violations([name_only_bucket, name_only_logging])
+        == []
+    )
+
+    dependency_only_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "dependency-only-logs-bucket"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::"
+            "dependency-only-logs-bucket"
+        ),
+    )
+    dependency_only_logging = _stack_resource(
+        "aws:s3/bucketLogging:BucketLogging",
+        props={"targetBucket": "audit-logs"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucketLogging:BucketLogging::"
+            "dependency-only"
+        ),
+        dependencies=[dependency_only_bucket],
+    )
+    assert (  # nosec B101
+        policy_runtime.logging_stack_violations(
+            [dependency_only_bucket, dependency_only_logging]
+        )
+        == []
+    )
+
+
+def test_storage_encryption_stack_violations_require_real_split_rules(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Split encryption resources should only count when they configure SSE."""
+    invalid_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "invalid-encryption-bucket"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::invalid-encryption-bucket"
+        ),
+    )
+    invalid_encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={"bucket": "invalid-encryption-bucket", "rules": []},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/"
+            "bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2::invalid-encryption"
+        ),
+        dependencies=[invalid_bucket],
+        property_dependencies={"bucket": [invalid_bucket]},
+    )
+    expected_violation = [
+        (
+            invalid_bucket.urn,
+            "S3 buckets must enable default server-side encryption.",
+        )
+    ]
+
+    assert (  # nosec B101
+        policy_runtime.storage_encryption_stack_violations(
+            [invalid_bucket, invalid_encryption]
+        )
+        == expected_violation
+    )
+    assert (  # nosec B101
+        _collect_stack_violations(
+            policy_runtime.require_storage_encryption_stack,
+            resources=[invalid_bucket, invalid_encryption],
+        )
+        == expected_violation
+    )
+
+    valid_bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "valid-encryption-bucket"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::valid-encryption-bucket"
+        ),
+    )
+    valid_encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={
+            "bucket": "valid-encryption-bucket",
+            "rules": [
+                {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}}
+            ],
+        },
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/"
+            "bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2::valid-encryption"
+        ),
+        dependencies=[valid_bucket],
+        property_dependencies={"bucket": [valid_bucket]},
+    )
+
+    assert (  # nosec B101
+        policy_runtime.storage_encryption_stack_violations(
+            [valid_bucket, valid_encryption]
+        )
+        == []
+    )
+
+
+def test_storage_encryption_stack_violations_ignore_invalid_rules_before_valid_one(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Mixed split-rule payloads should only count concrete SSE defaults."""
+    bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "mixed-encryption-bucket"},
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::mixed-encryption-bucket"
+        ),
+    )
+    encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={
+            "bucket": "mixed-encryption-bucket",
+            "rules": [
+                {},
+                {"applyServerSideEncryptionByDefault": "AES256"},
+                {"applyServerSideEncryptionByDefault": {"sseAlgorithm": ""}},
+                {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}},
+            ],
+        },
+        urn=(
+            "urn:pulumi:dev::bootstrap::aws:s3/"
+            "bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2::mixed-encryption"
+        ),
+        dependencies=[bucket],
+        property_dependencies={"bucket": [bucket]},
+    )
+
+    assert (  # nosec B101
+        policy_runtime.storage_encryption_stack_violations([bucket, encryption]) == []
+    )
+
+
 def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
     policy_runtime: SimpleNamespace,
 ) -> None:
@@ -1076,12 +1481,38 @@ def test_pack_validators_report_expected_messages(
     )
     assert violations == ["EBS volumes must enable encryption at rest."]
 
+    bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "logs-bucket"},
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::logs",
+    )
+    encryption = _stack_resource(
+        "aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2",
+        props={
+            "bucket": "logs-bucket",
+            "rule": {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}},
+        },
+        urn="urn:pulumi:dev::bootstrap::aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2::logs-encryption",
+        dependencies=[bucket],
+        property_dependencies={"bucket": [bucket]},
+    )
+    assert (  # nosec B101
+        policy_runtime.storage_encryption_stack_violations([bucket, encryption]) == []
+    )
+    assert (  # nosec B101
+        _collect_stack_violations(
+            policy_runtime.require_storage_encryption_stack,
+            resources=[bucket, encryption],
+        )
+        == []
+    )
+
     violations = _collect_violations(
         policy_runtime.require_logging,
         resource_type="aws:lb/loadBalancer:LoadBalancer",
         props={"accessLogs": {"enabled": False}},
     )
-    assert violations == ["Load balancers must enable access logs."]
+    assert violations == ["Load balancers must enable access logs."]  # nosec B101
 
     violations = _collect_violations(
         policy_runtime.block_wildcard_iam,

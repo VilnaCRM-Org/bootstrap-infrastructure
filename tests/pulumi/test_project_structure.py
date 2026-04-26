@@ -30,14 +30,20 @@ def test_makefile_exposes_current_ci_targets() -> None:
         "test-crossguard",
         "test-quality",
         "test-repo-hygiene",
+        "test-repository-catalogs",
         "test-security",
         "test-guardrails",
+        "test-guardrails-unprivileged",
         "test-unit",
         "test-integration",
+        "test-integration-unprivileged",
         "test-coverage",
+        "test-preview-unprivileged",
+        "test-iam-validation-unprivileged",
         "test-mutation",
         "test-cli",
         "ci-pr",
+        "ci-pr-unprivileged",
         "ci",
         "nightly-quality",
     ):
@@ -55,6 +61,7 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
         "pulumiSecretsAliases",
         "pulumiSecretsProviderUrls",
         "deployRoleArns",
+        "managedRepositoryProjects",
         "automationRoleArn",
         "runnerRepositoryName",
         "runnerRepositoryUrl",
@@ -114,6 +121,7 @@ def test_pulumi_workflows_cover_current_local_targets() -> None:
     local_battery = (ROOT / ".github" / "workflows" / "pulumi-local.yml").read_text()
 
     assert "make test-pulumi" in structural  # nosec B101
+    assert "make test-repository-catalogs" in structural  # nosec B101
     assert "make test-unit" in unit  # nosec B101
     assert "make test-integration" in integration  # nosec B101
     assert "make test-mutation" in mutation  # nosec B101
@@ -172,6 +180,7 @@ def test_docs_cover_current_testing_and_guardrail_guidance() -> None:
 
     for phrase in (
         "make test-pulumi",
+        "make test-repository-catalogs",
         "make test-policy",
         "make test-quality",
         "make test-repo-hygiene",
@@ -203,6 +212,8 @@ def test_repository_tracks_current_policy_and_guardrail_support_files() -> None:
     assert (scripts_dir / "pulumi_ci_guardrails.py").exists()  # nosec B101
     assert (scripts_dir / "run_pulumi_preview.py").exists()  # nosec B101
     assert (scripts_dir / "run_pulumi_drift_check.py").exists()  # nosec B101
+    assert (scripts_dir / "validate_repository_catalogs.py").exists()  # nosec B101
+    assert (ROOT / "pulumi" / "repositories.schema.json").exists()  # nosec B101
 
 
 def test_removed_legacy_scaffold_paths_stay_absent() -> None:

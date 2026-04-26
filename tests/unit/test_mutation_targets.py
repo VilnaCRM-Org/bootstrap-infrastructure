@@ -90,7 +90,9 @@ def test_mutation_target_pulumi_secrets_component(monkeypatch):
         lambda: SimpleNamespace(account_id="123456789012"),
     )
     monkeypatch.setattr(
-        pulumi_secrets.aws, "get_region", lambda: SimpleNamespace(name="us-east-1")
+        pulumi_secrets.aws,
+        "get_region",
+        lambda: SimpleNamespace(name="us-east-1", region="us-east-1"),
     )
     monkeypatch.setattr(pulumi_secrets.aws.kms, "Key", FakeKey)
     monkeypatch.setattr(pulumi_secrets.aws.kms, "Alias", FakeAlias)

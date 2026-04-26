@@ -1,10 +1,14 @@
+import asyncio
 import runpy
 from pathlib import Path
 
 import pytest
 from infra import (
+    BootstrapInfrastructure,
+    BootstrapInfrastructureDependencies,
     CentralLoggingBuckets,
     GitHubAutomation,
+    ManagedRepositoryCatalog,
     PulumiSecretsKeys,
     PulumiStateBuckets,
     S3BackupPlan,
@@ -21,6 +25,16 @@ from infra.utils.outputs import future_output
 from pulumi.runtime.sync_await import _sync_await
 
 import pulumi
+
+
+def _resource_state_by_name(pulumi_mocks, name: str) -> dict:
+    """Wait briefly for an asynchronously registered mock resource to appear."""
+    for _ in range(50):
+        for _typ, resource_name, state in pulumi_mocks.resources:
+            if resource_name == name:
+                return state
+        asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.01))
+    pytest.fail(f"Expected mock resource {name!r} to be registered.")
 
 
 def test_central_logging_buckets_rejects_long_replica(  # noqa: ARG001
@@ -89,33 +103,89 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
         for state in resource_states
         if state.get("bucket") == "company-central-logs-us-east-1-test"
     )
-    state_bucket_state = next(
-        state
-        for state in resource_states
-        if state.get("bucket") == "pulumi-repo-test-state"
+    central_logging_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "central-logging-primary-encryption"
     )
-    replica_state_bucket_state = next(
-        state
-        for state in resource_states
-        if state.get("bucket") == "pulumi-repo-test-state-replication"
+    state_bucket_logging_state = _resource_state_by_name(
+        pulumi_mocks, "pulumi-state-repo-logging"
+    )
+    replica_state_bucket_logging_state = _resource_state_by_name(
+        pulumi_mocks, "pulumi-state-replica-repo-logging"
     )
 
-    assert (
-        central_logging_state["serverSideEncryptionConfiguration"]["rule"] is not None
-    )  # nosec B101
+    assert central_logging_encryption_state["rules"] is not None  # nosec B101
     assert central_logging_state["tags"]["LoggingExempt"] == "true"  # nosec B101
     assert (
         central_logging_state["tags"]["LoggingExemptReason"]
         == "Centralized S3 access log sink"
     )  # nosec B101
     assert (
-        state_bucket_state["logging"]["targetBucket"]
+        state_bucket_logging_state["targetBucket"]
         == "company-central-logs-us-east-1-test"
     )  # nosec B101
     assert (
-        replica_state_bucket_state["logging"]["targetBucket"]
+        replica_state_bucket_logging_state["targetBucket"]
         == "company-central-logs-us-east-1-test-replication"
     )  # nosec B101
+
+
+def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypatch):  # noqa: ARG001
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    monkeypatch.setattr(config.settings, "repo", "core-service-infrastructure")
+    monkeypatch.setattr(config.settings, "org", "VilnaCRM-Org")
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+    monkeypatch.setattr(
+        config.settings,
+        "github_oidc_provider_arn",
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+    )
+    monkeypatch.setattr(
+        pulumi_state, "_bucket_exists", lambda _name, provider=None: False
+    )
+    monkeypatch.setattr(
+        logging_bucket, "_bucket_exists", lambda _name, provider=None: False
+    )
+    monkeypatch.setattr(github_oidc, "_role_exists", lambda _name: False)
+
+    repository_catalog = ManagedRepositoryCatalog(
+        [
+            config.ManagedRepository(
+                name="core-service-infrastructure",
+                default_branch="main",
+                project="core-service",
+            )
+        ]
+    )
+    bootstrap = BootstrapInfrastructure(
+        "bootstrap",
+        settings=config.settings,
+        repository_catalog=repository_catalog,
+        dependencies=BootstrapInfrastructureDependencies(),
+    )
+
+    assert bootstrap.outputs["managedRepositoryProjects"] == {
+        "core-service-infrastructure": "core-service"
+    }  # nosec B101
+
+    assert bootstrap.automation is not None  # nosec B101
+    _sync_await(future_output(bootstrap.automation.repository.repository_url))
+    _sync_await(future_output(bootstrap.automation.role.arn))
+
+    repository_state = next(
+        state
+        for resource_type, _name, state in pulumi_mocks.resources
+        if resource_type == "aws:ecr/repository:Repository"
+    )
+    role_state = next(
+        state
+        for resource_type, _name, state in pulumi_mocks.resources
+        if resource_type == "aws:iam/role:Role"
+        and state.get("name") == "PulumiAutomation-core-service-infrastructure-test"
+    )
+
+    assert repository_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
+    assert role_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
 
 
 def test_state_buckets_reject_same_replication_region(  # noqa: ARG001
@@ -215,6 +285,50 @@ def test_pulumi_secrets_keys_emit_expected_resources_and_outputs(
     assert alias_state["name"] == "alias/pulumi-repo-test-secrets"  # nosec B101
 
 
+def test_pulumi_secrets_keys_derives_repositories_without_explicit_list(
+    pulumi_mocks, monkeypatch
+):  # noqa: ARG001
+    injected_settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="settings-repo",
+        environment="review",
+        owner="platform",
+        cost_center="core",
+        github_branch="release",
+        logging_prefix="company",
+        replication_region="us-west-2",
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(
+        pulumi_secrets,
+        "managed_repositories",
+        lambda: [config.ManagedRepository(name="global-repo", default_branch="main")],
+    )
+
+    settings_secrets = PulumiSecretsKeys(
+        "pulumi-secrets-settings", settings=injected_settings
+    )
+    global_secrets = PulumiSecretsKeys("pulumi-secrets-global")
+
+    settings_provider_url = _sync_await(
+        future_output(settings_secrets.provider_urls["settings-repo"])
+    )
+    global_provider_url = _sync_await(
+        future_output(global_secrets.provider_urls["global-repo"])
+    )
+
+    assert (  # nosec B101
+        settings_provider_url
+        == "awskms://alias/pulumi-settings-repo-review-secrets?region=us-east-1"
+    )
+    assert (  # nosec B101
+        global_provider_url
+        == "awskms://alias/pulumi-global-repo-test-secrets?region=us-east-1"
+    )
+
+
 def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(config.settings, "repo", "bootstrap-infrastructure")
     monkeypatch.setattr(config.settings, "environment", "test")
@@ -311,6 +425,75 @@ def test_github_oidc_roles_create_provider_when_missing(monkeypatch, pulumi_mock
     roles = GitHubOidcRoles("github-oidc-created", repositories=repos)
 
     assert roles.deploy_role_arns  # nosec B101
+
+
+def test_github_oidc_roles_use_injected_settings_repositories(
+    monkeypatch, pulumi_mocks
+):  # noqa: ARG001
+    class FakeProvider:
+        arn = pulumi.Output.from_input(
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+        )
+
+    injected_settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo=None,
+        environment="test",
+        owner="platform",
+        cost_center="engineering",
+        github_branch=None,
+        logging_prefix="company",
+        replication_region="us-west-2",
+        github_token=None,
+        github_oidc_provider_arn="arn:existing",
+        managed_repo_overrides=[
+            config.ManagedRepository(name="repo-managed", default_branch="main")
+        ],
+    )
+
+    monkeypatch.setattr(
+        github_oidc.aws.iam.OpenIdConnectProvider,
+        "get",
+        lambda *_args, **_kwargs: FakeProvider(),
+    )
+    monkeypatch.setattr(
+        github_oidc,
+        "managed_repositories",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("should not use global managed repositories")
+        ),
+    )
+
+    roles = GitHubOidcRoles("github-oidc-injected", settings=injected_settings)
+
+    assert "repo-managed" in roles.deploy_role_arns  # nosec B101
+
+
+def test_github_oidc_roles_use_global_repositories_without_injected_settings(
+    monkeypatch, pulumi_mocks
+):  # noqa: ARG001
+    class FakeProvider:
+        arn = pulumi.Output.from_input(
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+        )
+
+    monkeypatch.setattr(
+        github_oidc.settings, "github_oidc_provider_arn", "arn:existing"
+    )
+    monkeypatch.setattr(
+        github_oidc.aws.iam.OpenIdConnectProvider,
+        "get",
+        lambda *_args, **_kwargs: FakeProvider(),
+    )
+    monkeypatch.setattr(
+        github_oidc,
+        "managed_repositories",
+        lambda: [config.ManagedRepository(name="repo-global", default_branch="main")],
+    )
+
+    roles = GitHubOidcRoles("github-oidc-global")
+
+    assert "repo-global" in roles.deploy_role_arns  # nosec B101
 
 
 def test_github_oidc_role_name_limits_length():

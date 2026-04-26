@@ -76,7 +76,7 @@ class TestMocks(pulumi.runtime.Mocks):
         token = args.token
         payload = args.args
         if token == "aws:index/getRegion:getRegion":  # nosec B105
-            return {"name": "us-east-1"}, []
+            return {"name": "us-east-1", "region": "us-east-1"}, []
         if token == "aws:index/getCallerIdentity:getCallerIdentity":  # nosec B105
             return {"accountId": "123456789012"}, []
         if token == "aws:iam/getRole:getRole":  # nosec B105
