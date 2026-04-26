@@ -12,6 +12,8 @@ This planning package turns issue #17 into an implementation-ready roadmap for m
 | SC-3 | Future implementation PRs have clear acceptance criteria. | Each story includes concrete deliverables, validation expectations, and evidence requirements. |
 | SC-4 | External controls are acceptable only with audit-ready evidence. | Specs require owner, evidence location, review cadence, and fallback action for every externally enforced control. |
 | SC-5 | Planning follows repository BMAD/BMALPH placement rules. | All new planning artifacts live under `specs/issue-17-well-architected-5-of-5/`; no generated BMAD, BMALPH, or Ralph tooling is committed. |
+| SC-6 | All AWS Well-Architected Framework questions are analyzed. | `question-matrix.md` covers OPS1-11, SEC1-11, REL1-13, PERF1-5, COST1-11, and SUS1-6 with current evidence, gaps, and target evidence. |
+| SC-7 | Functional and non-functional requirements cover the current repo, not only issue text. | FR/NFR sections include repository control-plane duties, external evidence contracts, safety constraints, test-account validation, and score-claim gates. |
 
 ## Product Scope
 
@@ -32,7 +34,8 @@ Vision scope:
 
 Out of scope for this PR:
 - Changing Pulumi resources, AWS IAM policies, GitHub Actions behavior, branch protection, or AWS accounts.
-- Running Pulumi preview/apply, mutating stacks, reading stack exports, or inspecting secret-bearing configuration.
+- Adding committed changes that run Pulumi preview/apply, mutate stacks, read stack exports, or inspect secret-bearing configuration.
+- Direct local Pulumi apply unless Pulumi is installed, KMS backend metadata is safely configured, and account checks pass; when real test-account proof is requested, use the existing OIDC-backed GitHub `Pulumi Test Deploy` workflow.
 - Claiming that any Well-Architected gap is remediated by this planning-only PR.
 
 ## User Journeys
@@ -44,6 +47,8 @@ Out of scope for this PR:
 | Security review | Security reviewer evaluates future control changes. | The reviewer can distinguish repo-owned controls from externally enforced controls. | FR-5, FR-6 |
 | Cost governance | FinOps owner evaluates cost gaps. | The owner can see required budget, anomaly, transfer-cost, and repo-fanout evidence. | FR-7 |
 | Readiness gate | Release reviewer checks if implementation can start. | The reviewer can see dependencies, risks, and missing external inputs. | FR-8 |
+| Well-Architected review | Architect evaluates 5/5 readiness. | The architect can trace every AWS question to evidence, owner, cadence, and a no-go condition. | FR-9, FR-10, FR-11 |
+| Test-account validation | SRE validates future Pulumi changes. | The SRE can run same-branch test deployment through safe CI without printing secrets. | FR-12 |
 
 ## Domain Requirements
 
@@ -69,6 +74,16 @@ This is developer infrastructure automation. Planning must remain useful for AI 
 | FR-6 | Security-sensitive future controls require policy or CI coverage. | IAM, region, replication, backup, and public exposure stories require policy-pack, structural, workflow, or metadata validation. |
 | FR-7 | Cost remediation is first-class. | Cost stories cover budgets, anomaly detection, PR cost signal, cross-region transfer review, and multi-repo expansion thresholds. |
 | FR-8 | Implementation readiness is explicit. | `implementation-readiness-report.md` records readiness status, blockers, sequencing, and no-go conditions. |
+| FR-9 | Every AWS Well-Architected question has a repo-specific current-state analysis. | The question matrix lists current repository evidence or explains why the question is not currently applicable. |
+| FR-10 | Every future 5/5 claim has target evidence. | The question matrix lists target evidence, owner role, review cadence, and the epic or story that must produce it. |
+| FR-11 | External controls are represented as controlled dependencies, not assumptions. | Each externally managed control requires owner, evidence path or system of record, evidence freshness SLA, fallback, and secret-safety classification. |
+| FR-12 | Real AWS validation is defined through existing test-account automation. | The readiness report explains that local metadata checks are safe, direct local apply depends on installed Pulumi and configured KMS backend, and same-branch `Pulumi Test Deploy` is the preferred test-account apply path. |
+| FR-13 | Operational excellence evidence is measurable. | OPS stories require RACI, severity model, runbooks, alert matrix, KPI register, ORR checklist, and improvement cadence before score increases. |
+| FR-14 | Security evidence covers identity, permissions, detection, data protection, incident response, and appsec. | SEC stories require OIDC/static-key boundaries, permission matrices, Access Analyzer evidence, detection routes, data classification, encryption decisions, and vulnerability response SLAs. |
+| FR-15 | Reliability evidence covers quotas, change safety, monitoring, backups, failure testing, and DR. | REL stories require quota headroom, saved-plan integrity, alarm matrix, restore drills, fault scenarios, RTO/RPO, and DR exercise evidence. |
+| FR-16 | Performance evidence covers resource choice and control-plane efficiency. | PERF stories require resource fanout, CI/runtime SLOs, storage access assumptions, network/region rationale, and regular metric review. |
+| FR-17 | Cost evidence covers FinOps governance end to end. | COST stories require budget/anomaly evidence, activated allocation tags, cost ADRs, cost proxy or estimation, transfer model, stale cleanup, and effort-vs-savings review. |
+| FR-18 | Sustainability evidence covers region, demand, architecture, data, services, and process. | SUS stories require region decision matrix, demand inventory, CI efficiency targets, data retention matrix, no idle compute without justification, and sustainability KPI cadence. |
 
 ## Non-Functional Requirements
 
@@ -77,3 +92,11 @@ This is developer infrastructure automation. Planning must remain useful for AI 
 - Future AWS validation shall use metadata-only commands unless a human explicitly authorizes a secret-management task.
 - Future Pulumi CLI examples shall use `pulumi -C pulumi ...` and AWS KMS secrets providers.
 - Future implementation PRs shall include the narrowest useful validation for touched files and shall not depend on skipped privileged CI checks for same-repo infrastructure changes.
+- Score increases shall be blocked unless target evidence is current, non-secret, reproducible, and tied to the specific AWS Well-Architected question being raised.
+- Evidence freshness shall be explicit: CI and deploy evidence should be refreshed per PR, alert and backup evidence at least monthly, cost and quota evidence at least monthly, and full Well-Architected review evidence at least quarterly unless an epic sets a stricter cadence.
+- Evidence retention shall preserve enough history to compare main versus PR behavior without exposing secrets, including workflow URLs, run IDs, metadata-only AWS command outputs, review artifacts, and restore drill summaries.
+- Required check names shall be stable and documented before branch protection depends on them.
+- External-control evidence shall have a named owner and fallback; an unavailable screenshot, dashboard, or organizational policy shall count as missing evidence.
+- Pulumi test-account apply evidence shall come from existing OIDC-backed GitHub workflows or a local environment with Pulumi installed, KMS secrets provider configured, and safe account checks completed first.
+- Future changes shall prefer deterministic, auditable automation over manual console state; any manual step must have owner, date, reason, and verification evidence.
+- Future planning and implementation shall avoid one-off local assumptions by documenting current repo evidence and main-branch comparison points.

@@ -11,6 +11,8 @@ Issue #17 is ready for planning review, not implementation in this PR. The scope
 | Scope boundary | Ready | This PR is planning-only and excludes Pulumi, workflow, AWS, branch-protection, and stack mutations. |
 | Epic decomposition | Ready | Eight epics preserve the issue priority model and cover all listed roadmap items. |
 | Evidence model | Ready | Future controls require repo, CI, AWS metadata, or external-control evidence. |
+| Question coverage | Ready | `question-matrix.md` covers all 57 AWS Well-Architected questions with current evidence, gaps, target proof, owner role, and cadence. |
+| FR/NFR coverage | Ready | PRD and architecture cover current repo functions, non-functional constraints, evidence freshness, and score-claim gates. |
 | Secret safety | Ready | Future validation must avoid stack exports, decrypted config, cloud-secret payloads, and environment dumps. |
 | Implementation readiness | Partially ready | P0 items are implementable first; some P1/P2 items need owners and external evidence decisions. |
 
@@ -34,6 +36,7 @@ Issue #17 is ready for planning review, not implementation in this PR. The scope
 | Backup Vault Lock decision | Epic 5 | In-repo implementation evidence or external-control exemption. |
 | Quota ownership | Epic 7 | Service quota thresholds, approval owner, and escalation path. |
 | Sustainability goals | Epic 8 | Owner-approved goals for region selection, retention, backups, and cleanup. |
+| Well-Architected review owner | Epic 0 | Owner for question-matrix updates, score changes, evidence expiry, and follow-up review. |
 
 ## Risk Controls For Future PRs
 
@@ -44,6 +47,26 @@ Issue #17 is ready for planning review, not implementation in this PR. The scope
 - Prefer metadata-only AWS validation such as identity, bucket, KMS, IAM, Backup, Budget, EventBridge, CloudWatch, or quota descriptions.
 - Validate risky changes in ephemeral stacks such as `pr-<number>` or `smoke`, then destroy the stack after validation.
 - Do not treat skipped privileged checks as success for same-repo infrastructure changes unless the skip policy explicitly allows it.
+- Do not raise a question score unless the `question-matrix.md` row includes implemented evidence, owner, freshness SLA, fallback action, and comparison with `main`.
+- Prefer existing OIDC-backed GitHub workflows for test-account Pulumi apply evidence when local Pulumi or KMS backend metadata is not safely configured.
+
+## Test-Account Validation Strategy
+
+The planning PR itself does not mutate Pulumi resources, but the user requested a real AWS test-account validation path before merge. The safe validation strategy is:
+
+| Step | Method | Secret-safety rule | Expected evidence |
+| --- | --- | --- | --- |
+| Local AWS identity sanity check | `aws sts get-caller-identity` | Metadata-only output; do not inspect credentials. | Confirms AWS CLI can reach an account before any deploy attempt. |
+| Local Pulumi readiness check | `pulumi -C pulumi ...` only when Pulumi is installed and KMS backend metadata is configured. | Do not run stack export, show secrets, decrypt, or print environment values. | If local prerequisites are absent, local apply is skipped and CI deploy is used. |
+| Branch test deploy | Dispatch `Pulumi Test Deploy` on the PR branch. | Uses GitHub OIDC and configured environment metadata without printing secret values. | Workflow URL, head SHA, preview result, destructive diff result, IAM validation result, apply result, and post-apply drift result. |
+| Post-run review | `gh run view` and `gh pr checks` | Inspect logs only for status and failure causes; do not print secrets. | PR comment or readiness update with run conclusion and remaining blockers. |
+
+Current local readiness observations for this planning update:
+
+- AWS CLI caller identity resolved successfully with metadata-only validation.
+- Local `pulumi` was not installed in the shell, so direct local `pulumi -C pulumi up` was not a safe available path.
+- Required Pulumi backend and KMS provider environment metadata was not present in the local shell; values were not printed.
+- Therefore, real test-account apply evidence should be captured through the existing OIDC-backed GitHub `Pulumi Test Deploy` workflow for this PR branch.
 
 ## No-Go Conditions
 
@@ -60,5 +83,7 @@ This PR should be validated by:
 - Confirming the staged diff contains only files under `specs/issue-17-well-architected-5-of-5/`.
 - Running the focused structural project test after removing ignored local BMAD/BMALPH/Ralph generated tooling from the worktree.
 - Running markdown or repository hygiene checks if available and low-noise.
+- Confirming the question matrix contains all 57 AWS Well-Architected questions.
+- Dispatching or observing the existing `Pulumi Test Deploy` workflow when a real test-account apply is required for merge readiness.
 
-No Pulumi preview, Pulumi apply, AWS deployment, branch-protection mutation, or GitHub environment mutation is required for this planning-only PR.
+No branch-protection mutation or GitHub environment mutation is required for this planning-only PR. Direct local Pulumi apply is not required when the existing test-account workflow provides equivalent OIDC-backed deploy evidence without exposing local secrets.

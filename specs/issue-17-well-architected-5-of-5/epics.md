@@ -14,6 +14,38 @@
 | Improve data lifecycle and sustainability | Epic 8 |
 | Extend policy pack coverage | Epic 8 |
 | Improve operational process documentation | Epic 4 |
+| Analyze all AWS Well-Architected questions | Epic 0 |
+| Analyze repository functional and non-functional requirements | Epic 0 |
+| Prove future score changes with evidence | Epic 0 |
+
+## Global Completion Gates
+
+No future implementation story may claim a Well-Architected score increase until:
+
+- The matching row in `question-matrix.md` is updated with implemented evidence and a comparison against `main`.
+- Evidence is non-secret or explicitly classified as a secret-managed artifact that must not be printed.
+- Owner, evidence location, freshness SLA, cadence, and fallback action are recorded.
+- The narrowest useful local tests and applicable GitHub checks pass.
+- Real AWS validation is captured through metadata-only commands, an ephemeral stack, or the OIDC-backed `Pulumi Test Deploy` workflow without exposing secrets.
+
+## Epic 0: Evidence Governance And Full Question Coverage
+As an architect, I want every AWS Well-Architected question and every current repository FR/NFR represented in an evidence ledger so the 5/5 target is auditable instead of aspirational.
+
+### Story 0.1: Maintain the 57-question matrix
+**Acceptance Criteria:**
+- Given the Well-Architected scorecard is reviewed, Then OPS1-11, SEC1-11, REL1-13, PERF1-5, COST1-11, and SUS1-6 all have rows in `question-matrix.md`.
+- Given a future implementation changes a control, Then the affected row records current evidence, target evidence, owner, cadence, fallback, and validation source.
+- Given a question is not currently applicable, Then the row explains why and states the future resource type that would make it applicable.
+
+### Story 0.2: Maintain FR/NFR coverage
+**Acceptance Criteria:**
+- Given a future story changes state, secrets, OIDC, automation IAM, logging, backup, catalog, or CI behavior, Then the PR maps the change to repository functional duties and non-functional safety requirements.
+- Given a future score increase is proposed, Then the PR proves that secret safety, KMS-backed Pulumi, least privilege, auditability, main comparison, and test-account proof still hold.
+
+### Story 0.3: Capture external-control evidence
+**Acceptance Criteria:**
+- Given a control is enforced outside this repository, Then the story records owner, system of record, evidence link or artifact location, freshness SLA, review cadence, fallback, and secret-safety classification.
+- Given external evidence is missing or stale, Then the story cannot close as 5/5 and must either implement an in-repo control or document the no-go condition.
 
 ## Epic 1: Mandatory CI And Deployment Guardrails
 As a maintainer, I want same-repo infrastructure PRs to run real AWS-backed safety checks so merge decisions do not rely on skipped privileged guardrails.
@@ -34,6 +66,7 @@ As a maintainer, I want same-repo infrastructure PRs to run real AWS-backed safe
 **Acceptance Criteria:**
 - Given branch protection is reviewed, Then required status checks match the non-skipped AWS-backed job names.
 - Given branch protection is externally managed, Then the owner, evidence URL or screenshot location, and review cadence are documented.
+- Given a Well-Architected score depends on branch protection, Then the evidence includes the PR number, branch, head SHA, check names, skipped-check policy, and reviewer rule state.
 
 ## Epic 2: Region, Replication, And Data Residency Controls
 As an SRE, I want replication regions to be explicit, allowlisted, and documented so durability does not create unmanaged residency, cost, or sustainability risk.
@@ -49,6 +82,7 @@ As an SRE, I want replication regions to be explicit, allowlisted, and documente
 - Given state and log replication docs are reviewed, Then test and prod RTO/RPO targets are stated.
 - Given a replica region is selected, Then the data residency and transfer-cost rationale is documented.
 - Given external residency controls exist, Then evidence owner and cadence are recorded.
+- Given current branch evidence is reviewed, Then the plan acknowledges the current `eu-west-1` replica default and focuses implementation on explicit policy, evidence, and rationale gaps.
 
 ## Epic 3: Automation IAM Blast Radius Reduction
 As a security reviewer, I want bootstrap automation permissions narrowed so the automation role can mutate only intended bootstrap-managed resources.
@@ -57,6 +91,7 @@ As a security reviewer, I want bootstrap automation permissions narrowed so the 
 **Acceptance Criteria:**
 - Given current automation IAM is reviewed, Then broad S3, KMS, ECR, Backup, and IAM permissions are listed at a high level without exposing secrets.
 - Given an action cannot be ARN-scoped by AWS, Then the wildcard is documented with a service limitation and compensating control.
+- Given current branch evidence is reviewed, Then the plan distinguishes already-scoped automation permissions from residual wildcard or external-boundary gaps.
 
 ### Story 3.2: Scope resources with prefixes, tags, and regions
 **Acceptance Criteria:**
@@ -77,16 +112,24 @@ As an operator, I want failures to route to accountable owners with severity and
 - Given the alert inventory is reviewed, Then it covers AWS Backup failures, S3 replication failures or latency, KMS deletion and key policy changes, nightly drift failures, and guardrail failures.
 - Given each alert is listed, Then signal source, route, severity, owner, and expected response are defined.
 - Given an alert is externally managed, Then evidence and escalation owner are documented.
+- Given a future alert implementation is reviewed, Then the PR includes test evidence or a documented external alarm proof without printing secret values.
 
 ### Story 4.2: Define dashboard and health KPIs
 **Acceptance Criteria:**
 - Given operational health docs are reviewed, Then backup, replication, drift, and CI guardrail status appear as dashboard requirements.
 - Given KPIs are defined, Then they have measurement source and review cadence.
+- Given KPI evidence is used for OPS9 or PERF5, Then it records target, threshold, last observation, owner, and action if the threshold is missed.
 
 ### Story 4.3: Add incident process requirements
 **Acceptance Criteria:**
 - Given incident docs are reviewed, Then severity definitions, escalation path, communication expectations, and post-incident review requirements are present.
 - Given ownership docs are reviewed, Then RACI or equivalent accountability is defined for bootstrap infrastructure.
+- Given security incidents are reviewed, Then playbooks cover compromised OIDC, unexpected KMS changes, state bucket access anomaly, log delivery failure, and guardrail bypass.
+
+### Story 4.4: Define operational readiness review
+**Acceptance Criteria:**
+- Given 5/5 readiness is reviewed, Then the ORR checklist covers owners, runbooks, alert routes, restore evidence, cost/quota readiness, branch protection, and test-account deployment evidence.
+- Given a no-go item is open, Then the review records owner, target date, risk, and whether the score remains unchanged.
 
 ## Epic 5: Backup, Restore, And Disaster Recovery Proof
 As an SRE, I want backup controls proven by restore evidence so recovery claims are operationally defensible.
@@ -101,6 +144,7 @@ As an SRE, I want backup controls proven by restore evidence so recovery claims 
 - Given restore runbooks are reviewed, Then they cover Pulumi state buckets and central log buckets.
 - Given a restore drill runs, Then it uses non-production validation and avoids secret-revealing commands.
 - Given scheduled reporting is reviewed, Then restore evidence and last successful drill date are included.
+- Given restore evidence is used for REL9, REL11, REL12, or REL13, Then it includes stack/environment, date, operator, source backup, validation result, and cleanup confirmation without including secret material.
 
 ### Story 5.3: Define DR targets
 **Acceptance Criteria:**
@@ -114,16 +158,19 @@ As a FinOps owner, I want cost controls and cost evidence so multi-repository bo
 **Acceptance Criteria:**
 - Given cost control docs are reviewed, Then budgets cover `CostCenter`, `App`, and `RepositoryProject` tags.
 - Given anomaly detection is not implemented in-repo, Then the external control owner, evidence, and review cadence are documented.
+- Given budget evidence is reviewed, Then it records activated cost allocation tags, alert threshold, route, owner, last reviewed date, and fallback action.
 
 ### Story 6.2: Define PR cost signal
 **Acceptance Criteria:**
 - Given a future infrastructure PR adds resources, Then it produces a cost estimate or resource-count cost proxy before merge.
 - Given cost estimation uses an external tool, Then setup, ownership, and failure behavior are documented.
+- Given cost estimation is unavailable, Then the PR records a resource-count cost proxy for S3 buckets, KMS keys, IAM roles, Backup selections, ECR repositories, storage lifecycle, and cross-region transfer.
 
 ### Story 6.3: Review cross-region transfer cost
 **Acceptance Criteria:**
 - Given replication is configured, Then transfer-cost impact is reviewed and linked to RTO/RPO and residency decisions.
 - Given replica defaults change, Then the cost rationale is updated.
+- Given monthly cost evidence is reviewed, Then the transfer model records estimated GB/month, cost threshold, alert owner, and action if threshold is exceeded.
 
 ## Epic 7: Catalog, Fanout, Quota, And Cleanup Controls
 As a maintainer, I want repository catalog expansion bounded by quotas and cleanup rules so bootstrap resources scale predictably.
@@ -132,6 +179,7 @@ As a maintainer, I want repository catalog expansion bounded by quotas and clean
 **Acceptance Criteria:**
 - Given the repository catalog changes, Then a preflight estimates S3 buckets, KMS keys, IAM roles, Backup selections, and other managed resources per repository.
 - Given projected counts exceed configured thresholds, Then the PR fails or requires documented approval.
+- Given the preflight runs, Then it records current counts, projected counts, quota headroom, and comparison with `main`.
 
 ### Story 7.2: Validate AWS service quotas
 **Acceptance Criteria:**
@@ -142,6 +190,7 @@ As a maintainer, I want repository catalog expansion bounded by quotas and clean
 **Acceptance Criteria:**
 - Given catalog entries are reviewed, Then each entry has owner and last-reviewed metadata or an explicit equivalent.
 - Given a repository is stale, Then cleanup cadence, approval, and destroy safety checks are documented.
+- Given stale cleanup runs, Then evidence includes approval, protected-resource checks, destroy or retain decision, and follow-up date.
 
 ## Epic 8: Lifecycle, Sustainability, And Policy Coverage
 As an infrastructure owner, I want lifecycle and policy controls to reduce waste and prevent future resource classes from bypassing guardrails.
@@ -150,14 +199,17 @@ As an infrastructure owner, I want lifecycle and policy controls to reduce waste
 **Acceptance Criteria:**
 - Given primary and replica log buckets are reviewed, Then retention and storage-class transitions are configurable or explicitly justified.
 - Given state and log replicas use `STANDARD`, Then the durability, access, and sustainability rationale is documented.
+- Given lifecycle evidence is reviewed, Then it maps each data class to sensitivity, retention, storage class, access frequency, cost impact, and sustainability rationale.
 
 ### Story 8.2: Define sustainability goals and reporting
 **Acceptance Criteria:**
 - Given sustainability docs are reviewed, Then goals cover region selection, data retention, backup justification, and ephemeral validation cleanup.
 - Given scheduled reporting is reviewed, Then bucket growth, backup volume, ECR image age, and tag-based cost or carbon indicators are included where available.
+- Given sustainability goals are updated, Then the region decision matrix records compliance, latency, service availability, cost/transfer, sustainability considerations, exception owner, and review date.
 
 ### Story 8.3: Extend policy pack coverage conditionally
 **Acceptance Criteria:**
 - Given networking resources are introduced, Then VPC Flow Logs, public ingress, WAF, load balancer, and TLS listener guardrails are required where applicable.
 - Given data classification is required, Then tag policy and tests enforce the classification taxonomy.
 - Given Backup Vault Lock is required, Then policy or docs enforce the control or documented exemption.
+- Given new compute, network, or public endpoint resources are introduced, Then the PR updates SEC5, SEC6, SEC9, REL2, and PERF4 rows in the question matrix before merge.
