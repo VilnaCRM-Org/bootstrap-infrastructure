@@ -417,6 +417,17 @@ EOF
   [[ "$output" == *"pulumi_ci_guardrails.py destructive-gate"* ]]
 }
 
+@test "make test-cost-proxy enforces static cost and quota guardrails" {
+  run make -n test-cost-proxy
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  [[ "$output" == *"-e PULUMI_SECRETS_PROVIDER"* ]]
+  [[ "$output" == *"-e PULUMI_BACKEND_URL"* ]]
+  [[ "$output" == *"-e PULUMI_PREVIEW_STACKS"* ]]
+  [[ "$output" == *"pulumi_ci_guardrails.py cost-proxy"* ]]
+  [[ "$output" == *"reports/cost-proxy.json"* ]]
+}
+
 @test "make test-iam-validation validates previewed IAM policies" {
   run env GITHUB_TOKEN=ghs_test_token make -n test-iam-validation
   [ "$status" -eq 0 ]
@@ -424,6 +435,13 @@ EOF
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
   [[ "$output" == *"pulumi_ci_guardrails.py validate-iam"* ]]
+}
+
+@test "make test-repository-fanout estimates static quota fanout" {
+  run make -n test-repository-fanout
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  [[ "$output" == *"validate_repository_catalogs.py --fanout-report"* ]]
 }
 
 @test "make test-security delegates to the security scan battery" {
@@ -439,6 +457,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"make test-preview"* ]]
   [[ "$output" == *"make test-destructive-diff"* ]]
+  [[ "$output" == *"make test-cost-proxy"* ]]
   [[ "$output" != *"make test-iam-validation"* ]]
 }
 
@@ -447,6 +466,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"make test-pulumi"* ]]
   [[ "$output" == *"make test-policy"* ]]
+  [[ "$output" == *"make test-repository-fanout"* ]]
   [[ "$output" == *"make test-quality"* ]]
   [[ "$output" == *"make test-repo-hygiene"* ]]
   [[ "$output" == *"make test-unit"* ]]

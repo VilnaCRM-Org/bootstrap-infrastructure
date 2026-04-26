@@ -191,6 +191,38 @@ pulumi -C pulumi config
 Do not use secret-revealing flags or raw stack export commands for routine
 evidence collection.
 
+## Operations Alerting
+
+The bootstrap stack provisions an encrypted SNS topic named
+`bootstrap-<environment>-operations`, a customer-managed KMS key aliased as
+`alias/bootstrap-<environment>-operations-alerting`, and EventBridge rules for
+high-severity control-plane signals:
+
+| Signal | Source | Immediate owner action |
+| --- | --- | --- |
+| AWS Backup failed, aborted, or expired job | `aws.backup` job state events | Confirm the affected vault, plan, and protected bucket, then schedule a fresh backup or restore drill |
+| KMS key deletion, disablement, rotation disablement, or policy change | `aws.kms` CloudTrail events | Verify the key and actor, cancel unintended deletion, and review deploy role access |
+| IAM OIDC provider or role policy changes | `aws.iam` CloudTrail events | Confirm the GitHub OIDC trust still matches approved branches or environments |
+| S3 bucket encryption, logging, policy, or replication changes | `aws.s3` CloudTrail events | Confirm state and log buckets still enforce encryption, TLS, logging, and replication |
+
+SNS subscriptions and escalation routes are account-local operations controls.
+Do not treat the alerting foundation as complete until the target account has a
+confirmed subscription, owner, and incident route.
+
+## Backup and Restore Evidence
+
+Monthly backup review should record the stack, account, vault name, plan name,
+last successful backup job timestamp, and any failed job IDs. Quarterly restore
+drills should restore into an isolated location and verify object metadata only;
+do not inspect Pulumi state contents, decrypted stack values, or secret payloads
+as part of routine evidence collection.
+
+Target recovery posture for bootstrap state is:
+
+- RPO: one daily AWS Backup recovery point plus S3 versioning
+- RTO: restore procedure reviewed and executable within one business day
+- DR boundary: primary-region state and log buckets have cross-region replicas
+
 ## Incident and Drift Triage
 
 When something looks wrong:
@@ -208,7 +240,7 @@ When something looks wrong:
 
 Map failures back to their local commands:
 
-- `Structural` -> `make test-pulumi && make test-repository-catalogs`
+- `Structural` -> `make test-pulumi && make test-repository-catalogs && make test-repository-fanout`
 - `Policy` -> `make test-policy`
 - `Ruff` -> `make test-ruff`
 - `Ty` -> `make test-ty`
@@ -223,6 +255,7 @@ Map failures back to their local commands:
 - `Local Battery` -> `make ci-pr-unprivileged` by default, or `make ci-pr` when AWS-backed automation tests are enabled
 - `Preview` -> `make test-preview-unprivileged` by default, or `make test-preview` when AWS-backed preview variables are configured
 - `Destructive Diff Gate` -> `make test-destructive-diff`
+- `Cost Proxy` -> `make test-cost-proxy`
 - `IAM Validation` -> `make test-iam-validation-unprivileged` by default, or `make test-iam-validation` when AWS credentials are configured
 - `Secrets Scan` -> `make test-secrets`
 - `Dependency Audit` -> `make test-deps-security`

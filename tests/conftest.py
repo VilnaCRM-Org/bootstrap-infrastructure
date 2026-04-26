@@ -67,7 +67,26 @@ class TestMocks(pulumi.runtime.Mocks):
             state.setdefault("name", alias_name)
             state.setdefault("arn", f"arn:aws:kms:us-east-1:123456789012:{alias_name}")
         elif type_ == "aws:backup/vault:Vault":
-            state.setdefault("name", inputs.get("name", name))
+            vault_name = inputs.get("name", name)
+            state.setdefault("name", vault_name)
+            state.setdefault(
+                "arn",
+                f"arn:aws:backup:us-east-1:123456789012:backup-vault:{vault_name}",
+            )
+        elif type_ == "aws:sns/topic:Topic":
+            topic_name = inputs.get("name", name)
+            state.setdefault("name", topic_name)
+            state.setdefault(
+                "arn",
+                f"arn:aws:sns:us-east-1:123456789012:{topic_name}",
+            )
+        elif type_ == "aws:cloudwatch/eventRule:EventRule":
+            rule_name = inputs.get("name", name)
+            state.setdefault("name", rule_name)
+            state.setdefault(
+                "arn",
+                f"arn:aws:events:us-east-1:123456789012:rule/{rule_name}",
+            )
         self.resources.append((type_, name, state))
         resource_id = None if args.custom is False else f"{name}_id"
         return resource_id, state

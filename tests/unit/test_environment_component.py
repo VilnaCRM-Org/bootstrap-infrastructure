@@ -6,12 +6,14 @@ import runpy
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack, contextmanager
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from unittest.mock import call, patch
 
 import pytest
 from app.environment import (
     EnvironmentSettings,
+    EnvironmentSettingsInputs,
     _default_tags_from_parts,
     _stack_metadata_from_outputs,
     _stack_tag_from_parts,
@@ -24,6 +26,28 @@ import pulumi
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PULUMI_MAIN = PROJECT_ROOT / "pulumi" / "__main__.py"
 _PENDING_OUTPUT_ASSERTIONS: list[Callable[[], None]] = []
+
+
+def _expected_tags(
+    project: str,
+    environment: str,
+    *,
+    owner: str = "platform",
+    cost_center: str = "engineering",
+    data_classification: str = "internal",
+    criticality: str = "high",
+    retention_class: str = "standard",
+) -> dict[str, str]:
+    """Return the default tag contract expected from EnvironmentSettings."""
+    return {
+        "Project": project,
+        "Environment": environment,
+        "Owner": owner,
+        "CostCenter": cost_center,
+        "DataClassification": data_classification,
+        "Criticality": criticality,
+        "RetentionClass": retention_class,
+    }
 
 
 class SimpleMocks(mocks.Mocks):
@@ -108,7 +132,11 @@ def test_stack_tag_combines_service_and_environment() -> None:
     def program() -> None:
         """Export the derived stack tag for assertion."""
         env_settings = EnvironmentSettings(
-            "unit", environment="staging", service_name="billing"
+            "unit",
+            inputs=EnvironmentSettingsInputs(
+                environment="staging",
+                service_name="billing",
+            ),
         )
         pulumi.export("stackTag", env_settings.stack_tag)
         _assert_output_value(env_settings.stack_tag, "billing-staging")
@@ -122,17 +150,16 @@ def test_default_tags_use_service_and_environment() -> None:
     def program() -> None:
         """Export default tags for explicit values."""
         env_settings = EnvironmentSettings(
-            "unit", environment="production", service_name="edge"
+            "unit",
+            inputs=EnvironmentSettingsInputs(
+                environment="production",
+                service_name="edge",
+            ),
         )
         pulumi.export("defaultTags", env_settings.default_tags)
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "edge",
-                "Environment": "production",
-                "Owner": "platform",
-                "CostCenter": "engineering",
-            },
+            _expected_tags("edge", "production"),
         )
 
     _run_pulumi_program(program)
@@ -153,22 +180,20 @@ def test_environment_falls_back_to_config_value() -> None:
         _assert_output_value(env_settings.stack_tag, "bootstrap-infrastructure-qa")
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "bootstrap-infrastructure",
-                "Environment": "qa",
-                "Owner": "platform",
-                "CostCenter": "engineering",
-            },
+            _expected_tags("bootstrap-infrastructure", "qa"),
         )
 
     with mocked_pulumi_context({"environment": "qa"}) as config_instance:
         _run_pulumi_program(program)
 
-    assert config_instance.get.call_args_list == [
+    assert config_instance.get.call_args_list == [  # nosec B101
         call("environment"),
         call("serviceName"),
         call("owner"),
         call("costCenter"),
+        call("dataClassification"),
+        call("criticality"),
+        call("retentionClass"),
     ]
 
 
@@ -187,12 +212,7 @@ def test_environment_defaults_to_dev_when_unset() -> None:
         _assert_output_value(env_settings.stack_tag, "bootstrap-infrastructure-dev")
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "bootstrap-infrastructure",
-                "Environment": "dev",
-                "Owner": "platform",
-                "CostCenter": "engineering",
-            },
+            _expected_tags("bootstrap-infrastructure", "dev"),
         )
 
     with mocked_pulumi_context():
@@ -204,7 +224,10 @@ def test_service_name_falls_back_to_config_value() -> None:
 
     def program() -> None:
         """Export resolved fields for config-based service name."""
-        env_settings = EnvironmentSettings("unit", environment="qa")
+        env_settings = EnvironmentSettings(
+            "unit",
+            inputs=EnvironmentSettingsInputs(environment="qa"),
+        )
         pulumi.export("serviceName", env_settings.service_name)
         pulumi.export("stackTag", env_settings.stack_tag)
         pulumi.export("defaultTags", env_settings.default_tags)
@@ -212,12 +235,7 @@ def test_service_name_falls_back_to_config_value() -> None:
         _assert_output_value(env_settings.stack_tag, "billing-qa")
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "billing",
-                "Environment": "qa",
-                "Owner": "platform",
-                "CostCenter": "engineering",
-            },
+            _expected_tags("billing", "qa"),
         )
 
     with mocked_pulumi_context({"serviceName": "billing"}):
@@ -229,7 +247,10 @@ def test_service_name_defaults_to_project_name() -> None:
 
     def program() -> None:
         """Export resolved fields for project-name fallback."""
-        env_settings = EnvironmentSettings("unit", environment="qa")
+        env_settings = EnvironmentSettings(
+            "unit",
+            inputs=EnvironmentSettingsInputs(environment="qa"),
+        )
         pulumi.export("serviceName", env_settings.service_name)
         pulumi.export("stackTag", env_settings.stack_tag)
         pulumi.export("defaultTags", env_settings.default_tags)
@@ -237,12 +258,7 @@ def test_service_name_defaults_to_project_name() -> None:
         _assert_output_value(env_settings.stack_tag, "project-fallback-qa")
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "project-fallback",
-                "Environment": "qa",
-                "Owner": "platform",
-                "CostCenter": "engineering",
-            },
+            _expected_tags("project-fallback", "qa"),
         )
 
     with mocked_pulumi_context(project_name="project-fallback"):
@@ -254,19 +270,33 @@ def test_default_tags_allow_owner_and_cost_center_overrides() -> None:
 
     def program() -> None:
         """Export default tags for owner and cost-center overrides."""
-        env_settings = EnvironmentSettings("unit", environment="qa")
+        env_settings = EnvironmentSettings(
+            "unit",
+            inputs=EnvironmentSettingsInputs(environment="qa"),
+        )
         pulumi.export("defaultTags", env_settings.default_tags)
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "bootstrap-infrastructure",
-                "Environment": "qa",
-                "Owner": "team-platform",
-                "CostCenter": "cost-123",
-            },
+            _expected_tags(
+                "bootstrap-infrastructure",
+                "qa",
+                owner="team-platform",
+                cost_center="cost-123",
+                data_classification="confidential",
+                criticality="medium",
+                retention_class="regulated",
+            ),
         )
 
-    with mocked_pulumi_context({"owner": "team-platform", "costCenter": "cost-123"}):
+    with mocked_pulumi_context(
+        {
+            "owner": "team-platform",
+            "costCenter": "cost-123",
+            "dataClassification": "confidential",
+            "criticality": "medium",
+            "retentionClass": "regulated",
+        }
+    ):
         _run_pulumi_program(program)
 
 
@@ -275,20 +305,32 @@ def test_default_tags_trim_owner_and_cost_center_config_values() -> None:
 
     def program() -> None:
         """Export normalized tags from config-backed owner values."""
-        env_settings = EnvironmentSettings("unit", environment="qa")
+        env_settings = EnvironmentSettings(
+            "unit",
+            inputs=EnvironmentSettingsInputs(environment="qa"),
+        )
         pulumi.export("defaultTags", env_settings.default_tags)
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "bootstrap-infrastructure",
-                "Environment": "qa",
-                "Owner": "team-platform",
-                "CostCenter": "cost-123",
-            },
+            _expected_tags(
+                "bootstrap-infrastructure",
+                "qa",
+                owner="team-platform",
+                cost_center="cost-123",
+                data_classification="confidential",
+                criticality="medium",
+                retention_class="regulated",
+            ),
         )
 
     with mocked_pulumi_context(
-        {"owner": " team-platform ", "costCenter": " cost-123 "}
+        {
+            "owner": " team-platform ",
+            "costCenter": " cost-123 ",
+            "dataClassification": " confidential ",
+            "criticality": " medium ",
+            "retentionClass": " regulated ",
+        }
     ):
         _run_pulumi_program(program)
 
@@ -298,19 +340,25 @@ def test_default_tags_fall_back_when_owner_and_cost_center_are_blank() -> None:
 
     def program() -> None:
         """Export default tags for blank config values."""
-        env_settings = EnvironmentSettings("unit", environment="qa")
+        env_settings = EnvironmentSettings(
+            "unit",
+            inputs=EnvironmentSettingsInputs(environment="qa"),
+        )
         pulumi.export("defaultTags", env_settings.default_tags)
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "bootstrap-infrastructure",
-                "Environment": "qa",
-                "Owner": "platform",
-                "CostCenter": "engineering",
-            },
+            _expected_tags("bootstrap-infrastructure", "qa"),
         )
 
-    with mocked_pulumi_context({"owner": "   ", "costCenter": ""}):
+    with mocked_pulumi_context(
+        {
+            "owner": "   ",
+            "costCenter": "",
+            "dataClassification": " ",
+            "criticality": "",
+            "retentionClass": "   ",
+        }
+    ):
         _run_pulumi_program(program)
 
 
@@ -321,20 +369,28 @@ def test_default_tags_allow_explicit_owner_and_cost_center_overrides() -> None:
         """Export default tags for explicit tag overrides."""
         env_settings = EnvironmentSettings(
             "unit",
-            environment="qa",
-            service_name="billing",
-            owner="payments",
-            cost_center="finops",
+            inputs=EnvironmentSettingsInputs(
+                environment="qa",
+                service_name="billing",
+                owner="payments",
+                cost_center="finops",
+                data_classification="restricted",
+                criticality="critical",
+                retention_class="long-term",
+            ),
         )
         pulumi.export("defaultTags", env_settings.default_tags)
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "billing",
-                "Environment": "qa",
-                "Owner": "payments",
-                "CostCenter": "finops",
-            },
+            _expected_tags(
+                "billing",
+                "qa",
+                owner="payments",
+                cost_center="finops",
+                data_classification="restricted",
+                criticality="critical",
+                retention_class="long-term",
+            ),
         )
 
     _run_pulumi_program(program)
@@ -347,20 +403,28 @@ def test_default_tags_trim_explicit_owner_and_cost_center_overrides() -> None:
         """Export default tags for explicit padded tag overrides."""
         env_settings = EnvironmentSettings(
             "unit",
-            environment="qa",
-            service_name="billing",
-            owner=" payments ",
-            cost_center=" finops ",
+            inputs=EnvironmentSettingsInputs(
+                environment="qa",
+                service_name="billing",
+                owner=" payments ",
+                cost_center=" finops ",
+                data_classification=" restricted ",
+                criticality=" critical ",
+                retention_class=" long-term ",
+            ),
         )
         pulumi.export("defaultTags", env_settings.default_tags)
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "billing",
-                "Environment": "qa",
-                "Owner": "payments",
-                "CostCenter": "finops",
-            },
+            _expected_tags(
+                "billing",
+                "qa",
+                owner="payments",
+                cost_center="finops",
+                data_classification="restricted",
+                criticality="critical",
+                retention_class="long-term",
+            ),
         )
 
     _run_pulumi_program(program)
@@ -373,26 +437,54 @@ def test_resolve_config_value_preserves_explicit_configured_and_default_paths() 
     assert resolve_config_value(None, None, default="dev") == "dev"
 
 
-def test_stack_metadata_helpers_keep_the_four_field_layout() -> None:
-    """Map service, environment, owner, and cost center without index drift."""
+def test_environment_settings_inputs_are_immutable() -> None:
+    """Prevent callers from mutating shared settings after construction."""
+    inputs = EnvironmentSettingsInputs(environment="qa")
+
+    with pytest.raises(FrozenInstanceError):
+        inputs.environment = "prod"
+
+
+def test_stack_metadata_helpers_keep_the_seven_field_layout() -> None:
+    """Map service, environment, ownership, and classification without drift."""
     metadata = _stack_metadata_from_outputs(
-        ["billing", "qa", "team-platform", "cost-123"]
+        [
+            "billing",
+            "qa",
+            "team-platform",
+            "cost-123",
+            "internal",
+            "high",
+            "standard",
+        ]
     )
 
-    assert metadata == ("billing", "qa", "team-platform", "cost-123")
-    assert _stack_tag_from_parts(metadata) == "billing-qa"
-    assert _default_tags_from_parts(metadata) == {
-        "Project": "billing",
-        "Environment": "qa",
-        "Owner": "team-platform",
-        "CostCenter": "cost-123",
-    }
+    assert metadata == (  # nosec B101
+        "billing",
+        "qa",
+        "team-platform",
+        "cost-123",
+        "internal",
+        "high",
+        "standard",
+    )
+    assert _stack_tag_from_parts(metadata) == "billing-qa"  # nosec B101
+    assert _default_tags_from_parts(metadata) == _expected_tags(  # nosec B101
+        "billing",
+        "qa",
+        owner="team-platform",
+        cost_center="cost-123",
+    )
 
 
 def test_stack_metadata_helpers_reject_shape_drift() -> None:
     """Reject unexpected Output.all shapes before indexing tag metadata."""
     with pytest.raises(
-        ValueError, match=r"^expected service, environment, owner, and cost center$"
+        ValueError,
+        match=(
+            r"^expected service, environment, owner, cost center, "
+            r"classification, criticality, and retention class$"
+        ),
     ):
         _stack_metadata_from_outputs(["billing", "qa", "team-platform"])
 
@@ -480,12 +572,7 @@ def test_main_exports_expected_outputs() -> None:
         _assert_output_value(env_settings.stack_tag, "bootstrap-infrastructure-dev")
         _assert_output_value(
             env_settings.default_tags,
-            {
-                "Project": "bootstrap-infrastructure",
-                "Environment": "dev",
-                "Owner": "platform",
-                "CostCenter": "engineering",
-            },
+            _expected_tags("bootstrap-infrastructure", "dev"),
         )
 
     with mocked_pulumi_context():
@@ -498,7 +585,10 @@ def test_register_outputs_maps_component_properties() -> None:
 
     def program() -> None:
         """Export component outputs for register_outputs tracking."""
-        env_settings = EnvironmentSettings("unit", environment="qa", service_name="svc")
+        env_settings = EnvironmentSettings(
+            "unit",
+            inputs=EnvironmentSettingsInputs(environment="qa", service_name="svc"),
+        )
         pulumi.export("stackTag", env_settings.stack_tag)
         pulumi.export("defaultTags", env_settings.default_tags)
 

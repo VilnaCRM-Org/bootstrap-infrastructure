@@ -54,23 +54,17 @@ _AUTOMATION_KMS_ACTIONS = (
     "kms:CreateAlias",
     "kms:CreateGrant",
     "kms:CreateKey",
-    "kms:Decrypt",
     "kms:DeleteAlias",
     "kms:DescribeKey",
     "kms:DisableKey",
     "kms:EnableKey",
     "kms:EnableKeyRotation",
-    "kms:Encrypt",
-    "kms:GenerateDataKey",
-    "kms:GenerateDataKeyWithoutPlaintext",
     "kms:GetKeyPolicy",
     "kms:GetKeyRotationStatus",
     "kms:ListAliases",
     "kms:ListGrants",
     "kms:ListResourceTags",
     "kms:PutKeyPolicy",
-    "kms:ReEncryptFrom",
-    "kms:ReEncryptTo",
     "kms:RetireGrant",
     "kms:RevokeGrant",
     "kms:ScheduleKeyDeletion",
@@ -108,6 +102,28 @@ _AUTOMATION_ECR_ACTIONS = (
     "ecr:TagResource",
     "ecr:UntagResource",
 )
+_AUTOMATION_EVENTS_ACTIONS = (
+    "events:DeleteRule",
+    "events:DescribeRule",
+    "events:DisableRule",
+    "events:EnableRule",
+    "events:ListTagsForResource",
+    "events:ListTargetsByRule",
+    "events:PutRule",
+    "events:PutTargets",
+    "events:RemoveTargets",
+    "events:TagResource",
+    "events:UntagResource",
+)
+_AUTOMATION_SNS_ACTIONS = (
+    "sns:CreateTopic",
+    "sns:DeleteTopic",
+    "sns:GetTopicAttributes",
+    "sns:ListTagsForResource",
+    "sns:SetTopicAttributes",
+    "sns:TagResource",
+    "sns:UntagResource",
+)
 
 
 def _environment_resource_part(settings: BootstrapSettings) -> str:
@@ -136,7 +152,10 @@ def _automation_kms_alias_resources(
 ) -> list[str]:
     """Scope KMS alias management to Pulumi secrets aliases for this environment."""
     environment = _environment_resource_part(settings).replace(".", "-")
-    return [f"arn:aws:kms:*:{account_id}:alias/pulumi-*-{environment}-secrets"]
+    return [
+        f"arn:aws:kms:*:{account_id}:alias/pulumi-*-{environment}-secrets",
+        f"arn:aws:kms:*:{account_id}:alias/bootstrap-{environment}-operations-alerting",
+    ]
 
 
 def _automation_kms_key_resources(account_id: str) -> list[str]:
@@ -176,6 +195,22 @@ def _automation_backup_resources(account_id: str) -> list[str]:
     ]
 
 
+def _automation_eventbridge_resources(
+    account_id: str, settings: BootstrapSettings
+) -> list[str]:
+    """Scope EventBridge management to bootstrap operations rules."""
+    environment = _environment_resource_part(settings)
+    return [f"arn:aws:events:*:{account_id}:rule/bootstrap-{environment}-*"]
+
+
+def _automation_sns_resources(
+    account_id: str, settings: BootstrapSettings
+) -> list[str]:
+    """Scope SNS management to the bootstrap operations alert topic."""
+    environment = _environment_resource_part(settings)
+    return [f"arn:aws:sns:*:{account_id}:bootstrap-{environment}-operations"]
+
+
 def _automation_assume_role_policy(
     oidc_provider_arn: str, org: str, repo_name: str, environment: str
 ) -> str:
@@ -212,22 +247,23 @@ def _automation_policy(
         f"arn:aws:iam::{account_id}:oidc-provider/token.actions.githubusercontent.com"
     )
     iam_role_resources = _automation_iam_role_resources(account_id, settings, repo_name)
+    kms_purposes = ["pulumi-secrets", "operations-alerting"]
     kms_tag_condition = {
         "StringEquals": {
             "aws:ResourceTag/Environment": settings.environment,
-            "aws:ResourceTag/Purpose": "pulumi-secrets",
+            "aws:ResourceTag/Purpose": kms_purposes,
         }
     }
     kms_request_tag_condition = {
         "StringEquals": {
             "aws:RequestTag/Environment": settings.environment,
-            "aws:RequestTag/Purpose": "pulumi-secrets",
+            "aws:RequestTag/Purpose": kms_purposes,
         }
     }
     kms_alias_condition = {
         "StringEqualsIfExists": {
             "aws:ResourceTag/Environment": settings.environment,
-            "aws:ResourceTag/Purpose": "pulumi-secrets",
+            "aws:ResourceTag/Purpose": kms_purposes,
         }
     }
     return json.dumps(
@@ -351,6 +387,18 @@ def _automation_policy(
                     "Resource": _automation_ecr_resources(
                         account_id, settings, repo_name
                     ),
+                },
+                {
+                    "Sid": "ManageBootstrapEventBridge",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_EVENTS_ACTIONS),
+                    "Resource": _automation_eventbridge_resources(account_id, settings),
+                },
+                {
+                    "Sid": "ManageBootstrapSns",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_SNS_ACTIONS),
+                    "Resource": _automation_sns_resources(account_id, settings),
                 },
             ],
         }

@@ -46,6 +46,7 @@ if bootstrap_requested:
     secrets = bootstrap.secrets
     oidc = bootstrap.oidc
     backup = bootstrap.backup
+    monitoring = bootstrap.monitoring
     if bootstrap.automation is not None:
         automation = bootstrap.automation
 
@@ -60,6 +61,12 @@ if bootstrap_requested:
     pulumi.export("deployRoleArns", bootstrap.outputs["deployRoleArns"])
     managed_repository_projects = bootstrap.outputs["managedRepositoryProjects"]
     pulumi.export("managedRepositoryProjects", managed_repository_projects)
+    managed_repository_metadata = bootstrap.outputs["managedRepositoryMetadata"]
+    pulumi.export("managedRepositoryMetadata", managed_repository_metadata)
+    pulumi.export("backupVaultName", bootstrap.outputs["backupVaultName"])
+    pulumi.export("backupVaultArn", bootstrap.outputs["backupVaultArn"])
+    operations_alert_topic_arn = bootstrap.outputs["operationsAlertTopicArn"]
+    pulumi.export("operationsAlertTopicArn", operations_alert_topic_arn)
 
     if bootstrap.automation is not None:
         pulumi.export("automationRoleArn", bootstrap.outputs["automationRoleArn"])

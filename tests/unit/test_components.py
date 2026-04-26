@@ -10,11 +10,13 @@ from infra import (
     CentralLoggingBuckets,
     GitHubAutomation,
     ManagedRepositoryCatalog,
+    OperationsMonitoring,
     PulumiSecretsKeys,
     PulumiStateBuckets,
     S3BackupPlan,
     config,
     logging_bucket,
+    operations_monitoring,
     pulumi_secrets,
     pulumi_state,
 )
@@ -88,15 +90,18 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     S3BackupPlan(
         "backup", backup_target_arns=[logging.bucket.arn, *state.bucket_arns.values()]
     )
+    monitoring = OperationsMonitoring("operations-monitoring")
 
     assert logging.bucket is not None  # nosec B101
     assert state.backend_urls  # nosec B101
     assert secrets.provider_urls  # nosec B101
     assert oidc.deploy_role_arns  # nosec B101
     assert automation.repository.repository_url is not None  # nosec B101
+    assert monitoring.rules  # nosec B101
 
     _sync_await(future_output(logging.bucket.bucket))
     _sync_await(future_output(state.backend_urls["repo"]))
+    _sync_await(future_output(monitoring.topic.arn))
 
     resource_states = [state for _typ, _name, state in pulumi_mocks.resources]
     central_logging_state = next(
@@ -113,6 +118,24 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     replica_state_bucket_logging_state = _resource_state_by_name(
         pulumi_mocks, "pulumi-state-replica-repo-logging"
     )
+    alert_topic_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-topic"
+    )
+    alert_topic_key_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-topic-key"
+    )
+    alert_topic_key_alias_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-topic-key-alias"
+    )
+    alert_topic_policy_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-topic-policy"
+    )
+    backup_rule_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-backup-failed-rule"
+    )
+    kms_rule_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-kms-risk-rule"
+    )
 
     assert central_logging_encryption_state["rules"] is not None  # nosec B101
     assert central_logging_state["tags"]["LoggingExempt"] == "true"  # nosec B101
@@ -128,6 +151,55 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
         replica_state_bucket_logging_state["targetBucket"]
         == "company-central-logs-us-east-1-test-replication"
     )  # nosec B101
+    assert alert_topic_state["name"] == "bootstrap-test-operations"  # nosec B101
+    assert (  # nosec B101
+        alert_topic_state["kmsMasterKeyId"]
+        == "arn:aws:kms:us-east-1:123456789012:key/operations-monitoring-topic-key"
+    )
+    alert_topic_key_policy = json.loads(alert_topic_key_state["policy"])
+    eventbridge_key_statement = next(
+        statement
+        for statement in alert_topic_key_policy["Statement"]
+        if statement["Sid"] == "AllowEventBridgeForEncryptedSns"
+    )
+    assert alert_topic_key_state["enableKeyRotation"] is True  # nosec B101
+    assert alert_topic_key_state["tags"]["Purpose"] == "operations-alerting"  # nosec B101
+    assert eventbridge_key_statement["Principal"]["Service"] == (  # nosec B101
+        "events.amazonaws.com"
+    )
+    assert "Condition" not in eventbridge_key_statement  # nosec B101
+    alert_topic_policy = json.loads(alert_topic_policy_state["policy"])
+    topic_statements = {
+        statement["Sid"]: statement for statement in alert_topic_policy["Statement"]
+    }
+    assert topic_statements["AllowAccountTopicAdministration"][  # nosec B101
+        "Principal"
+    ] == {"AWS": "arn:aws:iam::123456789012:root"}
+    topic_owner_actions = topic_statements["AllowAccountTopicAdministration"]["Action"]
+    expected_topic_owner_actions = list(operations_monitoring.SNS_TOPIC_OWNER_ACTIONS)
+    if topic_owner_actions != expected_topic_owner_actions:
+        raise AssertionError(
+            "SNS topic owner actions should stay explicit and service-scoped."
+        )
+    assert topic_statements["AllowEventBridgePublish"]["Condition"] == {  # nosec B101
+        "StringEquals": {"aws:SourceAccount": "123456789012"}
+    }
+    assert (  # nosec B101
+        alert_topic_key_alias_state["name"]
+        == "alias/bootstrap-test-operations-alerting"
+    )
+    assert backup_rule_state["name"] == "bootstrap-test-backup-failed"  # nosec B101
+    assert "Backup Job State Change" in backup_rule_state["eventPattern"]  # nosec B101
+    assert kms_rule_state["name"] == "bootstrap-test-kms-risk"  # nosec B101
+    assert "ScheduleKeyDeletion" in kms_rule_state["eventPattern"]  # nosec B101
+
+
+def test_operations_monitoring_rule_name_guard(monkeypatch):
+    """Rule names must stay inside the EventBridge length limit."""
+    monkeypatch.setattr(config.settings, "environment", "e" * 60)
+
+    with pytest.raises(ValueError, match="EventBridge rule name"):
+        operations_monitoring._rule_name(config.settings, "backup-failed")  # noqa: SLF001
 
 
 def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypatch):  # noqa: ARG001
@@ -168,6 +240,16 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert bootstrap.outputs["managedRepositoryProjects"] == {
         "core-service-infrastructure": "core-service"
     }  # nosec B101
+    assert bootstrap.outputs["managedRepositoryMetadata"][  # nosec B101
+        "core-service-infrastructure"
+    ] == {
+        "defaultBranch": "main",
+        "project": "core-service",
+        "lifecycleState": "active",
+        "expectedEnvironments": 2,
+    }  # nosec B101
+    assert "operationsAlertTopicArn" in bootstrap.outputs  # nosec B101
+    assert "backupVaultArn" in bootstrap.outputs  # nosec B101
     log_delivery_dependencies = bootstrap.state._log_delivery_dependencies  # noqa: SLF001
     expected_log_delivery_dependencies = [
         bootstrap.logging.bucket,
@@ -194,6 +276,9 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
 
     assert repository_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
     assert role_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
+
+    topic_state = _resource_state_by_name(pulumi_mocks, "operations-monitoring-topic")
+    assert topic_state["tags"]["Purpose"] == "operations-alerting"  # nosec B101
 
 
 def test_state_buckets_reject_same_replication_region(  # noqa: ARG001
@@ -302,6 +387,9 @@ def test_pulumi_secrets_keys_derives_repositories_without_explicit_list(
         environment="review",
         owner="platform",
         cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
         github_branch="release",
         logging_prefix="company",
         replication_region="us-west-2",
@@ -398,6 +486,21 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-replication",
     ]
+    all_actions = {
+        action
+        for statement in automation_policy["Statement"]
+        for action in statement["Action"]
+    }
+    assert "kms:Decrypt" not in all_actions  # nosec B101
+    assert "kms:Encrypt" not in all_actions  # nosec B101
+    assert "kms:GenerateDataKey" not in all_actions  # nosec B101
+    assert "kms:ReEncryptFrom" not in all_actions  # nosec B101
+    assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
+        "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
+    ]
+    assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
+        "arn:aws:sns:*:123456789012:bootstrap-test-operations"
+    ]
 
 
 def test_github_automation_requires_repo(monkeypatch):
@@ -478,6 +581,9 @@ def test_github_oidc_roles_use_injected_settings_repositories(
         environment="test",
         owner="platform",
         cost_center="engineering",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
         github_branch=None,
         logging_prefix="company",
         replication_region="us-west-2",

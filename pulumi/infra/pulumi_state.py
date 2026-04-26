@@ -250,6 +250,7 @@ def _state_bucket_tags(
             "Repository": repo.name,
             "App": repo.name,
             "RepositoryProject": repo.project_name,
+            **repo.tag_metadata(),
         },
         settings=settings_obj,
     )

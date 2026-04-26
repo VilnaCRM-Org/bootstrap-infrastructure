@@ -3,11 +3,14 @@
 config:
   aws:region: eu-central-1
   bootstrap-infrastructure:costCenter: core
+  bootstrap-infrastructure:criticality: high
+  bootstrap-infrastructure:dataClassification: internal
   bootstrap-infrastructure:environment: prod
   bootstrap-infrastructure:githubBranch: main
   bootstrap-infrastructure:githubOrg: VilnaCRM-Org
   bootstrap-infrastructure:loggingPrefix: company
   bootstrap-infrastructure:owner: platform
+  bootstrap-infrastructure:retentionClass: standard
   bootstrap-infrastructure:repoSlug: bootstrap-infrastructure
   bootstrap-infrastructure:replicationRegion: eu-west-1
   bootstrap-infrastructure:serviceName: bootstrap-infrastructure

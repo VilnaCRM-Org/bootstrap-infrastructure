@@ -31,10 +31,13 @@ def test_policy_pack_manifest_declares_python_runtime() -> None:
     assert "guardrails" in manifest["description"]
     assert "pulumi>=3.200.0,<4" in lines
     assert "pulumi-policy>=1.20.0,<2" in lines
-    assert config["required_tags"] == [
+    assert config["required_tags"] == [  # nosec B101
         "Project",
         "Environment",
         "Owner",
         "CostCenter",
+        "DataClassification",
+        "Criticality",
+        "RetentionClass",
     ]
-    assert "eu-central-1" in config["allowed_regions"]
+    assert "eu-central-1" in config["allowed_regions"]  # nosec B101

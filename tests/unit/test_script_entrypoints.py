@@ -330,6 +330,10 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
                         "name": "user-service-infrastructure",
                         "defaultBranch": "main",
                         "project": "user-service",
+                        "owner": "team-user-service",
+                        "lifecycleState": "active",
+                        "lastReviewed": "2026-04-27",
+                        "expectedEnvironments": 2,
                     }
                 ],
             }
@@ -342,9 +346,29 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
     assert module.validate_catalogs(  # nosec B101
         [catalog_path], schema_path
     ) == [catalog_path]
+    assert module.catalog_fanout_report(catalog_path, schema_path) == {  # nosec B101
+        "backupPlans": 1,
+        "backupSelections": 2,
+        "backupVaults": 1,
+        "ecrRepositories": 1,
+        "environmentInstances": 2,
+        "eventRules": 4,
+        "iamRoles": 6,
+        "kmsKeys": 3,
+        "oidcProviders": 1,
+        "repositories": 1,
+        "s3Buckets": 6,
+        "snsTopics": 1,
+    }
     assert module.main([]) == 0  # nosec B101
+    assert module.main(["--fanout-report"]) == 0  # nosec B101
+    assert module.main(["--fanout-report", "--max-s3-buckets", "1"]) == 1  # nosec B101
 
-    assert f"validated repository catalog: {catalog_path}" in capsys.readouterr().out  # nosec B101
+    captured = capsys.readouterr()
+    output = captured.out
+    assert f"validated repository catalog: {catalog_path}" in output  # nosec B101
+    assert "repository fanout estimate" in output  # nosec B101
+    assert "s3Buckets fanout" in captured.err  # nosec B101
 
 
 def test_validate_repository_catalogs_reports_schema_errors(
@@ -384,9 +408,26 @@ def test_validate_repository_catalogs_reports_semantic_errors(
     with pytest.raises(ValueError, match="must be unique"):
         module.validate_catalog(catalog_path, schema_path)
 
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "repositories": [
+                    {
+                        "name": "repo",
+                        "lifecycleState": "unknown",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="lifecycleState"):
+        module.validate_catalog(catalog_path, schema_path)
+
 
 def test_validate_repository_catalogs_semantic_helpers_reject_bad_inputs(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Cover semantic guardrails that usually sit behind schema validation."""
     module = load_script_module(monkeypatch, "validate_repository_catalogs")
@@ -400,6 +441,47 @@ def test_validate_repository_catalogs_semantic_helpers_reject_bad_inputs(
         module._repository_name(123)
     with pytest.raises(ValueError, match="must be a list"):
         module._validate_loader_semantics({"repositories": "repo"})
+    with pytest.raises(ValueError, match="lastReviewed"):
+        module._validate_repository_mapping(
+            {"name": "repo", "lastReviewed": "27-04-2026"}
+        )
+    with pytest.raises(ValueError, match="lastReviewed"):
+        module._validate_repository_mapping(
+            {"name": "repo", "lastReviewed": "20260427"}
+        )
+    with pytest.raises(ValueError, match="lastReviewed"):
+        module._validate_repository_mapping(
+            {"name": "repo", "lastReviewed": "2026-02-30"}
+        )
+    with pytest.raises(ValueError, match="lifecycleState"):
+        module._validate_repository_mapping(
+            {"name": "repo", "lifecycleState": "unknown"}
+        )
+    with pytest.raises(ValueError, match="expectedEnvironments"):
+        module._validate_repository_mapping({"name": "repo", "expectedEnvironments": 0})
+    with pytest.raises(ValueError, match="expectedEnvironments"):
+        module._validate_repository_mapping(
+            {"name": "repo", "expectedEnvironments": True}
+        )
+    with pytest.raises(ValueError, match="must be a list"):
+        module.estimate_fanout({"repositories": "repo"})
+    assert (  # nosec B101
+        module.estimate_fanout({"repositories": ["repo"]})["environmentInstances"] == 2
+    )
+    assert (  # nosec B101
+        module.estimate_fanout(
+            {"repositories": [{"name": "repo", "expectedEnvironments": "2"}]}
+        )["environmentInstances"]
+        == 2
+    )
+
+    monkeypatch.setattr(module, "validate_catalog", lambda *_args: None)
+    monkeypatch.setattr(module, "_load_json", lambda _path: [])
+    with pytest.raises(ValueError, match="must be an object"):
+        module.catalog_fanout_report(
+            tmp_path / "repositories.json",
+            tmp_path / "schema.json",
+        )
 
 
 def test_validate_repository_catalogs_handles_empty_and_invalid_inputs(

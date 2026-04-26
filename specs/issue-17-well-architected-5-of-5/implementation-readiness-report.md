@@ -1,20 +1,43 @@
 # Implementation Readiness: Well-Architected 5/5 Remediation Roadmap
 
 ## Readiness Summary
-Issue #17 is ready for planning review, not implementation in this PR. The scope is large enough that implementation should proceed through multiple focused PRs, starting with P0 safety and blast-radius work. The current planning artifacts define the sequencing, acceptance criteria, evidence model, and no-go conditions needed before code changes begin.
+Issue #17 planning is ready and the first implementation PR is now scoped to
+safe, non-secret controls that do not require irreversible account-level cost or
+retention decisions. This implementation covers the highest-priority in-repo
+slice: automation IAM blast-radius reduction, operations/security event
+monitoring, classification tags, repository metadata, static fanout checks, and
+preview cost proxy evidence.
+
+This implementation does not claim final 5/5 Well-Architected scores. Several
+target controls still require external evidence or account-owner decisions,
+including branch protection proof, confirmed alert subscriptions, live AWS quota
+headroom, budgets or anomaly detection, restore drills, and production approval
+evidence.
 
 ## Alignment Checks
 
 | Area | Status | Notes |
 | --- | --- | --- |
 | Problem definition | Ready | Issue #17 provides pillar scores, question-level gaps, priority groups, and completion criteria. |
-| Scope boundary | Ready | This PR is planning-only and excludes Pulumi, workflow, AWS, branch-protection, and stack mutations. |
+| Scope boundary | Ready | This implementation PR changes Pulumi code, workflows, docs, tests, and specs, but avoids secret access, stack exports, and irreversible Vault Lock/Budget decisions. |
 | Epic decomposition | Ready | Eight epics preserve the issue priority model and cover all listed roadmap items. |
 | Evidence model | Ready | Future controls require repo, CI, AWS metadata, or external-control evidence. |
 | Question coverage | Ready | `question-matrix.md` covers all 57 AWS Well-Architected questions with current evidence, gaps, target proof, owner role, and cadence. |
 | FR/NFR coverage | Ready | PRD and architecture cover current repo functions, non-functional constraints, evidence freshness, and score-claim gates. |
 | Secret safety | Ready | Future validation must avoid stack exports, decrypted config, cloud-secret payloads, and environment dumps. |
-| Implementation readiness | Partially ready | P0 items are implementable first; some P1/P2 items need owners and external evidence decisions. |
+| Implementation readiness | Partially implemented | P0/P1 in-repo guardrails are implemented where ownership is clear; remaining items need owners and external evidence decisions. |
+
+## Implemented In This PR
+
+| Area | Evidence |
+| --- | --- |
+| Automation IAM | Repository Pulumi secrets KMS data-plane actions were removed from bootstrap automation; new SNS/EventBridge permissions are scoped to deterministic operations resources. |
+| Operations monitoring | `OperationsMonitoring` creates the environment operations SNS topic, a dedicated customer-managed KMS key for encrypted EventBridge delivery, and EventBridge rules for Backup failure, KMS risk, IAM/OIDC risk, and S3 control-plane risk events. |
+| Classification | `DataClassification`, `Criticality`, and `RetentionClass` are default tags, committed stack config values, and policy-pack required tags. |
+| Catalog demand metadata | Repository catalogs support `owner`, `lifecycleState`, `lastReviewed`, and `expectedEnvironments`; metadata is exported and tagged where repository resources are created. |
+| Static fanout | `make test-repository-fanout` estimates resource growth before catalog expansion is merged. |
+| Preview cost proxy | `make test-cost-proxy` reads Pulumi preview JSON and blocks unusually large durable-resource fanout. |
+| Documentation | SRE, security, CI guardrail, testing, and cost/performance/sustainability docs describe the new evidence and remaining external-control requirements. |
 
 ## Recommended Implementation Order
 
@@ -61,18 +84,18 @@ The planning PR itself does not mutate Pulumi resources, but the user requested 
 | Branch test deploy | Dispatch `Pulumi Test Deploy` on the PR branch. | Uses GitHub OIDC and configured environment metadata without printing secret values. | Workflow URL, head SHA, preview result, destructive diff result, IAM validation result, apply result, and post-apply drift result. |
 | Post-run review | `gh run view` and `gh pr checks` | Inspect logs only for status and failure causes; do not print secrets. | PR comment or readiness update with run conclusion and remaining blockers. |
 
-Current local readiness observations for this planning update:
+Current implementation-PR readiness observations:
 
-- AWS CLI caller identity resolved successfully with metadata-only validation.
-- Local `pulumi` was not installed in the shell, so direct local `pulumi -C pulumi up` was not a safe available path.
-- Required Pulumi backend and KMS provider environment metadata was not present in the local shell; values were not printed.
-- Therefore, real test-account apply evidence should be captured through the existing OIDC-backed GitHub `Pulumi Test Deploy` workflow for this PR branch.
-
-GitHub test-account validation attempt for this PR branch:
-
-| Date | Workflow run | Head SHA | Result | Implication |
-| --- | --- | --- | --- | --- |
-| 2026-04-26 | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/runs/24967209875` | `814425df2297aaf1cc9f23475bc6167b5ccb069b` | Failed at `Validate test deployment prerequisites` before AWS credentials were assumed. Missing metadata variable names were `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`, `PULUMI_BACKEND_URL`, `PULUMI_PREVIEW_STACKS`, and `PULUMI_DRIFT_STACKS`. | No Pulumi preview/apply ran and no AWS resources were changed. Merge readiness still needs the test environment metadata configured or a Pulumi ESC-backed replacement implemented in a future PR. |
+- Local validation can prove static behavior, policy behavior, preview-artifact
+  parsing, and unprivileged guardrail behavior without reading secrets.
+- Real test-account evidence still must come from either a safe local
+  `pulumi -C pulumi ...` run with AWS KMS backend metadata already configured or
+  the existing OIDC-backed GitHub `Pulumi Test Deploy` workflow for this PR
+  branch.
+- If GitHub test deploy prerequisite metadata is absent, no Pulumi preview/apply
+  will run and no AWS resources will be changed. The missing metadata must be
+  supplied through the current GitHub environment model or replaced by a
+  follow-up Pulumi ESC integration before final merge-readiness can be claimed.
 
 ## No-Go Conditions
 
@@ -83,13 +106,23 @@ Future implementation should pause if:
 - A proposed cost, quota, or monitoring control has no owner.
 - A future PR widens infrastructure behavior without matching tests or docs.
 
-## Validation For This Planning PR
+## Validation For This Implementation PR
 
 This PR should be validated by:
-- Confirming the staged diff contains only files under `specs/issue-17-well-architected-5-of-5/`.
-- Running the focused structural project test after removing ignored local BMAD/BMALPH/Ralph generated tooling from the worktree.
-- Running markdown or repository hygiene checks if available and low-noise.
-- Confirming the question matrix contains all 57 AWS Well-Architected questions.
-- Dispatching or observing the existing `Pulumi Test Deploy` workflow when a real test-account apply is required for merge readiness.
 
-No branch-protection mutation or GitHub environment mutation is required for this planning-only PR. Direct local Pulumi apply is not required when the existing test-account workflow provides equivalent OIDC-backed deploy evidence without exposing local secrets.
+- Confirming the committed diff excludes BMAD/BMALPH/Ralph runtime files and
+  keeps only repository-owned specs under `specs/`.
+- Running Python lint, format, type, unit, policy, structural, coverage, and
+  workflow hygiene checks.
+- Running `make test-guardrails-unprivileged`, `make test-cost-proxy`, and
+  `make test-repository-fanout` to prove the new guardrails work without AWS
+  credentials.
+- Confirming the question matrix still contains all 57 AWS Well-Architected
+  questions and does not claim final 5/5 scores before external evidence exists.
+- Dispatching or observing the existing `Pulumi Test Deploy` workflow, or a
+  safe equivalent test-account Pulumi run, before merge readiness is claimed.
+
+Direct local Pulumi apply is acceptable only when the active AWS identity,
+backend URL, stack names, and AWS KMS secrets provider are configured without
+printing secret values. Otherwise, use the OIDC-backed test deploy workflow and
+record the run outcome.

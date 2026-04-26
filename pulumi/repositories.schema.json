@@ -32,6 +32,21 @@
               },
               "project": {
                 "$ref": "#/$defs/nonBlankString"
+              },
+              "owner": {
+                "$ref": "#/$defs/nonBlankString"
+              },
+              "lifecycleState": {
+                "type": "string",
+                "enum": ["active", "planned", "deprecated", "archived"]
+              },
+              "lastReviewed": {
+                "type": "string",
+                "format": "date"
+              },
+              "expectedEnvironments": {
+                "type": "integer",
+                "minimum": 1
               }
             }
           }

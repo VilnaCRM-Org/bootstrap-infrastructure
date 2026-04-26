@@ -224,11 +224,38 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         for step in jobs["destructive_diff"]["steps"]
     )
     assert any(  # nosec B101
+        "make test-cost-proxy" in step.get("run", "")
+        for step in jobs["destructive_diff"]["steps"]
+    )
+    assert any(  # nosec B101
         'cp "${GITHUB_EVENT_PATH}" .artifacts/github-event.json' in run
         for run in destructive_diff_runs
     )
     assert iam_validation_run == "make test-iam-validation"  # nosec B101
     assert unprivileged_iam_run == "make test-iam-validation-unprivileged"  # nosec B101
+
+
+def test_guardrail_docs_define_required_privileged_check_contract() -> None:
+    """Keep required-check guidance tied to concrete workflow job names."""
+    workflow = _workflow("pulumi-pr-guardrails.yml")
+    guardrails_doc = GUARDRAILS_DOC.read_text(encoding="utf-8")
+    normalized_doc = " ".join(guardrails_doc.split())
+    jobs = workflow["jobs"]
+
+    for job_id in ("preview", "destructive_diff", "iam_validation"):
+        check_name = f"{workflow['name']} / {jobs[job_id]['name']}"
+        assert f"`{check_name}`" in guardrails_doc  # nosec B101
+        assert f"`{job_id}`" in guardrails_doc  # nosec B101
+
+    for job_id in ("preview_unprivileged", "iam_validation_unprivileged"):
+        check_name = f"{workflow['name']} / {jobs[job_id]['name']}"
+        assert f"`{check_name}`" in guardrails_doc  # nosec B101
+
+    assert "must not be treated as equivalent to same-repo AWS validation" in (  # nosec B101
+        normalized_doc
+    )
+    assert "not an acceptable skip for a same-repo infrastructure PR" in normalized_doc  # nosec B101
+    assert "branch-protection owner" in normalized_doc  # nosec B101
 
 
 def test_security_scan_workflow_runs_repo_make_targets() -> None:
@@ -239,7 +266,7 @@ def test_security_scan_workflow_runs_repo_make_targets() -> None:
     assert jobs["secrets"]["timeout-minutes"] == 10
     assert jobs["dependency_audit"]["timeout-minutes"] == 15
     assert jobs["actionlint"]["timeout-minutes"] == 10
-    assert any(
+    assert any(  # nosec B101
         step.get("run") == "make test-secrets" for step in jobs["secrets"]["steps"]
     )
     assert any(

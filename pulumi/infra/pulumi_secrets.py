@@ -98,6 +98,7 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
                         "Repository": repo.name,
                         "App": repo.name,
                         "RepositoryProject": repo.project_name,
+                        **repo.tag_metadata(),
                     },
                     settings=configured_settings,
                 ),  # pragma: no mutate

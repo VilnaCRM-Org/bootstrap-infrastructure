@@ -79,10 +79,11 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         report-sbom test-quality test-ruff test-ty test-maintainability \
         test-architecture test-dependency-hygiene test-lockfile test-coverage \
         test-bandit test-actionlint test-yaml test-dockerfile \
-        test-deps-security test-destructive-diff test-drift test-guardrails \
+        test-deps-security test-destructive-diff test-cost-proxy test-drift test-guardrails \
         test-guardrails-unprivileged test-iam-validation \
         test-iam-validation-unprivileged test-preview test-preview-unprivileged \
         test-security test-secrets test-repo-hygiene test-repository-catalogs \
+        test-repository-fanout \
         test-unit test-integration test-integration-unprivileged test-pulumi test-policy \
         test-crossguard test-mutation test-battery test-cli test all clean
 
@@ -171,6 +172,9 @@ test-pulumi: ## Perform structural checks on Pulumi project configuration.
 test-repository-catalogs: ## Validate repository catalog JSON files against schema and loader rules.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run python ./scripts/validate_repository_catalogs.py
 
+test-repository-fanout: ## Estimate repository catalog resource fanout against static quota thresholds.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run python ./scripts/validate_repository_catalogs.py --fanout-report
+
 test-policy: ## Execute Pulumi policy-pack tests and guardrail coverage.
 	rm -f .coverage.policy .coverage.policy.*
 	$(COMPOSE) run --rm $(POLICY_COVERAGE_ENV) -e PYTEST_ADDOPTS="$(POLICY_COVERAGE_OPTS)" \
@@ -247,6 +251,7 @@ test-preview: ## Generate non-destructive Pulumi previews for configured stacks.
 test-preview-unprivileged: ## Generate an unprivileged placeholder preview artifact.
 	mkdir -p .artifacts/pulumi-preview
 	rm -f .artifacts/pulumi-preview/*.json .artifacts/pulumi-preview/summary.md
+	rm -rf .artifacts/pulumi-preview/reports
 	printf '%s\n' '{"changeSummary": {}, "steps": []}' > .artifacts/pulumi-preview/unprivileged.json
 	$(REPO_PYTHON) ./scripts/pulumi_ci_guardrails.py summarize \
 		.artifacts/pulumi-preview/unprivileged.json | tee .artifacts/pulumi-preview/summary.md
@@ -261,6 +266,17 @@ test-destructive-diff: ## Fail when Pulumi previews delete or replace critical r
 			$(REPO_PYTHON) ./scripts/run_pulumi_preview.py >/dev/null; \
 		fi; \
 		uv run python ./scripts/pulumi_ci_guardrails.py destructive-gate $$event_arg .artifacts/pulumi-preview/*.json'
+
+test-cost-proxy: ## Fail when Pulumi previews exceed static cost and quota fanout thresholds.
+	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) bash -lc '\
+		mkdir -p .artifacts/pulumi-preview/reports; \
+		if ! compgen -G ".artifacts/pulumi-preview/*.json" >/dev/null; then \
+			$(REPO_PYTHON) ./scripts/run_pulumi_preview.py >/dev/null; \
+		fi; \
+		uv run python ./scripts/pulumi_ci_guardrails.py cost-proxy \
+			--output-json .artifacts/pulumi-preview/reports/cost-proxy.json \
+			--output-md .artifacts/pulumi-preview/cost-proxy.md \
+			.artifacts/pulumi-preview/*.json'
 
 test-iam-validation: ## Validate previewed IAM policies with AWS IAM Access Analyzer.
 	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) bash -lc '\
@@ -284,10 +300,12 @@ test-security: ## Run secret, dependency, and workflow security checks.
 test-guardrails: ## Run real preview generation and destructive-diff guardrails.
 	$(MAKE) test-preview
 	$(MAKE) test-destructive-diff
+	$(MAKE) test-cost-proxy
 
 test-guardrails-unprivileged: ## Run guardrails without AWS-backed Pulumi credentials.
 	$(MAKE) test-preview-unprivileged
 	$(MAKE) test-destructive-diff
+	$(MAKE) test-cost-proxy
 	$(MAKE) test-iam-validation-unprivileged
 
 test-drift: ## Perform a non-destructive drift check against configured shared stacks.
@@ -357,6 +375,7 @@ nightly-quality: ## Alias for the scheduled quality-report battery.
 test-battery:
 	$(MAKE) test-pulumi
 	$(MAKE) test-repository-catalogs
+	$(MAKE) test-repository-fanout
 	$(MAKE) test-policy
 	$(MAKE) test-quality
 	$(MAKE) test-repo-hygiene
@@ -381,6 +400,7 @@ ci-pr-unprivileged: ## Run the PR battery without AWS-backed Pulumi credentials.
 	$(MAKE) build
 	$(MAKE) test-pulumi
 	$(MAKE) test-repository-catalogs
+	$(MAKE) test-repository-fanout
 	$(MAKE) test-policy
 	$(MAKE) test-quality
 	$(MAKE) test-repo-hygiene

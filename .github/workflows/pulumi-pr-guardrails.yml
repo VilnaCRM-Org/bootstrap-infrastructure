@@ -190,6 +190,12 @@ jobs:
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
 
+      - name: Enforce cost and quota proxy
+        run: |
+          make test-cost-proxy || cost_rc=$?
+          cat .artifacts/pulumi-preview/cost-proxy.md >> "${GITHUB_STEP_SUMMARY}" 2>/dev/null || true
+          exit "${cost_rc:-0}"
+
   iam_validation:
     name: IAM Validation
     if: ${{ needs.preview.result == 'success' }}

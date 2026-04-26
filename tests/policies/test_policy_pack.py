@@ -176,7 +176,15 @@ def test_repo_policy_config_declares_expected_defaults(
     """Keep the committed policy config aligned with the documented guardrails."""
     config = policy_runtime.load_policy_config()
 
-    assert config.required_tags == ("Project", "Environment", "Owner", "CostCenter")
+    assert config.required_tags == (  # nosec B101
+        "Project",
+        "Environment",
+        "Owner",
+        "CostCenter",
+        "DataClassification",
+        "Criticality",
+        "RetentionClass",
+    )
     assert config.allowed_regions == ("eu-central-1", "eu-west-1")
     assert config.production_environments == ("prod", "production", "live")
     assert config.annotations["public_s3_tag"] == "AllowPublicBucket"
@@ -1546,7 +1554,7 @@ def test_pack_validators_report_expected_messages(
         props={"tags": {"Project": "svc"}},
     )
     assert "Owner" in violations[0]
-    assert (
+    assert (  # nosec B101
         _collect_violations(
             policy_runtime.require_default_tags,
             resource_type="aws:s3/bucket:Bucket",
@@ -1556,6 +1564,9 @@ def test_pack_validators_report_expected_messages(
                     "Environment": "dev",
                     "Owner": "platform",
                     "CostCenter": "eng",
+                    "DataClassification": "internal",
+                    "Criticality": "high",
+                    "RetentionClass": "standard",
                 }
             },
         )
@@ -1739,11 +1750,14 @@ def test_guardrails_support_direct_script_import(
     monkeypatch.setitem(sys.modules, "guardrails", guardrails_module)
     guardrails_spec.loader.exec_module(guardrails_module)
 
-    assert guardrails_module.CONFIG.required_tags == (
+    assert guardrails_module.CONFIG.required_tags == (  # nosec B101
         "Project",
         "Environment",
         "Owner",
         "CostCenter",
+        "DataClassification",
+        "Criticality",
+        "RetentionClass",
     )
 
 

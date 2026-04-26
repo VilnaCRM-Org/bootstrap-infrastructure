@@ -89,4 +89,14 @@ class S3BackupPlan(pulumi.ComponentResource):
             opts=base_opts,
         )
 
-        self.register_outputs({"backup_plan_id": backup_plan.id})
+        self.vault = backup_vault
+        self.plan = backup_plan
+        self.role = backup_role
+
+        self.register_outputs(
+            {
+                "backup_plan_id": backup_plan.id,
+                "backup_vault_name": backup_vault.name,
+                "backup_vault_arn": backup_vault.arn,
+            }
+        )

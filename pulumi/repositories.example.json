@@ -4,12 +4,20 @@
     {
       "name": "user-service-infrastructure",
       "defaultBranch": "main",
-      "project": "user-service"
+      "project": "user-service",
+      "owner": "team-user-service",
+      "lifecycleState": "active",
+      "lastReviewed": "2026-04-27",
+      "expectedEnvironments": 2
     },
     {
       "name": "core-service-infrastructure",
       "defaultBranch": "main",
-      "project": "core-service"
+      "project": "core-service",
+      "owner": "team-core-service",
+      "lifecycleState": "active",
+      "lastReviewed": "2026-04-27",
+      "expectedEnvironments": 2
     }
   ]
 }

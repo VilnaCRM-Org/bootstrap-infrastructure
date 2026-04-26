@@ -18,6 +18,7 @@ Run with:
 ```bash
 make test-pulumi
 make test-repository-catalogs
+make test-repository-fanout
 ```
 
 Coverage:
@@ -25,6 +26,7 @@ Coverage:
 - Every public Make target is exercised through dry-run or help-output assertions
 - `pulumi/Pulumi.yaml`
 - `pulumi/repositories.schema.json` and committed `pulumi/repositories*.json` catalogs
+- Static repository fanout estimates for cost and quota review
 - `policy/PulumiPolicy.yaml`
 - Release workflow contracts
 - Dockerfile supply-chain safeguards
@@ -100,8 +102,9 @@ Coverage:
 - `make test-preview` generates the Pulumi preview artifact consumed by later checks
 - `make test-preview-unprivileged` generates the fallback artifact used when AWS-backed preview variables are absent
 - `make test-destructive-diff` blocks deletes and replacements of critical infrastructure without an explicit PR override label
-- `make test-guardrails` keeps the real preview and destructive-diff flow reproducible locally
-- `make test-guardrails-unprivileged` keeps the fallback preview, destructive-diff, and IAM-input extraction path reproducible locally
+- `make test-cost-proxy` flags unusual durable-resource fanout from preview JSON
+- `make test-guardrails` keeps the real preview, destructive-diff, and cost-proxy flow reproducible locally
+- `make test-guardrails-unprivileged` keeps the fallback preview, destructive-diff, cost-proxy, and IAM-input extraction path reproducible locally
 - `make test-iam-validation` validates previewed IAM policies with AWS IAM Access Analyzer when AWS credentials are intentionally configured
 
 Dependency Review, CodeQL, SBOM attestations, and OpenSSF Scorecard are

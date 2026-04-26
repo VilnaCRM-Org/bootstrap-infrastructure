@@ -39,3 +39,6 @@ jobs:
 
       - name: Validate repository catalog JSON files
         run: make test-repository-catalogs
+
+      - name: Estimate repository catalog fanout
+        run: make test-repository-fanout

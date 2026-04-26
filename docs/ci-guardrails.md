@@ -25,10 +25,36 @@ These checks are intended to be marked as required in branch protection:
 
 `make test-security` aggregates Gitleaks, dependency audit, and Bandit.
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
-`make test-guardrails` aggregates real preview generation and destructive diff
-gating. `make test-guardrails-unprivileged` uses an empty preview artifact to
-exercise the destructive-diff parser and IAM-input extraction for fork pull
-requests. `make ci-pr` and `make ci` keep the real preview path.
+`make test-guardrails` aggregates real preview generation, destructive diff
+gating, and static cost proxy checks. `make test-guardrails-unprivileged` uses
+an empty preview artifact to exercise the destructive-diff parser, cost proxy,
+and IAM-input extraction for fork pull requests. `make ci-pr` and `make ci`
+keep the real preview path.
+
+### Same-repo privileged check contract
+
+For same-repo infrastructure pull requests, branch protection should require
+the AWS-backed guardrail checks from `.github/workflows/pulumi-pr-guardrails.yml`
+by exact workflow and job name:
+
+| Required evidence | Workflow / check name | Job ID | Required result |
+| --- | --- | --- | --- |
+| AWS-backed Pulumi preview artifact | `Pulumi PR Guardrails / Preview` | `preview` | Success |
+| Destructive diff review and static cost/quota proxy over the preview artifact | `Pulumi PR Guardrails / Destructive Diff Gate` | `destructive_diff` | Success |
+| AWS IAM Access Analyzer validation | `Pulumi PR Guardrails / IAM Validation` | `iam_validation` | Success |
+
+The fork-only checks `Pulumi PR Guardrails / Preview (Unprivileged)` and
+`Pulumi PR Guardrails / IAM Validation (Unprivileged)` are credential-free
+fallback evidence. They must not be treated as equivalent to same-repo AWS
+validation for infrastructure changes that need privileged proof.
+
+A skipped privileged `Preview` or `IAM Validation` check is not an acceptable
+skip for a same-repo infrastructure PR. If a maintainer cannot rerun the change
+from a trusted same-repo branch, a repository branch-protection owner must
+explicitly approve the temporary exception and record the missing check, reason,
+compensating validation, and follow-up before the PR can be treated as merge
+ready. The destructive-diff gate remains governed only by the
+`allow-destructive-infra-change` label described below.
 
 ## Preview model
 
@@ -99,6 +125,20 @@ replacements against critical resource families such as:
 Intentional destructive changes must be reviewed manually and then approved with
 the pull-request label `allow-destructive-infra-change`. The label is the only
 supported override because it leaves an auditable trail in GitHub.
+
+## Cost and Quota Proxy
+
+`make test-cost-proxy` reads the same Pulumi preview JSON artifact as the
+destructive-diff gate. It counts create and replace operations for resource
+families that usually affect cost, quotas, or operational fanout, including S3
+buckets, KMS keys, IAM roles, AWS Backup resources, ECR repositories, SNS
+topics, EventBridge rules, and S3 replication configuration.
+
+The proxy is intentionally static. It does not estimate monthly spend and it
+does not replace AWS Budgets, Cost Anomaly Detection, Service Quotas, or a
+FinOps review. It gives reviewers an early signal that a pull request is adding
+or replacing unusually many durable resources before the change reaches the
+test account.
 
 ## IAM validation
 

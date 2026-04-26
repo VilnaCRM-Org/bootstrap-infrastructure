@@ -12,6 +12,7 @@ We follow a docs-as-code workflow: every guide lives alongside the source and ev
 - [CI Quality Gates](#ci-quality-gates)
 - [CI Guardrails](#ci-guardrails)
 - [CI Architecture](#ci-architecture)
+- [Cost, Performance, and Sustainability](#cost-performance-and-sustainability)
 - [Pulumi Guardrails](#pulumi-guardrails)
 - [Security Baseline](#security-baseline)
 - [Project Structure](#project-structure)
@@ -72,6 +73,7 @@ test-coverage     Combined 100% branch-coverage gate after unit, integration, an
 test-crossguard   Alias for the Pulumi CrossGuard policy-pack suite.
 test-pulumi       Structural validation for manifests, workflows, and supply-chain guards.
 test-repository-catalogs  Validate repository catalog JSON against schema and loader rules.
+test-repository-fanout  Estimate repository catalog resource fanout against thresholds.
 test-policy       Pulumi policy-pack tests and guardrail coverage.
 test-quality      Blocking Python quality, maintainability, architecture, and dependency checks.
 test-repo-hygiene Workflow, YAML, and Dockerfile linting.
@@ -161,6 +163,12 @@ Use the dedicated [CI architecture guide](ci-architecture.md) when you need the
 workflow matrix, local-to-GitHub mapping, or the checklist for adding a new CI
 job safely.
 
+## Cost, Performance, and Sustainability
+
+Use the [cost, performance, and sustainability guide](cost-performance-sustainability.md)
+for repository catalog fanout, preview cost proxy evidence, and review
+expectations before durable AWS resources are applied.
+
 ## Security Baseline
 
 Use the [security baseline](security-baseline.md) for the template's enforced
@@ -185,7 +193,7 @@ them enforced.
 Continuous integration runs automatically on every pull request. You can also validate locally:
 
 - Start with `make doctor` if you need a quick sanity check of Docker, Compose, and the effective env file.
-- Use the focused suites when you only need one slice: `make build`, `make test-pulumi`, `make test-policy`, `make test-crossguard`, `make test-quality`, `make test-repo-hygiene`, `make test-unit`, `make test-integration`, `make test-coverage`, `make test-mutation`, `make test-cli`, `make test-security`, `make test-guardrails`.
+- Use the focused suites when you only need one slice: `make build`, `make test-pulumi`, `make test-repository-fanout`, `make test-policy`, `make test-crossguard`, `make test-quality`, `make test-repo-hygiene`, `make test-unit`, `make test-integration`, `make test-coverage`, `make test-mutation`, `make test-cli`, `make test-security`, `make test-guardrails`.
 - Use `make test-policy` when you are changing guardrails or adding new AWS resource types that should be covered by the policy pack.
 - `make test-mutation` intentionally uses the focused `pulumi/app` unit-test surface by default so the PR mutation check stays fast; override `MUTATION_TEST_TARGETS` or `MUTATION_TESTS_DIR` only when you explicitly need a broader, slower mutation run.
 - `make pulumi-preview` and `make pulumi-up` sync the shared `uv` environment if needed, refresh `policy/.venv`, and then run Pulumi with the repository policy pack enabled.

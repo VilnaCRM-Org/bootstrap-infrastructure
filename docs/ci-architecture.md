@@ -15,7 +15,7 @@ Docker-backed pull request checks use the same Docker workspace and the same
 
 | Workflow | Primary command | Purpose |
 | --- | --- | --- |
-| `pulumi-structural.yml` | `make test-pulumi`, `make test-repository-catalogs` | Validates Pulumi metadata, workflow contracts, repository catalogs, and Dockerfile safeguards |
+| `pulumi-structural.yml` | `make test-pulumi`, `make test-repository-catalogs`, `make test-repository-fanout` | Validates Pulumi metadata, workflow contracts, repository catalogs, static fanout, and Dockerfile safeguards |
 | `pulumi-policy.yml` | `make test-policy` | Validates the Pulumi policy pack and AWS guardrail coverage |
 | `pulumi-pr-guardrails.yml` | `make publish-pulumi-preview-summary`, `make test-preview-unprivileged`, `make test-destructive-diff`, `make test-iam-validation` | Generates the PR preview artifact and enforces destructive/IAM guardrails without giving fork PRs AWS credentials |
 | `pulumi-test-deploy.yml` | `make pulumi-plan`, destructive diff, IAM validation, apply, drift | Applies the `test` stack after main merges or manual dispatch |

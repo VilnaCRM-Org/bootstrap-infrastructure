@@ -81,6 +81,7 @@ def test_makefile_exposes_current_ci_targets() -> None:
         "test-quality",
         "test-repo-hygiene",
         "test-repository-catalogs",
+        "test-repository-fanout",
         "test-security",
         "test-guardrails",
         "test-guardrails-unprivileged",
@@ -89,6 +90,7 @@ def test_makefile_exposes_current_ci_targets() -> None:
         "test-integration-unprivileged",
         "test-coverage",
         "test-preview-unprivileged",
+        "test-cost-proxy",
         "test-iam-validation-unprivileged",
         "test-mutation",
         "test-cli",
@@ -112,6 +114,10 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
         "pulumiSecretsProviderUrls",
         "deployRoleArns",
         "managedRepositoryProjects",
+        "managedRepositoryMetadata",
+        "backupVaultName",
+        "backupVaultArn",
+        "operationsAlertTopicArn",
         "automationRoleArn",
         "runnerRepositoryName",
         "runnerRepositoryUrl",
@@ -172,6 +178,7 @@ def test_pulumi_workflows_cover_current_local_targets() -> None:
 
     assert "make test-pulumi" in structural  # nosec B101
     assert "make test-repository-catalogs" in structural  # nosec B101
+    assert "make test-repository-fanout" in structural  # nosec B101
     assert "make test-unit" in unit  # nosec B101
     assert "make test-integration" in integration  # nosec B101
     assert "make test-mutation" in mutation  # nosec B101
@@ -179,6 +186,7 @@ def test_pulumi_workflows_cover_current_local_targets() -> None:
     assert "make test-policy" in policy  # nosec B101
     assert "make publish-pulumi-preview-summary" in guardrails  # nosec B101
     assert "make test-destructive-diff" in guardrails  # nosec B101
+    assert "make test-cost-proxy" in guardrails  # nosec B101
     assert "make test-iam-validation" in guardrails  # nosec B101
     assert "make ci-pr" in local_battery  # nosec B101
 
@@ -212,6 +220,7 @@ def test_docs_cover_current_testing_and_guardrail_guidance() -> None:
         "ci-quality-gates.md",
         "ci-guardrails.md",
         "ci-architecture.md",
+        "cost-performance-sustainability.md",
         "pulumi-guardrails.md",
         "security-baseline.md",
         "sre-operations.md",

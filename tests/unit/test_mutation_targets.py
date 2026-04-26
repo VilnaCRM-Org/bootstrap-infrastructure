@@ -153,10 +153,17 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "kms:*" not in actions  # nosec B101
     assert "backup:*" not in actions  # nosec B101
     assert "ecr:*" not in actions  # nosec B101
+    assert "events:*" not in actions  # nosec B101
+    assert "sns:*" not in actions  # nosec B101
     assert "s3:CreateBucket" in actions  # nosec B101
     assert "kms:CreateKey" in actions  # nosec B101
+    assert "kms:Decrypt" not in actions  # nosec B101
+    assert "kms:Encrypt" not in actions  # nosec B101
+    assert "kms:GenerateDataKey" not in actions  # nosec B101
     assert "backup:CreateBackupPlan" in actions  # nosec B101
     assert "ecr:CreateRepository" in actions  # nosec B101
+    assert "events:PutRule" in actions  # nosec B101
+    assert "sns:CreateTopic" in actions  # nosec B101
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
         "arn:aws:s3:::pulumi-*-test-state-replication",
@@ -167,6 +174,12 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
         "bootstrap-infrastructure-test"
     ]
+    assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
+        "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
+    ]
+    assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
+        "arn:aws:sns:*:123456789012:bootstrap-test-operations"
+    ]
     assert (  # nosec B101
         "arn:aws:iam::123456789012:role/PulumiAutomation-"
         "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
@@ -175,8 +188,16 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         statements["ManageBootstrapKmsKeys"]["Condition"]["StringEquals"]
         == {
             "aws:ResourceTag/Environment": "test",
-            "aws:ResourceTag/Purpose": "pulumi-secrets",
+            "aws:ResourceTag/Purpose": ["pulumi-secrets", "operations-alerting"],
         }
+    )
+    assert statements["CreateBootstrapKmsKeys"]["Condition"]["StringEquals"] == {  # nosec B101
+        "aws:RequestTag/Environment": "test",
+        "aws:RequestTag/Purpose": ["pulumi-secrets", "operations-alerting"],
+    }
+    assert (  # nosec B101
+        "arn:aws:kms:*:123456789012:alias/bootstrap-test-operations-alerting"
+        in statements["ManageBootstrapKmsAliases"]["Resource"]
     )
     assert {
         statement["Sid"]

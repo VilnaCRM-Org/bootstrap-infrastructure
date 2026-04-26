@@ -97,6 +97,106 @@ def test_summarize_preview_and_find_destructive_steps(
     assert "| none | 0 |" in guardrails_module.summarize_preview(empty_path)
 
 
+def test_cost_proxy_reports_cost_driving_preview_steps(
+    guardrails_module, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Cost proxy should count create/replace operations on cost-driving types."""
+    path = _write_preview(
+        tmp_path / "cost.json",
+        steps=[
+            {
+                "op": "create",
+                "newState": {"type": "aws:s3/bucket:Bucket"},
+            },
+            {
+                "op": "replace",
+                "newState": {"type": "aws:kms/key:Key"},
+            },
+            {
+                "op": "update",
+                "newState": {"type": "aws:sns/topic:Topic"},
+            },
+            {
+                "op": "create",
+                "newState": {"type": "aws:cloudwatch/eventRule:EventRule"},
+            },
+            {
+                "op": "create",
+                "newState": {"type": "aws:cloudwatch/logGroup:LogGroup"},
+            },
+        ],
+        summary={"create": 2, "replace": 1, "update": 1},
+    )
+
+    report = guardrails_module.cost_proxy_report(guardrails_module.load_preview(path))
+    rendered = guardrails_module.render_cost_proxy_markdown(path, report)
+
+    assert report["weightedChange"] == 10  # nosec B101
+    assert report["categories"]["s3Buckets"] == 1  # nosec B101
+    assert report["categories"]["kmsKeys"] == 1  # nosec B101
+    assert report["categories"]["snsTopics"] == 0  # nosec B101
+    assert report["categories"]["eventRules"] == 1  # nosec B101
+    assert "Weighted cost/quota change: `10`" in rendered  # nosec B101
+    empty_rendered = guardrails_module.render_cost_proxy_markdown(
+        path,
+        guardrails_module.cost_proxy_report({"steps": []}),
+        stack="empty",
+    )
+    assert "| none | 0 |" in empty_rendered  # nosec B101
+
+    json_path = tmp_path / "cost-proxy.json"
+    markdown_path = tmp_path / "cost-proxy.md"
+    assert (  # nosec B101
+        guardrails_module.cli(
+            [
+                "cost-proxy",
+                "--max-weighted-change",
+                "10",
+                str(path),
+            ]
+        )
+        == 0
+    )
+    assert (  # nosec B101
+        guardrails_module.cli(
+            [
+                "cost-proxy",
+                "--max-weighted-change",
+                "9",
+                "--output-json",
+                str(json_path),
+                "--output-md",
+                str(markdown_path),
+                str(path),
+            ]
+        )
+        == 1
+    )
+    captured = capsys.readouterr()
+    assert "cost proxy blocked" in captured.err  # nosec B101
+    assert "s3Buckets" in markdown_path.read_text(encoding="utf-8")  # nosec B101
+    assert (  # nosec B101
+        json.loads(json_path.read_text(encoding="utf-8"))[0]["weightedChange"] == 10
+    )
+    iam_inputs_path = tmp_path / "iam-inputs.json"
+    iam_inputs_path.write_text("[]", encoding="utf-8")
+    assert (  # nosec B101
+        guardrails_module.preview_input_files([path, iam_inputs_path]) == [path]
+    )
+    assert (  # nosec B101
+        guardrails_module.cli(
+            [
+                "cost-proxy",
+                "--max-weighted-change",
+                "10",
+                str(path),
+                str(iam_inputs_path),
+            ]
+        )
+        == 0
+    )
+
+
 def test_extract_iam_validation_inputs_covers_identity_resource_and_inline_policies(
     guardrails_module, tmp_path: Path
 ) -> None:

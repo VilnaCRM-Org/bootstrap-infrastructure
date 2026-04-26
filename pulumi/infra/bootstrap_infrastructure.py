@@ -87,6 +87,11 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             backup_target_arns=backup_targets,
             opts=child_opts,
         )
+        self.monitoring = self.dependencies.monitoring_cls(
+            "operations-monitoring",
+            settings=settings,
+            opts=child_opts,
+        )
 
         self.outputs: dict[str, pulumi.Input[object]] = {
             "centralLogBucket": self.logging.bucket.bucket,
@@ -98,6 +103,10 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             "pulumiSecretsProviderUrls": self.secrets.provider_urls,
             "deployRoleArns": self.oidc.deploy_role_arns,
             "managedRepositoryProjects": repository_catalog.project_mapping(),
+            "managedRepositoryMetadata": repository_catalog.metadata_mapping(),
+            "backupVaultName": self.backup.vault.name,
+            "backupVaultArn": self.backup.vault.arn,
+            "operationsAlertTopicArn": self.monitoring.topic.arn,
         }
         if self.automation is not None:
             self.outputs.update(

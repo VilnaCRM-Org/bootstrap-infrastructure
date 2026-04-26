@@ -9,6 +9,7 @@ from collections.abc import Callable
 import pytest
 from app.environment import (
     EnvironmentSettings,
+    EnvironmentSettingsInputs,
     _stack_metadata_from_outputs,
     resolve_config_value,
 )
@@ -69,7 +70,11 @@ def test_environment_helpers_cover_configured_and_shape_guard_paths() -> None:
     """Exercise integration-only helper branches kept behind the component layer."""
     assert resolve_config_value(None, "configured", default="fallback") == "configured"  # nosec B101
     with pytest.raises(
-        ValueError, match="expected service, environment, owner, and cost center"
+        ValueError,
+        match=(
+            "expected service, environment, owner, cost center, "
+            "classification, criticality, and retention class"
+        ),
     ):
         _stack_metadata_from_outputs(["service", "environment", "owner"])
 
@@ -101,7 +106,10 @@ def test_environment_settings_reject_invalid_identifier_inputs(
     """Exercise identifier validation through the Pulumi component path."""
 
     def program() -> None:
-        EnvironmentSettings("integration-settings", **kwargs)
+        EnvironmentSettings(
+            "integration-settings",
+            inputs=EnvironmentSettingsInputs(**kwargs),  # type: ignore[arg-type]
+        )
 
     with pytest.raises(ValueError, match=rf"^{re.escape(message)}\.$"):
         _run_with_mocks(program)

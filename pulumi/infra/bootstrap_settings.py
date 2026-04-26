@@ -30,6 +30,9 @@ class BootstrapSettings:
     environment: str
     owner: str
     cost_center: str
+    data_classification: str
+    criticality: str
+    retention_class: str
     github_branch: str | None
     logging_prefix: str
     replication_region: str | None
@@ -51,6 +54,9 @@ class BootstrapSettings:
             environment=config.get("environment") or pulumi.get_stack(),
             owner=config.get("owner") or "platform",
             cost_center=config.get("costCenter") or "core",
+            data_classification=config.get("dataClassification") or "internal",
+            criticality=config.get("criticality") or "high",
+            retention_class=config.get("retentionClass") or "standard",
             github_branch=config.get("githubBranch"),
             logging_prefix=config.get("loggingPrefix") or "company",
             replication_region=config.get("replicationRegion"),
@@ -219,6 +225,9 @@ class BootstrapSettings:
             "Environment": self.environment,
             "Owner": self.owner,
             "CostCenter": self.cost_center,
+            "DataClassification": self.data_classification,
+            "Criticality": self.criticality,
+            "RetentionClass": self.retention_class,
         }
         resolved_app = app_name or self.repo
         if resolved_app:

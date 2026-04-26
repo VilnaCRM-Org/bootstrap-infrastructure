@@ -8,6 +8,7 @@ from .automation import GitHubAutomation
 from .backup import S3BackupPlan
 from .iam import GitHubOidcRoles
 from .logging_bucket import CentralLoggingBuckets
+from .operations_monitoring import OperationsMonitoring
 from .pulumi_secrets import PulumiSecretsKeys
 from .pulumi_state import PulumiStateBuckets
 
@@ -22,3 +23,4 @@ class BootstrapInfrastructureDependencies:
     oidc_roles_cls: type[GitHubOidcRoles] = GitHubOidcRoles
     automation_cls: type[GitHubAutomation] = GitHubAutomation
     backup_plan_cls: type[S3BackupPlan] = S3BackupPlan
+    monitoring_cls: type[OperationsMonitoring] = OperationsMonitoring
