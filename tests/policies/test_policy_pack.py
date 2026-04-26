@@ -1104,7 +1104,7 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
         "allowed-policy"
     )
     assert policy_runtime.iam_policy_identifier({}) is None
-    assert (
+    assert (  # nosec B101
         policy_runtime.wildcard_iam_violations(
             "aws:iam/policy:Policy",
             {"policy": wildcard_policy, "name": "allowed-policy"},
@@ -1169,7 +1169,7 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
         },
         config,
     ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
-    assert (
+    assert (  # nosec B101
         policy_runtime.wildcard_iam_violations(
             "aws:iam/policy:Policy",
             {
@@ -1217,7 +1217,7 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
         )
         == []
     )
-    assert policy_runtime.wildcard_iam_violations(
+    assert policy_runtime.wildcard_iam_violations(  # nosec B101
         "aws:iam/policy:Policy",
         {
             "policy": _json(

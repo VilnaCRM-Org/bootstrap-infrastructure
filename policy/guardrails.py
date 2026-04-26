@@ -699,7 +699,7 @@ def _resource_wildcard_allowed_for_unscopable_actions(
 ) -> bool:
     """Allow Resource='*' only for AWS actions that cannot be ARN-scoped."""
     actions = frozenset(_normalized_action_values(statement.get("Action")))
-    if not actions or not actions <= _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS:
+    if not actions or actions.difference(_UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS):
         return False
 
     for action in actions:
