@@ -1235,6 +1235,64 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
         },
         config,
     ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
+    assert policy_runtime.wildcard_iam_violations(  # nosec B101
+        "aws:iam/policy:Policy",
+        {
+            "policy": _json(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": 123,
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+        },
+        config,
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
+    assert policy_runtime.wildcard_iam_violations(  # nosec B101
+        "aws:iam/policy:Policy",
+        {
+            "policy": _json(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["kms:CreateKey"],
+                            "Resource": "*",
+                            "Condition": {"StringEquals": "invalid"},
+                        }
+                    ],
+                }
+            )
+        },
+        config,
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
+    assert policy_runtime.wildcard_iam_violations(  # nosec B101
+        "aws:iam/policy:Policy",
+        {
+            "policy": _json(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["kms:CreateKey"],
+                            "Resource": "*",
+                            "Condition": {
+                                "StringEquals": {"aws:RequestTag/Other": "test"}
+                            },
+                        }
+                    ],
+                }
+            )
+        },
+        config,
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
 
 
 def test_wildcard_iam_violations_ignore_targeted_resource_policy_exceptions(
