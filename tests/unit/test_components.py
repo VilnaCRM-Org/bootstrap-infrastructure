@@ -202,6 +202,34 @@ def test_operations_monitoring_rule_name_guard(monkeypatch):
         operations_monitoring._rule_name(config.settings, "backup-failed")  # noqa: SLF001
 
 
+def test_operations_monitoring_policies_are_partition_aware():
+    """Operations policies should support non-commercial AWS partitions."""
+    topic_policy = json.loads(
+        operations_monitoring._topic_policy(  # noqa: SLF001
+            "arn:aws-us-gov:sns:us-gov-west-1:123456789012:bootstrap-test-operations",
+            "123456789012",
+            "aws-us-gov",
+        )
+    )
+    topic_key_policy = json.loads(
+        operations_monitoring._topic_key_policy("123456789012", "aws-us-gov")  # noqa: SLF001
+    )
+
+    topic_statements = {
+        statement["Sid"]: statement for statement in topic_policy["Statement"]
+    }
+    key_statements = {
+        statement["Sid"]: statement for statement in topic_key_policy["Statement"]
+    }
+
+    assert topic_statements["AllowAccountTopicAdministration"]["Principal"] == {  # nosec B101
+        "AWS": "arn:aws-us-gov:iam::123456789012:root"
+    }
+    assert key_statements["EnableAccountPermissions"]["Principal"] == {  # nosec B101
+        "AWS": "arn:aws-us-gov:iam::123456789012:root"
+    }
+
+
 def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(config.settings, "logging_prefix", "company")
     monkeypatch.setattr(config.settings, "repo", "core-service-infrastructure")

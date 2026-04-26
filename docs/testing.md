@@ -267,7 +267,8 @@ keeps mutation analysis isolated as a separate check.
 The `Pulumi Policy Tests` workflow runs the policy-pack coverage suite, and the
 `Python Quality Checks` workflow runs Ruff, Ty, maintainability, architecture,
 dependency-hygiene, and coverage gates. `Pulumi PR Guardrails` runs preview,
-destructive diff, and IAM validation. The `Security Scans` workflow runs
+destructive diff, the `make test-cost-proxy` gate, and IAM validation. The
+`Security Scans` workflow runs
 Gitleaks, Bandit, dependency audit/review, workflow linting, YAML linting, and
 Hadolint. `Nightly Quality` publishes Wily, Vulture,
 docstring-coverage, and SBOM artifacts.

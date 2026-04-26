@@ -143,6 +143,7 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
         stack="empty",
     )
     assert "| none | 0 |" in empty_rendered  # nosec B101
+    assert "| Category | Count |" not in empty_rendered  # nosec B101
 
     json_path = tmp_path / "cost-proxy.json"
     markdown_path = tmp_path / "cost-proxy.md"

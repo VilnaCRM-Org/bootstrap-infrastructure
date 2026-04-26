@@ -267,6 +267,9 @@ test-destructive-diff: ## Fail when Pulumi previews delete or replace critical r
 		fi; \
 		uv run python ./scripts/pulumi_ci_guardrails.py destructive-gate $$event_arg .artifacts/pulumi-preview/*.json'
 
+# Intended for the guardrails sequence documented in docs/testing.md. When
+# invoked without preview artifacts, this target generates a preview first and
+# therefore requires the same AWS credentials as test-preview.
 test-cost-proxy: ## Fail when Pulumi previews exceed static cost and quota fanout thresholds.
 	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) bash -lc '\
 		mkdir -p .artifacts/pulumi-preview/reports; \

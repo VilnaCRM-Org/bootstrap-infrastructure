@@ -13,7 +13,13 @@ os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / "pulumi"))
 
-from infra import BootstrapSettings, ManagedRepositoryCatalog, config, logging_bucket
+from infra import (
+    BootstrapSettings,
+    ManagedRepositoryCatalog,
+    config,
+    logging_bucket,
+    repository_catalog,
+)
 from infra.config import (
     _sanitize_bucket_component,
     automation_role_name,
@@ -683,14 +689,34 @@ def test_managed_repository_metadata_helpers_include_optional_fields():
 
 def test_managed_repository_catalog_rejects_non_integer_expected_environments():
     """Loader rejects expectedEnvironments values that cannot feed fanout math."""
-    with pytest.raises(ValueError, match="expectedEnvironments"):
+    with pytest.raises(TypeError, match="expectedEnvironments"):
         ManagedRepositoryCatalog.repository_from_item(
             {"name": "repo", "expectedEnvironments": "2"}
         )
-    with pytest.raises(ValueError, match="expectedEnvironments"):
+    with pytest.raises(TypeError, match="expectedEnvironments"):
         ManagedRepositoryCatalog.repository_from_item(
             {"name": "repo", "expectedEnvironments": True}
         )
+
+
+def test_managed_repository_catalog_rejects_invalid_metadata_with_catalog_fields():
+    """Catalog metadata errors should name the JSON-facing field."""
+    with pytest.raises(ValueError, match="repo.*lifecycleState"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "lifecycleState": "unknown"}
+        )
+    with pytest.raises(ValueError, match="repo.*lastReviewed"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "lastReviewed": "20260427"}
+        )
+    with pytest.raises(ValueError, match="repo.*expectedEnvironments"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "expectedEnvironments": 0}
+        )
+    error = repository_catalog._metadata_validation_error(  # noqa: SLF001
+        "repo", ValueError("unexpected validation failure")
+    )
+    assert "repo" in str(error) and "metadata" in str(error)  # nosec B101
 
 
 def test_managed_repository_catalog_rejects_duplicate_names():

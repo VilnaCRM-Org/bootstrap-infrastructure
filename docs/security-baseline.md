@@ -90,10 +90,10 @@ the safe path the easy path for normal day-to-day infrastructure work.
 - The stack creates EventBridge rules for AWS Backup failures, KMS key risk
   events, IAM/OIDC policy changes, and S3 state/log control-plane changes.
 - These rules publish to the environment operations SNS topic. The topic uses a
-  dedicated customer-managed KMS key so EventBridge has the required encrypted
-  publish permissions in key policy. Account owners must attach the approved
-  subscription and escalation route before treating the alerts as live
-  operational coverage.
+  dedicated customer-managed KMS key so the key policy can grant EventBridge
+  the permissions required to publish to an encrypted topic. Account owners
+  must attach the approved subscription and escalation route before treating the
+  alerts as live operational coverage.
 - Incident responders must use metadata-only commands unless a
   secret-management task explicitly requires handling secret material.
 

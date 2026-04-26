@@ -98,6 +98,12 @@ class TestMocks(pulumi.runtime.Mocks):
             return {"name": "us-east-1", "region": "us-east-1"}, []
         if token == "aws:index/getCallerIdentity:getCallerIdentity":  # nosec B105
             return {"accountId": "123456789012"}, []
+        if token == "aws:index/getPartition:getPartition":  # nosec B105
+            return {
+                "partition": "aws",
+                "dnsSuffix": "amazonaws.com",
+                "reverseDnsPrefix": "com.amazonaws",
+            }, []
         if token == "aws:iam/getRole:getRole":  # nosec B105
             return {"arn": f"arn:aws:iam::123456789012:role/{payload.get('name')}"}, []
         if token == "aws:s3/getBucket:getBucket":  # nosec B105

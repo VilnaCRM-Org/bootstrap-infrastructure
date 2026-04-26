@@ -124,6 +124,8 @@ def cost_proxy_report(preview: dict[str, Any]) -> dict[str, object]:
         for category, pattern, weight in COST_DRIVER_TYPE_PATTERNS:
             if pattern not in resource_type:
                 continue
+            # First match wins so future overlapping patterns do not double-count
+            # a single preview step.
             categories[category] += 1
             weighted_change += weight
             resources.append(
@@ -152,15 +154,16 @@ def render_cost_proxy_markdown(
         "",
         f"Weighted cost/quota change: `{report['weightedChange']}`",
         "",
-        "| Category | Count |",
-        "| --- | ---: |",
     ]
+    if all(count == 0 for count in categories.values()):
+        lines.append("| none | 0 |")
+        lines.append("")
+        return "\n".join(lines)
+    lines.extend(["| Category | Count |", "| --- | ---: |"])
     for category in sorted(categories):
         count = categories[category]
         if count:
             lines.append(f"| {category} | {count} |")
-    if all(count == 0 for count in categories.values()):
-        lines.append("| none | 0 |")
     lines.append("")
     return "\n".join(lines)
 

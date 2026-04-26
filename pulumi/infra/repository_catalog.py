@@ -48,8 +48,26 @@ def _optional_mapping_int(
     if value is None:
         return fallback
     if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_message)
+        # Match ManagedRepository._expected_environments so catalog and direct
+        # model validation surface a uniform exception type.
+        raise TypeError(error_message)
     return value
+
+
+def _metadata_validation_error(name: str, exc: ValueError) -> ValueError:
+    """Return a catalog-scoped metadata validation error."""
+    reason = str(exc)
+    if "lifecycle_state" in reason:
+        field = "lifecycleState"
+    elif "last_reviewed" in reason:
+        field = "lastReviewed"
+    elif "expected_environments" in reason:
+        field = "expectedEnvironments"
+    else:
+        field = "metadata"
+    return ValueError(
+        f"managedRepositories entry '{name}' has invalid {field}: {reason}"
+    )
 
 
 class ManagedRepositoryCatalog:
@@ -227,15 +245,18 @@ class ManagedRepositoryCatalog:
             ),
         )
 
-        return ManagedRepository(
-            name=name,
-            default_branch=default_branch,
-            project=project,
-            owner=owner,
-            lifecycle_state=lifecycle_state,
-            last_reviewed=last_reviewed,
-            expected_environments=expected_environments,
-        )
+        try:
+            return ManagedRepository(
+                name=name,
+                default_branch=default_branch,
+                project=project,
+                owner=owner,
+                lifecycle_state=lifecycle_state,
+                last_reviewed=last_reviewed,
+                expected_environments=expected_environments,
+            )
+        except ValueError as exc:
+            raise _metadata_validation_error(name, exc) from exc
 
     @staticmethod
     def repository_from_item(item: Any) -> ManagedRepository:

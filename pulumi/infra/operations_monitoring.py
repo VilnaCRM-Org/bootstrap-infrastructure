@@ -50,7 +50,7 @@ def _rule_name(settings: BootstrapSettings, suffix: str) -> str:
     return name
 
 
-def _topic_policy(topic_arn: str, account_id: str) -> str:
+def _topic_policy(topic_arn: str, account_id: str, partition: str) -> str:
     """Allow EventBridge to publish operational events to the alert topic."""
     return json.dumps(
         {
@@ -59,7 +59,7 @@ def _topic_policy(topic_arn: str, account_id: str) -> str:
                 {
                     "Sid": "AllowAccountTopicAdministration",
                     "Effect": "Allow",
-                    "Principal": {"AWS": f"arn:aws:iam::{account_id}:root"},
+                    "Principal": {"AWS": f"arn:{partition}:iam::{account_id}:root"},
                     "Action": list(SNS_TOPIC_OWNER_ACTIONS),
                     "Resource": topic_arn,
                 },
@@ -79,7 +79,7 @@ def _topic_policy(topic_arn: str, account_id: str) -> str:
     )
 
 
-def _topic_key_policy(account_id: str) -> str:
+def _topic_key_policy(account_id: str, partition: str) -> str:
     """Allow account administration and EventBridge publishing to encrypted SNS."""
     return json.dumps(
         {
@@ -88,7 +88,7 @@ def _topic_key_policy(account_id: str) -> str:
                 {
                     "Sid": "EnableAccountPermissions",
                     "Effect": "Allow",
-                    "Principal": {"AWS": f"arn:aws:iam::{account_id}:root"},
+                    "Principal": {"AWS": f"arn:{partition}:iam::{account_id}:root"},
                     "Action": "kms:*",
                     "Resource": "*",
                 },
@@ -124,6 +124,8 @@ def _cloudtrail_api_event_pattern(
 
 def _event_patterns() -> dict[str, dict[str, object]]:
     """Return EventBridge patterns for high-severity bootstrap events."""
+    # Suffixes are reused as EventBridge target IDs, so keep them within the
+    # 64-character alphanumeric, underscore, and hyphen constraint.
     return {
         "backup-failed": {
             "source": ["aws.backup"],
@@ -190,6 +192,7 @@ class OperationsMonitoring(pulumi.ComponentResource):
         configured_settings = settings or default_settings
         base_opts = pulumi.ResourceOptions(parent=self)
         account_id = aws.get_caller_identity().account_id
+        partition = aws.get_partition().partition
         topic_key = aws.kms.Key(
             f"{name}-topic-key",
             description=(
@@ -198,7 +201,7 @@ class OperationsMonitoring(pulumi.ComponentResource):
             ),
             deletion_window_in_days=30,
             enable_key_rotation=True,
-            policy=_topic_key_policy(account_id),
+            policy=_topic_key_policy(account_id, partition),
             tags=base_tags(
                 {"Purpose": "operations-alerting"},
                 settings=configured_settings,
@@ -226,7 +229,9 @@ class OperationsMonitoring(pulumi.ComponentResource):
         aws.sns.TopicPolicy(
             f"{name}-topic-policy",
             arn=topic.arn,
-            policy=topic.arn.apply(lambda arn: _topic_policy(arn, account_id)),
+            policy=topic.arn.apply(
+                lambda arn: _topic_policy(arn, account_id, partition)
+            ),
             opts=base_opts,
         )
 
@@ -257,6 +262,7 @@ class OperationsMonitoring(pulumi.ComponentResource):
             {
                 "topic_arn": topic.arn,
                 "topic_key_arn": topic_key.arn,
+                "topic_key_alias_name": topic_key_alias.name,
                 "rule_names": {
                     suffix: rule.name for suffix, rule in self.rules.items()
                 },

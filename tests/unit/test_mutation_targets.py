@@ -199,6 +199,13 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "arn:aws:kms:*:123456789012:alias/bootstrap-test-operations-alerting"
         in statements["ManageBootstrapKmsAliases"]["Resource"]
     )
+    assert (  # nosec B101
+        statements["ManageBootstrapKmsAliases"]["Condition"]["StringEqualsIfExists"]
+        == {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": ["pulumi-secrets", "operations-alerting"],
+        }
+    )
     assert {
         statement["Sid"]
         for statement in policy["Statement"]

@@ -7,24 +7,26 @@ import re
 from dataclasses import dataclass
 
 _VALID_LIFECYCLE_STATES = frozenset({"active", "planned", "deprecated", "archived"})
-_LAST_REVIEWED_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
+_LAST_REVIEWED_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 
 
-def _required_string(value: object, label: str) -> str:
+def _required_string(
+    value: object, label: str, *, blank_message: str | None = None
+) -> str:
     """Return a stripped non-empty string or raise a typed validation error."""
     if not isinstance(value, str):
         raise TypeError(f"Managed repository {label} must be a string.")
     normalized = value.strip()
     if not normalized:
-        if label == "name":
-            raise ValueError("Managed repository name must be a non-empty string.")
-        if label == "default_branch":
-            raise ValueError("Managed repository default_branch must be non-empty.")
-        raise ValueError(f"Managed repository {label} must be non-empty.")
+        raise ValueError(
+            blank_message or f"Managed repository {label} must be non-empty."
+        )
     return normalized
 
 
-def _optional_string(value: object, label: str) -> str | None:
+def _optional_string(
+    value: object, label: str, *, blank_message: str | None = None
+) -> str | None:
     """Return a stripped optional string or raise a typed validation error."""
     if value is None:
         return None
@@ -32,9 +34,9 @@ def _optional_string(value: object, label: str) -> str | None:
         raise TypeError(f"Managed repository {label} must be a string when set.")
     normalized = value.strip()
     if not normalized:
-        if label == "project":
-            raise ValueError("Managed repository project must be non-empty when set.")
-        raise ValueError(f"Managed repository {label} must be non-empty when set.")
+        raise ValueError(
+            blank_message or f"Managed repository {label} must be non-empty when set."
+        )
     return normalized
 
 
@@ -87,9 +89,21 @@ class ManagedRepository:
     expected_environments: int = 2
 
     def __post_init__(self) -> None:
-        normalized_name = _required_string(self.name, "name")
-        normalized_branch = _required_string(self.default_branch, "default_branch")
-        normalized_project = _optional_string(self.project, "project")
+        normalized_name = _required_string(
+            self.name,
+            "name",
+            blank_message="Managed repository name must be a non-empty string.",
+        )
+        normalized_branch = _required_string(
+            self.default_branch,
+            "default_branch",
+            blank_message="Managed repository default_branch must be non-empty.",
+        )
+        normalized_project = _optional_string(
+            self.project,
+            "project",
+            blank_message="Managed repository project must be non-empty when set.",
+        )
         normalized_owner = _optional_string(self.owner, "owner")
         normalized_lifecycle_state = _lifecycle_state(self.lifecycle_state)
         normalized_last_reviewed = _last_reviewed(self.last_reviewed)
