@@ -279,6 +279,39 @@ def test_repository_tracks_current_policy_and_guardrail_support_files() -> None:
     assert (ROOT / "pulumi" / "repositories.schema.json").exists()  # nosec B101
 
 
+def test_bmad_bmalph_planning_uses_specs_directory() -> None:
+    specs_dir = ROOT / "specs"
+    agent_instructions = (ROOT / "AGENTS.md").read_text()
+    planning_doc_names = {
+        "architecture.md",
+        "epics.md",
+        "implementation-readiness-report.md",
+        "prd.md",
+        "well-architected-review.md",
+    }
+
+    assert specs_dir.is_dir()  # nosec B101
+    assert planning_doc_names <= {path.name for path in specs_dir.rglob("*.md")}  # nosec B101
+
+    for phrase in (
+        "Keep BMAD and BMALPH planning artifacts under `specs/`.",
+        "specs/<issue-or-feature-slug>/",
+        "output_folder: specs",
+        "planning_artifacts: specs",
+        "Do not commit alternate planning roots",
+    ):
+        assert phrase in agent_instructions  # nosec B101
+
+    for forbidden_root in (
+        "_bmad-output",
+        "docs/planning",
+        "planning",
+        ".bmad",
+        ".bmad-core",
+    ):
+        assert not (ROOT / forbidden_root).exists()  # nosec B101
+
+
 def test_removed_legacy_scaffold_paths_stay_absent() -> None:
     assert not (ROOT / ".qlty").exists()  # nosec B101
     assert not (ROOT / ".importlinter").exists()  # nosec B101
