@@ -38,9 +38,11 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
+      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
       PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
       PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
+      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -88,9 +90,11 @@ jobs:
           for name in \
             AWS_ACCOUNT_ID \
             AWS_PREVIEW_ROLE_ARN \
+            AWS_DRIFT_ROLE_ARN \
             PULUMI_BACKEND_URL \
             PULUMI_SECRETS_PROVIDER \
-            PULUMI_PREVIEW_STACKS; do
+            PULUMI_PREVIEW_STACKS \
+            PULUMI_DRIFT_STACKS; do
             if [[ -z "${!name}" ]]; then
               missing+=("${name}")
             fi

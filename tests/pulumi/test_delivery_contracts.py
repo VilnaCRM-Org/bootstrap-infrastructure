@@ -787,6 +787,8 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert "12-digit AWS account ID" in prod_preview_lines  # nosec B101
     assert "s3:// backend" in prod_preview_lines  # nosec B101
     assert "awskms:// URI" in prod_preview_lines  # nosec B101
+    assert "AWS_DRIFT_ROLE_ARN" in prod_preview_lines  # nosec B101
+    assert "PULUMI_DRIFT_STACKS" in prod_preview_lines  # nosec B101
     assert "12-digit AWS account ID" in test_preview_lines  # nosec B101
     assert "s3:// backend" in test_preview_lines  # nosec B101
     assert "awskms:// URI" in test_preview_lines  # nosec B101

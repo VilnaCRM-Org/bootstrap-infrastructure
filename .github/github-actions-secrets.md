@@ -39,10 +39,12 @@ OIDC roles should trust the repository and the target GitHub environment:
 repo:VilnaCRM-Org/bootstrap-infrastructure:environment:<environment>
 ```
 
-Use `allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}` in
-`aws-actions/configure-aws-credentials` so a workflow cannot assume a role in
-the wrong account. Store role ARNs as environment variables, not repository-wide
-variables, when they differ by account or purpose.
+Use `allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}` in
+`aws-actions/configure-aws-credentials` with `AWS_ACCOUNT_ID` populated from the
+GitHub environment through job-level `env:`. That keeps the assumed account
+preflight-validated and prevents a workflow from assuming a role in the wrong
+account. Store role ARNs as job or workflow environment variables, not
+repository-wide variables, when they differ by account or purpose.
 
 ## Production Protection
 

@@ -925,6 +925,18 @@ def test_run_pulumi_command_prefers_configured_stack_lists(
     assert up_plan_stacks == ["test", "prod/eu"]  # nosec B101
 
 
+def test_run_pulumi_command_safe_artifact_stem_handles_empty_sanitized_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Artifact names should still be stable when no stack characters are safe."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+
+    stem = module._safe_artifact_stem("")
+
+    assert stem.startswith("stack-")  # nosec B101
+    assert len(stem) == len("stack-") + 8  # nosec B101
+
+
 def test_run_pulumi_command_branch_helpers_return_select_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
