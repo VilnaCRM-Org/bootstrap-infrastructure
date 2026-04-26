@@ -338,11 +338,13 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
     )
     monkeypatch.setattr(module, "ROOT_DIR", repo_dir)
 
-    assert module.repository_catalog_paths(repo_dir) == [catalog_path]
-    assert module.validate_catalogs([catalog_path], schema_path) == [catalog_path]
-    assert module.main([]) == 0
+    assert module.repository_catalog_paths(repo_dir) == [catalog_path]  # nosec B101
+    assert module.validate_catalogs(  # nosec B101
+        [catalog_path], schema_path
+    ) == [catalog_path]
+    assert module.main([]) == 0  # nosec B101
 
-    assert f"validated repository catalog: {catalog_path}" in capsys.readouterr().out
+    assert f"validated repository catalog: {catalog_path}" in capsys.readouterr().out  # nosec B101
 
 
 def test_validate_repository_catalogs_reports_schema_errors(
@@ -357,14 +359,14 @@ def test_validate_repository_catalogs_reports_schema_errors(
     )
     schema_path = PROJECT_ROOT / "pulumi" / "repositories.schema.json"
 
-    assert module._json_pointer(["repositories", 0, "name"]) == (
+    assert module._json_pointer(["repositories", 0, "name"]) == (  # nosec B101
         "$.repositories[0].name"
     )
-    assert module.main(["--schema", str(schema_path), str(catalog_path)]) == 1
+    assert module.main(["--schema", str(schema_path), str(catalog_path)]) == 1  # nosec B101
 
     error_output = capsys.readouterr().err
-    assert str(catalog_path) in error_output
-    assert "$.repositories[0]" in error_output
+    assert str(catalog_path) in error_output  # nosec B101
+    assert "$.repositories[0]" in error_output  # nosec B101
 
 
 def test_validate_repository_catalogs_reports_semantic_errors(
@@ -389,7 +391,7 @@ def test_validate_repository_catalogs_semantic_helpers_reject_bad_inputs(
     """Cover semantic guardrails that usually sit behind schema validation."""
     module = load_script_module(monkeypatch, "validate_repository_catalogs")
 
-    assert module._repository_name({"name": " repo "}) == "repo"
+    assert module._repository_name({"name": " repo "}) == "repo"  # nosec B101
     module._validate_repository_mapping({"name": "repo"})
 
     with pytest.raises(ValueError, match="blank value"):
@@ -409,15 +411,15 @@ def test_validate_repository_catalogs_handles_empty_and_invalid_inputs(
     (repo_dir / "pulumi").mkdir(parents=True)
     monkeypatch.setattr(module, "ROOT_DIR", repo_dir)
 
-    assert module.main([]) == 1
-    assert "no repository catalog JSON files found" in capsys.readouterr().err
+    assert module.main([]) == 1  # nosec B101
+    assert "no repository catalog JSON files found" in capsys.readouterr().err  # nosec B101
 
     schema_path = PROJECT_ROOT / "pulumi" / "repositories.schema.json"
     bad_catalog = tmp_path / "repositories.bad.json"
     bad_catalog.write_text("{not-json", encoding="utf-8")
 
-    assert module.main(["--schema", str(schema_path), str(bad_catalog)]) == 1
-    assert "Expecting property name" in capsys.readouterr().err
+    assert module.main(["--schema", str(schema_path), str(bad_catalog)]) == 1  # nosec B101
+    assert "Expecting property name" in capsys.readouterr().err  # nosec B101
 
     invalid_schema = tmp_path / "repositories.schema.json"
     invalid_schema.write_text(json.dumps({"type": 123}), encoding="utf-8")
@@ -427,10 +429,10 @@ def test_validate_repository_catalogs_handles_empty_and_invalid_inputs(
         encoding="utf-8",
     )
 
-    assert module.main(["--schema", str(invalid_schema), str(valid_catalog)]) == 1
+    assert module.main(["--schema", str(invalid_schema), str(valid_catalog)]) == 1  # nosec B101
     error_output = capsys.readouterr().err
-    assert str(invalid_schema) in error_output
-    assert "invalid repository catalog schema" in error_output
+    assert str(invalid_schema) in error_output  # nosec B101
+    assert "invalid repository catalog schema" in error_output  # nosec B101
 
 
 def test_publish_pulumi_preview_summary_main_handles_backend_and_summary_paths(

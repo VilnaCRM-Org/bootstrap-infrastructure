@@ -161,7 +161,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         validated_paths = validate_catalogs(catalog_paths, args.schema)
-    except (json.JSONDecodeError, OSError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
