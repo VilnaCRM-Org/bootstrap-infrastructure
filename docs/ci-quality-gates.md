@@ -20,7 +20,7 @@ These checks should be required in branch protection:
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
 | `Architecture` | `make test-architecture` | Import Linter contracts for package isolation and dependency direction |
 | `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
-| `Coverage` | `make test-coverage` after `make test-unit`, `make test-integration`, `make test-policy` | Combined branch-coverage gate |
+| `Coverage` | `make test-coverage` after unit, policy, and integration suites | Combined branch-coverage gate; uses `make test-integration-unprivileged` when AWS-backed automation tests are not enabled |
 | `Secrets Scan` | `make test-secrets` | Gitleaks against tracked Git content |
 | `Dependency Audit` | `make test-deps-security` | `pip-audit --strict` for known Python vulnerabilities |
 | `Bandit` | `make test-bandit` | Python security linting for runtime and helper code |
@@ -28,20 +28,21 @@ These checks should be required in branch protection:
 | `Actionlint` | `make test-actionlint` | Workflow syntax and common GitHub Actions mistakes |
 | `Yamllint` | `make test-yaml` | GitHub workflow YAML, Pulumi stack YAML, and operational YAML hygiene |
 | `Hadolint` | `make test-dockerfile` | Dockerfile quality and safety linting |
-| `Preview` | `make test-preview` | Non-destructive Pulumi preview artifact generation |
+| `Preview` | `make test-preview` or `make test-preview-unprivileged` | Non-destructive Pulumi preview artifact generation, with an unprivileged artifact fallback when AWS variables are absent |
 | `Destructive Diff Gate` | `make test-destructive-diff` | Blocks risky deletes and replacements |
-| `IAM Validation` | `make test-iam-validation` | AWS IAM Access Analyzer validation of rendered policies |
+| `IAM Validation` | `make test-iam-validation` or `make test-iam-validation-unprivileged` | AWS IAM Access Analyzer validation when credentials are configured; offline IAM-input extraction otherwise |
 | `Policy` | `make test-policy` | Custom Pulumi CrossGuard policy pack enforcement |
 | `CodeQL (python)` | GitHub-native | Static security/code scanning for Python |
 | `CodeQL (actions)` | GitHub-native | Static security/code scanning for workflows |
 
-`make ci-pr` is the canonical local equivalent of the non-mutation pull-request
-battery. The structural, policy, quality, unit, integration, mutation, CLI,
-and aggregate local suites remain runnable without live AWS credentials, but
-`make test-iam-validation` stays a separate privileged step and is
-intentionally excluded from `make ci-pr`. `make ci` adds the slower mutation
-layer on top, and IAM validation still runs separately when credentials are
-available.
+`make ci-pr` is the canonical local equivalent of the real non-mutation
+pull-request battery. Repositories without live AWS credentials or AWS-backed
+Pulumi variables can run `make ci-pr-unprivileged`, which swaps in
+`make test-integration-unprivileged`, `make test-preview-unprivileged`, and
+`make test-iam-validation-unprivileged`.
+`make test-iam-validation` remains a separate privileged step and is
+intentionally excluded from `make ci-pr`; `make ci` adds the slower mutation
+layer on top.
 
 ## Scheduled quality monitoring
 

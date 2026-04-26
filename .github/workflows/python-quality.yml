@@ -95,15 +95,11 @@ jobs:
 
   coverage:
     name: Coverage
-    if: >-
-      ${{
-        github.repository == 'VilnaCRM-Org/infrastructure-template' ||
-        vars.PULUMI_ENABLE_AUTOMATION_STACK_TESTS == 'true'
-      }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
+      PULUMI_ENABLE_AUTOMATION_STACK_TESTS: ${{ vars.PULUMI_ENABLE_AUTOMATION_STACK_TESTS }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -115,6 +111,10 @@ jobs:
       - name: Run coverage-bearing suites inside Docker
         run: |
           make test-unit
-          make test-integration
+          if [[ "${PULUMI_ENABLE_AUTOMATION_STACK_TESTS}" == "true" ]]; then
+            make test-integration
+          else
+            make test-integration-unprivileged
+          fi
           make test-policy
           make test-coverage

@@ -204,7 +204,7 @@ def test_policy_pack_allows_private_bucket_acl(tmp_path: Path) -> None:
     result = _preview_with_policy_pack(_write_program(tmp_path, acl="private"))
     combined_output = f"{result.stdout}\n{result.stderr}"
 
-    assert result.returncode == 0, combined_output
+    assert result.returncode == 0, combined_output  # nosec B101
 
 
 def test_policy_pack_allows_private_bucket_with_split_s3_encryption(

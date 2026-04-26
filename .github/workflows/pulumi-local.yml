@@ -20,15 +20,11 @@ permissions:
 jobs:
   local_battery:
     name: Local Battery
-    if: >-
-      ${{
-        github.repository == 'VilnaCRM-Org/infrastructure-template' ||
-        vars.PULUMI_ENABLE_AUTOMATION_STACK_TESTS == 'true'
-      }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_ENABLE_AUTOMATION_STACK_TESTS: ${{ vars.PULUMI_ENABLE_AUTOMATION_STACK_TESTS }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -40,4 +36,9 @@ jobs:
       - name: Run non-mutation PR battery inside Docker
         env:
           PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
-        run: make ci-pr
+        run: |
+          if [[ "${PULUMI_ENABLE_AUTOMATION_STACK_TESTS}" == "true" ]]; then
+            make ci-pr
+          else
+            make ci-pr-unprivileged
+          fi

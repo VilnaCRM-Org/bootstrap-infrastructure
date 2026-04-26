@@ -27,6 +27,7 @@ assert_help_target() {
     build
     ci
     ci-pr
+    ci-pr-unprivileged
     clean
     doctor
     down
@@ -57,8 +58,11 @@ assert_help_target() {
     test-destructive-diff
     test-drift
     test-guardrails
+    test-guardrails-unprivileged
     test-iam-validation
+    test-iam-validation-unprivileged
     test-integration
+    test-integration-unprivileged
     test-lockfile
     test-maintainability
     test-mutation
@@ -66,6 +70,7 @@ assert_help_target() {
     test-pulumi
     test-quality
     test-preview
+    test-preview-unprivileged
     test-repo-hygiene
     test-ruff
     test-security

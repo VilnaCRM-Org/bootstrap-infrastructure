@@ -551,14 +551,11 @@ def test_makefile_secret_and_guardrail_targets_stay_developer_safe() -> None:
         makefile_text
     )
     assert "gitleaks dir ." not in makefile_text
-    assert (
-        "$(MAKE) test-iam-validation"
-        not in (
-            makefile_text.split("test-guardrails:", maxsplit=1)[1].split(
-                "test-drift:", maxsplit=1
-            )[0]
-        )
+    guardrails_block = makefile_text.split("test-guardrails:", maxsplit=1)[1].split(
+        "test-drift:",
+        maxsplit=1,
     )
+    assert "\n\t$(MAKE) test-iam-validation\n" not in guardrails_block[0]  # nosec B101
 
 
 def test_ci_workflows_keep_make_entrypoints_in_sync() -> None:
@@ -837,10 +834,12 @@ def test_sre_docs_map_blocking_ci_checks_back_to_local_commands() -> None:
     assert "`Maintainability` -> `make test-maintainability`" in operations_doc
     assert "`Architecture` -> `make test-architecture`" in operations_doc
     assert "`Dependency Hygiene` -> `make test-dependency-hygiene`" in operations_doc
-    assert (
-        "`Coverage` -> `make test-unit && make test-integration && "
+    assert (  # nosec B101
+        "`Coverage` -> `make test-unit && make test-integration-unprivileged && "
         "make test-policy && make test-coverage`" in operations_doc
     )
+    assert "`Integration` -> `make test-integration-unprivileged`" in operations_doc  # nosec B101
+    assert "`Local Battery` -> `make ci-pr-unprivileged`" in operations_doc  # nosec B101
     assert "`Bandit` -> `make test-bandit`" in operations_doc
     assert "`Yamllint` -> `make test-yaml`" in operations_doc
     assert "`Hadolint` -> `make test-dockerfile`" in operations_doc

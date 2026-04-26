@@ -25,10 +25,12 @@ These checks are intended to be marked as required in branch protection:
 
 `make test-security` aggregates Gitleaks, dependency audit, and Bandit.
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
-`make test-guardrails` aggregates preview generation and destructive diff
-gating without requiring AWS credentials. `make ci-pr` and `make ci` include
-the credential-free guardrail battery, while IAM validation stays isolated in
-its dedicated OIDC-gated workflow/job.
+`make test-guardrails` aggregates real preview generation and destructive diff
+gating. `make test-guardrails-unprivileged` uses an empty preview artifact to
+exercise the destructive-diff parser and IAM-input extraction when AWS-backed
+Pulumi credentials are not configured. `make ci-pr` and `make ci` keep the real
+preview path; `make ci-pr-unprivileged` mirrors the non-mutation PR battery for
+repositories that have not configured the AWS-backed preview variables yet.
 
 ## Preview model
 
@@ -36,9 +38,11 @@ The preview workflow uses the same Docker workspace and policy pack that local
 developers use:
 
 1. `make start`
-2. `make publish-pulumi-preview-summary`
+2. `make publish-pulumi-preview-summary` when AWS/Pulumi variables are present,
+   otherwise `make test-preview-unprivileged`
 3. `make test-destructive-diff`
-4. `make test-iam-validation`
+4. `make test-iam-validation` when AWS credentials are present, otherwise
+   `make test-iam-validation-unprivileged`
 
 Preview artifacts are written under `.artifacts/pulumi-preview/` and uploaded to
 GitHub Actions. The preview summary is appended to `GITHUB_STEP_SUMMARY` so
@@ -82,7 +86,7 @@ supported override because it leaves an auditable trail in GitHub.
 ## IAM validation
 
 `scripts/pulumi_ci_guardrails.py validate-iam` extracts IAM policy documents
-from the preview artifact and validates them with AWS IAM Access Analyzer.
+from a real preview artifact and validates them with AWS IAM Access Analyzer.
 
 Current behavior:
 
@@ -90,8 +94,9 @@ Current behavior:
   short note
 - IAM policies in the preview with valid AWS credentials: findings of type
   `ERROR` and `SECURITY_WARNING` fail the check
-- IAM policies in the preview without valid AWS credentials: the check fails so
-  maintainers do not accidentally merge unvalidated IAM changes
+- Missing AWS-backed preview variables: the workflow check still runs, but it
+  uses `make test-iam-validation-unprivileged` to extract IAM validation inputs
+  from the uploaded artifact without calling AWS Access Analyzer
 
 This complements the custom Pulumi CrossGuard pack. The policy pack blocks
 wildcard IAM permissions in repository code; Access Analyzer adds AWS-native
@@ -107,13 +112,14 @@ Required repository variables:
 | Variable | Purpose |
 | --- | --- |
 | `AWS_OIDC_ROLE_ARN` | IAM role assumed by preview, IAM validation, and drift jobs |
+| `PULUMI_BACKEND_URL` | Shared Pulumi backend for OIDC-backed preview and drift checks |
+| `PULUMI_SECRETS_PROVIDER` | AWS KMS Pulumi secrets provider URI used by preview stacks |
 
 Optional or defaulted repository variables:
 
 | Variable | Purpose |
 | --- | --- |
 | `AWS_REGION` | AWS region used by `configure-aws-credentials`; defaults to `eu-central-1` |
-| `PULUMI_BACKEND_URL` | Shared Pulumi backend for OIDC-backed preview and drift checks; OIDC-backed preview and IAM validation are skipped when unset |
 | `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for preview |
 | `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks |
 
@@ -126,11 +132,12 @@ Optional repository secrets:
 Shared backends should use an AWS KMS-backed Pulumi secrets provider rather
 than a passphrase-managed stack secret flow.
 
-Fork pull requests always run the unprivileged file-backend preview and the
+Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate. Same-repo pull requests also fall back to the
-unprivileged artifact when `AWS_OIDC_ROLE_ARN` or `PULUMI_BACKEND_URL` is not
-configured yet. The AWS-backed preview and IAM validation jobs remain same-repo
-only because `aws accessanalyzer validate-policy` requires AWS credentials.
+unprivileged artifact when `AWS_OIDC_ROLE_ARN`, `PULUMI_BACKEND_URL`, or
+`PULUMI_SECRETS_PROVIDER` is not configured yet. The AWS-backed preview and
+Access Analyzer validation paths remain same-repo only because they require
+OIDC-issued AWS credentials.
 
 ### Example IAM trust policy
 

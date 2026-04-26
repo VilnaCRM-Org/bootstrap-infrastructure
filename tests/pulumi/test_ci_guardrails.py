@@ -36,16 +36,18 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     """Keep the preview workflow aligned with the repo-local Make entrypoints."""
     workflow = _workflow("pulumi-pr-guardrails.yml")
     jobs = workflow["jobs"]
-    same_repo_with_cloud_config = (
-        "${{ (github.event_name != 'pull_request' || "
-        "github.event.pull_request.head.repo.full_name == github.repository) && "
-        "vars.AWS_OIDC_ROLE_ARN != '' && vars.PULUMI_BACKEND_URL != '' && "
-        "vars.PULUMI_SECRETS_PROVIDER != '' }}"
-    )
     destructive_diff_if = "${{ always() && needs.preview.result == 'success' }}"
     destructive_diff_runs = [
         step.get("run") for step in jobs["destructive_diff"]["steps"] if step.get("run")
     ]
+    preview_mode_step = next(
+        (
+            step
+            for step in jobs["preview"]["steps"]
+            if step.get("name") == "Select preview mode"
+        ),
+        None,
+    )
     preview_upload_step = next(
         (
             step
@@ -78,6 +80,14 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         ),
         None,
     )
+    iam_mode_step = next(
+        (
+            step
+            for step in jobs["iam_validation"]["steps"]
+            if step.get("name") == "Select IAM validation mode"
+        ),
+        None,
+    )
     iam_download_step = next(
         (
             step
@@ -94,30 +104,40 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         ),
         None,
     )
-    preview_if = " ".join(jobs["preview"]["if"].split())
-    iam_validation_if = " ".join(jobs["iam_validation"]["if"].split())
     destructive_diff_job_if = " ".join(jobs["destructive_diff"]["if"].split())
 
     assert workflow["concurrency"]["cancel-in-progress"] is True
-    assert preview_if == same_repo_with_cloud_config
+    assert "if" not in jobs["preview"]  # nosec B101
     assert jobs["preview"]["permissions"] == {
         "contents": "read",
         "id-token": "write",
     }
-    assert iam_validation_if == same_repo_with_cloud_config
-    assert destructive_diff_job_if == destructive_diff_if
-    assert jobs["destructive_diff"]["needs"] == ["preview"]
-    assert jobs["iam_validation"]["needs"] == ["preview"]
+    assert "if" not in jobs["iam_validation"]  # nosec B101
+    assert destructive_diff_job_if == destructive_diff_if  # nosec B101
+    assert jobs["destructive_diff"]["needs"] == ["preview"]  # nosec B101
+    assert jobs["iam_validation"]["needs"] == ["preview"]  # nosec B101
+    assert preview_mode_step is not None  # nosec B101
+    assert "AWS_OIDC_ROLE_ARN" in preview_mode_step["run"]  # nosec B101
+    assert "PULUMI_SECRETS_PROVIDER" in preview_mode_step["run"]  # nosec B101
+    assert iam_mode_step is not None  # nosec B101
+    assert "AWS_OIDC_ROLE_ARN" in iam_mode_step["run"]  # nosec B101
+    assert "PULUMI_SECRETS_PROVIDER" in iam_mode_step["run"]  # nosec B101
     assert preview_oidc_step is not None, "preview OIDC step not found"
     assert iam_oidc_step is not None, "IAM validation OIDC step not found"
     assert preview_run_step is not None, "preview run step not found"
     assert preview_upload_step is not None, "preview artifact upload step not found"
     assert preview_upload_step["with"]["name"] == "pulumi-preview"
-    assert "if" not in preview_oidc_step
-    assert "if" not in iam_oidc_step
-    assert preview_run_step["run"] == "make publish-pulumi-preview-summary"
-    assert preview_run_step["env"] == {
-        "PULUMI_REQUIRE_SHARED_BACKEND": "true",
+    assert (  # nosec B101
+        preview_oidc_step["if"]
+        == "${{ steps.preview_mode.outputs.privileged == 'true' }}"
+    )
+    assert iam_oidc_step["if"] == "${{ steps.iam_mode.outputs.privileged == 'true' }}"  # nosec B101
+    assert "make publish-pulumi-preview-summary" in preview_run_step["run"]  # nosec B101
+    assert "make test-preview-unprivileged" in preview_run_step["run"]  # nosec B101
+    assert preview_run_step["env"] == {  # nosec B101
+        "PULUMI_REQUIRE_SHARED_BACKEND": (
+            "${{ steps.preview_mode.outputs.privileged }}"
+        ),
         "GITHUB_TOKEN": "${{ github.token }}",
     }
     assert any(step.get("run") == "make start" for step in jobs["preview"]["steps"])
@@ -133,8 +153,12 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         'cp "${GITHUB_EVENT_PATH}" .artifacts/github-event.json' in run
         for run in destructive_diff_runs
     )
-    assert any(
-        step.get("run") == "make test-iam-validation"
+    assert any(  # nosec B101
+        step.get("run") and "make test-iam-validation" in step.get("run")
+        for step in jobs["iam_validation"]["steps"]
+    )
+    assert any(  # nosec B101
+        step.get("run") and "make test-iam-validation-unprivileged" in step.get("run")
         for step in jobs["iam_validation"]["steps"]
     )
 

@@ -124,15 +124,15 @@ Map failures back to their local commands:
 - `Maintainability` -> `make test-maintainability`
 - `Architecture` -> `make test-architecture`
 - `Dependency Hygiene` -> `make test-dependency-hygiene`
-- `Coverage` -> `make test-unit && make test-integration && make test-policy && make test-coverage`
+- `Coverage` -> `make test-unit && make test-integration-unprivileged && make test-policy && make test-coverage` when AWS-backed automation tests are disabled; use `make test-integration` when they are enabled
 - `Unit` -> `make test-unit`
-- `Integration` -> `make test-integration`
+- `Integration` -> `make test-integration-unprivileged` by default, or `make test-integration` when AWS-backed automation tests are enabled
 - `Mutation` -> `make test-mutation`
 - `Run Bats Tests` -> `make test-cli`
-- `Local Battery` -> `make ci-pr`
-- `Preview` -> `make test-preview`
+- `Local Battery` -> `make ci-pr-unprivileged` by default, or `make ci-pr` when AWS-backed automation tests are enabled
+- `Preview` -> `make test-preview-unprivileged` by default, or `make test-preview` when AWS-backed preview variables are configured
 - `Destructive Diff Gate` -> `make test-destructive-diff`
-- `IAM Validation` -> `make test-iam-validation`
+- `IAM Validation` -> `make test-iam-validation-unprivileged` by default, or `make test-iam-validation` when AWS credentials are configured
 - `Secrets Scan` -> `make test-secrets`
 - `Dependency Audit` -> `make test-deps-security`
 - `Bandit` -> `make test-bandit`

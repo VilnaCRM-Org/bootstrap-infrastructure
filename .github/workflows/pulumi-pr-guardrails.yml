@@ -20,14 +20,6 @@ permissions:
 jobs:
   preview:
     name: Preview
-    if: >-
-      ${{
-        (github.event_name != 'pull_request' ||
-          github.event.pull_request.head.repo.full_name == github.repository) &&
-        vars.AWS_OIDC_ROLE_ARN != '' &&
-        vars.PULUMI_BACKEND_URL != '' &&
-        vars.PULUMI_SECRETS_PROVIDER != ''
-      }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -37,15 +29,35 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_OIDC_ROLE_ARN: ${{ vars.AWS_OIDC_ROLE_ARN }}
       PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
       PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
+      GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      GITHUB_REPOSITORY_NAME: ${{ github.repository }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
 
+      - name: Select preview mode
+        id: preview_mode
+        run: |
+          privileged=true
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
+            "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
+            privileged=false
+          fi
+          if [[ -z "${AWS_OIDC_ROLE_ARN}" || \
+            -z "${PULUMI_BACKEND_URL}" || \
+            -z "${PULUMI_SECRETS_PROVIDER}" ]]; then
+            privileged=false
+          fi
+          echo "privileged=${privileged}" >> "${GITHUB_OUTPUT}"
+
       - name: Configure AWS credentials via OIDC
+        if: ${{ steps.preview_mode.outputs.privileged == 'true' }}
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
@@ -57,9 +69,14 @@ jobs:
 
       - name: Run preview guardrail
         env:
-          PULUMI_REQUIRE_SHARED_BACKEND: "true"
+          PULUMI_REQUIRE_SHARED_BACKEND: ${{ steps.preview_mode.outputs.privileged }}
           GITHUB_TOKEN: ${{ github.token }}
-        run: make publish-pulumi-preview-summary
+        run: |
+          if [[ "${PULUMI_REQUIRE_SHARED_BACKEND}" == "true" ]]; then
+            make publish-pulumi-preview-summary
+          else
+            make test-preview-unprivileged
+          fi
 
       - name: Upload preview artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -102,14 +119,6 @@ jobs:
 
   iam_validation:
     name: IAM Validation
-    if: >-
-      ${{
-        (github.event_name != 'pull_request' ||
-          github.event.pull_request.head.repo.full_name == github.repository) &&
-        vars.AWS_OIDC_ROLE_ARN != '' &&
-        vars.PULUMI_BACKEND_URL != '' &&
-        vars.PULUMI_SECRETS_PROVIDER != ''
-      }}
     runs-on: ubuntu-latest
     needs:
       - preview
@@ -121,12 +130,34 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_OIDC_ROLE_ARN: ${{ vars.AWS_OIDC_ROLE_ARN }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
+      GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      GITHUB_REPOSITORY_NAME: ${{ github.repository }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
 
+      - name: Select IAM validation mode
+        id: iam_mode
+        run: |
+          privileged=true
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
+            "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
+            privileged=false
+          fi
+          if [[ -z "${AWS_OIDC_ROLE_ARN}" || \
+            -z "${PULUMI_BACKEND_URL}" || \
+            -z "${PULUMI_SECRETS_PROVIDER}" ]]; then
+            privileged=false
+          fi
+          echo "privileged=${privileged}" >> "${GITHUB_OUTPUT}"
+
       - name: Configure AWS credentials via OIDC
+        if: ${{ steps.iam_mode.outputs.privileged == 'true' }}
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
@@ -143,4 +174,11 @@ jobs:
           path: .artifacts/pulumi-preview
 
       - name: Validate IAM policies
-        run: make test-iam-validation
+        env:
+          PRIVILEGED_IAM_VALIDATION: ${{ steps.iam_mode.outputs.privileged }}
+        run: |
+          if [[ "${PRIVILEGED_IAM_VALIDATION}" == "true" ]]; then
+            make test-iam-validation
+          else
+            make test-iam-validation-unprivileged
+          fi

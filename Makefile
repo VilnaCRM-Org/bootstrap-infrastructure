@@ -56,14 +56,16 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
 .DEFAULT_GOAL     = help
 .RECIPEPREFIX    +=
 .PHONY: help doctor build start publish-pulumi-preview-summary pulumi-preview pulumi-up pulumi-refresh \
-        pulumi-destroy sh down ci ci-pr nightly-quality report-quality \
+        pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
         report-maintainability-trends report-dead-code report-docstrings \
         report-sbom test-quality test-ruff test-ty test-maintainability \
         test-architecture test-dependency-hygiene test-lockfile test-coverage \
         test-bandit test-actionlint test-yaml test-dockerfile \
         test-deps-security test-destructive-diff test-drift test-guardrails \
-        test-iam-validation test-preview test-security test-secrets \
-        test-repo-hygiene test-unit test-integration test-pulumi test-policy \
+        test-guardrails-unprivileged test-iam-validation \
+        test-iam-validation-unprivileged test-preview test-preview-unprivileged \
+        test-security test-secrets test-repo-hygiene test-unit test-integration \
+        test-integration-unprivileged test-pulumi test-policy \
         test-crossguard test-mutation test-battery test-cli test all clean
 
 pulumi-preview pulumi-up pulumi-refresh pulumi-destroy test-preview \
@@ -123,6 +125,12 @@ test-integration: ## Execute Pulumi automation-based integration tests.
 	$(COMPOSE) run --rm -e COVERAGE_FILE=/workspace/.coverage.integration \
 		-e COVERAGE_RCFILE=/workspace/.coveragerc \
 		$(COMPOSE_SERVICE) uv run coverage report --show-missing --fail-under=100 --include='$(INTEGRATION_COVERAGE_INCLUDE)'
+
+test-integration-unprivileged: ## Execute credential-free integration contracts.
+	rm -f .coverage.integration .coverage.integration.*
+	$(COMPOSE) run --rm $(INTEGRATION_COVERAGE_ENV) \
+		-e PYTEST_ADDOPTS="$(COVERAGE_OPTS)" \
+		$(COMPOSE_SERVICE) uv run pytest -q tests/integration/test_guardrail_contracts.py
 
 test-pulumi: ## Perform structural checks on Pulumi project configuration.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run pytest -q tests/pulumi
@@ -200,6 +208,13 @@ test-preview: ## Generate non-destructive Pulumi previews for configured stacks.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) \
 		$(REPO_PYTHON) ./scripts/run_pulumi_preview.py
 
+test-preview-unprivileged: ## Generate an unprivileged placeholder preview artifact.
+	mkdir -p .artifacts/pulumi-preview
+	rm -f .artifacts/pulumi-preview/*.json .artifacts/pulumi-preview/summary.md
+	printf '%s\n' '{"changeSummary": {}, "steps": []}' > .artifacts/pulumi-preview/unprivileged.json
+	$(REPO_PYTHON) ./scripts/pulumi_ci_guardrails.py summarize \
+		.artifacts/pulumi-preview/unprivileged.json | tee .artifacts/pulumi-preview/summary.md
+
 test-destructive-diff: ## Fail when Pulumi previews delete or replace critical resources.
 	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '\
 		event_arg=""; \
@@ -218,14 +233,26 @@ test-iam-validation: ## Validate previewed IAM policies with AWS IAM Access Anal
 		fi; \
 		uv run python ./scripts/pulumi_ci_guardrails.py validate-iam .artifacts/pulumi-preview/*.json'
 
+test-iam-validation-unprivileged: ## Extract preview IAM inputs without AWS credentials.
+	@bash -lc 'if ! compgen -G ".artifacts/pulumi-preview/*.json" >/dev/null; then \
+		$(MAKE) test-preview-unprivileged >/dev/null; \
+	fi'
+	$(REPO_PYTHON) ./scripts/pulumi_ci_guardrails.py iam-inputs \
+		.artifacts/pulumi-preview/*.json --output .artifacts/pulumi-preview/iam-inputs.json
+
 test-security: ## Run secret, dependency, and workflow security checks.
 	$(MAKE) test-secrets
 	$(MAKE) test-deps-security
 	$(MAKE) test-bandit
 
-test-guardrails: ## Run the credential-free preview and destructive-diff guardrails.
+test-guardrails: ## Run real preview generation and destructive-diff guardrails.
 	$(MAKE) test-preview
 	$(MAKE) test-destructive-diff
+
+test-guardrails-unprivileged: ## Run guardrails without AWS-backed Pulumi credentials.
+	$(MAKE) test-preview-unprivileged
+	$(MAKE) test-destructive-diff
+	$(MAKE) test-iam-validation-unprivileged
 
 test-drift: ## Perform a non-destructive drift check against configured shared stacks.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) \
@@ -311,6 +338,20 @@ ci-pr: ## Run the GitHub PR battery except the dedicated mutation workflow.
 	$(MAKE) test-battery
 	$(MAKE) test-security
 	$(MAKE) test-guardrails
+
+ci-pr-unprivileged: ## Run the PR battery without AWS-backed Pulumi credentials.
+	$(MAKE) doctor
+	$(MAKE) build
+	$(MAKE) test-pulumi
+	$(MAKE) test-policy
+	$(MAKE) test-quality
+	$(MAKE) test-repo-hygiene
+	$(MAKE) test-unit
+	$(MAKE) test-integration-unprivileged
+	$(MAKE) test-coverage
+	$(MAKE) test-cli
+	$(MAKE) test-security
+	$(MAKE) test-guardrails-unprivileged
 
 ci: ## Run the full local equivalent of all GitHub checks, including mutation.
 	$(MAKE) ci-pr

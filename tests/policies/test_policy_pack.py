@@ -6,6 +6,7 @@ import importlib.util
 import json
 import runpy
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 from typing import Any, cast
@@ -19,7 +20,9 @@ POLICY_MAIN = POLICY_DIR / "__main__.py"
 
 
 @pytest.fixture
-def policy_runtime(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+def policy_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[SimpleNamespace, None, None]:
     """Import the policy modules without leaking globals across tests."""
     module_names = (
         "config",
@@ -737,8 +740,8 @@ def test_logging_stack_violations_support_split_s3_logging(
         property_dependencies={"bucket": [bucket]},
     )
 
-    assert policy_runtime.logging_stack_violations([bucket, logging]) == []
-    assert (
+    assert policy_runtime.logging_stack_violations([bucket, logging]) == []  # nosec B101
+    assert (  # nosec B101
         _collect_stack_violations(
             policy_runtime.require_logging_stack,
             resources=[bucket, logging],
@@ -763,11 +766,11 @@ def test_storage_encryption_stack_violations_cover_missing_inline_and_name_only_
         )
     ]
 
-    assert (
+    assert (  # nosec B101
         policy_runtime.storage_encryption_stack_violations([missing_bucket])
         == expected_violation
     )
-    assert (
+    assert (  # nosec B101
         _collect_stack_violations(
             policy_runtime.require_storage_encryption_stack,
             resources=[missing_bucket],
@@ -785,7 +788,12 @@ def test_storage_encryption_stack_violations_cover_missing_inline_and_name_only_
             "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::inline-encrypted-bucket"
         ),
     )
-    assert policy_runtime.storage_encryption_stack_violations([inline_bucket]) == []
+    assert (
+        policy_runtime.storage_encryption_stack_violations(  # nosec B101
+            [inline_bucket]
+        )
+        == []
+    )
 
     non_bucket_dependency = _stack_resource(
         "aws:iam/role:Role",
@@ -813,7 +821,7 @@ def test_storage_encryption_stack_violations_cover_missing_inline_and_name_only_
         ),
         dependencies=[non_bucket_dependency],
     )
-    assert (
+    assert (  # nosec B101
         policy_runtime.storage_encryption_stack_violations(
             [name_only_bucket, name_only_encryption]
         )
@@ -840,7 +848,7 @@ def test_storage_encryption_stack_violations_cover_missing_inline_and_name_only_
         ),
         dependencies=[dependency_only_bucket],
     )
-    assert (
+    assert (  # nosec B101
         policy_runtime.storage_encryption_stack_violations(
             [dependency_only_bucket, dependency_only_encryption]
         )
@@ -864,10 +872,10 @@ def test_logging_stack_violations_cover_missing_inline_exempt_and_name_only_path
         )
     ]
 
-    assert (
+    assert (  # nosec B101
         policy_runtime.logging_stack_violations([missing_bucket]) == expected_violation
     )
-    assert (
+    assert (  # nosec B101
         _collect_stack_violations(
             policy_runtime.require_logging_stack,
             resources=[missing_bucket],
@@ -894,8 +902,8 @@ def test_logging_stack_violations_cover_missing_inline_exempt_and_name_only_path
         },
         urn="urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::inline-logs-bucket",
     )
-    assert policy_runtime.logging_stack_violations([exempt_bucket]) == []
-    assert policy_runtime.logging_stack_violations([inline_bucket]) == []
+    assert policy_runtime.logging_stack_violations([exempt_bucket]) == []  # nosec B101
+    assert policy_runtime.logging_stack_violations([inline_bucket]) == []  # nosec B101
 
     ignored_logging = _stack_resource(
         "aws:s3/bucketLogging:BucketLogging",
@@ -903,7 +911,7 @@ def test_logging_stack_violations_cover_missing_inline_exempt_and_name_only_path
         urn="urn:pulumi:dev::bootstrap::aws:s3/bucketLogging:BucketLogging::ignored",
         dependencies=[missing_bucket],
     )
-    assert (
+    assert (  # nosec B101
         policy_runtime.logging_stack_violations([missing_bucket, ignored_logging])
         == expected_violation
     )
@@ -927,7 +935,7 @@ def test_logging_stack_violations_cover_missing_inline_exempt_and_name_only_path
         urn="urn:pulumi:dev::bootstrap::aws:s3/bucketLogging:BucketLogging::name-only",
         dependencies=[non_bucket_dependency],
     )
-    assert (
+    assert (  # nosec B101
         policy_runtime.logging_stack_violations([name_only_bucket, name_only_logging])
         == []
     )
@@ -949,7 +957,7 @@ def test_logging_stack_violations_cover_missing_inline_exempt_and_name_only_path
         ),
         dependencies=[dependency_only_bucket],
     )
-    assert (
+    assert (  # nosec B101
         policy_runtime.logging_stack_violations(
             [dependency_only_bucket, dependency_only_logging]
         )
@@ -986,13 +994,13 @@ def test_storage_encryption_stack_violations_require_real_split_rules(
         )
     ]
 
-    assert (
+    assert (  # nosec B101
         policy_runtime.storage_encryption_stack_violations(
             [invalid_bucket, invalid_encryption]
         )
         == expected_violation
     )
-    assert (
+    assert (  # nosec B101
         _collect_stack_violations(
             policy_runtime.require_storage_encryption_stack,
             resources=[invalid_bucket, invalid_encryption],
@@ -1024,7 +1032,7 @@ def test_storage_encryption_stack_violations_require_real_split_rules(
         property_dependencies={"bucket": [valid_bucket]},
     )
 
-    assert (
+    assert (  # nosec B101
         policy_runtime.storage_encryption_stack_violations(
             [valid_bucket, valid_encryption]
         )
@@ -1063,7 +1071,7 @@ def test_storage_encryption_stack_violations_ignore_invalid_rules_before_valid_o
         property_dependencies={"bucket": [bucket]},
     )
 
-    assert (
+    assert (  # nosec B101
         policy_runtime.storage_encryption_stack_violations([bucket, encryption]) == []
     )
 
@@ -1488,10 +1496,10 @@ def test_pack_validators_report_expected_messages(
         dependencies=[bucket],
         property_dependencies={"bucket": [bucket]},
     )
-    assert (
+    assert (  # nosec B101
         policy_runtime.storage_encryption_stack_violations([bucket, encryption]) == []
     )
-    assert (
+    assert (  # nosec B101
         _collect_stack_violations(
             policy_runtime.require_storage_encryption_stack,
             resources=[bucket, encryption],
@@ -1504,7 +1512,7 @@ def test_pack_validators_report_expected_messages(
         resource_type="aws:lb/loadBalancer:LoadBalancer",
         props={"accessLogs": {"enabled": False}},
     )
-    assert violations == ["Load balancers must enable access logs."]
+    assert violations == ["Load balancers must enable access logs."]  # nosec B101
 
     violations = _collect_violations(
         policy_runtime.block_wildcard_iam,
