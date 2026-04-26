@@ -15,7 +15,7 @@ pillars, not an AWS Well-Architected Tool workload review. Source references:
 | Pillar | `main` | PR before latest review fixes | PR after latest review fixes | Change |
 | --- | ---: | ---: | ---: | --- |
 | Operational Excellence | 4.5 | 4.0 | 4.1 | Multi-account workflows add more moving parts, but explicit preflight and state-level concurrency improve operability. |
-| Security | 4.0 | 4.0 | 4.1 | PR keeps OIDC/KMS guardrails and now fails earlier on missing KMS secrets provider and invalid AWS/S3/KMS workflow inputs. |
+| Security | 4.0 | 4.0 | 4.2 | PR keeps OIDC/KMS guardrails, fails earlier on invalid workflow inputs, and now scopes the bootstrap automation policy away from account-wide S3/KMS/ECR/Backup/IAM access where AWS supports resource scoping. |
 | Reliability | 4.0 | 4.0 | 4.1 | Saved plans, drift checks, and destructive diff gates remain; test/prod state operations are now serialized by stable concurrency groups. |
 | Performance Efficiency | 2.5 | 3.0 | 3.0 | Bounded CI and explicit stack lists improve control-plane efficiency; no runtime performance model is expected for this bootstrap repo. |
 | Cost Optimization | 3.0 | 3.5 | 3.5 | Lifecycle, retention, and tagging improve; budgets and cost anomaly detection remain future work. |
@@ -42,6 +42,11 @@ Overall score:
 4. Workflow preflight only checked for non-empty backend/account values.
    - Fixed by validating 12-digit account IDs, `s3://` backends, and
      `awskms://` secrets providers before assuming AWS credentials.
+5. The bootstrap automation role had account-wide resource permissions for
+   several mutable AWS services.
+   - Fixed by deriving S3, ECR, KMS alias/key, IAM role, and AWS Backup
+     resource scopes from the bootstrap naming contract, leaving wildcard
+     resources only for AWS actions that cannot be ARN-scoped.
 
 ## Remaining Improvements
 

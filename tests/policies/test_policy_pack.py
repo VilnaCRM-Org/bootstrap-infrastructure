@@ -181,7 +181,7 @@ def test_repo_policy_config_declares_expected_defaults(
     assert config.production_environments == ("prod", "production", "live")
     assert config.annotations["public_s3_tag"] == "AllowPublicBucket"
     assert config.public_s3_bucket_allowlist == frozenset()
-    assert config.wildcard_iam_allowlist == frozenset({"github-automation-policy"})
+    assert config.wildcard_iam_allowlist == frozenset()
 
 
 def test_load_policy_config_defaults_optional_sections(
@@ -1162,6 +1162,72 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
                                 "arn:aws:s3:::example",
                                 "arn:aws:s3:::example/*",
                             ],
+                        }
+                    ],
+                }
+            )
+        },
+        config,
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
+    assert (
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["sts:GetCallerIdentity"],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["kms:CreateKey"],
+                                "Resource": "*",
+                                "Condition": {
+                                    "StringEquals": {
+                                        "aws:RequestTag/Environment": "test",
+                                        "aws:RequestTag/Purpose": "pulumi-secrets",
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert policy_runtime.wildcard_iam_violations(
+        "aws:iam/policy:Policy",
+        {
+            "policy": _json(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["kms:CreateKey"],
+                            "Resource": "*",
                         }
                     ],
                 }

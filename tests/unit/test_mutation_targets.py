@@ -134,11 +134,20 @@ def test_mutation_target_pulumi_secrets_component(monkeypatch):
     assert registered_outputs["provider_urls"] == secrets.provider_urls  # nosec B101
 
 
-def test_mutation_target_github_automation_policy_uses_explicit_actions():
-    policy = json.loads(automation._automation_policy("123456789012"))
+def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypatch):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    policy = json.loads(
+        automation._automation_policy(
+            "123456789012",
+            config.settings,
+            "bootstrap-infrastructure",
+        )
+    )
     actions = {
         action for statement in policy["Statement"] for action in statement["Action"]
     }
+    statements = {statement["Sid"]: statement for statement in policy["Statement"]}
 
     assert "s3:*" not in actions  # nosec B101
     assert "kms:*" not in actions  # nosec B101
@@ -148,6 +157,38 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions():
     assert "kms:CreateKey" in actions  # nosec B101
     assert "backup:CreateBackupPlan" in actions  # nosec B101
     assert "ecr:CreateRepository" in actions  # nosec B101
+    assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
+        "arn:aws:s3:::pulumi-*-test-state",
+        "arn:aws:s3:::pulumi-*-test-state-replication",
+        "arn:aws:s3:::company-central-logs-*-test",
+        "arn:aws:s3:::company-central-logs-*-test-replication",
+    ]
+    assert statements["ManageBootstrapEcr"]["Resource"] == [  # nosec B101
+        "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
+        "bootstrap-infrastructure-test"
+    ]
+    assert (  # nosec B101
+        "arn:aws:iam::123456789012:role/PulumiAutomation-"
+        "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
+    )
+    assert (  # nosec B101
+        statements["ManageBootstrapKmsKeys"]["Condition"]["StringEquals"]
+        == {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": "pulumi-secrets",
+        }
+    )
+    assert {
+        statement["Sid"]
+        for statement in policy["Statement"]
+        if statement["Resource"] == "*"
+    } == {
+        "CreateBootstrapKmsKeys",
+        "CreateBootstrapOidcProvider",
+        "ListBootstrapOidcProviders",
+        "ListBootstrapKmsAliases",
+        "ReadIdentity",
+    }  # nosec B101
 
 
 def test_mutation_target_github_oidc_role_name_limits_length():

@@ -896,6 +896,35 @@ def test_run_pulumi_command_builds_expected_pulumi_invocations(
         module._pulumi_command(context, module.StackCommand("unknown", "test"))
 
 
+def test_run_pulumi_command_prefers_configured_stack_lists(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Multi-stack commands should not be masked by Make's default PULUMI_STACK."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    pulumi_dir = tmp_path / "pulumi"
+    pulumi_dir.mkdir()
+
+    preview_stacks = module._configured_stack_names(
+        "preview",
+        pulumi_dir,
+        {"PULUMI_STACK": "default", "PULUMI_PREVIEW_STACKS": "test prod/eu"},
+    )
+    drift_stacks = module._configured_stack_names(
+        "drift",
+        pulumi_dir,
+        {"PULUMI_STACK": "default", "PULUMI_DRIFT_STACKS": "prod"},
+    )
+    up_plan_stacks = module._configured_stack_names(
+        "up-plan",
+        pulumi_dir,
+        {"PULUMI_STACK": "default", "PULUMI_PREVIEW_STACKS": "test prod/eu"},
+    )
+
+    assert preview_stacks == ["test", "prod/eu"]  # nosec B101
+    assert drift_stacks == ["prod"]  # nosec B101
+    assert up_plan_stacks == ["test", "prod/eu"]  # nosec B101
+
+
 def test_run_pulumi_command_branch_helpers_return_select_failures(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -977,6 +1006,7 @@ def test_run_pulumi_command_plan_handles_multiple_configured_stacks(
     (preview_dir / "stale.json").write_text("{}", encoding="utf-8")
     (preview_dir / "summary.md").write_text("old summary\n", encoding="utf-8")
     monkeypatch.setattr(module, "repo_root", lambda _: repo_dir)
+    monkeypatch.setenv("PULUMI_STACK", "default")
     monkeypatch.setenv("PULUMI_PREVIEW_STACKS", "test prod/eu")
     monkeypatch.setenv(
         "PULUMI_SECRETS_PROVIDER",

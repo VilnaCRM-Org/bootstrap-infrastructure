@@ -169,6 +169,15 @@ EOF
   assert_pulumi_secrets_provider_passthrough
 }
 
+@test "make pulumi-preview passes explicit PULUMI_DIR override into docker compose" {
+  local pulumi_dir="$BATS_TEST_TMPDIR/custom-pulumi"
+
+  run make -n PULUMI_DIR="$pulumi_dir" pulumi-preview
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"-e PULUMI_DIR=\"$pulumi_dir\""* ]]
+  [[ "$output" == *"./scripts/run_pulumi_command.py preview"* ]]
+}
+
 @test "make pulumi-plan saves a deployment plan inside container" {
   run make -n pulumi-plan
   [ "$status" -eq 0 ]

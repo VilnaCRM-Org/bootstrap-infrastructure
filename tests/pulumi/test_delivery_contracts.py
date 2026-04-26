@@ -481,7 +481,7 @@ def test_makefile_keeps_pulumi_guardrails_secret_safe() -> None:
     assert "GITHUB_TOKEN='$(GITHUB_TOKEN)'" not in makefile_text  # nosec B101
     assert "export GITHUB_TOKEN" in makefile_text  # nosec B101
     assert "PULUMI_CWD_FLAG   = -C $(PULUMI_DIR)" in makefile_text  # nosec B101
-    assert "-e PULUMI_DIR" in makefile_text  # nosec B101
+    assert '-e PULUMI_DIR="$(PULUMI_DIR)"' in makefile_text  # nosec B101
     assert "Pulumi.dev.yaml" in makefile_text  # nosec B101
     assert "Pulumi.test.yaml" in makefile_text  # nosec B101
     assert "export PULUMI_STACK" in makefile_text  # nosec B101
@@ -705,19 +705,22 @@ def test_multi_account_workflows_use_environment_scoped_oidc_contracts() -> None
     preview_role = "${{ env.AWS_PREVIEW_ROLE_ARN }}"
     apply_role = "${{ env.AWS_APPLY_ROLE_ARN }}"
     drift_role = "${{ env.AWS_DRIFT_ROLE_ARN }}"
-    expected_roles_by_job = {
-        ("nightly-guardrails.yml", "test_drift_detection"): drift_role,
-        ("nightly-guardrails.yml", "prod_drift_detection"): drift_role,
-        ("pulumi-pr-guardrails.yml", "preview"): preview_role,
-        ("pulumi-pr-guardrails.yml", "iam_validation"): preview_role,
-        ("pulumi-prod.yml", "preview"): preview_role,
-        ("pulumi-prod.yml", "iam_validation"): preview_role,
-        ("pulumi-prod.yml", "apply"): apply_role,
-        ("pulumi-prod.yml", "post_apply_drift"): drift_role,
-        ("pulumi-test-deploy.yml", "preview"): preview_role,
-        ("pulumi-test-deploy.yml", "iam_validation"): preview_role,
-        ("pulumi-test-deploy.yml", "apply"): apply_role,
-        ("pulumi-test-deploy.yml", "post_apply_drift"): drift_role,
+    expected_contracts_by_job = {
+        ("nightly-guardrails.yml", "test_drift_detection"): ("test", drift_role),
+        ("nightly-guardrails.yml", "prod_drift_detection"): (
+            "prod-preview",
+            drift_role,
+        ),
+        ("pulumi-pr-guardrails.yml", "preview"): ("test", preview_role),
+        ("pulumi-pr-guardrails.yml", "iam_validation"): ("test", preview_role),
+        ("pulumi-prod.yml", "preview"): ("prod-preview", preview_role),
+        ("pulumi-prod.yml", "iam_validation"): ("prod-preview", preview_role),
+        ("pulumi-prod.yml", "apply"): ("prod", apply_role),
+        ("pulumi-prod.yml", "post_apply_drift"): ("prod-preview", drift_role),
+        ("pulumi-test-deploy.yml", "preview"): ("test", preview_role),
+        ("pulumi-test-deploy.yml", "iam_validation"): ("test", preview_role),
+        ("pulumi-test-deploy.yml", "apply"): ("test", apply_role),
+        ("pulumi-test-deploy.yml", "post_apply_drift"): ("test", drift_role),
     }
     environment_jobs = [
         (workflow_name, job_name, job, environment_name)
@@ -745,10 +748,13 @@ def test_multi_account_workflows_use_environment_scoped_oidc_contracts() -> None
         if not oidc_steps:
             continue
 
+        expected_environment, expected_role = expected_contracts_by_job[
+            (workflow_name, job_name)
+        ]
+        assert environment_name == expected_environment  # nosec B101
         assert job.get("permissions", {}).get("id-token") == "write"  # nosec B101
         for step in oidc_steps:
             step_with = step["with"]
-            expected_role = expected_roles_by_job[(workflow_name, job_name)]
             assert step_with["role-to-assume"] == expected_role  # nosec B101
             assert step_with["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
             assert step_with["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101

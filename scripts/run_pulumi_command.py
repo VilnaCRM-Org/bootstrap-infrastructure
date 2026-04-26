@@ -39,6 +39,12 @@ __all__ = [
 ]
 
 COMMANDS_WITH_POLICY_PACK = {"preview", "plan", "up", "drift"}
+COMMAND_STACK_LIST_ENV = {
+    "preview": "PULUMI_PREVIEW_STACKS",
+    "plan": "PULUMI_PREVIEW_STACKS",
+    "up-plan": "PULUMI_PREVIEW_STACKS",
+    "drift": "PULUMI_DRIFT_STACKS",
+}
 SUPPORTED_COMMANDS = {
     "preview",
     "plan",
@@ -60,13 +66,14 @@ def _resolve_path(root_dir: Path, raw_path: str) -> Path:
 def _configured_stack_names(
     command: str, pulumi_dir: Path, env: dict[str, str]
 ) -> list[str]:
+    stack_list_env = COMMAND_STACK_LIST_ENV.get(command)
+    if stack_list_env and env.get(stack_list_env):
+        return discover_stacks(pulumi_dir, env[stack_list_env])
+
     if env.get("PULUMI_STACK"):
         return [env["PULUMI_STACK"]]
 
-    if command == "drift":
-        configured_stacks = env.get("PULUMI_DRIFT_STACKS")
-    else:
-        configured_stacks = env.get("PULUMI_PREVIEW_STACKS")
+    configured_stacks = env.get(stack_list_env) if stack_list_env else None
     return discover_stacks(pulumi_dir, configured_stacks)
 
 
