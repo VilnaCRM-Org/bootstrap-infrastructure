@@ -282,6 +282,7 @@ def test_repository_tracks_current_policy_and_guardrail_support_files() -> None:
 def test_bmad_bmalph_planning_uses_specs_directory() -> None:
     specs_dir = ROOT / "specs"
     agent_instructions = (ROOT / "AGENTS.md").read_text()
+    gitignore = (ROOT / ".gitignore").read_text()
     planning_doc_names = {
         "architecture.md",
         "epics.md",
@@ -298,18 +299,36 @@ def test_bmad_bmalph_planning_uses_specs_directory() -> None:
         "specs/<issue-or-feature-slug>/",
         "output_folder: specs",
         "planning_artifacts: specs",
+        "Do not commit generated BMAD/BMALPH/Ralph framework or state files",
         "Do not commit alternate planning roots",
     ):
         assert phrase in agent_instructions  # nosec B101
 
+    for ignored_path in (
+        "_bmad/",
+        "_bmad-output/",
+        "bmalph/",
+        ".ralph/",
+        ".bmad/",
+        ".bmad-core/",
+        ".agents/skills/bmad-*/",
+    ):
+        assert ignored_path in gitignore  # nosec B101
+
     for forbidden_root in (
+        "_bmad",
         "_bmad-output",
+        "bmalph",
+        ".ralph",
         "docs/planning",
         "planning",
         ".bmad",
         ".bmad-core",
     ):
         assert not (ROOT / forbidden_root).exists()  # nosec B101
+
+    bmad_skill_dirs = list((ROOT / ".agents" / "skills").glob("bmad-*"))
+    assert bmad_skill_dirs == []  # nosec B101
 
 
 def test_removed_legacy_scaffold_paths_stay_absent() -> None:

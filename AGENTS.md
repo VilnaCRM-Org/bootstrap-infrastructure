@@ -32,7 +32,8 @@ This repository is a Pulumi-based infrastructure template. Agents should keep ch
 3. When asking BMAD agents or BMALPH workflows to create or update planning docs, explicitly tell them to use `specs/<issue-or-feature-slug>/` as the planning output directory.
 4. If a local BMAD installation generates `_bmad/config.yaml`, set `output_folder: specs` and `planning_artifacts: specs` before generating planning documents.
 5. Treat `.ralph/specs/` as BMALPH/Ralph generated implementation input only; do not use it as the canonical planning source.
-6. Do not commit alternate planning roots such as `_bmad-output/`, `docs/planning/`, top-level `planning/`, `.bmad/`, or `.bmad-core/`.
+6. Do not commit generated BMAD/BMALPH/Ralph framework or state files such as `_bmad/`, `_bmad-output/`, `bmalph/`, `.ralph/`, or `.agents/skills/bmad-*`.
+7. Do not commit alternate planning roots such as `docs/planning/`, top-level `planning/`, `.bmad/`, or `.bmad-core/`.
 
 ## Secret handling
 
