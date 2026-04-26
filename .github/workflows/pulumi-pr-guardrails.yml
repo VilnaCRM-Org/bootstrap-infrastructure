@@ -33,6 +33,7 @@ jobs:
       PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
       PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
+      PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS: ${{ vars.PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS }}
       GITHUB_EVENT_NAME: ${{ github.event_name }}
       GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       GITHUB_REPOSITORY_NAME: ${{ github.repository }}
@@ -44,15 +45,25 @@ jobs:
       - name: Select preview mode
         id: preview_mode
         run: |
+          trusted=true
           privileged=true
+          missing_guardrail_config=false
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
             "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
+            trusted=false
             privileged=false
           fi
           if [[ -z "${AWS_OIDC_ROLE_ARN}" || \
             -z "${PULUMI_BACKEND_URL}" || \
             -z "${PULUMI_SECRETS_PROVIDER}" ]]; then
+            missing_guardrail_config=true
             privileged=false
+          fi
+          if [[ "${trusted}" == "true" && \
+            "${missing_guardrail_config}" == "true" && \
+            "${PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS}" != "true" ]]; then
+            echo "::error::AWS-backed guardrail variables are missing. Configure AWS_OIDC_ROLE_ARN, PULUMI_BACKEND_URL, and PULUMI_SECRETS_PROVIDER, or explicitly set PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS=true."
+            exit 1
           fi
           echo "privileged=${privileged}" >> "${GITHUB_OUTPUT}"
 
@@ -133,6 +144,7 @@ jobs:
       AWS_OIDC_ROLE_ARN: ${{ vars.AWS_OIDC_ROLE_ARN }}
       PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
+      PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS: ${{ vars.PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS }}
       GITHUB_EVENT_NAME: ${{ github.event_name }}
       GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       GITHUB_REPOSITORY_NAME: ${{ github.repository }}
@@ -144,15 +156,25 @@ jobs:
       - name: Select IAM validation mode
         id: iam_mode
         run: |
+          trusted=true
           privileged=true
+          missing_guardrail_config=false
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
             "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
+            trusted=false
             privileged=false
           fi
           if [[ -z "${AWS_OIDC_ROLE_ARN}" || \
             -z "${PULUMI_BACKEND_URL}" || \
             -z "${PULUMI_SECRETS_PROVIDER}" ]]; then
+            missing_guardrail_config=true
             privileged=false
+          fi
+          if [[ "${trusted}" == "true" && \
+            "${missing_guardrail_config}" == "true" && \
+            "${PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS}" != "true" ]]; then
+            echo "::error::AWS-backed guardrail variables are missing. Configure AWS_OIDC_ROLE_ARN, PULUMI_BACKEND_URL, and PULUMI_SECRETS_PROVIDER, or explicitly set PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS=true."
+            exit 1
           fi
           echo "privileged=${privileged}" >> "${GITHUB_OUTPUT}"
 

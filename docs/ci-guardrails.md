@@ -30,7 +30,8 @@ gating. `make test-guardrails-unprivileged` uses an empty preview artifact to
 exercise the destructive-diff parser and IAM-input extraction when AWS-backed
 Pulumi credentials are not configured. `make ci-pr` and `make ci` keep the real
 preview path; `make ci-pr-unprivileged` mirrors the non-mutation PR battery for
-repositories that have not configured the AWS-backed preview variables yet.
+repositories that explicitly allow the unprivileged fallback while AWS-backed
+preview variables are still being provisioned.
 
 ## Preview model
 
@@ -120,6 +121,7 @@ Optional or defaulted repository variables:
 | Variable | Purpose |
 | --- | --- |
 | `AWS_REGION` | AWS region used by `configure-aws-credentials`; defaults to `eu-central-1` |
+| `PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS` | Set to `true` only when the repository intentionally allows same-repo PRs to use the unprivileged guardrail fallback while AWS-backed variables are absent |
 | `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for preview |
 | `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks |
 
@@ -135,9 +137,11 @@ than a passphrase-managed stack secret flow.
 Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate. Same-repo pull requests also fall back to the
 unprivileged artifact when `AWS_OIDC_ROLE_ARN`, `PULUMI_BACKEND_URL`, or
-`PULUMI_SECRETS_PROVIDER` is not configured yet. The AWS-backed preview and
-Access Analyzer validation paths remain same-repo only because they require
-OIDC-issued AWS credentials.
+`PULUMI_SECRETS_PROVIDER` is not configured yet, but only when
+`PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS` is explicitly set to `true`;
+otherwise trusted runs fail fast instead of silently bypassing AWS-backed
+guardrails. The AWS-backed preview and Access Analyzer validation paths remain
+same-repo only because they require OIDC-issued AWS credentials.
 
 ### Example IAM trust policy
 

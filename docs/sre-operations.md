@@ -124,7 +124,7 @@ Map failures back to their local commands:
 - `Maintainability` -> `make test-maintainability`
 - `Architecture` -> `make test-architecture`
 - `Dependency Hygiene` -> `make test-dependency-hygiene`
-- `Coverage` -> `make test-unit && make test-integration-unprivileged && make test-policy && make test-coverage` when AWS-backed automation tests are disabled; use `make test-integration` when they are enabled
+- `Coverage` -> `make test-unit && make test-integration-unprivileged && make test-policy && make test-coverage` when AWS-backed automation tests are disabled; use `make test-unit && make test-integration && make test-policy && make test-coverage` when they are enabled
 - `Unit` -> `make test-unit`
 - `Integration` -> `make test-integration-unprivileged` by default, or `make test-integration` when AWS-backed automation tests are enabled
 - `Mutation` -> `make test-mutation`

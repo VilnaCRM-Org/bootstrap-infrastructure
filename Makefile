@@ -129,8 +129,11 @@ test-integration: ## Execute Pulumi automation-based integration tests.
 test-integration-unprivileged: ## Execute credential-free integration contracts.
 	rm -f .coverage.integration .coverage.integration.*
 	$(COMPOSE) run --rm $(INTEGRATION_COVERAGE_ENV) \
-		-e PYTEST_ADDOPTS="$(COVERAGE_OPTS)" \
-		$(COMPOSE_SERVICE) uv run pytest -q tests/integration/test_guardrail_contracts.py
+		$(COMPOSE_SERVICE) uv run coverage run --parallel-mode -m pytest -q \
+		tests/integration/test_guardrail_contracts.py
+	$(COMPOSE) run --rm -e COVERAGE_FILE=/workspace/.coverage.integration \
+		-e COVERAGE_RCFILE=/workspace/.coveragerc \
+		$(COMPOSE_SERVICE) uv run coverage combine
 
 test-pulumi: ## Perform structural checks on Pulumi project configuration.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run pytest -q tests/pulumi

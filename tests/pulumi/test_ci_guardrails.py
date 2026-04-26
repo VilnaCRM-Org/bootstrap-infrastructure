@@ -104,6 +104,17 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         ),
         None,
     )
+    iam_validation_run = next(
+        (
+            step.get("run", "")
+            for step in jobs["iam_validation"]["steps"]
+            if step.get("name") == "Validate IAM policies"
+        ),
+        "",
+    )
+    iam_validation_run_lines = {
+        line.strip() for line in iam_validation_run.splitlines()
+    }
     destructive_diff_job_if = " ".join(jobs["destructive_diff"]["if"].split())
 
     assert workflow["concurrency"]["cancel-in-progress"] is True
@@ -119,9 +130,11 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     assert preview_mode_step is not None  # nosec B101
     assert "AWS_OIDC_ROLE_ARN" in preview_mode_step["run"]  # nosec B101
     assert "PULUMI_SECRETS_PROVIDER" in preview_mode_step["run"]  # nosec B101
+    assert "PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS" in preview_mode_step["run"]  # nosec B101
     assert iam_mode_step is not None  # nosec B101
     assert "AWS_OIDC_ROLE_ARN" in iam_mode_step["run"]  # nosec B101
     assert "PULUMI_SECRETS_PROVIDER" in iam_mode_step["run"]  # nosec B101
+    assert "PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS" in iam_mode_step["run"]  # nosec B101
     assert preview_oidc_step is not None, "preview OIDC step not found"
     assert iam_oidc_step is not None, "IAM validation OIDC step not found"
     assert preview_run_step is not None, "preview run step not found"
@@ -153,14 +166,8 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         'cp "${GITHUB_EVENT_PATH}" .artifacts/github-event.json' in run
         for run in destructive_diff_runs
     )
-    assert any(  # nosec B101
-        step.get("run") and "make test-iam-validation" in step.get("run")
-        for step in jobs["iam_validation"]["steps"]
-    )
-    assert any(  # nosec B101
-        step.get("run") and "make test-iam-validation-unprivileged" in step.get("run")
-        for step in jobs["iam_validation"]["steps"]
-    )
+    assert "make test-iam-validation" in iam_validation_run_lines  # nosec B101
+    assert "make test-iam-validation-unprivileged" in iam_validation_run_lines  # nosec B101
 
 
 def test_security_scan_workflow_runs_repo_make_targets() -> None:
