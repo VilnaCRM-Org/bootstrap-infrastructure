@@ -68,6 +68,12 @@ Current local readiness observations for this planning update:
 - Required Pulumi backend and KMS provider environment metadata was not present in the local shell; values were not printed.
 - Therefore, real test-account apply evidence should be captured through the existing OIDC-backed GitHub `Pulumi Test Deploy` workflow for this PR branch.
 
+GitHub test-account validation attempt for this PR branch:
+
+| Date | Workflow run | Head SHA | Result | Implication |
+| --- | --- | --- | --- | --- |
+| 2026-04-26 | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/runs/24967209875` | `814425df2297aaf1cc9f23475bc6167b5ccb069b` | Failed at `Validate test deployment prerequisites` before AWS credentials were assumed. Missing metadata variable names were `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`, `PULUMI_BACKEND_URL`, `PULUMI_PREVIEW_STACKS`, and `PULUMI_DRIFT_STACKS`. | No Pulumi preview/apply ran and no AWS resources were changed. Merge readiness still needs the test environment metadata configured or a Pulumi ESC-backed replacement implemented in a future PR. |
+
 ## No-Go Conditions
 
 Future implementation should pause if:
