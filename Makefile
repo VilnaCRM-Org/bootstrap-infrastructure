@@ -20,13 +20,24 @@ DOCKER_COMPOSE    = docker compose
 COMPOSE_ENV_FLAG  = $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),)
 COMPOSE           = $(DOCKER_COMPOSE) $(COMPOSE_ENV_FLAG)
 COMPOSE_GITHUB_TOKEN = $(if $(GITHUB_TOKEN),-e GITHUB_TOKEN,)
+COMPOSE_PULUMI_ENV = -e PULUMI_DIR -e PULUMI_SECRETS_PROVIDER -e PULUMI_STACK \
+	-e PULUMI_PREVIEW_STACKS -e PULUMI_DRIFT_STACKS -e PULUMI_PLAN_FILE \
+	-e PULUMI_PLAN_DIR -e POLICY_PACK_DIR
 REPO_PYTHON      ?= python3
-PULUMI_CWD_FLAG   = --cwd $(PULUMI_DIR)
+PULUMI_CWD_FLAG   = -C $(PULUMI_DIR)
 POLICY_PACK_DIR   = /workspace/policy
 POLICY_PACK_FLAG  = --policy-pack $(POLICY_PACK_DIR)
-DEFAULT_PULUMI_STACK ?= $(shell find $(PULUMI_DIR) -maxdepth 1 -type f -name 'Pulumi.*.yaml' ! -name 'Pulumi.yaml' 2>/dev/null | sed -E 's#.*/Pulumi\.(.+)\.yaml$$#\1#' | sort | head -n 1)
+DEFAULT_PULUMI_STACK ?= $(shell \
+	if [ -f "$(PULUMI_DIR)/Pulumi.dev.yaml" ]; then \
+		echo dev; \
+	elif [ -f "$(PULUMI_DIR)/Pulumi.test.yaml" ]; then \
+		echo test; \
+	else \
+		find $(PULUMI_DIR) -maxdepth 1 -type f -name 'Pulumi.*.yaml' ! -name 'Pulumi.yaml' ! -name 'Pulumi.example.yaml' 2>/dev/null | sed -E 's#.*/Pulumi\.(.+)\.yaml$$#\1#' | sort | head -n 1; \
+	fi)
 PULUMI_STACK     ?= $(DEFAULT_PULUMI_STACK)
 PULUMI_SECRETS_PROVIDER ?=
+export PULUMI_STACK
 PULUMI_LOGIN_CMD  = pulumi $(PULUMI_CWD_FLAG) login "$${PULUMI_BACKEND_URL:-file:///workspace/.pulumi-backend}" >/dev/null
 COVERAGE_OPTS            ?= --cov=./pulumi --cov-report=term-missing
 UNIT_COVERAGE_INCLUDE    ?= pulumi/*,scripts/*
@@ -55,7 +66,8 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
 # Misc
 .DEFAULT_GOAL     = help
 .RECIPEPREFIX    +=
-.PHONY: help doctor build start publish-pulumi-preview-summary pulumi-preview pulumi-up pulumi-refresh \
+.PHONY: help doctor build start publish-pulumi-preview-summary pulumi-preview pulumi-plan \
+        pulumi-up pulumi-up-plan pulumi-refresh \
         pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
         report-maintainability-trends report-dead-code report-docstrings \
         report-sbom test-quality test-ruff test-ty test-maintainability \
@@ -68,7 +80,7 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         test-unit test-integration test-integration-unprivileged test-pulumi test-policy \
         test-crossguard test-mutation test-battery test-cli test all clean
 
-pulumi-preview pulumi-up pulumi-refresh pulumi-destroy test-preview \
+pulumi-preview pulumi-plan pulumi-up pulumi-up-plan pulumi-refresh pulumi-destroy test-preview \
 test-destructive-diff test-iam-validation test-drift: export GITHUB_TOKEN := $(GITHUB_TOKEN)
 
 all: help ## Display help (default goal).
@@ -91,16 +103,28 @@ publish-pulumi-preview-summary: ## Generate Pulumi preview artifacts and publish
 	$(REPO_PYTHON) ./scripts/publish_pulumi_preview_summary.py
 
 pulumi-preview: ## Preview infrastructure changes from inside the Pulumi container.
-	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '$(PULUMI_LOGIN_CMD); stack="$${PULUMI_STACK:-$(PULUMI_STACK)}"; if [ -z "$$stack" ]; then echo "error: set PULUMI_STACK or commit pulumi/Pulumi.<stack>.yaml" >&2; exit 1; fi; if ! pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" --non-interactive >/dev/null; then if [ -z "$${PULUMI_SECRETS_PROVIDER:-}" ]; then echo "error: stack $$stack does not exist; set PULUMI_SECRETS_PROVIDER to create it with AWS KMS." >&2; exit 1; fi; pulumi $(PULUMI_CWD_FLAG) stack init "$$stack" --non-interactive --secrets-provider "$${PULUMI_SECRETS_PROVIDER}" >/dev/null; fi; $(REPO_PYTHON) ./scripts/prepare_policy_pack.py && pulumi $(PULUMI_CWD_FLAG) preview --stack "$$stack" $(POLICY_PACK_FLAG)'
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
+		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py preview
+
+pulumi-plan: ## Save a reviewed Pulumi update plan for the selected stack.
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
+		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py plan
 
 pulumi-up: ## Apply the current Pulumi infrastructure plan.
-	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '$(PULUMI_LOGIN_CMD); stack="$${PULUMI_STACK:-$(PULUMI_STACK)}"; if [ -z "$$stack" ]; then echo "error: set PULUMI_STACK or commit pulumi/Pulumi.<stack>.yaml" >&2; exit 1; fi; if ! pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" --non-interactive >/dev/null; then if [ -z "$${PULUMI_SECRETS_PROVIDER:-}" ]; then echo "error: stack $$stack does not exist; set PULUMI_SECRETS_PROVIDER to create it with AWS KMS." >&2; exit 1; fi; pulumi $(PULUMI_CWD_FLAG) stack init "$$stack" --non-interactive --secrets-provider "$${PULUMI_SECRETS_PROVIDER}" >/dev/null; fi; $(REPO_PYTHON) ./scripts/prepare_policy_pack.py && pulumi $(PULUMI_CWD_FLAG) up --stack "$$stack" $(POLICY_PACK_FLAG)'
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
+		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py up
+
+pulumi-up-plan: ## Apply a saved Pulumi update plan for the selected stack.
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
+		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py up-plan
 
 pulumi-refresh: ## Sync the Pulumi stack with live cloud resources.
-	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '$(PULUMI_LOGIN_CMD); stack="$${PULUMI_STACK:-$(PULUMI_STACK)}"; if [ -z "$$stack" ]; then echo "error: set PULUMI_STACK or commit pulumi/Pulumi.<stack>.yaml" >&2; exit 1; fi; pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" --non-interactive >/dev/null; pulumi $(PULUMI_CWD_FLAG) refresh --stack "$$stack"'
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
+		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py refresh
 
 pulumi-destroy: ## Tear down the Pulumi stack (irreversible; use with caution).
-	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '$(PULUMI_LOGIN_CMD); stack="$${PULUMI_STACK:-$(PULUMI_STACK)}"; if [ -z "$$stack" ]; then echo "error: set PULUMI_STACK or commit pulumi/Pulumi.<stack>.yaml" >&2; exit 1; fi; pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" --non-interactive >/dev/null; pulumi $(PULUMI_CWD_FLAG) destroy --stack "$$stack"'
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
+		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py destroy
 
 sh: ## Open a shell inside the Pulumi container.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) sh
@@ -211,7 +235,7 @@ test-deps-security: ## Audit Python dependencies for known vulnerabilities.
 	$(COMPOSE) run --rm -e XDG_CACHE_HOME=/tmp/xdg-cache $(COMPOSE_SERVICE) bash -lc 'uv export --all-groups --format requirements.txt --no-hashes --no-emit-project --frozen -o /tmp/pip-audit-requirements.txt >/dev/null && uv run pip-audit --strict -r /tmp/pip-audit-requirements.txt'
 
 test-preview: ## Generate non-destructive Pulumi previews for configured stacks.
-	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) \
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) \
 		$(REPO_PYTHON) ./scripts/run_pulumi_preview.py
 
 test-preview-unprivileged: ## Generate an unprivileged placeholder preview artifact.
@@ -222,7 +246,7 @@ test-preview-unprivileged: ## Generate an unprivileged placeholder preview artif
 		.artifacts/pulumi-preview/unprivileged.json | tee .artifacts/pulumi-preview/summary.md
 
 test-destructive-diff: ## Fail when Pulumi previews delete or replace critical resources.
-	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '\
+	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) bash -lc '\
 		event_arg=""; \
 		if [ -f .artifacts/github-event.json ]; then \
 			event_arg="--event-path .artifacts/github-event.json"; \
@@ -233,7 +257,7 @@ test-destructive-diff: ## Fail when Pulumi previews delete or replace critical r
 		uv run python ./scripts/pulumi_ci_guardrails.py destructive-gate $$event_arg .artifacts/pulumi-preview/*.json'
 
 test-iam-validation: ## Validate previewed IAM policies with AWS IAM Access Analyzer.
-	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc '\
+	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) bash -lc '\
 		if ! compgen -G ".artifacts/pulumi-preview/*.json" >/dev/null; then \
 			$(REPO_PYTHON) ./scripts/run_pulumi_preview.py >/dev/null; \
 		fi; \
@@ -261,7 +285,7 @@ test-guardrails-unprivileged: ## Run guardrails without AWS-backed Pulumi creden
 	$(MAKE) test-iam-validation-unprivileged
 
 test-drift: ## Perform a non-destructive drift check against configured shared stacks.
-	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) \
+	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) \
 		$(REPO_PYTHON) ./scripts/run_pulumi_drift_check.py
 
 test-quality: ## Run blocking Python quality, architecture, and dependency gates.

@@ -24,9 +24,12 @@ PULL_REQUEST_WORKFLOW_TIMEOUTS = {
     "pulumi-mutation.yml": {"mutation": 45},
     "pulumi-policy.yml": {"policy": 15},
     "pulumi-pr-guardrails.yml": {
+        "preview_mode": 5,
         "preview": 20,
+        "preview_unprivileged": 10,
         "destructive_diff": 10,
         "iam_validation": 15,
+        "iam_validation_unprivileged": 10,
     },
     "pulumi-structural.yml": {"structural": 15},
     "pulumi-unit.yml": {"unit": 45},
@@ -97,6 +100,29 @@ def _run_lines(steps: list[dict]) -> list[str]:
             if line.strip() and not line.lstrip().startswith("#")
         )
     return lines
+
+
+def _environment_name(job: dict) -> str | None:
+    """Return the GitHub environment name from either supported workflow shape."""
+    environment = job.get("environment")
+    if isinstance(environment, str):
+        return environment
+    if isinstance(environment, dict):
+        name = environment.get("name")
+        if isinstance(name, str):
+            return name
+    return None
+
+
+def _workflow_jobs() -> list[tuple[str, str, dict]]:
+    jobs: list[tuple[str, str, dict]] = []
+    for workflow_path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        jobs.extend(
+            (workflow_path.name, job_name, job)
+            for job_name, job in workflow.get("jobs", {}).items()
+        )
+    return jobs
 
 
 def test_release_workflows_use_repo_token_with_github_token_fallback() -> None:
@@ -443,23 +469,29 @@ def test_coverage_bearing_make_targets_enforce_full_line_coverage() -> None:
 def test_makefile_keeps_pulumi_guardrails_secret_safe() -> None:
     """Protect preview and drift targets from leaking tokens or creating typo stacks."""
     makefile_text = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
-    refresh_select = (
-        'pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" '
-        "--non-interactive >/dev/null; "
-        'pulumi $(PULUMI_CWD_FLAG) refresh --stack "$$stack"'
-    )
-    destroy_select = (
-        'pulumi $(PULUMI_CWD_FLAG) stack select "$$stack" '
-        "--non-interactive >/dev/null; "
-        'pulumi $(PULUMI_CWD_FLAG) destroy --stack "$$stack"'
-    )
-    guardrail_runs = "$(COMPOSE_GITHUB_TOKEN) $(COMPOSE_SERVICE) bash -lc"
+    pulumi_command_text = (
+        PROJECT_ROOT / "scripts" / "run_pulumi_command.py"
+    ).read_text(encoding="utf-8")
+    pulumi_command_support_text = (
+        PROJECT_ROOT / "scripts" / "_pulumi_command_support.py"
+    ).read_text(encoding="utf-8")
+    pulumi_command_combined_text = pulumi_command_text + pulumi_command_support_text
+    guardrail_runs = "$(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV)"
 
-    assert "GITHUB_TOKEN='$(GITHUB_TOKEN)'" not in makefile_text
-    assert "export GITHUB_TOKEN" in makefile_text
-    assert refresh_select in makefile_text
-    assert destroy_select in makefile_text
-    assert makefile_text.count(guardrail_runs) >= 6
+    assert "GITHUB_TOKEN='$(GITHUB_TOKEN)'" not in makefile_text  # nosec B101
+    assert "export GITHUB_TOKEN" in makefile_text  # nosec B101
+    assert "PULUMI_CWD_FLAG   = -C $(PULUMI_DIR)" in makefile_text  # nosec B101
+    assert "-e PULUMI_DIR" in makefile_text  # nosec B101
+    assert "Pulumi.dev.yaml" in makefile_text  # nosec B101
+    assert "Pulumi.test.yaml" in makefile_text  # nosec B101
+    assert "export PULUMI_STACK" in makefile_text  # nosec B101
+    assert "./scripts/run_pulumi_command.py refresh" in makefile_text  # nosec B101
+    assert "./scripts/run_pulumi_command.py destroy" in makefile_text  # nosec B101
+    assert makefile_text.count(guardrail_runs) >= 6  # nosec B101
+    assert "shared backend stack {stack} does not exist" in pulumi_command_combined_text  # nosec B101
+    assert "stack change-secrets-provider" not in pulumi_command_combined_text  # nosec B101
+    assert '"--save-plan"' in pulumi_command_combined_text  # nosec B101
+    assert '"summarize"' in pulumi_command_combined_text  # nosec B101
 
 
 def test_bats_suite_covers_every_public_make_target() -> None:
@@ -476,7 +508,9 @@ def test_bats_suite_covers_every_public_make_target() -> None:
         "make -n nightly-quality",
         "make -n publish-pulumi-preview-summary",
         "make -n pulumi-preview",
+        "make -n pulumi-plan",
         "make -n pulumi-up",
+        "make -n pulumi-up-plan",
         "make -n pulumi-refresh",
         "make -n pulumi-destroy",
         "make -n report-dead-code",
@@ -569,8 +603,10 @@ def test_ci_workflows_keep_make_entrypoints_in_sync() -> None:
         "pulumi-policy.yml": ["make test-policy"],
         "pulumi-pr-guardrails.yml": [
             "make publish-pulumi-preview-summary",
+            "make test-preview-unprivileged",
             "make test-destructive-diff",
             "make test-iam-validation",
+            "make test-iam-validation-unprivileged",
         ],
         "pulumi-structural.yml": [
             "make test-pulumi",
@@ -634,6 +670,8 @@ def test_ci_workflows_use_guardrails_and_shared_bootstrap() -> None:
         for job_name, expected_timeout in jobs.items():
             job = workflow["jobs"][job_name]
             assert job["timeout-minutes"] == expected_timeout
+            if job_name == "preview_mode":
+                continue
             assert any("make start" in line for line in _run_lines(job["steps"])), (
                 f"{workflow_name}:{job_name} must use the shared Docker bootstrap"
             )
@@ -659,6 +697,137 @@ def test_actions_are_pinned_to_full_commit_shas() -> None:
                 assert ACTION_SHA_REF.match(uses), (
                     f"{workflow_path.name} must pin `{uses}` to a full commit SHA"
                 )
+
+
+def test_multi_account_workflows_use_environment_scoped_oidc_contracts() -> None:
+    """Bind privileged AWS jobs to GitHub environments and account allow-lists."""
+    expected_environments = {"test", "prod-preview", "prod"}
+    preview_role = "${{ env.AWS_PREVIEW_ROLE_ARN }}"
+    apply_role = "${{ env.AWS_APPLY_ROLE_ARN }}"
+    drift_role = "${{ env.AWS_DRIFT_ROLE_ARN }}"
+    expected_roles_by_job = {
+        ("nightly-guardrails.yml", "test_drift_detection"): drift_role,
+        ("nightly-guardrails.yml", "prod_drift_detection"): drift_role,
+        ("pulumi-pr-guardrails.yml", "preview"): preview_role,
+        ("pulumi-pr-guardrails.yml", "iam_validation"): preview_role,
+        ("pulumi-prod.yml", "preview"): preview_role,
+        ("pulumi-prod.yml", "iam_validation"): preview_role,
+        ("pulumi-prod.yml", "apply"): apply_role,
+        ("pulumi-prod.yml", "post_apply_drift"): drift_role,
+        ("pulumi-test-deploy.yml", "preview"): preview_role,
+        ("pulumi-test-deploy.yml", "iam_validation"): preview_role,
+        ("pulumi-test-deploy.yml", "apply"): apply_role,
+        ("pulumi-test-deploy.yml", "post_apply_drift"): drift_role,
+    }
+    environment_jobs = [
+        (workflow_name, job_name, job, environment_name)
+        for workflow_name, job_name, job in _workflow_jobs()
+        if (environment_name := _environment_name(job)) is not None
+    ]
+
+    assert {item[3] for item in environment_jobs} == expected_environments  # nosec B101
+
+    for workflow_name, job_name, job, environment_name in environment_jobs:
+        assert environment_name in expected_environments  # nosec B101
+
+        job_env = job.get("env", {})
+        role_message = (
+            f"{workflow_name}:{job_name} must use environment-scoped "
+            "purpose-specific role variables directly from the OIDC step"
+        )
+        assert "AWS_OIDC_ROLE_ARN" not in job_env, role_message  # nosec B101
+
+        oidc_steps = [
+            step
+            for step in job.get("steps", [])
+            if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+        ]
+        if not oidc_steps:
+            continue
+
+        assert job.get("permissions", {}).get("id-token") == "write"  # nosec B101
+        for step in oidc_steps:
+            step_with = step["with"]
+            expected_role = expected_roles_by_job[(workflow_name, job_name)]
+            assert step_with["role-to-assume"] == expected_role  # nosec B101
+            assert step_with["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
+            assert step_with["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+
+
+def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
+    """Production release input must already have a green test deployment."""
+    prod_workflow = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-prod.yml").read_text(encoding="utf-8")
+    )
+    test_workflow = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-test-deploy.yml").read_text(encoding="utf-8")
+    )
+    prod_preview_lines = "\n".join(
+        _run_lines(prod_workflow["jobs"]["preview"]["steps"])
+    )
+    prod_apply_lines = "\n".join(_run_lines(prod_workflow["jobs"]["apply"]["steps"]))
+    test_preview_lines = "\n".join(
+        _run_lines(test_workflow["jobs"]["preview"]["steps"])
+    )
+
+    assert prod_workflow["permissions"]["actions"] == "read"  # nosec B101
+    assert (  # nosec B101
+        test_workflow["concurrency"]["group"] == "bootstrap-infrastructure-test-state"
+    )
+    assert (  # nosec B101
+        prod_workflow["concurrency"]["group"] == "bootstrap-infrastructure-prod-state"
+    )
+    assert prod_workflow["jobs"]["preview"]["permissions"]["actions"] == "read"  # nosec B101
+    assert "12-digit AWS account ID" in prod_preview_lines  # nosec B101
+    assert "s3:// backend" in prod_preview_lines  # nosec B101
+    assert "awskms:// URI" in prod_preview_lines  # nosec B101
+    assert "12-digit AWS account ID" in test_preview_lines  # nosec B101
+    assert "s3:// backend" in test_preview_lines  # nosec B101
+    assert "awskms:// URI" in test_preview_lines  # nosec B101
+    test_deploy_query = (
+        "pulumi-test-deploy.yml/runs?head_sha=${TARGET_SHA}"
+        + "&status=completed&per_page=100"
+    )
+    assert "--paginate" in prod_preview_lines  # nosec B101
+    assert "mapfile -t run_ids" in prod_preview_lines  # nosec B101
+    assert "| head -n 1" not in prod_preview_lines  # nosec B101
+    assert test_deploy_query in prod_preview_lines  # nosec B101
+    assert 'select(.conclusion == "success" and .head_branch == "main")' in (  # nosec B101
+        prod_preview_lines
+    )
+    assert "REQUESTED_SHA" in prod_preview_lines  # nosec B101
+    assert "full 40-character commit SHA" in prod_preview_lines  # nosec B101
+    assert "REQUESTED_SHA" in prod_apply_lines  # nosec B101
+    assert "git rev-parse HEAD" not in prod_apply_lines  # nosec B101
+    assert "make pulumi-plan" in prod_preview_lines  # nosec B101
+    assert "make pulumi-plan" in test_preview_lines  # nosec B101
+    assert "make publish-pulumi-preview-summary" not in prod_preview_lines  # nosec B101
+    assert "make publish-pulumi-preview-summary" not in test_preview_lines  # nosec B101
+
+
+def test_multi_account_environment_docs_are_explicit() -> None:
+    """Document that account-specific CI config belongs to GitHub environments."""
+    docs = "\n".join(
+        (
+            SECRETS_DOC.read_text(encoding="utf-8"),
+            (PROJECT_ROOT / "docs" / "ci-guardrails.md").read_text(encoding="utf-8"),
+        )
+    )
+    normalized_docs = docs.lower()
+
+    assert "environment-scoped configuration" in normalized_docs  # nosec B101
+    assert "github environment" in normalized_docs  # nosec B101
+    for environment_name in ("test", "prod-preview", "prod"):
+        assert environment_name in docs  # nosec B101
+    for variable_name in (
+        "AWS_ACCOUNT_ID",
+        "AWS_PREVIEW_ROLE_ARN",
+        "AWS_APPLY_ROLE_ARN",
+        "AWS_DRIFT_ROLE_ARN",
+        "PULUMI_BACKEND_URL",
+        "PULUMI_SECRETS_PROVIDER",
+    ):
+        assert variable_name in docs  # nosec B101
 
 
 def test_template_sync_workflows_keep_guardrails() -> None:
@@ -847,3 +1016,5 @@ def test_sre_docs_map_blocking_ci_checks_back_to_local_commands() -> None:
     assert "`Bandit` -> `make test-bandit`" in operations_doc
     assert "`Yamllint` -> `make test-yaml`" in operations_doc
     assert "`Hadolint` -> `make test-dockerfile`" in operations_doc
+    assert "stack change-secrets-provider" in operations_doc  # nosec B101
+    assert "awskms://alias/ALIAS_NAME?region=REGION" in operations_doc  # nosec B101

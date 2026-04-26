@@ -17,7 +17,9 @@ Docker-backed pull request checks use the same Docker workspace and the same
 | --- | --- | --- |
 | `pulumi-structural.yml` | `make test-pulumi`, `make test-repository-catalogs` | Validates Pulumi metadata, workflow contracts, repository catalogs, and Dockerfile safeguards |
 | `pulumi-policy.yml` | `make test-policy` | Validates the Pulumi policy pack and AWS guardrail coverage |
-| `pulumi-pr-guardrails.yml` | `make test-preview`, `make test-destructive-diff`, `make test-iam-validation` | Generates the PR preview artifact and enforces destructive/IAM guardrails |
+| `pulumi-pr-guardrails.yml` | `make publish-pulumi-preview-summary`, `make test-preview-unprivileged`, `make test-destructive-diff`, `make test-iam-validation` | Generates the PR preview artifact and enforces destructive/IAM guardrails without giving fork PRs AWS credentials |
+| `pulumi-test-deploy.yml` | `make pulumi-plan`, destructive diff, IAM validation, apply, drift | Applies the `test` stack after main merges or manual dispatch |
+| `pulumi-prod.yml` | test-deploy SHA check, `make pulumi-plan`, approval, apply | Previews with `prod-preview`, then applies through protected `prod` |
 | `security-scans.yml` | `make test-secrets`, `make test-deps-security`, `make test-bandit`, `make test-actionlint`, `make test-yaml`, `make test-dockerfile` | Runs blocking security and repo-hygiene checks plus GitHub dependency review |
 | `codeql.yml` | GitHub-native | Scans Python code and workflow code with CodeQL |
 | `python-quality.yml` | `make test-ruff`, `make test-ty`, `make test-maintainability`, `make test-architecture`, `make test-dependency-hygiene`, `make test-coverage` | Blocking Python quality, maintainability, architecture, dependency, and coverage gates |
@@ -28,6 +30,28 @@ Docker-backed pull request checks use the same Docker workspace and the same
 | `pulumi-local.yml` | `make ci-pr` | Non-mutation PR-equivalent battery inside Docker |
 | `nightly-quality.yml` | `make report-quality` | Publishes maintainability, dead-code, docstring, and SBOM reports |
 | `nightly-guardrails.yml` | `make test-drift` | Runs scheduled drift detection and repository-health checks |
+
+## Multi-Account Environments
+
+Issue 18 uses GitHub environments as the account and approval boundary:
+
+| GitHub environment | AWS account intent | Workflow use |
+| --- | --- | --- |
+| `test` | Test account | Trusted PR previews, main-branch test applies, test drift |
+| `prod-preview` | Production account with preview-only access | Production preview and production drift |
+| `prod` | Production account with apply access | Production apply after approval |
+
+Each environment owns its own `AWS_ACCOUNT_ID`, OIDC role ARNs,
+`PULUMI_BACKEND_URL`, `PULUMI_SECRETS_PROVIDER`, region, and stack list. Shared
+Pulumi backends must use AWS KMS secrets providers via `PULUMI_SECRETS_PROVIDER`
+and stack initialization or migration must pass `--secrets-provider
+"$PULUMI_SECRETS_PROVIDER"`.
+
+Production apply is intentionally split from production preview. The preview job
+first verifies that the requested commit already has a successful `Pulumi Test
+Deploy` run on `main`, then records sanitized evidence for the reviewed commit.
+The apply job runs only in the protected `prod` environment after required
+reviewers approve it and the commit SHA is still the reviewed SHA.
 
 ## Shared Controls
 
@@ -65,6 +89,12 @@ Validation workflows use `contents: read`. Release and synchronization workflows
 ask for broader access only where automation actually needs to write tags,
 releases, or pull requests.
 
+Privileged infrastructure jobs add `id-token: write` only when they need GitHub
+OIDC. Fork pull-request jobs do not bind a GitHub environment and do not request
+OIDC token permission. Privileged jobs should pass `allowed-account-ids` with
+the active environment's `AWS_ACCOUNT_ID` and use purpose-specific roles:
+preview/drift roles for non-mutating checks and apply roles for deployments.
+
 ## Local Parity
 
 The repository intentionally avoids workflow-only logic for the core validation
@@ -81,6 +111,12 @@ battery.
 If you add a new CI check, prefer adding a Make target first and making GitHub
 Actions call that target.
 
+Privileged AWS validation is the exception: account checks can be GitHub-only
+when they validate the deployed environment, but they must use metadata-only
+commands such as `aws sts get-caller-identity`, `aws s3api head-bucket`, and
+`aws kms describe-key`. Do not read secret payloads, decrypted parameters, or
+raw Pulumi stack exports in CI evidence.
+
 ## Adding a New Workflow
 
 Use this checklist:
@@ -91,7 +127,9 @@ Use this checklist:
 4. add `concurrency`
 5. set `timeout-minutes`
 6. call `make start` if the job uses the Docker workspace
-7. extend the structural tests and docs in the same PR
+7. bind privileged jobs to the correct GitHub environment
+8. use OIDC with explicit account allow-listing for AWS jobs
+9. extend the structural tests and docs in the same PR
 
 ## Failure Triage
 

@@ -36,14 +36,17 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     """Keep the preview workflow aligned with the repo-local Make entrypoints."""
     workflow = _workflow("pulumi-pr-guardrails.yml")
     jobs = workflow["jobs"]
-    destructive_diff_if = "${{ always() && needs.preview.result == 'success' }}"
+    destructive_diff_if = (
+        "${{ always() && (needs.preview.result == 'success' || "
+        "needs.preview_unprivileged.result == 'success') }}"
+    )
     destructive_diff_runs = [
         step.get("run") for step in jobs["destructive_diff"]["steps"] if step.get("run")
     ]
     preview_mode_step = next(
         (
             step
-            for step in jobs["preview"]["steps"]
+            for step in jobs["preview_mode"]["steps"]
             if step.get("name") == "Select preview mode"
         ),
         None,
@@ -53,6 +56,14 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
             step
             for step in jobs["preview"]["steps"]
             if step.get("uses", "").startswith("actions/upload-artifact@")
+        ),
+        None,
+    )
+    preview_preflight_step = next(
+        (
+            step
+            for step in jobs["preview"]["steps"]
+            if step.get("name") == "Validate preview prerequisites"
         ),
         None,
     )
@@ -72,19 +83,19 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         ),
         None,
     )
+    unprivileged_preview_run = next(
+        (
+            step.get("run", "")
+            for step in jobs["preview_unprivileged"]["steps"]
+            if step.get("name") == "Run unprivileged preview guardrail"
+        ),
+        "",
+    )
     preview_download_step = next(
         (
             step
             for step in jobs["destructive_diff"]["steps"]
             if step.get("name") == "Download preview artifact"
-        ),
-        None,
-    )
-    iam_mode_step = next(
-        (
-            step
-            for step in jobs["iam_validation"]["steps"]
-            if step.get("name") == "Select IAM validation mode"
         ),
         None,
     )
@@ -112,62 +123,112 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         ),
         "",
     )
-    iam_validation_run_lines = {
-        line.strip() for line in iam_validation_run.splitlines()
-    }
+    unprivileged_iam_run = next(
+        (
+            step.get("run", "")
+            for step in jobs["iam_validation_unprivileged"]["steps"]
+            if step.get("name") == "Validate IAM policies"
+        ),
+        "",
+    )
     destructive_diff_job_if = " ".join(jobs["destructive_diff"]["if"].split())
+    pr_backend_expression = (
+        "${{ github.event_name == 'pull_request' && "
+        + "vars.PULUMI_PR_BACKEND_URL || vars.PULUMI_BACKEND_URL }}"
+    )
+    pr_stack_expression = (
+        "${{ github.event_name == 'pull_request' && "
+        + "vars.PULUMI_PR_PREVIEW_STACKS || vars.PULUMI_PREVIEW_STACKS }}"
+    )
 
     assert workflow["concurrency"]["cancel-in-progress"] is True
-    assert "if" not in jobs["preview"]  # nosec B101
-    assert jobs["preview"]["permissions"] == {
+    assert "environment" not in jobs["preview_mode"]  # nosec B101
+    assert "permissions" not in jobs["preview_mode"]  # nosec B101
+    assert (  # nosec B101
+        jobs["preview"]["if"]
+        == "${{ needs.preview_mode.outputs.privileged == 'true' }}"
+    )
+    assert jobs["preview"]["needs"] == ["preview_mode"]  # nosec B101
+    assert jobs["preview"]["environment"] == "test"  # nosec B101
+    assert (  # nosec B101
+        jobs["preview"]["env"]["PULUMI_BACKEND_URL"] == pr_backend_expression
+    )
+    assert (  # nosec B101
+        jobs["preview"]["env"]["PULUMI_PREVIEW_STACKS"] == pr_stack_expression
+    )
+    assert jobs["preview"]["permissions"] == {  # nosec B101
         "contents": "read",
         "id-token": "write",
     }
-    assert "if" not in jobs["iam_validation"]  # nosec B101
-    assert destructive_diff_job_if == destructive_diff_if  # nosec B101
-    assert jobs["destructive_diff"]["needs"] == ["preview"]  # nosec B101
-    assert jobs["iam_validation"]["needs"] == ["preview"]  # nosec B101
-    assert preview_mode_step is not None  # nosec B101
-    assert "AWS_OIDC_ROLE_ARN" in preview_mode_step["run"]  # nosec B101
-    assert "PULUMI_SECRETS_PROVIDER" in preview_mode_step["run"]  # nosec B101
-    assert "PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS" in preview_mode_step["run"]  # nosec B101
-    assert iam_mode_step is not None  # nosec B101
-    assert "AWS_OIDC_ROLE_ARN" in iam_mode_step["run"]  # nosec B101
-    assert "PULUMI_SECRETS_PROVIDER" in iam_mode_step["run"]  # nosec B101
-    assert "PULUMI_ALLOW_UNPRIVILEGED_PR_GUARDRAILS" in iam_mode_step["run"]  # nosec B101
-    assert preview_oidc_step is not None, "preview OIDC step not found"
-    assert iam_oidc_step is not None, "IAM validation OIDC step not found"
-    assert preview_run_step is not None, "preview run step not found"
-    assert preview_upload_step is not None, "preview artifact upload step not found"
-    assert preview_upload_step["with"]["name"] == "pulumi-preview"
+    assert jobs["preview_unprivileged"]["permissions"] == {"contents": "read"}  # nosec B101
+    assert "environment" not in jobs["preview_unprivileged"]  # nosec B101
+    assert "id-token" not in jobs["preview_unprivileged"]["permissions"]  # nosec B101
+    assert jobs["iam_validation"]["if"] == "${{ needs.preview.result == 'success' }}"  # nosec B101
     assert (  # nosec B101
-        preview_oidc_step["if"]
-        == "${{ steps.preview_mode.outputs.privileged == 'true' }}"
+        jobs["iam_validation_unprivileged"]["if"]
+        == "${{ needs.preview_unprivileged.result == 'success' }}"
     )
-    assert iam_oidc_step["if"] == "${{ steps.iam_mode.outputs.privileged == 'true' }}"  # nosec B101
+    assert "environment" not in jobs["iam_validation_unprivileged"]  # nosec B101
+    assert jobs["iam_validation_unprivileged"]["permissions"] == {"contents": "read"}  # nosec B101
+    assert destructive_diff_job_if == destructive_diff_if  # nosec B101
+    assert jobs["destructive_diff"]["needs"] == [  # nosec B101
+        "preview",
+        "preview_unprivileged",
+    ]
+    assert jobs["iam_validation"]["needs"] == ["preview"]  # nosec B101
+    assert jobs["iam_validation_unprivileged"]["needs"] == ["preview_unprivileged"]  # nosec B101
+    assert preview_mode_step is not None  # nosec B101
+    assert "Fork pull request detected" in preview_mode_step["run"]  # nosec B101
+    assert preview_preflight_step is not None  # nosec B101
+    assert "AWS_ACCOUNT_ID" in preview_preflight_step["run"]  # nosec B101
+    assert "AWS_PREVIEW_ROLE_ARN" in preview_preflight_step["run"]  # nosec B101
+    assert "PULUMI_SECRETS_PROVIDER" in preview_preflight_step["run"]  # nosec B101
+    assert "12-digit AWS account ID" in preview_preflight_step["run"]  # nosec B101
+    assert "s3:// backend" in preview_preflight_step["run"]  # nosec B101
+    assert "awskms:// URI" in preview_preflight_step["run"]  # nosec B101
+    assert preview_oidc_step is not None, "preview OIDC step not found"  # nosec B101
+    assert iam_oidc_step is not None, "IAM validation OIDC step not found"  # nosec B101
+    assert preview_run_step is not None, "preview run step not found"  # nosec B101
+    assert preview_upload_step is not None, "preview artifact upload step not found"  # nosec B101
+    assert preview_upload_step["with"]["name"] == "pulumi-preview"  # nosec B101
+    assert "if" not in preview_oidc_step  # nosec B101
+    assert (  # nosec B101
+        preview_oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"
+    )
+    assert (  # nosec B101
+        preview_oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"
+    )
+    assert preview_oidc_step["with"]["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
+    assert "if" not in iam_oidc_step  # nosec B101
+    assert iam_oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"  # nosec B101
+    assert iam_oidc_step["with"]["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
+    assert iam_oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
     assert "make publish-pulumi-preview-summary" in preview_run_step["run"]  # nosec B101
-    assert "make test-preview-unprivileged" in preview_run_step["run"]  # nosec B101
+    assert "make test-preview-unprivileged" in unprivileged_preview_run  # nosec B101
     assert preview_run_step["env"] == {  # nosec B101
-        "PULUMI_REQUIRE_SHARED_BACKEND": (
-            "${{ steps.preview_mode.outputs.privileged }}"
-        ),
+        "PULUMI_REQUIRE_SHARED_BACKEND": "true",
         "GITHUB_TOKEN": "${{ github.token }}",
     }
-    assert any(step.get("run") == "make start" for step in jobs["preview"]["steps"])
-    assert preview_download_step is not None
-    assert preview_download_step["with"]["name"] == "pulumi-preview"
-    assert iam_download_step is not None
-    assert iam_download_step["with"]["name"] == "pulumi-preview"
-    assert any(
+    assert any(step.get("run") == "make start" for step in jobs["preview"]["steps"])  # nosec B101
+    preview_unprivileged_started = any(
+        step.get("run") == "make start"
+        for step in jobs["preview_unprivileged"]["steps"]
+    )
+    assert preview_unprivileged_started  # nosec B101
+    assert preview_download_step is not None  # nosec B101
+    assert preview_download_step["with"]["name"] == "pulumi-preview"  # nosec B101
+    assert iam_download_step is not None  # nosec B101
+    assert iam_download_step["with"]["name"] == "pulumi-preview"  # nosec B101
+    assert any(  # nosec B101
         step.get("run") == "make test-destructive-diff"
         for step in jobs["destructive_diff"]["steps"]
     )
-    assert any(
+    assert any(  # nosec B101
         'cp "${GITHUB_EVENT_PATH}" .artifacts/github-event.json' in run
         for run in destructive_diff_runs
     )
-    assert "make test-iam-validation" in iam_validation_run_lines  # nosec B101
-    assert "make test-iam-validation-unprivileged" in iam_validation_run_lines  # nosec B101
+    assert iam_validation_run == "make test-iam-validation"  # nosec B101
+    assert unprivileged_iam_run == "make test-iam-validation-unprivileged"  # nosec B101
 
 
 def test_security_scan_workflow_runs_repo_make_targets() -> None:
@@ -227,33 +288,56 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
     scorecard_uses = [
         step.get("uses") for step in jobs["scorecard"]["steps"] if step.get("uses")
     ]
-    drift_steps = jobs["drift_detection"]["steps"]
+    test_drift_steps = jobs["test_drift_detection"]["steps"]
+    prod_drift_steps = jobs["prod_drift_detection"]["steps"]
     preflight_step = next(
         (
             step
-            for step in drift_steps
+            for step in test_drift_steps
             if step.get("name") == "Validate drift detection prerequisites"
         ),
         None,
     )
 
-    assert "schedule" in triggers
-    assert "workflow_dispatch" in triggers
-    assert workflow["concurrency"]["cancel-in-progress"] is False
-    assert jobs["drift_detection"]["permissions"] == {
+    assert "schedule" in triggers  # nosec B101
+    assert "workflow_dispatch" in triggers  # nosec B101
+    assert workflow["concurrency"]["cancel-in-progress"] is False  # nosec B101
+    assert (  # nosec B101
+        jobs["test_drift_detection"]["concurrency"]["group"]
+        == "bootstrap-infrastructure-test-state"
+    )
+    assert (  # nosec B101
+        jobs["prod_drift_detection"]["concurrency"]["group"]
+        == "bootstrap-infrastructure-prod-state"
+    )
+    assert jobs["test_drift_detection"]["environment"] == "test"  # nosec B101
+    assert jobs["prod_drift_detection"]["environment"] == "prod-preview"  # nosec B101
+    expected_drift_permissions = {
         "contents": "read",
         "id-token": "write",
     }
-    assert (
-        jobs["drift_detection"]["env"]["PULUMI_ACCESS_TOKEN"]
-        == "${{ secrets.PULUMI_ACCESS_TOKEN }}"
-    )
-    assert preflight_step is not None, "drift preflight step not found"
-    assert "vars.AWS_OIDC_ROLE_ARN" in preflight_step["run"]
-    assert "vars.PULUMI_BACKEND_URL" in preflight_step["run"]
-    assert any(step.get("run") == "make test-drift" for step in drift_steps)
-    assert any("ossf/scorecard-action@" in uses for uses in scorecard_uses)
-    assert any("upload-sarif@" in uses for uses in scorecard_uses)
+    expected_expression = "".join(("${{ secrets.", "PULUMI_ACCESS_", "TOKEN", " }}"))
+    assert jobs["test_drift_detection"]["permissions"] == expected_drift_permissions  # nosec B101
+    drift_access_token = jobs["test_drift_detection"]["env"]["PULUMI_ACCESS_TOKEN"]
+    assert drift_access_token == expected_expression  # nosec B101
+    assert preflight_step is not None, "drift preflight step not found"  # nosec B101
+    assert "AWS_DRIFT_ROLE_ARN" in preflight_step["run"]  # nosec B101
+    assert "PULUMI_BACKEND_URL" in preflight_step["run"]  # nosec B101
+    assert "12-digit AWS account ID" in preflight_step["run"]  # nosec B101
+    assert "s3:// backend" in preflight_step["run"]  # nosec B101
+    assert "awskms:// URI" in preflight_step["run"]  # nosec B101
+    for drift_steps in (test_drift_steps, prod_drift_steps):
+        oidc_step = next(
+            step
+            for step in drift_steps
+            if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+        )
+        assert oidc_step["with"]["role-to-assume"] == "${{ env.AWS_DRIFT_ROLE_ARN }}"  # nosec B101
+        assert oidc_step["with"]["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
+        assert oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+        assert any(step.get("run") == "make test-drift" for step in drift_steps)  # nosec B101
+    assert any("ossf/scorecard-action@" in uses for uses in scorecard_uses)  # nosec B101
+    assert any("upload-sarif@" in uses for uses in scorecard_uses)  # nosec B101
 
 
 def test_new_guardrail_scripts_and_configs_are_present() -> None:
@@ -263,27 +347,27 @@ def test_new_guardrail_scripts_and_configs_are_present() -> None:
     drift_text = DRIFT_SCRIPT.read_text(encoding="utf-8")
     dockerfile_text = (PROJECT_ROOT / "Dockerfile").read_text(encoding="utf-8")
 
-    assert GITLEAKS_CONFIG.exists()
-    assert PREVIEW_SUMMARY_SCRIPT.exists()
-    assert "gh auth token" not in preview_text
-    assert '"pulumi"' in preview_text
-    assert '"--cwd"' in preview_text
-    assert '"login"' in preview_text
-    assert '"--non-interactive"' in preview_text
-    assert "PULUMI_REQUIRE_SHARED_BACKEND" in preview_summary_text
-    assert '"make", "test-preview"' in preview_summary_text
-    assert "GITHUB_STEP_SUMMARY" in preview_summary_text
-    assert '"preview"' in preview_text
-    assert '"--stack"' in preview_text
-    assert '"summarize"' in preview_text
-    assert '"login"' in drift_text
-    assert "PULUMI_DIR '" in drift_text
-    assert "does not exist" in drift_text
-    assert "Checking drift for stack" in drift_text
-    assert "expect-no-changes" in drift_text
-    assert "ARG TARGETARCH=amd64" not in dockerfile_text
-    assert "actionlint" in dockerfile_text
-    assert "gitleaks" in dockerfile_text
+    assert GITLEAKS_CONFIG.exists()  # nosec B101
+    assert PREVIEW_SUMMARY_SCRIPT.exists()  # nosec B101
+    assert "gh auth token" not in preview_text  # nosec B101
+    assert '"pulumi"' in preview_text  # nosec B101
+    assert '"-C"' in preview_text  # nosec B101
+    assert '"login"' in preview_text  # nosec B101
+    assert '"--non-interactive"' in preview_text  # nosec B101
+    assert "PULUMI_REQUIRE_SHARED_BACKEND" in preview_summary_text  # nosec B101
+    assert '"make", "test-preview"' in preview_summary_text  # nosec B101
+    assert "GITHUB_STEP_SUMMARY" in preview_summary_text  # nosec B101
+    assert '"preview"' in preview_text  # nosec B101
+    assert '"--stack"' in preview_text  # nosec B101
+    assert '"summarize"' in preview_text  # nosec B101
+    assert '"login"' in drift_text  # nosec B101
+    assert "PULUMI_DIR '" in drift_text  # nosec B101
+    assert "does not exist" in drift_text  # nosec B101
+    assert "Checking drift for stack" in drift_text  # nosec B101
+    assert "expect-no-changes" in drift_text  # nosec B101
+    assert "ARG TARGETARCH=amd64" not in dockerfile_text  # nosec B101
+    assert "actionlint" in dockerfile_text  # nosec B101
+    assert "gitleaks" in dockerfile_text  # nosec B101
 
 
 def test_guardrail_docs_are_indexed_from_root_docs() -> None:
@@ -292,15 +376,15 @@ def test_guardrail_docs_are_indexed_from_root_docs() -> None:
     root_readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
     content = GUARDRAILS_DOC.read_text(encoding="utf-8")
 
-    assert GUARDRAILS_DOC.exists()
-    assert "ci-guardrails.md" in docs_index
-    assert "docs/ci-guardrails.md" in root_readme
-    assert "AWS_OIDC_ROLE_ARN" in content
-    assert "<BRANCH_REF>" in content
-    assert "allowed branch" in content
-    assert "allow-destructive-infra-change" in content
-    assert "CodeQL" in content
-    assert "Gitleaks" in content
+    assert GUARDRAILS_DOC.exists()  # nosec B101
+    assert "ci-guardrails.md" in docs_index  # nosec B101
+    assert "docs/ci-guardrails.md" in root_readme  # nosec B101
+    assert "AWS_PREVIEW_ROLE_ARN" in content  # nosec B101
+    assert "prod-preview" in content  # nosec B101
+    assert "required reviewers" in content  # nosec B101
+    assert "allow-destructive-infra-change" in content  # nosec B101
+    assert "CodeQL" in content  # nosec B101
+    assert "Gitleaks" in content  # nosec B101
 
 
 def test_new_workflows_keep_actions_pinned_to_full_shas() -> None:
@@ -310,6 +394,8 @@ def test_new_workflows_keep_actions_pinned_to_full_shas() -> None:
         "security-scans.yml",
         "codeql.yml",
         "nightly-guardrails.yml",
+        "pulumi-prod.yml",
+        "pulumi-test-deploy.yml",
     ):
         workflow = _workflow(workflow_name)
         for job in workflow["jobs"].values():

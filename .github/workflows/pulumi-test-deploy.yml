@@ -1,14 +1,14 @@
-name: Pulumi PR Guardrails
+name: Pulumi Test Deploy
 
 on:
-  pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: bootstrap-infrastructure-test-state
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -18,35 +18,10 @@ permissions:
   contents: read
 
 jobs:
-  preview_mode:
-    name: Preview Mode
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      privileged: ${{ steps.preview_mode.outputs.privileged }}
-    env:
-      GITHUB_EVENT_NAME: ${{ github.event_name }}
-      GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-      GITHUB_REPOSITORY_NAME: ${{ github.repository }}
-    steps:
-      - name: Select preview mode
-        id: preview_mode
-        run: |
-          privileged=true
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
-            "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
-            privileged=false
-            echo "::notice::Fork pull request detected; running unprivileged Pulumi guardrails without AWS credentials."
-          fi
-          echo "privileged=${privileged}" >> "${GITHUB_OUTPUT}"
-
   preview:
-    name: Preview
-    if: ${{ needs.preview_mode.outputs.privileged == 'true' }}
+    name: Test Preview
     runs-on: ubuntu-latest
-    needs:
-      - preview_mode
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment: test
     permissions:
       contents: read
@@ -57,31 +32,36 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ github.event_name == 'pull_request' && vars.PULUMI_PR_BACKEND_URL || vars.PULUMI_BACKEND_URL }}
+      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
+      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ github.event_name == 'pull_request' && vars.PULUMI_PR_PREVIEW_STACKS || vars.PULUMI_PREVIEW_STACKS }}
+      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
+      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
 
-      - name: Validate preview prerequisites
+      - name: Validate test deployment prerequisites
         run: |
           missing=()
           for name in \
             AWS_ACCOUNT_ID \
             AWS_PREVIEW_ROLE_ARN \
+            AWS_APPLY_ROLE_ARN \
+            AWS_DRIFT_ROLE_ARN \
             PULUMI_BACKEND_URL \
             PULUMI_SECRETS_PROVIDER \
-            PULUMI_PREVIEW_STACKS; do
+            PULUMI_PREVIEW_STACKS \
+            PULUMI_DRIFT_STACKS; do
             if [[ -z "${!name}" ]]; then
               missing+=("${name}")
             fi
           done
           if [[ "${#missing[@]}" -gt 0 ]]; then
-            printf 'error: trusted PR guardrails are missing %s\n' "${missing[*]}" >&2
-            echo "Set PULUMI_PR_BACKEND_URL/PULUMI_PR_PREVIEW_STACKS for a dedicated PR preview backend, or PULUMI_BACKEND_URL/PULUMI_PREVIEW_STACKS for the shared test stack." >&2
+            printf 'error: test deployment is missing %s\n' "${missing[*]}" >&2
             exit 1
           fi
           if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
@@ -101,72 +81,46 @@ jobs:
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
           role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
-          role-session-name: gha-test-preview-${{ github.run_id }}
+          role-session-name: gha-test-preflight-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
           allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
 
-      - name: Emit preview evidence
+      - name: Emit test preview evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
           echo "GitHub environment: test"
           echo "Commit SHA: ${GITHUB_SHA}"
           echo "AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
-          echo "Guardrail mode: privileged"
           echo "Role purpose: preview"
 
       - name: Start development environment
         run: make start
 
-      - name: Run preview guardrail
+      - name: Save test update plan and preview artifact
         env:
-          PULUMI_REQUIRE_SHARED_BACKEND: "true"
           GITHUB_TOKEN: ${{ github.token }}
-        run: make publish-pulumi-preview-summary
+        run: make pulumi-plan
 
       - name: Upload preview artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: pulumi-preview
+          name: test-pulumi-preview
           path: .artifacts/pulumi-preview
           retention-days: 7
 
-  preview_unprivileged:
-    name: Preview (Unprivileged)
-    if: ${{ needs.preview_mode.outputs.privileged != 'true' }}
-    runs-on: ubuntu-latest
-    needs:
-      - preview_mode
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-
-      - name: Start development environment
-        run: make start
-
-      - name: Run unprivileged preview guardrail
-        run: |
-          echo "Guardrail mode: unprivileged"
-          make test-preview-unprivileged
-
-      - name: Upload preview artifact
+      - name: Upload plan artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: pulumi-preview
-          path: .artifacts/pulumi-preview
+          name: test-pulumi-plan
+          path: .artifacts/pulumi-plan
           retention-days: 7
 
   destructive_diff:
-    name: Destructive Diff Gate
-    if: ${{ always() && (needs.preview.result == 'success' || needs.preview_unprivileged.result == 'success') }}
+    name: Test Destructive Diff Gate
     runs-on: ubuntu-latest
     needs:
       - preview
-      - preview_unprivileged
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -179,20 +133,14 @@ jobs:
       - name: Download preview artifact
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
         with:
-          name: pulumi-preview
+          name: test-pulumi-preview
           path: .artifacts/pulumi-preview
-
-      - name: Stage GitHub event payload for the guardrail helper
-        run: |
-          mkdir -p .artifacts
-          cp "${GITHUB_EVENT_PATH}" .artifacts/github-event.json
 
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
 
   iam_validation:
-    name: IAM Validation
-    if: ${{ needs.preview.result == 'success' }}
+    name: Test IAM Validation
     runs-on: ubuntu-latest
     needs:
       - preview
@@ -220,7 +168,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
           role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
-          role-session-name: gha-test-iam-validate-${{ github.run_id }}
+          role-session-name: gha-test-iam-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
           allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
 
@@ -230,34 +178,105 @@ jobs:
       - name: Download preview artifact
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
         with:
-          name: pulumi-preview
+          name: test-pulumi-preview
           path: .artifacts/pulumi-preview
 
       - name: Validate IAM policies
         run: make test-iam-validation
 
-  iam_validation_unprivileged:
-    name: IAM Validation (Unprivileged)
-    if: ${{ needs.preview_unprivileged.result == 'success' }}
+  apply:
+    name: Test Apply
     runs-on: ubuntu-latest
     needs:
-      - preview_unprivileged
-    timeout-minutes: 10
+      - destructive_diff
+      - iam_validation
+      - preview
+    timeout-minutes: 30
+    environment: test
     permissions:
       contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
+      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
 
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ env.AWS_APPLY_ROLE_ARN }}
+          role-session-name: gha-test-apply-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+
+      - name: Emit test apply evidence
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "GitHub environment: test"
+          echo "Commit SHA: ${GITHUB_SHA}"
+          echo "AWS account ID: ${account_id}"
+          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
+          echo "Role purpose: apply"
+
       - name: Start development environment
         run: make start
 
-      - name: Download preview artifact
+      - name: Download plan artifact
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
         with:
-          name: pulumi-preview
-          path: .artifacts/pulumi-preview
+          name: test-pulumi-plan
+          path: .artifacts/pulumi-plan
 
-      - name: Validate IAM policies
-        run: make test-iam-validation-unprivileged
+      - name: Apply saved test plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: make pulumi-up-plan
+
+  post_apply_drift:
+    name: Test Post-Apply Drift
+    runs-on: ubuntu-latest
+    needs:
+      - apply
+    timeout-minutes: 20
+    environment: test
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
+      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
+      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ env.AWS_DRIFT_ROLE_ARN }}
+          role-session-name: gha-test-drift-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run post-apply drift detection
+        run: make test-drift

@@ -8,6 +8,10 @@ assert_compose_env_file() {
     || [[ "$output" == *"docker compose --env-file .env.empty "* ]]
 }
 
+assert_pulumi_secrets_provider_passthrough() {
+  [[ "$output" == *"-e PULUMI_SECRETS_PROVIDER"* ]]
+}
+
 plain_output() {
   printf '%s' "$1" | sed -E $'s/\\x1B\\[[0-9;]*[mK]//g'
 }
@@ -35,7 +39,9 @@ assert_help_target() {
     nightly-quality
     publish-pulumi-preview-summary
     pulumi-preview
+    pulumi-plan
     pulumi-up
+    pulumi-up-plan
     pulumi-refresh
     pulumi-destroy
     report-dead-code
@@ -122,6 +128,24 @@ assert_help_target() {
   [[ "$output" == *"./scripts/publish_pulumi_preview_summary.py"* ]]
 }
 
+@test "make defaults Pulumi stack to test before prod" {
+  local pulumi_dir="$BATS_TEST_TMPDIR/pulumi"
+  local extra_makefile="$BATS_TEST_TMPDIR/print-default.mk"
+  mkdir -p "$pulumi_dir"
+  touch "$pulumi_dir/Pulumi.prod.yaml"
+  touch "$pulumi_dir/Pulumi.test.yaml"
+  touch "$pulumi_dir/Pulumi.example.yaml"
+  cat >"$extra_makefile" <<'EOF'
+print-default-stack:
+	@printf '%s\n' "$(DEFAULT_PULUMI_STACK)"
+EOF
+
+  run make --no-print-directory PULUMI_DIR="$pulumi_dir" \
+    -f Makefile -f "$extra_makefile" print-default-stack
+  [ "$status" -eq 0 ]
+  [ "$output" = "test" ]
+}
+
 @test "make doctor runtime output avoids echoing synthetic secret values when docker is available" {
   if ! command -v docker >/dev/null 2>&1 \
     || ! docker info >/dev/null 2>&1 \
@@ -141,20 +165,32 @@ assert_help_target() {
   assert_compose_env_file
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
-  [[ "$output" == *"stack select"* ]]
-  [[ "$output" == *"./scripts/prepare_policy_pack.py"* ]]
-  [[ "$output" == *"pulumi --cwd pulumi preview --stack"* ]]
-  [[ "$output" == *"--policy-pack /workspace/policy"* ]]
+  [[ "$output" == *"./scripts/run_pulumi_command.py preview"* ]]
+  assert_pulumi_secrets_provider_passthrough
+}
+
+@test "make pulumi-plan saves a deployment plan inside container" {
+  run make -n pulumi-plan
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  assert_pulumi_secrets_provider_passthrough
+  [[ "$output" == *"./scripts/run_pulumi_command.py plan"* ]]
 }
 
 @test "make pulumi-up executes deployment inside container" {
   run make -n pulumi-up
   [ "$status" -eq 0 ]
   assert_compose_env_file
-  [[ "$output" == *"stack select"* ]]
-  [[ "$output" == *"./scripts/prepare_policy_pack.py"* ]]
-  [[ "$output" == *"pulumi --cwd pulumi up --stack"* ]]
-  [[ "$output" == *"--policy-pack /workspace/policy"* ]]
+  assert_pulumi_secrets_provider_passthrough
+  [[ "$output" == *"./scripts/run_pulumi_command.py up"* ]]
+}
+
+@test "make pulumi-up-plan applies a saved plan inside container" {
+  run make -n pulumi-up-plan
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  assert_pulumi_secrets_provider_passthrough
+  [[ "$output" == *"./scripts/run_pulumi_command.py up-plan"* ]]
 }
 
 @test "make pulumi-refresh executes refresh inside container" {
@@ -163,9 +199,8 @@ assert_help_target() {
   assert_compose_env_file
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
-  [[ "$output" == *"stack select"* ]]
-  [[ "$output" != *"--create --non-interactive"* ]]
-  [[ "$output" == *"pulumi --cwd pulumi refresh --stack"* ]]
+  assert_pulumi_secrets_provider_passthrough
+  [[ "$output" == *"./scripts/run_pulumi_command.py refresh"* ]]
 }
 
 @test "make pulumi-destroy executes destroy inside container" {
@@ -174,9 +209,8 @@ assert_help_target() {
   assert_compose_env_file
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
-  [[ "$output" == *"stack select"* ]]
-  [[ "$output" != *"--create --non-interactive"* ]]
-  [[ "$output" == *"pulumi --cwd pulumi destroy --stack"* ]]
+  assert_pulumi_secrets_provider_passthrough
+  [[ "$output" == *"./scripts/run_pulumi_command.py destroy"* ]]
 }
 
 @test "make sh opens a throwaway shell in the Pulumi container" {

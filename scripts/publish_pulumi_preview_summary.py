@@ -21,6 +21,14 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
+        secrets_provider = env.get("PULUMI_SECRETS_PROVIDER", "")
+        if not secrets_provider.startswith("awskms://"):
+            print(
+                "error: privileged previews require an awskms:// "
+                "PULUMI_SECRETS_PROVIDER.",
+                file=sys.stderr,
+            )
+            return 1
     else:
         if not backend_url.strip():
             env["PULUMI_BACKEND_URL"] = "file:///workspace/.pulumi-backend"

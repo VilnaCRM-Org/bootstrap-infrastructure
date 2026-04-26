@@ -165,6 +165,7 @@ def _provider_resource(
             "6938fd4d98bab03faadb97b34396831e3780aea1",
             "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
         ],
+        tags=base_tags({"Purpose": "github-actions-oidc"}, settings=settings_obj),
         url="https://token.actions.githubusercontent.com",
         opts=pulumi.ResourceOptions(parent=parent),
     )

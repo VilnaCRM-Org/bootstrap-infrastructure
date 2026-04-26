@@ -58,7 +58,7 @@ def _init_file_backend_stack(
     init_result = run(
         [
             "pulumi",
-            "--cwd",
+            "-C",
             str(pulumi_dir),
             "stack",
             "init",
@@ -89,7 +89,7 @@ def _select_stack_for_preview(
     """Select the target stack and fail fast on shared-backend typos."""
     select_command = [
         "pulumi",
-        "--cwd",
+        "-C",
         str(pulumi_dir),
         "stack",
         "select",
@@ -173,7 +173,7 @@ def main() -> int:
         return 1
 
     run(
-        ["pulumi", "--cwd", str(pulumi_dir), "login", "--non-interactive", backend_url],
+        ["pulumi", "-C", str(pulumi_dir), "login", "--non-interactive", backend_url],
         env=env,
     )
     uses_file_backend = _uses_file_backend(backend_url)
@@ -197,7 +197,7 @@ def main() -> int:
             run(
                 [
                     "pulumi",
-                    "--cwd",
+                    "-C",
                     str(pulumi_dir),
                     "preview",
                     "--stack",

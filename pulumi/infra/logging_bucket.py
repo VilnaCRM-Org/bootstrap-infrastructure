@@ -15,6 +15,8 @@ from .config import settings
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
+DEFAULT_REPLICATION_REGION = "eu-west-1"
+
 
 def central_logging_bucket_name(region: str) -> str:
     """Compatibility wrapper for central logging bucket naming."""
@@ -29,7 +31,9 @@ def _resolved_replication_region(
 ) -> str:
     """Resolve and validate the replica region for centralized logging."""
     resolved_region = (
-        replication_region or settings_obj.replication_region or "us-east-1"
+        replication_region
+        or settings_obj.replication_region
+        or DEFAULT_REPLICATION_REGION
     )
     if resolved_region == primary_region:
         raise ValueError(
