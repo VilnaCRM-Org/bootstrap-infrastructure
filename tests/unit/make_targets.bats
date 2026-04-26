@@ -10,6 +10,7 @@ assert_compose_env_file() {
 
 assert_pulumi_secrets_provider_passthrough() {
   [[ "$output" == *"-e PULUMI_SECRETS_PROVIDER"* ]]
+  [[ "$output" == *"-e PULUMI_BACKEND_URL"* ]]
 }
 
 plain_output() {
