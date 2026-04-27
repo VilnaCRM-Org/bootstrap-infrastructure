@@ -1225,6 +1225,99 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
         )
         == []
     )
+    assert (
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["billing:GetBillingViewData"],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ce:CreateAnomalyMonitor",
+                                    "ce:CreateAnomalySubscription",
+                                ],
+                                "Resource": "*",
+                                "Condition": {
+                                    "StringEquals": {
+                                        "aws:RequestTag/Environment": "test",
+                                        "aws:RequestTag/Purpose": [
+                                            "cost-anomaly-monitor",
+                                            "cost-anomaly-subscription",
+                                        ],
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert policy_runtime.wildcard_iam_violations(
+        "aws:iam/policy:Policy",
+        {
+            "policy": _json(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["ce:CreateAnomalyMonitor"],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+        },
+        config,
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
+    assert (
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["ce:ListCostAllocationTags"],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
     assert policy_runtime.wildcard_iam_violations(  # nosec B101
         "aws:iam/policy:Policy",
         {

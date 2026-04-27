@@ -209,6 +209,84 @@ SNS subscriptions and escalation routes are account-local operations controls.
 Do not treat the alerting foundation as complete until the target account has a
 confirmed subscription, owner, and incident route.
 
+## Operations Evidence Contract
+
+Well-Architected evidence should use metadata and durable review artifacts, not
+secret-bearing dumps. Retain these non-secret handles when validating a stack:
+
+- `operationsAlertTopicArn`
+- `operationsAlertRuleNames`
+- `operationsAlertTopicKeyAliasName`
+- `monthlyBudgetName`
+- `costAnomalyMonitorArn`
+- `costAnomalySubscriptionArn`
+- `backupVaultName` and `backupVaultArn`
+
+For each environment, the monthly evidence bundle should also record the
+reviewer, review date, alert subscription status, incident route, last backup
+review, last restore drill, last drift run, budget threshold, anomaly threshold,
+and any missed KPI actions. Do not include stack exports, decrypted Pulumi
+config, secret values, access keys, tokens, private keys, or contents of state
+objects.
+
+## Ownership And RACI
+
+Repository-owned controls still need accountable humans or teams before they
+can support a 5/5 claim.
+
+| Activity | Accountable | Responsible | Consulted | Informed |
+| --- | --- | --- | --- | --- |
+| CI guardrail and branch-protection evidence | Maintainer | Platform owner | SRE, security reviewer | Repository contributors |
+| Backup health, restore drills, drift, and DR evidence | SRE | SRE | Maintainer, security reviewer | FinOps for cost impact |
+| KMS, IAM/OIDC, state access, and logging incidents | Security reviewer | SRE | Maintainer | Repository contributors |
+| Budget, anomaly, transfer-cost, and quota evidence | FinOps owner | Maintainer | SRE | Security reviewer |
+| Repository catalog owner and stale cleanup review | Maintainer | Repository owner | SRE, FinOps owner | Platform owner |
+
+If any role is unnamed for an environment, the related Well-Architected score
+must stay unchanged and the review should record the missing owner as a blocker.
+
+## Severity Model
+
+Use these severities for bootstrap infrastructure events:
+
+| Severity | Examples | Response expectation |
+| --- | --- | --- |
+| SEV1 | Production state bucket access failure, unintended KMS key deletion schedule, state/log bucket policy removal, confirmed secret exposure, or destructive prod apply drift. | Immediate incident owner, containment first, maintainer and security reviewer notified. |
+| SEV2 | Failed AWS Backup job for protected resources, prod drift, GitHub OIDC trust change, budget forecast at or above 100%, or Cost Anomaly alert above threshold. | Same business day triage, owner assigned, mitigation or accepted-risk note recorded. |
+| SEV3 | Test-environment drift, non-prod backup failure, catalog fanout warning, quota headroom warning, or stale repository metadata. | Triage within three business days and track follow-up to closure. |
+| SEV4 | Documentation gaps, dashboard freshness gaps, non-urgent KPI misses, or scheduled review actions. | Review in the next monthly operations cycle. |
+
+## KPI Register
+
+The monthly operations review should track these minimum KPIs:
+
+| KPI | Target | Evidence source | Owner |
+| --- | --- | --- | --- |
+| Backup job health | No unresolved failed, aborted, or expired protected-resource jobs. | AWS Backup metadata and EventBridge alert history. | SRE |
+| Restore drill freshness | Last successful non-production drill is no older than 90 days. | Restore evidence record. | SRE |
+| Drift freshness | Scheduled drift evidence is no older than 24 hours for shared stacks. | GitHub workflow run or safe Pulumi refresh evidence. | SRE |
+| Guardrail health | Required same-repo safety checks are passing and not skipped outside policy. | GitHub checks and branch-protection evidence. | Maintainer |
+| Alert route freshness | Operations SNS subscription and downstream route confirmed in the last 30 days or after route changes. | SNS metadata or incident-tool evidence. | SRE |
+| Cost alert readiness | Budget and Cost Anomaly thresholds reviewed in the last 30 days. | Budget/anomaly metadata plus review record. | FinOps owner |
+| Catalog demand review | Active catalog entries have owner, lifecycle state, last-reviewed date, and expected environments. | Repository catalog and fanout output. | Maintainer |
+
+Missing or stale KPI evidence is a no-go for an honest 5/5 even when the
+underlying AWS resources exist.
+
+## Runbook Expectations
+
+Every bootstrap runbook or alert playbook should include:
+
+- Signal source, severity, owner, and escalation route.
+- First five minutes of metadata-only checks.
+- Containment and rollback or fail-forward decision points.
+- Recovery steps and validation commands that avoid secret-revealing output.
+- Communication template for affected maintainers or account owners.
+- Evidence to retain, including timestamps, workflow URLs, AWS resource names,
+  and cleanup confirmation.
+- Post-incident review trigger, action owner, target date, and fallback if the
+  evidence cannot be collected safely.
+
 ## Backup and Restore Evidence
 
 Monthly backup review should record the stack, account, vault name, plan name,

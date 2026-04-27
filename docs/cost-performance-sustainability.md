@@ -2,7 +2,8 @@
 
 This repository uses static controls first and cloud spend controls second.
 Bootstrap infrastructure creates durable AWS resources, so the review process
-must show the projected fanout before resources are applied.
+must show the projected fanout before resources are applied and must preserve
+evidence that account-level cost controls are routed to an owner.
 
 ## Repository Fanout
 
@@ -25,9 +26,53 @@ operations for cost and quota-driving resource families. The check writes
 Markdown and JSON evidence under `.artifacts/pulumi-preview/` in CI.
 
 The proxy does not calculate spend. It is a guardrail for unusual fanout,
-resource replacement, and quota pressure. Use AWS Budgets, Cost Anomaly
-Detection, and Service Quotas for account-level controls once the payer account,
-alert destination, and owner are confirmed.
+resource replacement, and quota pressure. It complements the AWS Budget, Cost
+Anomaly Detection, and Service Quotas controls used for account-level review.
+
+## AWS Budget And Cost Anomaly Controls
+
+The bootstrap stack provisions repo-owned cost alerts through the same
+operations SNS topic used for control-plane events:
+
+- A monthly AWS Budget named `bootstrap-<environment>-monthly-cost`.
+- Actual spend notification at 80% of the configured budget.
+- Forecasted spend notification at 100% of the configured budget.
+- A service-dimensional Cost Anomaly Detection monitor named
+  `bootstrap-<environment>-service-cost` when
+  `bootstrap-infrastructure:costAnomalyMonitorArn` is unset, or reuse of that
+  configured existing monitor ARN when the account already has a
+  service-dimensional monitor.
+- An immediate anomaly subscription named
+  `bootstrap-<environment>-cost-alerts` that publishes to the operations SNS
+  topic when absolute impact meets the configured threshold.
+- Optional activation of the repository cost allocation tag keys when
+  `bootstrap-infrastructure:manageCostAllocationTags` is enabled.
+
+Cost Explorer must already be enabled in the target account before Pulumi can
+create Cost Anomaly Detection resources. AWS does not provide an API to enable
+Cost Explorer, so this remains an account-owner prerequisite for test and
+shared environments.
+
+Configuration values are non-secret:
+
+| Config key | Default | Purpose |
+| --- | ---: | --- |
+| `bootstrap-infrastructure:monthlyBudgetLimitUsd` | `100` | Monthly budget limit in USD. |
+| `bootstrap-infrastructure:costAnomalyThresholdUsd` | `10` | Absolute anomaly impact threshold in USD. |
+| `bootstrap-infrastructure:costAnomalyMonitorArn` | unset | Existing Cost Anomaly monitor ARN to reuse when the account already has a service-dimensional monitor. |
+| `bootstrap-infrastructure:manageCostAllocationTags` | `false` | Activates the repo-managed cost allocation tags in Cost Explorer when the account owner approves the account-global change. |
+
+Pulumi exports provide non-secret evidence handles for reviews:
+
+- `monthlyBudgetName`
+- `costAnomalyMonitorArn`
+- `costAnomalySubscriptionArn`
+- `operationsAlertTopicArn`
+
+Do not inspect invoices, Cost Explorer report contents, or billing exports in
+routine repository evidence. For Well-Architected review, metadata such as the
+budget name, anomaly monitor ARN, threshold configuration, SNS route, owner, and
+last reviewed date is sufficient.
 
 ## Catalog Metadata
 
@@ -42,6 +87,22 @@ These values are non-secret and may be exported or tagged for review evidence.
 They should not contain tokens, account credentials, customer data, or private
 incident details.
 
+## Remaining 5/5 Cost Evidence
+
+The repository now owns the Budget and Cost Anomaly Detection resources, but an
+honest 5/5 still needs account-owner evidence outside the codebase:
+
+- FinOps owner approval for the monthly budget limit and anomaly threshold.
+- Cost Explorer enabled in the target account before Pulumi apply.
+- Confirmed SNS subscription or downstream incident route for the operations
+  topic.
+- Activated cost allocation tag evidence when the payer account supports it.
+- Monthly cost report or dashboard location with reviewer and date.
+- Spend approval thresholds by account and environment.
+- Cross-region replication transfer estimate and action threshold.
+- Live AWS Service Quotas or account headroom evidence before large catalog
+  expansion.
+
 ## Review Expectations
 
 For every catalog expansion, reviewers should check:
@@ -51,4 +112,7 @@ For every catalog expansion, reviewers should check:
 - whether S3, KMS, IAM, backup, and alerting fanout stays below thresholds
 - whether deprecated or archived repositories should be removed before adding
   more durable resources
-- whether live AWS quota or budget checks are needed before apply
+- whether the monthly budget and anomaly threshold still match the expected
+  spend profile
+- whether the operations alert route has a confirmed owner and subscription
+- whether live AWS quota or payer-account evidence is needed before apply

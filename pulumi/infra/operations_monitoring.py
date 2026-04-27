@@ -26,6 +26,11 @@ SNS_TOPIC_OWNER_ACTIONS = (
 )
 
 
+def _budget_source_arn(account_id: str, partition: str) -> str:
+    """Return the account-scoped AWS Budgets source ARN pattern."""
+    return f"arn:{partition}:budgets::{account_id}:*"
+
+
 def _environment_part(settings: BootstrapSettings) -> str:
     """Return a resource-name-safe environment segment."""
     return settings.sanitize_bucket_component(settings.environment, "environment")
@@ -73,6 +78,32 @@ def _topic_policy(topic_arn: str, account_id: str, partition: str) -> str:
                         "StringEquals": {"aws:SourceAccount": account_id},
                     },
                 },
+                {
+                    "Sid": "AllowBudgetsPublish",
+                    "Effect": "Allow",
+                    "Principal": {"Service": "budgets.amazonaws.com"},
+                    "Action": "sns:Publish",
+                    "Resource": topic_arn,
+                    "Condition": {
+                        "StringEquals": {"aws:SourceAccount": account_id},
+                        "ArnLike": {
+                            "aws:SourceArn": _budget_source_arn(
+                                account_id,
+                                partition,
+                            )
+                        },
+                    },
+                },
+                {
+                    "Sid": "AllowCostAnomalyPublish",
+                    "Effect": "Allow",
+                    "Principal": {"Service": "costalerts.amazonaws.com"},
+                    "Action": "sns:Publish",
+                    "Resource": topic_arn,
+                    "Condition": {
+                        "StringEquals": {"aws:SourceAccount": account_id},
+                    },
+                },
             ],
         },
         sort_keys=True,
@@ -97,7 +128,36 @@ def _topic_key_policy(account_id: str, partition: str) -> str:
                     "Effect": "Allow",
                     "Principal": {"Service": "events.amazonaws.com"},
                     "Action": ["kms:Decrypt", "kms:GenerateDataKey*"],
+                    # EventBridge-to-encrypted-SNS KMS grants cannot rely on
+                    # aws:SourceAccount/aws:SourceArn conditions; the SNS topic
+                    # policy constrains the publisher account instead.
                     "Resource": "*",
+                },
+                {
+                    "Sid": "AllowBudgetsForEncryptedSns",
+                    "Effect": "Allow",
+                    "Principal": {"Service": "budgets.amazonaws.com"},
+                    "Action": ["kms:Decrypt", "kms:GenerateDataKey*"],
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEquals": {"aws:SourceAccount": account_id},
+                        "ArnLike": {
+                            "aws:SourceArn": _budget_source_arn(
+                                account_id,
+                                partition,
+                            )
+                        },
+                    },
+                },
+                {
+                    "Sid": "AllowCostAnomalyForEncryptedSns",
+                    "Effect": "Allow",
+                    "Principal": {"Service": "costalerts.amazonaws.com"},
+                    "Action": ["kms:Decrypt", "kms:GenerateDataKey*"],
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEquals": {"aws:SourceAccount": account_id},
+                    },
                 },
             ],
         },
@@ -226,7 +286,7 @@ class OperationsMonitoring(pulumi.ComponentResource):
         )
         self.topic_key = topic_key
         self.topic_key_alias = topic_key_alias
-        aws.sns.TopicPolicy(
+        topic_policy = aws.sns.TopicPolicy(
             f"{name}-topic-policy",
             arn=topic.arn,
             policy=topic.arn.apply(
@@ -236,6 +296,7 @@ class OperationsMonitoring(pulumi.ComponentResource):
         )
 
         self.topic = topic
+        self.topic_policy = topic_policy
         self.rules: dict[str, aws.cloudwatch.EventRule] = {}
         for suffix, pattern in _event_patterns().items():
             rule = aws.cloudwatch.EventRule(

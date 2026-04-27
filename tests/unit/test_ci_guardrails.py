@@ -142,8 +142,48 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
         guardrails_module.cost_proxy_report({"steps": []}),
         stack="empty",
     )
+    assert (  # nosec B101
+        "No create/replace cost or quota driver changes detected." in empty_rendered
+    )
+    assert "| Category | Count |" in empty_rendered  # nosec B101
     assert "| none | 0 |" in empty_rendered  # nosec B101
-    assert "| Category | Count |" not in empty_rendered  # nosec B101
+
+    cost_controls_report = guardrails_module.cost_proxy_report(
+        {
+            "steps": [
+                {"op": "create", "newState": {"type": "aws:budgets/budget:Budget"}},
+                {
+                    "op": "create",
+                    "newState": {
+                        "type": "aws:costexplorer/anomalyMonitor:AnomalyMonitor"
+                    },
+                },
+                {
+                    "op": "create",
+                    "newState": {
+                        "type": (
+                            "aws:costexplorer/anomalySubscription:AnomalySubscription"
+                        )
+                    },
+                },
+                {
+                    "op": "create",
+                    "newState": {
+                        "type": ("aws:costexplorer/costAllocationTag:CostAllocationTag")
+                    },
+                },
+            ]
+        }
+    )
+    assert cost_controls_report["weightedChange"] == 8  # nosec B101
+    assert cost_controls_report["categories"]["budgets"] == 1  # nosec B101
+    assert (  # nosec B101
+        cost_controls_report["categories"]["costAnomalyMonitors"] == 1
+    )
+    assert (  # nosec B101
+        cost_controls_report["categories"]["costAnomalySubscriptions"] == 1
+    )
+    assert cost_controls_report["categories"]["costAllocationTags"] == 1  # nosec B101
 
     json_path = tmp_path / "cost-proxy.json"
     markdown_path = tmp_path / "cost-proxy.md"
@@ -158,6 +198,7 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
         )
         == 0
     )
+
     assert (  # nosec B101
         guardrails_module.cli(
             [
@@ -195,6 +236,22 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
             ]
         )
         == 0
+    )
+    generated_only_markdown_path = tmp_path / "generated-only.md"
+    assert (  # nosec B101
+        guardrails_module.cli(
+            [
+                "cost-proxy",
+                "--output-md",
+                str(generated_only_markdown_path),
+                str(iam_inputs_path),
+            ]
+        )
+        == 0
+    )
+    assert (  # nosec B101
+        "No Pulumi preview files were available"
+        in generated_only_markdown_path.read_text(encoding="utf-8")
     )
 
 

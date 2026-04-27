@@ -8,6 +8,7 @@ from infra import (
     BootstrapInfrastructure,
     BootstrapInfrastructureDependencies,
     CentralLoggingBuckets,
+    CostControls,
     GitHubAutomation,
     ManagedRepositoryCatalog,
     OperationsMonitoring,
@@ -20,6 +21,7 @@ from infra import (
     pulumi_secrets,
     pulumi_state,
 )
+from infra.cost_controls import COST_ALLOCATION_TAG_KEYS
 from infra.iam import GitHubOidcRoles, github_oidc
 from infra.utils.outputs import future_output
 
@@ -184,6 +186,15 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     assert topic_statements["AllowEventBridgePublish"]["Condition"] == {  # nosec B101
         "StringEquals": {"aws:SourceAccount": "123456789012"}
     }
+    assert topic_statements["AllowBudgetsPublish"]["Condition"] == {  # nosec B101
+        "ArnLike": {
+            "aws:SourceArn": "arn:aws:budgets::123456789012:*",
+        },
+        "StringEquals": {"aws:SourceAccount": "123456789012"},
+    }
+    assert topic_statements["AllowCostAnomalyPublish"]["Condition"] == {  # nosec B101
+        "StringEquals": {"aws:SourceAccount": "123456789012"},
+    }
     assert (  # nosec B101
         alert_topic_key_alias_state["name"]
         == "alias/bootstrap-test-operations-alerting"
@@ -228,6 +239,99 @@ def test_operations_monitoring_policies_are_partition_aware():
     assert key_statements["EnableAccountPermissions"]["Principal"] == {  # nosec B101
         "AWS": "arn:aws-us-gov:iam::123456789012:root"
     }
+    assert topic_statements["AllowBudgetsPublish"]["Condition"]["ArnLike"] == {  # nosec B101
+        "aws:SourceArn": "arn:aws-us-gov:budgets::123456789012:*"
+    }
+
+
+def test_cost_controls_emit_budget_and_anomaly_resources(pulumi_mocks, monkeypatch):  # noqa: ARG001
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "monthly_budget_limit_usd", "75")
+    monkeypatch.setattr(config.settings, "cost_anomaly_threshold_usd", "15")
+    monkeypatch.setattr(config.settings, "cost_anomaly_monitor_arn", None)
+    monkeypatch.setattr(config.settings, "manage_cost_allocation_tags", True)
+
+    start = len(pulumi_mocks.resources)
+    controls = CostControls(
+        "cost-controls",
+        operations_topic_arn=(
+            "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+        ),
+    )
+
+    budget_name = _sync_await(future_output(controls.monthly_budget.name))
+    monitor_arn = _sync_await(future_output(controls.anomaly_monitor.arn))
+    subscription_arn = _sync_await(future_output(controls.anomaly_subscription.arn))
+
+    assert budget_name == "bootstrap-test-monthly-cost"  # nosec B101
+    assert monitor_arn is not None  # nosec B101
+    assert subscription_arn is not None  # nosec B101
+
+    new_resources = pulumi_mocks.resources[start:]
+    budget_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:budgets/budget:Budget"
+    )
+    monitor_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:costexplorer/anomalyMonitor:AnomalyMonitor"
+    )
+    subscription_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:costexplorer/anomalySubscription:AnomalySubscription"
+    )
+    allocation_tags = [
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:costexplorer/costAllocationTag:CostAllocationTag"
+    ]
+
+    assert budget_state["limitAmount"] == "75"  # nosec B101
+    assert budget_state["limitUnit"] == "USD"  # nosec B101
+    assert budget_state["notifications"][0]["subscriberSnsTopicArns"] == [  # nosec B101
+        "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+    ]
+    assert monitor_state["monitorDimension"] == "SERVICE"  # nosec B101
+    assert subscription_state["frequency"] == "IMMEDIATE"  # nosec B101
+    assert subscription_state["subscribers"][0]["type"] == "SNS"  # nosec B101
+    assert len(allocation_tags) == len(COST_ALLOCATION_TAG_KEYS)  # nosec B101
+
+
+def test_cost_controls_can_reuse_existing_anomaly_monitor(pulumi_mocks, monkeypatch):  # noqa: ARG001
+    existing_monitor_arn = "arn:aws:ce::123456789012:anomalymonitor/existing-service"
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(
+        config.settings, "cost_anomaly_monitor_arn", existing_monitor_arn
+    )
+    monkeypatch.setattr(config.settings, "manage_cost_allocation_tags", False)
+
+    start = len(pulumi_mocks.resources)
+    controls = CostControls(
+        "cost-controls-existing-monitor",
+        operations_topic_arn=(
+            "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+        ),
+    )
+
+    monitor_arn = _sync_await(future_output(controls.anomaly_monitor_arn))
+    _sync_await(future_output(controls.anomaly_subscription.arn))
+    assert monitor_arn == existing_monitor_arn  # nosec B101
+    assert controls.anomaly_monitor is None  # nosec B101
+
+    new_resources = pulumi_mocks.resources[start:]
+    assert not any(  # nosec B101
+        resource_type == "aws:costexplorer/anomalyMonitor:AnomalyMonitor"
+        for resource_type, _name, _state in new_resources
+    )
+    subscription_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:costexplorer/anomalySubscription:AnomalySubscription"
+    )
+    assert subscription_state["monitorArnLists"] == [existing_monitor_arn]  # nosec B101
 
 
 def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypatch):  # noqa: ARG001
@@ -529,6 +633,44 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
         "arn:aws:sns:*:123456789012:bootstrap-test-operations"
     ]
+    assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
+        "arn:aws:budgets::123456789012:budget/bootstrap-test-*"
+    ]
+    assert statements["CreateBudgetServiceLinkedRole"]["Resource"] == (  # nosec B101
+        "arn:aws:iam::123456789012:role/aws-service-role/"
+        "budgets.amazonaws.com/AWSServiceRoleForBudgets"
+    )
+    assert statements["CreateBudgetServiceLinkedRole"]["Condition"] == {  # nosec B101
+        "StringEquals": {"iam:AWSServiceName": "budgets.amazonaws.com"}
+    }
+    assert statements["ReadBillingViewDataForBudgets"] == {  # nosec B101
+        "Sid": "ReadBillingViewDataForBudgets",
+        "Effect": "Allow",
+        "Action": ["billing:GetBillingViewData"],
+        "Resource": "*",
+    }
+    assert statements["CreateBootstrapCostExplorer"]["Resource"] == "*"  # nosec B101
+    assert statements["CreateBootstrapCostExplorer"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:RequestTag/Environment": "test",
+            "aws:RequestTag/Purpose": [
+                "cost-anomaly-monitor",
+                "cost-anomaly-subscription",
+            ],
+        }
+    }
+    assert statements["ManageBootstrapCostExplorer"]["Resource"] == [  # nosec B101
+        "arn:aws:ce::123456789012:anomalymonitor/*",
+        "arn:aws:ce::123456789012:anomalysubscription/*",
+    ]
+    assert (  # nosec B101
+        "ManageBootstrapCostAllocationTags" not in statements
+    )
+    assert "budgets:ModifyBudget" in statements["ManageBootstrapBudgets"]["Action"]  # nosec B101
+    assert (  # nosec B101
+        "ce:CreateAnomalySubscription"
+        in statements["CreateBootstrapCostExplorer"]["Action"]
+    )
 
 
 def test_github_automation_requires_repo(monkeypatch):

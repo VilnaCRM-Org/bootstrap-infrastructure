@@ -225,6 +225,10 @@ def test_bootstrap_settings_from_pulumi_config_uses_defaults_and_stack_fallback(
     assert settings_obj.github_token is github_token  # nosec B101
     assert settings_obj.github_oidc_provider_arn is None  # nosec B101
     assert settings_obj.repository_catalog_path is None  # nosec B101
+    assert settings_obj.monthly_budget_limit_usd == "100"  # nosec B101
+    assert settings_obj.cost_anomaly_threshold_usd == "10"  # nosec B101
+    assert settings_obj.cost_anomaly_monitor_arn is None  # nosec B101
+    assert settings_obj.manage_cost_allocation_tags is False  # nosec B101
 
 
 def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch):
@@ -243,6 +247,13 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
             "githubBranch": "release",
             "loggingPrefix": "vilna",
             "replicationRegion": "eu-west-1",
+            "monthlyBudgetLimitUsd": "250.50",
+            "costAnomalyThresholdUsd": "25",
+            "costAnomalyMonitorArn": (
+                "arn:aws:ce::123456789012:anomalymonitor/"
+                "e5509927-1fcc-400c-9536-0fdd01314bc9"
+            ),
+            "manageCostAllocationTags": "true",
             "githubOidcProviderArn": "arn:aws:iam::123456789012:oidc-provider/test",
             "repositoryCatalogPath": "repositories.json",
         },
@@ -270,6 +281,42 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
         == "arn:aws:iam::123456789012:oidc-provider/test"
     )  # nosec B101
     assert settings_obj.repository_catalog_path == "repositories.json"  # nosec B101
+    assert settings_obj.monthly_budget_limit_usd == "250.50"  # nosec B101
+    assert settings_obj.cost_anomaly_threshold_usd == "25"  # nosec B101
+    assert settings_obj.cost_anomaly_monitor_arn == (  # nosec B101
+        "arn:aws:ce::123456789012:anomalymonitor/e5509927-1fcc-400c-9536-0fdd01314bc9"
+    )
+    assert settings_obj.manage_cost_allocation_tags is True  # nosec B101
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "match"),
+    [
+        ("monthlyBudgetLimitUsd", "0", "positive decimal"),
+        ("costAnomalyThresholdUsd", "-1", "positive decimal"),
+        ("monthlyBudgetLimitUsd", "nan", "finite positive decimal"),
+        ("costAnomalyThresholdUsd", "inf", "finite positive decimal"),
+    ],
+)
+def test_bootstrap_settings_rejects_invalid_cost_thresholds(key, value, match):
+    """Cost thresholds should fail before AWS receives invalid numeric strings."""
+    values = {"githubOrg": "VilnaCRM-Org", key: value}
+
+    with pytest.raises(ValueError, match=match):
+        BootstrapSettings.from_pulumi_config(DummyPulumiConfig(values=values))
+
+
+def test_bootstrap_settings_rejects_invalid_cost_anomaly_monitor_arn():
+    """Existing monitor reuse should fail fast when the configured ARN is malformed."""
+    config_obj = DummyPulumiConfig(
+        values={
+            "githubOrg": "VilnaCRM-Org",
+            "costAnomalyMonitorArn": "arn:aws:sns:eu-central-1:123456789012:topic",
+        }
+    )
+
+    with pytest.raises(ValueError, match="Cost Anomaly monitor ARN"):
+        BootstrapSettings.from_pulumi_config(config_obj)
 
 
 @pytest.mark.parametrize(

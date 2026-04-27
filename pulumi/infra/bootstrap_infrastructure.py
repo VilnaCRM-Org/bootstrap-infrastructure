@@ -92,6 +92,13 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             settings=settings,
             opts=child_opts,
         )
+        self.cost_controls = self.dependencies.cost_controls_cls(
+            "cost-controls",
+            operations_topic_arn=self.monitoring.topic.arn,
+            notification_dependencies=[self.monitoring.topic_policy],
+            settings=settings,
+            opts=child_opts,
+        )
 
         self.outputs: dict[str, pulumi.Input[object]] = {
             "centralLogBucket": self.logging.bucket.bucket,
@@ -107,6 +114,13 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             "backupVaultName": self.backup.vault.name,
             "backupVaultArn": self.backup.vault.arn,
             "operationsAlertTopicArn": self.monitoring.topic.arn,
+            "operationsAlertRuleNames": {
+                suffix: rule.name for suffix, rule in self.monitoring.rules.items()
+            },
+            "operationsAlertTopicKeyAliasName": self.monitoring.topic_key_alias.name,
+            "monthlyBudgetName": self.cost_controls.monthly_budget.name,
+            "costAnomalyMonitorArn": self.cost_controls.anomaly_monitor_arn,
+            "costAnomalySubscriptionArn": (self.cost_controls.anomaly_subscription.arn),
         }
         if self.automation is not None:
             self.outputs.update(

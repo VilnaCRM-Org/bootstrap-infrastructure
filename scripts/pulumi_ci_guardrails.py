@@ -41,6 +41,14 @@ COST_DRIVER_TYPE_PATTERNS = (
     ("ecrRepositories", "aws:ecr/repository:Repository", 2),
     ("snsTopics", "aws:sns/topic:Topic", 1),
     ("eventRules", "aws:cloudwatch/eventRule:EventRule", 1),
+    ("budgets", "aws:budgets/budget:Budget", 3),
+    ("costAnomalyMonitors", "aws:costexplorer/anomalyMonitor:AnomalyMonitor", 2),
+    (
+        "costAnomalySubscriptions",
+        "aws:costexplorer/anomalySubscription:AnomalySubscription",
+        2,
+    ),
+    ("costAllocationTags", "aws:costexplorer/costAllocationTag:CostAllocationTag", 1),
 )
 DEFAULT_MAX_COST_PROXY_WEIGHT = 50
 GENERATED_PREVIEW_ARTIFACT_NAMES = frozenset({"iam-inputs.json"})
@@ -156,6 +164,9 @@ def render_cost_proxy_markdown(
         "",
     ]
     if all(count == 0 for count in categories.values()):
+        lines.append("No create/replace cost or quota driver changes detected.")
+        lines.append("")
+        lines.extend(["| Category | Count |", "| --- | ---: |"])
         lines.append("| none | 0 |")
         lines.append("")
         return "\n".join(lines)
@@ -165,6 +176,20 @@ def render_cost_proxy_markdown(
         if count:
             lines.append(f"| {category} | {count} |")
     lines.append("")
+    return "\n".join(lines)
+
+
+def render_no_cost_proxy_inputs_markdown() -> str:
+    """Render non-empty Markdown when only generated helper files were supplied."""
+    lines = [
+        "### Pulumi Cost Proxy",
+        "",
+        (
+            "No Pulumi preview files were available after excluding generated "
+            "helper artifacts."
+        ),
+        "",
+    ]
     return "\n".join(lines)
 
 
@@ -523,19 +548,24 @@ def _run_cost_proxy(
     output_md: Path | None,
 ) -> int:
     """Summarize preview cost/quota proxy and fail on large unexpected fanout."""
+    input_files = preview_input_files(preview_files)
     reports = [
         {
             "path": str(preview_file),
             **cost_proxy_report(load_preview(preview_file)),
         }
-        for preview_file in preview_input_files(preview_files)
+        for preview_file in input_files
     ]
-    markdown = "\n".join(
-        render_cost_proxy_markdown(
-            Path(cast(str, report["path"])),
-            report,
+    markdown = (
+        "\n".join(
+            render_cost_proxy_markdown(
+                Path(cast(str, report["path"])),
+                report,
+            )
+            for report in reports
         )
-        for report in reports
+        if reports
+        else render_no_cost_proxy_inputs_markdown()
     )
     if output_json is not None:
         output_json.parent.mkdir(parents=True, exist_ok=True)

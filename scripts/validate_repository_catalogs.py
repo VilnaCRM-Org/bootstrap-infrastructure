@@ -31,6 +31,12 @@ CENTRAL_STACK_FANOUT = {
     "ecrRepositories": 1,
     "snsTopics": 1,
     "eventRules": 4,
+    "budgets": 1,
+    "costAnomalyMonitors": 1,
+    "costAnomalySubscriptions": 1,
+    # Cost allocation tags are optional and config-driven; keep the category
+    # visible without assuming the optional controls are enabled by default.
+    "costAllocationTags": 0,
 }
 LAST_REVIEWED_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 
@@ -265,6 +271,10 @@ def _fanout_thresholds(args: argparse.Namespace) -> dict[str, int]:
         "iamRoles": args.max_iam_roles,
         "backupSelections": args.max_backup_selections,
         "ecrRepositories": args.max_ecr_repositories,
+        "budgets": args.max_budgets,
+        "costAnomalyMonitors": args.max_cost_anomaly_monitors,
+        "costAnomalySubscriptions": args.max_cost_anomaly_subscriptions,
+        "costAllocationTags": args.max_cost_allocation_tags,
     }
 
 
@@ -278,6 +288,23 @@ def _fanout_failures(
         if value > threshold:
             failures.append(f"{catalog_path}: {key} fanout {value} exceeds {threshold}")
     return failures
+
+
+def _fanout_threshold_report(
+    report: Mapping[str, int], thresholds: Mapping[str, int]
+) -> dict[str, dict[str, int | str]]:
+    """Return current fanout counts with threshold headroom for reporting."""
+    threshold_report: dict[str, dict[str, int | str]] = {}
+    for key, threshold in thresholds.items():
+        current = report.get(key, 0)
+        threshold_report[key] = {
+            "current": current,
+            "max": threshold,
+            "remaining": max(threshold - current, 0),
+            "overBy": max(current - threshold, 0),
+            "status": "exceeded" if current > threshold else "ok",
+        }
+    return threshold_report
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -307,6 +334,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-iam-roles", type=int, default=300)
     parser.add_argument("--max-backup-selections", type=int, default=500)
     parser.add_argument("--max-ecr-repositories", type=int, default=50)
+    parser.add_argument("--max-budgets", type=int, default=20)
+    parser.add_argument("--max-cost-anomaly-monitors", type=int, default=20)
+    parser.add_argument("--max-cost-anomaly-subscriptions", type=int, default=20)
+    parser.add_argument("--max-cost-allocation-tags", type=int, default=100)
     args = parser.parse_args(argv)
 
     catalog_paths = list(args.catalogs) or repository_catalog_paths(ROOT_DIR)
@@ -331,12 +362,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     for path in validated_paths:
         print(f"validated repository catalog: {path}")
     failures: list[str] = []
+    thresholds = _fanout_thresholds(args)
     for path, report in reports:
         print(
             f"repository fanout estimate for {path}: "
             f"{json.dumps(report, sort_keys=True)}"
         )
-        failures.extend(_fanout_failures(path, report, _fanout_thresholds(args)))
+        threshold_report_json = json.dumps(
+            _fanout_threshold_report(report, thresholds),
+            sort_keys=True,
+        )
+        print(f"repository fanout thresholds for {path}: {threshold_report_json}")
+        failures.extend(_fanout_failures(path, report, thresholds))
     if failures:
         for failure in failures:
             print(f"error: {failure}", file=sys.stderr)

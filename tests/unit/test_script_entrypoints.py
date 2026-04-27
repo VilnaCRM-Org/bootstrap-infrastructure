@@ -350,6 +350,10 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
         "backupPlans": 1,
         "backupSelections": 2,
         "backupVaults": 1,
+        "budgets": 1,
+        "costAllocationTags": 0,
+        "costAnomalyMonitors": 1,
+        "costAnomalySubscriptions": 1,
         "ecrRepositories": 1,
         "environmentInstances": 2,
         "eventRules": 4,
@@ -360,15 +364,39 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
         "s3Buckets": 6,
         "snsTopics": 1,
     }
+    assert module._fanout_threshold_report(  # nosec B101
+        {"s3Buckets": 6, "kmsKeys": 3},
+        {"s3Buckets": 10, "kmsKeys": 2},
+    ) == {
+        "kmsKeys": {
+            "current": 3,
+            "max": 2,
+            "overBy": 1,
+            "remaining": 0,
+            "status": "exceeded",
+        },
+        "s3Buckets": {
+            "current": 6,
+            "max": 10,
+            "overBy": 0,
+            "remaining": 4,
+            "status": "ok",
+        },
+    }
     assert module.main([]) == 0  # nosec B101
     assert module.main(["--fanout-report"]) == 0  # nosec B101
     assert module.main(["--fanout-report", "--max-s3-buckets", "1"]) == 1  # nosec B101
+    assert module.main(["--fanout-report", "--max-budgets", "0"]) == 1  # nosec B101
 
     captured = capsys.readouterr()
     output = captured.out
     assert f"validated repository catalog: {catalog_path}" in output  # nosec B101
     assert "repository fanout estimate" in output  # nosec B101
+    assert "repository fanout thresholds" in output  # nosec B101
+    assert '"current": 6' in output  # nosec B101
+    assert '"remaining": 194' in output  # nosec B101
     assert "s3Buckets fanout" in captured.err  # nosec B101
+    assert "budgets fanout" in captured.err  # nosec B101
 
 
 def test_validate_repository_catalogs_reports_schema_errors(

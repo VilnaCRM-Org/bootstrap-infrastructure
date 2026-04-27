@@ -135,10 +135,10 @@ buckets, KMS keys, IAM roles, AWS Backup resources, ECR repositories, SNS
 topics, EventBridge rules, and S3 replication configuration.
 
 The proxy is intentionally static. It does not estimate monthly spend and it
-does not replace AWS Budgets, Cost Anomaly Detection, Service Quotas, or a
-FinOps review. It gives reviewers an early signal that a pull request is adding
-or replacing unusually many durable resources before the change reaches the
-test account.
+does not replace the repo-managed AWS Budget, Cost Anomaly Detection resources,
+Service Quotas, or a FinOps review. It gives reviewers an early signal that a
+pull request is adding or replacing unusually many durable resources before the
+change reaches the test account.
 
 ## IAM validation
 

@@ -5,21 +5,21 @@ Issue #17 planning is ready and the first implementation PR is now scoped to
 safe, non-secret controls that do not require irreversible account-level cost or
 retention decisions. This implementation covers the highest-priority in-repo
 slice: automation IAM blast-radius reduction, operations/security event
-monitoring, classification tags, repository metadata, static fanout checks, and
-preview cost proxy evidence.
+monitoring, classification tags, repository metadata, static fanout checks,
+preview cost proxy evidence, and AWS Budget/Cost Anomaly Detection controls.
 
 This implementation does not claim final 5/5 Well-Architected scores. Several
 target controls still require external evidence or account-owner decisions,
 including branch protection proof, confirmed alert subscriptions, live AWS quota
-headroom, budgets or anomaly detection, restore drills, and production approval
-evidence.
+headroom, activated cost allocation tags, monthly FinOps review artifacts,
+restore drills, and production approval evidence.
 
 ## Alignment Checks
 
 | Area | Status | Notes |
 | --- | --- | --- |
 | Problem definition | Ready | Issue #17 provides pillar scores, question-level gaps, priority groups, and completion criteria. |
-| Scope boundary | Ready | This implementation PR changes Pulumi code, workflows, docs, tests, and specs, but avoids secret access, stack exports, and irreversible Vault Lock/Budget decisions. |
+| Scope boundary | Ready | This implementation PR changes Pulumi code, scripts, docs, tests, and specs, but avoids secret access, stack exports, irreversible Vault Lock decisions, and organization-wide cost-policy changes. |
 | Epic decomposition | Ready | Eight epics preserve the issue priority model and cover all listed roadmap items. |
 | Evidence model | Ready | Future controls require repo, CI, AWS metadata, or external-control evidence. |
 | Question coverage | Ready | `question-matrix.md` covers all 57 AWS Well-Architected questions with current evidence, gaps, target proof, owner role, and cadence. |
@@ -33,6 +33,7 @@ evidence.
 | --- | --- |
 | Automation IAM | Repository Pulumi secrets KMS data-plane actions were removed from bootstrap automation; new SNS/EventBridge permissions are scoped to deterministic operations resources. |
 | Operations monitoring | `OperationsMonitoring` creates the environment operations SNS topic, a dedicated customer-managed KMS key for encrypted EventBridge delivery, and EventBridge rules for Backup failure, KMS risk, IAM/OIDC risk, and S3 control-plane risk events. |
+| Cost controls | `CostControls` creates the monthly AWS Budget, 80% actual and 100% forecast notifications, creates or reuses a service-dimensional Cost Anomaly Detection monitor, creates an immediate anomaly subscription, supports optional cost allocation tag activation, and exports non-secret review handles. |
 | Classification | `DataClassification`, `Criticality`, and `RetentionClass` are default tags, committed stack config values, and policy-pack required tags. |
 | Catalog demand metadata | Repository catalogs support `owner`, `lifecycleState`, `lastReviewed`, and `expectedEnvironments`; metadata is exported and tagged where repository resources are created. |
 | Static fanout | `make test-repository-fanout` estimates resource growth before catalog expansion is merged. |
@@ -45,7 +46,7 @@ evidence.
 2. Epic 2: fix replication-region defaulting, allowlist validation, and RTO/RPO assumptions.
 3. Epic 3: reduce bootstrap automation IAM blast radius and document remaining wildcards.
 4. Epic 4 and Epic 5: add monitoring, alerting, incident process, restore runbooks, and restore validation.
-5. Epic 6 and Epic 7: add cost controls, repo-fanout preflight, quota checks, and cleanup cadence.
+5. Epic 6 and Epic 7: operationalize cost controls, repo-fanout preflight, quota checks, and cleanup cadence.
 6. Epic 8: add lifecycle, sustainability, and conditional future policy coverage.
 7. Run a follow-up Well-Architected review and update scores only after implementation evidence exists.
 
@@ -54,12 +55,35 @@ evidence.
 | Dependency | Needed For | Evidence Required |
 | --- | --- | --- |
 | GitHub branch protection settings | Epic 1 | Required status checks, reviewer rules, and skip policy evidence. |
-| AWS account and organization cost controls | Epic 6 | Budget, anomaly detection, or external FinOps control evidence. |
-| Alert routing destination | Epic 4 | SNS, ChatOps, ticketing, or external incident tool ownership and routing evidence. |
+| FinOps operating model and payer-account evidence | Epic 6 | Cost Explorer enabled in the target account, approved budget/anomaly thresholds, confirmed alert route, activated tag evidence when enabled, monthly cost report location, transfer model, and spend approval policy. |
+| Alert routing destination | Epic 4 | Confirmed SNS subscription, ChatOps, ticketing, or external incident tool ownership and routing evidence. |
 | Backup Vault Lock decision | Epic 5 | In-repo implementation evidence or external-control exemption. |
 | Quota ownership | Epic 7 | Service quota thresholds, approval owner, and escalation path. |
+| Restore drill evidence | Epic 5 | Latest non-production restore date, operator, source backup, validation result, and cleanup confirmation. |
+| Production approval evidence | Epic 1 | Protected environment reviewer rules, approved apply evidence, reviewed SHA, and skipped-check policy. |
+| Security account controls | SEC1-SEC11 | MFA/SSO posture, CloudTrail/GuardDuty/Security Hub/Config evidence, vulnerability SLA, and exception register where applicable. |
 | Sustainability goals | Epic 8 | Owner-approved goals for region selection, retention, backups, and cleanup. |
 | Well-Architected review owner | Epic 0 | Owner for question-matrix updates, score changes, evidence expiry, and follow-up review. |
+
+## Remaining Blockers For Honest 5/5
+
+The current branch implements meaningful repo-owned controls, but a final 5/5
+claim is blocked until all of the following are current and non-secret:
+
+- Branch protection proof for exact required checks and reviewer rules.
+- Confirmed operations SNS subscription and downstream incident route.
+- FinOps owner approval for budget/anomaly thresholds, monthly cost report
+  location, Cost Explorer enablement, activated cost allocation tags where
+  enabled, spend policy, and transfer-cost model.
+- Live AWS Service Quotas or account headroom evidence for catalog expansion.
+- Backup Vault Lock decision or documented exemption plus quarterly restore
+  drill evidence.
+- Named RACI owners, severity escalation path, KPI observations, and runbook
+  drill records for each shared environment.
+- Security account evidence for human access posture and external detection
+  services.
+- Production apply approval evidence tied to the reviewed commit SHA.
+- Sustainability owner, KPI cadence, and exception process.
 
 ## Risk Controls For Future PRs
 

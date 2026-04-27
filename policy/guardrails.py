@@ -579,6 +579,11 @@ def _wildcard_iam_document_exempt(resource_type: str, field_name: str) -> bool:
 
 _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
     {
+        "billing:getbillingviewdata",
+        "ce:createanomalymonitor",
+        "ce:createanomalysubscription",
+        "ce:listcostallocationtags",
+        "ce:updatecostallocationtagsstatus",
         "iam:createopenidconnectprovider",
         "iam:listopenidconnectproviders",
         "kms:createkey",
@@ -587,12 +592,24 @@ _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
     }
 )
 _RESOURCE_WILDCARD_ACTION_REQUIRED_CONDITION_KEYS = {
+    "ce:createanomalymonitor": frozenset(
+        {
+            "aws:RequestTag/Environment",
+            "aws:RequestTag/Purpose",
+        }
+    ),
+    "ce:createanomalysubscription": frozenset(
+        {
+            "aws:RequestTag/Environment",
+            "aws:RequestTag/Purpose",
+        }
+    ),
     "kms:createkey": frozenset(
         {
             "aws:RequestTag/Environment",
             "aws:RequestTag/Purpose",
         }
-    )
+    ),
 }
 
 

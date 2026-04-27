@@ -156,9 +156,9 @@ As a FinOps owner, I want cost controls and cost evidence so multi-repository bo
 
 ### Story 6.1: Add budget and anomaly-control requirements
 **Acceptance Criteria:**
-- Given cost control docs are reviewed, Then budgets cover `CostCenter`, `App`, and `RepositoryProject` tags.
-- Given anomaly detection is not implemented in-repo, Then the external control owner, evidence, and review cadence are documented.
-- Given budget evidence is reviewed, Then it records activated cost allocation tags, alert threshold, route, owner, last reviewed date, and fallback action.
+- Given cost control docs are reviewed, Then the repo-owned `CostControls` component is represented as the source for the monthly AWS Budget, Budget notifications, Cost Anomaly Detection monitor creation or configured monitor reuse, immediate anomaly subscription, and optional cost allocation tag activation.
+- Given cost allocation tag activation is reviewed, Then `CostCenter`, `App`, `RepositoryProject`, and the other managed tag keys have payer-account activation evidence or a documented owner-controlled blocker.
+- Given budget or anomaly evidence is reviewed, Then it records configured thresholds, SNS route, downstream subscription or incident route, owner, last reviewed date, and fallback action.
 
 ### Story 6.2: Define PR cost signal
 **Acceptance Criteria:**

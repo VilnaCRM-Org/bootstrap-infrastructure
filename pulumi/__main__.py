@@ -47,6 +47,7 @@ if bootstrap_requested:
     oidc = bootstrap.oidc
     backup = bootstrap.backup
     monitoring = bootstrap.monitoring
+    cost_controls = bootstrap.cost_controls
     if bootstrap.automation is not None:
         automation = bootstrap.automation
 
@@ -67,6 +68,16 @@ if bootstrap_requested:
     pulumi.export("backupVaultArn", bootstrap.outputs["backupVaultArn"])
     operations_alert_topic_arn = bootstrap.outputs["operationsAlertTopicArn"]
     pulumi.export("operationsAlertTopicArn", operations_alert_topic_arn)
+    operations_alert_rule_names = bootstrap.outputs["operationsAlertRuleNames"]
+    pulumi.export("operationsAlertRuleNames", operations_alert_rule_names)
+    operations_alert_key_alias_name = bootstrap.outputs[
+        "operationsAlertTopicKeyAliasName"
+    ]
+    pulumi.export("operationsAlertTopicKeyAliasName", operations_alert_key_alias_name)
+    pulumi.export("monthlyBudgetName", bootstrap.outputs["monthlyBudgetName"])
+    pulumi.export("costAnomalyMonitorArn", bootstrap.outputs["costAnomalyMonitorArn"])
+    cost_anomaly_subscription_arn = bootstrap.outputs["costAnomalySubscriptionArn"]
+    pulumi.export("costAnomalySubscriptionArn", cost_anomaly_subscription_arn)
 
     if bootstrap.automation is not None:
         pulumi.export("automationRoleArn", bootstrap.outputs["automationRoleArn"])

@@ -124,6 +124,33 @@ _AUTOMATION_SNS_ACTIONS = (
     "sns:TagResource",
     "sns:UntagResource",
 )
+_AUTOMATION_BUDGETS_ACTIONS = (
+    "budgets:ModifyBudget",
+    "budgets:ViewBudget",
+    "budgets:ListTagsForResource",
+    "budgets:TagResource",
+    "budgets:UntagResource",
+)
+_AUTOMATION_COST_EXPLORER_CREATE_ACTIONS = (
+    "ce:CreateAnomalyMonitor",
+    "ce:CreateAnomalySubscription",
+)
+_AUTOMATION_COST_EXPLORER_RESOURCE_ACTIONS = (
+    "ce:DeleteAnomalyMonitor",
+    "ce:DeleteAnomalySubscription",
+    "ce:GetAnomalyMonitors",
+    "ce:GetAnomalySubscriptions",
+    "ce:ListTagsForResource",
+    "ce:TagResource",
+    "ce:UntagResource",
+    "ce:UpdateAnomalyMonitor",
+    "ce:UpdateAnomalySubscription",
+)
+_AUTOMATION_COST_ALLOCATION_TAG_ACTIONS = (
+    "ce:ListCostAllocationTags",
+    "ce:UpdateCostAllocationTagsStatus",
+)
+_AUTOMATION_BILLING_ACTIONS = ("billing:GetBillingViewData",)
 
 
 def _environment_resource_part(settings: BootstrapSettings) -> str:
@@ -211,6 +238,30 @@ def _automation_sns_resources(
     return [f"arn:aws:sns:*:{account_id}:bootstrap-{environment}-operations"]
 
 
+def _automation_budget_resources(
+    account_id: str, settings: BootstrapSettings
+) -> list[str]:
+    """Scope Budgets management to deterministic bootstrap budgets."""
+    environment = _environment_resource_part(settings)
+    return [f"arn:aws:budgets::{account_id}:budget/bootstrap-{environment}-*"]
+
+
+def _automation_cost_explorer_resources(account_id: str) -> list[str]:
+    """Scope Cost Explorer management to anomaly monitor/subscription resources."""
+    return [
+        f"arn:aws:ce::{account_id}:anomalymonitor/*",
+        f"arn:aws:ce::{account_id}:anomalysubscription/*",
+    ]
+
+
+def _automation_budget_service_linked_role_resource(account_id: str) -> str:
+    """Return the exact AWS Budgets service-linked role ARN."""
+    return (
+        f"arn:aws:iam::{account_id}:role/aws-service-role/"
+        "budgets.amazonaws.com/AWSServiceRoleForBudgets"
+    )
+
+
 def _automation_assume_role_policy(
     oidc_provider_arn: str, org: str, repo_name: str, environment: str
 ) -> str:
@@ -264,6 +315,15 @@ def _automation_policy(
         "StringEqualsIfExists": {
             "aws:ResourceTag/Environment": settings.environment,
             "aws:ResourceTag/Purpose": kms_purposes,
+        }
+    }
+    cost_explorer_request_tag_condition = {
+        "StringEquals": {
+            "aws:RequestTag/Environment": settings.environment,
+            "aws:RequestTag/Purpose": [
+                "cost-anomaly-monitor",
+                "cost-anomaly-subscription",
+            ],
         }
     }
     return json.dumps(
@@ -400,6 +460,54 @@ def _automation_policy(
                     "Action": list(_AUTOMATION_SNS_ACTIONS),
                     "Resource": _automation_sns_resources(account_id, settings),
                 },
+                {
+                    "Sid": "ManageBootstrapBudgets",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_BUDGETS_ACTIONS),
+                    "Resource": _automation_budget_resources(account_id, settings),
+                },
+                {
+                    "Sid": "CreateBudgetServiceLinkedRole",
+                    "Effect": "Allow",
+                    "Action": ["iam:CreateServiceLinkedRole"],
+                    "Resource": _automation_budget_service_linked_role_resource(
+                        account_id
+                    ),
+                    "Condition": {
+                        "StringEquals": {"iam:AWSServiceName": "budgets.amazonaws.com"}
+                    },
+                },
+                {
+                    "Sid": "ReadBillingViewDataForBudgets",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_BILLING_ACTIONS),
+                    "Resource": "*",
+                },
+                {
+                    "Sid": "CreateBootstrapCostExplorer",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_COST_EXPLORER_CREATE_ACTIONS),
+                    "Resource": "*",
+                    "Condition": cost_explorer_request_tag_condition,
+                },
+                {
+                    "Sid": "ManageBootstrapCostExplorer",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_COST_EXPLORER_RESOURCE_ACTIONS),
+                    "Resource": _automation_cost_explorer_resources(account_id),
+                },
+                *(
+                    [
+                        {
+                            "Sid": "ManageBootstrapCostAllocationTags",
+                            "Effect": "Allow",
+                            "Action": list(_AUTOMATION_COST_ALLOCATION_TAG_ACTIONS),
+                            "Resource": "*",
+                        }
+                    ]
+                    if settings.manage_cost_allocation_tags
+                    else []
+                ),
             ],
         }
     )

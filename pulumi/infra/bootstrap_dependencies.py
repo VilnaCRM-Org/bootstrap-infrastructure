@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from .automation import GitHubAutomation
 from .backup import S3BackupPlan
+from .cost_controls import CostControls
 from .iam import GitHubOidcRoles
 from .logging_bucket import CentralLoggingBuckets
 from .operations_monitoring import OperationsMonitoring
@@ -24,3 +25,4 @@ class BootstrapInfrastructureDependencies:
     automation_cls: type[GitHubAutomation] = GitHubAutomation
     backup_plan_cls: type[S3BackupPlan] = S3BackupPlan
     monitoring_cls: type[OperationsMonitoring] = OperationsMonitoring
+    cost_controls_cls: type[CostControls] = CostControls

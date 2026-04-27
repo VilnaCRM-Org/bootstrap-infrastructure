@@ -164,6 +164,9 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "ecr:CreateRepository" in actions  # nosec B101
     assert "events:PutRule" in actions  # nosec B101
     assert "sns:CreateTopic" in actions  # nosec B101
+    assert "budgets:ModifyBudget" in actions  # nosec B101
+    assert "ce:CreateAnomalyMonitor" in actions  # nosec B101
+    assert "billing:GetBillingViewData" in actions  # nosec B101
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
         "arn:aws:s3:::pulumi-*-test-state-replication",
@@ -179,6 +182,13 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     ]
     assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
         "arn:aws:sns:*:123456789012:bootstrap-test-operations"
+    ]
+    assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
+        "arn:aws:budgets::123456789012:budget/bootstrap-test-*"
+    ]
+    assert statements["ManageBootstrapCostExplorer"]["Resource"] == [  # nosec B101
+        "arn:aws:ce::123456789012:anomalymonitor/*",
+        "arn:aws:ce::123456789012:anomalysubscription/*",
     ]
     assert (  # nosec B101
         "arn:aws:iam::123456789012:role/PulumiAutomation-"
@@ -212,9 +222,11 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         if statement["Resource"] == "*"
     } == {
         "CreateBootstrapKmsKeys",
+        "CreateBootstrapCostExplorer",
         "CreateBootstrapOidcProvider",
         "ListBootstrapOidcProviders",
         "ListBootstrapKmsAliases",
+        "ReadBillingViewDataForBudgets",
         "ReadIdentity",
     }  # nosec B101
 

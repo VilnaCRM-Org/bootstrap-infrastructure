@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -19,6 +20,9 @@ _SEQUENTIAL_DOTS = re.compile(r"\.{2,}")
 _SEQUENTIAL_HYPHENS = re.compile(r"-{2,}")
 _DOT_HYPHEN_ADJACENT = re.compile(r"\.-|-\.")
 _IPV4_PATTERN = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
+_COST_ANOMALY_MONITOR_ARN_PATTERN = re.compile(
+    r"^arn:[a-z0-9-]+:ce::\d{12}:anomalymonitor/[A-Za-z0-9][A-Za-z0-9._/-]*$"
+)
 
 
 @dataclass
@@ -40,6 +44,10 @@ class BootstrapSettings:
     github_oidc_provider_arn: str | None
     repository_catalog_path: str | None = None
     managed_repo_overrides: list["ManagedRepository"] | None = None
+    monthly_budget_limit_usd: str = "100"
+    cost_anomaly_threshold_usd: str = "10"
+    cost_anomaly_monitor_arn: str | None = None
+    manage_cost_allocation_tags: bool = False
 
     @classmethod
     def from_pulumi_config(
@@ -60,6 +68,22 @@ class BootstrapSettings:
             github_branch=config.get("githubBranch"),
             logging_prefix=config.get("loggingPrefix") or "company",
             replication_region=config.get("replicationRegion"),
+            monthly_budget_limit_usd=cls.positive_decimal_config_value(
+                config,
+                "monthlyBudgetLimitUsd",
+                "100",
+            ),
+            cost_anomaly_threshold_usd=cls.positive_decimal_config_value(
+                config,
+                "costAnomalyThresholdUsd",
+                "10",
+            ),
+            cost_anomaly_monitor_arn=cls.optional_cost_anomaly_monitor_arn(config),
+            manage_cost_allocation_tags=cls.optional_bool_config_value(
+                config,
+                "manageCostAllocationTags",
+                False,
+            ),
             github_token=config.get_secret("githubToken"),
             github_oidc_provider_arn=config.get("githubOidcProviderArn"),
             repository_catalog_path=config.get("repositoryCatalogPath"),
@@ -84,6 +108,52 @@ class BootstrapSettings:
                 return fallback
             raise pulumi.ConfigMissingError(key, False)
         return value
+
+    @staticmethod
+    def positive_decimal_config_value(
+        cfg: pulumi.Config,
+        key: str,
+        fallback: str,
+    ) -> str:
+        """Load a positive decimal config value as the string AWS APIs expect."""
+        value = cfg.get(key) or fallback
+        try:
+            numeric_value = float(value)
+        except ValueError as exc:
+            raise ValueError(f"{key} must be a positive decimal value.") from exc
+        if numeric_value <= 0:
+            raise ValueError(f"{key} must be a positive decimal value.")
+        if not math.isfinite(numeric_value):
+            raise ValueError(f"{key} must be a finite positive decimal value.")
+        return value
+
+    @staticmethod
+    def optional_cost_anomaly_monitor_arn(cfg: pulumi.Config) -> str | None:
+        """Load and validate an optional existing Cost Anomaly monitor ARN."""
+        value = cfg.get("costAnomalyMonitorArn")
+        if value is None:
+            return None
+        if not _COST_ANOMALY_MONITOR_ARN_PATTERN.fullmatch(value):
+            raise ValueError(
+                "costAnomalyMonitorArn must be a Cost Anomaly monitor ARN."
+            )
+        return value
+
+    @staticmethod
+    def optional_bool_config_value(
+        cfg: pulumi.Config,
+        key: str,
+        fallback: bool,
+    ) -> bool:
+        """Load an optional boolean while keeping tests' config doubles simple."""
+        get_bool = getattr(cfg, "get_bool", None)
+        if get_bool is not None:
+            value = get_bool(key)
+            return fallback if value is None else value
+        raw_value = cfg.get(key)
+        if raw_value is None:
+            return fallback
+        return raw_value.lower() == "true"
 
     def bootstrap_requested(self, cfg: pulumi.Config | None = None) -> bool:
         """Return True when bootstrap infrastructure should be materialized."""
