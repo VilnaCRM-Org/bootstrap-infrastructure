@@ -690,10 +690,16 @@ def repository_fanout_evidence(
     reports = []
     failures: list[str] = []
     for catalog_path in catalog_paths:
-        report = catalog_fanout_report(catalog_path, schema_path)
+        catalog_name = str(catalog_path.relative_to(root_dir))
+        try:
+            report = catalog_fanout_report(catalog_path, schema_path)
+        except ValueError as exc:
+            failures.append(f"{catalog_name}: {exc}")
+            reports.append({"catalog": catalog_name, "error": str(exc)})
+            continue
         reports.append(
             {
-                "catalog": str(catalog_path.relative_to(root_dir)),
+                "catalog": catalog_name,
                 "fanout": report,
                 "thresholds": _fanout_threshold_report(report, thresholds),
             }

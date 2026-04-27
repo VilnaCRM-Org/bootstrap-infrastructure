@@ -717,6 +717,14 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
         "arn:aws:sns:*:123456789012:bootstrap-test-operations"
     ]
+    assert "sns:Subscribe" in statements["ManageBootstrapSns"]["Action"]  # nosec B101
+    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == [  # nosec B101
+        "arn:aws:sns:*:123456789012:bootstrap-test-operations:*"
+    ]
+    assert statements["ManageBootstrapSnsSubscriptions"]["Action"] == [  # nosec B101
+        "sns:GetSubscriptionAttributes",
+        "sns:Unsubscribe",
+    ]
     assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
         "arn:aws:budgets::123456789012:budget/bootstrap-test-*"
     ]

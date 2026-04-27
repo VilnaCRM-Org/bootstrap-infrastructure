@@ -1301,6 +1301,22 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
         module.repository_fanout_evidence(PROJECT_ROOT, low_threshold_args)["status"]
         == "failed"
     )
+    monkeypatch.setattr(
+        module,
+        "repository_catalog_paths",
+        lambda root_dir: [root_dir / "pulumi" / "repositories.example.json"],
+    )
+    monkeypatch.setattr(
+        module,
+        "catalog_fanout_report",
+        lambda *_args: (_ for _ in ()).throw(ValueError("invalid catalog")),
+    )
+    invalid_fanout = module.repository_fanout_evidence(
+        PROJECT_ROOT,
+        module.build_parser().parse_args(["--root-dir", str(PROJECT_ROOT)]),
+    )
+    assert invalid_fanout["status"] == "failed"  # nosec B101
+    assert invalid_fanout["evidence"]["reports"][0]["error"] == "invalid catalog"  # nosec B101
 
 
 def test_collect_well_architected_evidence_reads_ruleset_fallback(

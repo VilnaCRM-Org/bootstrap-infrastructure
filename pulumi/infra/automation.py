@@ -119,10 +119,16 @@ _AUTOMATION_SNS_ACTIONS = (
     "sns:CreateTopic",
     "sns:DeleteTopic",
     "sns:GetTopicAttributes",
+    "sns:ListSubscriptionsByTopic",
     "sns:ListTagsForResource",
     "sns:SetTopicAttributes",
+    "sns:Subscribe",
     "sns:TagResource",
     "sns:UntagResource",
+)
+_AUTOMATION_SNS_SUBSCRIPTION_ACTIONS = (
+    "sns:GetSubscriptionAttributes",
+    "sns:Unsubscribe",
 )
 _AUTOMATION_SQS_ACTIONS = (
     "sqs:CreateQueue",
@@ -246,6 +252,14 @@ def _automation_sns_resources(
     """Scope SNS management to the bootstrap operations alert topic."""
     environment = _environment_resource_part(settings)
     return [f"arn:aws:sns:*:{account_id}:bootstrap-{environment}-operations"]
+
+
+def _automation_sns_subscription_resources(
+    account_id: str, settings: BootstrapSettings
+) -> list[str]:
+    """Scope SNS subscription management to operations alert subscriptions."""
+    environment = _environment_resource_part(settings)
+    return [f"arn:aws:sns:*:{account_id}:bootstrap-{environment}-operations:*"]
 
 
 def _automation_sqs_resources(
@@ -477,6 +491,15 @@ def _automation_policy(
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_SNS_ACTIONS),
                     "Resource": _automation_sns_resources(account_id, settings),
+                },
+                {
+                    "Sid": "ManageBootstrapSnsSubscriptions",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_SNS_SUBSCRIPTION_ACTIONS),
+                    "Resource": _automation_sns_subscription_resources(
+                        account_id,
+                        settings,
+                    ),
                 },
                 {
                     "Sid": "ManageBootstrapSqs",
