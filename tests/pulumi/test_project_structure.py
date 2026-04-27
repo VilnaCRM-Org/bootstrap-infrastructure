@@ -364,9 +364,13 @@ def test_bmad_bmalph_planning_uses_specs_directory() -> None:
 
 
 def test_removed_legacy_scaffold_paths_stay_absent() -> None:
-    assert not (ROOT / ".qlty").exists()  # nosec B101
     assert not (ROOT / ".importlinter").exists()  # nosec B101
     assert not (ROOT / "policy_pack").exists()  # nosec B101
     assert not (ROOT / ".github" / "workflows" / "devsecops-guardrails.yml").exists()  # nosec B101
     assert not (ROOT / ".github" / "workflows" / "pulumi-preview.yml").exists()  # nosec B101
     assert not (ROOT / ".github" / "workflows" / "pulumi.yml").exists()  # nosec B101
+
+
+def test_qlty_cloud_uses_committed_repository_config() -> None:
+    assert (ROOT / ".qlty" / "qlty.toml").is_file()  # nosec B101
+    assert (ROOT / ".qlty" / ".gitignore").is_file()  # nosec B101

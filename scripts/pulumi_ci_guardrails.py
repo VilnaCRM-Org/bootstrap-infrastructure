@@ -54,6 +54,7 @@ COST_DRIVER_TYPE_PATTERNS = (
 )
 DEFAULT_MAX_COST_PROXY_WEIGHT = 50
 GENERATED_PREVIEW_ARTIFACT_NAMES = frozenset({"iam-inputs.json"})
+COUNT_TABLE_SEPARATOR = "| --- | ---: |"
 
 
 def load_preview(path: Path) -> dict[str, Any]:
@@ -85,7 +86,7 @@ def summarize_preview(path: Path, *, stack: str | None = None) -> str:
         f"### Pulumi Preview: {stack or path.stem}",
         "",
         "| Operation | Count |",
-        "| --- | ---: |",
+        COUNT_TABLE_SEPARATOR,
     ]
 
     if isinstance(summary, dict) and summary:
@@ -168,11 +169,11 @@ def render_cost_proxy_markdown(
     if all(count == 0 for count in categories.values()):
         lines.append("No create/replace cost or quota driver changes detected.")
         lines.append("")
-        lines.extend(["| Category | Count |", "| --- | ---: |"])
+        lines.extend(["| Category | Count |", COUNT_TABLE_SEPARATOR])
         lines.append("| none | 0 |")
         lines.append("")
         return "\n".join(lines)
-    lines.extend(["| Category | Count |", "| --- | ---: |"])
+    lines.extend(["| Category | Count |", COUNT_TABLE_SEPARATOR])
     for category in sorted(categories):
         count = categories[category]
         if count:
@@ -206,43 +207,66 @@ def extract_iam_validation_inputs(
             continue
 
         resource_type = step_resource_type(step)
-        for field_name, policy_type in iam_policy_fields(resource_type):
-            document = parse_policy_document(state.get(field_name))
-            if document is None:
-                continue
-            item = {
+        inputs.extend(_resource_policy_inputs(step, state, resource_type))
+        inputs.extend(_inline_policy_inputs(step, state, resource_type))
+    return inputs
+
+
+def _resource_policy_inputs(
+    step: Mapping[str, object],
+    state: Mapping[str, object],
+    resource_type: str,
+) -> list[dict[str, str]]:
+    """Extract direct IAM policy document fields from one preview step."""
+    inputs: list[dict[str, str]] = []
+    for field_name, policy_type in iam_policy_fields(resource_type):
+        document = parse_policy_document(state.get(field_name))
+        if document is None:
+            continue
+        item = {
+            "urn": str(step.get("urn", "")),
+            "resource_type": resource_type,
+            "field": field_name,
+            "policy_type": policy_type,
+            "policy_document": json.dumps(document, sort_keys=True),
+        }
+        validate_policy_resource_type = _validate_policy_resource_type(
+            resource_type,
+            field_name,
+            policy_type,
+        )
+        if validate_policy_resource_type is not None:
+            item["validate_policy_resource_type"] = validate_policy_resource_type
+        inputs.append(item)
+    return inputs
+
+
+def _inline_policy_inputs(
+    step: Mapping[str, object],
+    state: Mapping[str, object],
+    resource_type: str,
+) -> list[dict[str, str]]:
+    """Extract inline IAM policy documents from one preview step."""
+    inline_policies = state.get("inlinePolicies")
+    if not isinstance(inline_policies, list):
+        return []
+
+    inputs: list[dict[str, str]] = []
+    for index, policy in enumerate(inline_policies):
+        if not isinstance(policy, dict):
+            continue
+        document = parse_policy_document(policy.get("policy"))
+        if document is None:
+            continue
+        inputs.append(
+            {
                 "urn": str(step.get("urn", "")),
                 "resource_type": resource_type,
-                "field": field_name,
-                "policy_type": policy_type,
+                "field": f"inlinePolicies[{index}].policy",
+                "policy_type": "IDENTITY_POLICY",
                 "policy_document": json.dumps(document, sort_keys=True),
             }
-            validate_policy_resource_type = _validate_policy_resource_type(
-                resource_type,
-                field_name,
-                policy_type,
-            )
-            if validate_policy_resource_type is not None:
-                item["validate_policy_resource_type"] = validate_policy_resource_type
-            inputs.append(item)
-
-        inline_policies = state.get("inlinePolicies")
-        if isinstance(inline_policies, list):
-            for index, policy in enumerate(inline_policies):
-                if not isinstance(policy, dict):
-                    continue
-                document = parse_policy_document(policy.get("policy"))
-                if document is None:
-                    continue
-                inputs.append(
-                    {
-                        "urn": str(step.get("urn", "")),
-                        "resource_type": resource_type,
-                        "field": f"inlinePolicies[{index}].policy",
-                        "policy_type": "IDENTITY_POLICY",
-                        "policy_document": json.dumps(document, sort_keys=True),
-                    }
-                )
+        )
     return inputs
 
 

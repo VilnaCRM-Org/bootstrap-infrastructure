@@ -591,23 +591,25 @@ _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
         "sts:getcalleridentity",
     }
 )
+REQUEST_TAG_ENVIRONMENT_KEY = "aws:RequestTag/Environment"
+REQUEST_TAG_PURPOSE_KEY = "aws:RequestTag/Purpose"
 _RESOURCE_WILDCARD_ACTION_REQUIRED_CONDITION_KEYS = {
     "ce:createanomalymonitor": frozenset(
         {
-            "aws:RequestTag/Environment",
-            "aws:RequestTag/Purpose",
+            REQUEST_TAG_ENVIRONMENT_KEY,
+            REQUEST_TAG_PURPOSE_KEY,
         }
     ),
     "ce:createanomalysubscription": frozenset(
         {
-            "aws:RequestTag/Environment",
-            "aws:RequestTag/Purpose",
+            REQUEST_TAG_ENVIRONMENT_KEY,
+            REQUEST_TAG_PURPOSE_KEY,
         }
     ),
     "kms:createkey": frozenset(
         {
-            "aws:RequestTag/Environment",
-            "aws:RequestTag/Purpose",
+            REQUEST_TAG_ENVIRONMENT_KEY,
+            REQUEST_TAG_PURPOSE_KEY,
         }
     ),
 }

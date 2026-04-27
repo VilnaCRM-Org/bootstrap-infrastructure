@@ -14,12 +14,18 @@ from .config import settings as default_settings
 from .utils.tags import base_tags
 
 CLOUDTRAIL_API_CALL_DETAIL_TYPE = "AWS API Call via CloudTrail"
+AWS_SOURCE_ACCOUNT_CONDITION_KEY = "aws:SourceAccount"
+AWS_SOURCE_ARN_CONDITION_KEY = "aws:SourceArn"
+KMS_DECRYPT_ACTION = "kms:Decrypt"
+KMS_GENERATE_DATA_KEY_ACTION = "kms:GenerateDataKey*"
+KMS_SNS_TOPIC_ACTIONS = (KMS_DECRYPT_ACTION, KMS_GENERATE_DATA_KEY_ACTION)
+SNS_PUBLISH_ACTION = "sns:Publish"
 SNS_TOPIC_OWNER_ACTIONS = (
     "sns:AddPermission",
     "sns:DeleteTopic",
     "sns:GetTopicAttributes",
     "sns:ListSubscriptionsByTopic",
-    "sns:Publish",
+    SNS_PUBLISH_ACTION,
     "sns:RemovePermission",
     "sns:SetTopicAttributes",
     "sns:Subscribe",
@@ -78,22 +84,22 @@ def _topic_policy(topic_arn: str, account_id: str, partition: str) -> str:
                     "Sid": "AllowEventBridgePublish",
                     "Effect": "Allow",
                     "Principal": {"Service": "events.amazonaws.com"},
-                    "Action": "sns:Publish",
+                    "Action": SNS_PUBLISH_ACTION,
                     "Resource": topic_arn,
                     "Condition": {
-                        "StringEquals": {"aws:SourceAccount": account_id},
+                        "StringEquals": {AWS_SOURCE_ACCOUNT_CONDITION_KEY: account_id},
                     },
                 },
                 {
                     "Sid": "AllowBudgetsPublish",
                     "Effect": "Allow",
                     "Principal": {"Service": "budgets.amazonaws.com"},
-                    "Action": "sns:Publish",
+                    "Action": SNS_PUBLISH_ACTION,
                     "Resource": topic_arn,
                     "Condition": {
-                        "StringEquals": {"aws:SourceAccount": account_id},
+                        "StringEquals": {AWS_SOURCE_ACCOUNT_CONDITION_KEY: account_id},
                         "ArnLike": {
-                            "aws:SourceArn": _budget_source_arn(
+                            AWS_SOURCE_ARN_CONDITION_KEY: _budget_source_arn(
                                 account_id,
                                 partition,
                             )
@@ -104,10 +110,10 @@ def _topic_policy(topic_arn: str, account_id: str, partition: str) -> str:
                     "Sid": "AllowCostAnomalyPublish",
                     "Effect": "Allow",
                     "Principal": {"Service": "costalerts.amazonaws.com"},
-                    "Action": "sns:Publish",
+                    "Action": SNS_PUBLISH_ACTION,
                     "Resource": topic_arn,
                     "Condition": {
-                        "StringEquals": {"aws:SourceAccount": account_id},
+                        "StringEquals": {AWS_SOURCE_ACCOUNT_CONDITION_KEY: account_id},
                     },
                 },
             ],
@@ -129,8 +135,8 @@ def _queue_policy(queue_arn: str, topic_arn: str, account_id: str) -> str:
                     "Action": "sqs:SendMessage",
                     "Resource": queue_arn,
                     "Condition": {
-                        "ArnEquals": {"aws:SourceArn": topic_arn},
-                        "StringEquals": {"aws:SourceAccount": account_id},
+                        "ArnEquals": {AWS_SOURCE_ARN_CONDITION_KEY: topic_arn},
+                        "StringEquals": {AWS_SOURCE_ACCOUNT_CONDITION_KEY: account_id},
                     },
                 },
             ],
@@ -156,9 +162,9 @@ def _topic_key_policy(account_id: str, partition: str) -> str:
                     "Sid": "AllowEventBridgeForEncryptedSns",
                     "Effect": "Allow",
                     "Principal": {"Service": "events.amazonaws.com"},
-                    "Action": ["kms:Decrypt", "kms:GenerateDataKey*"],
+                    "Action": list(KMS_SNS_TOPIC_ACTIONS),
                     # EventBridge-to-encrypted-SNS KMS grants cannot rely on
-                    # aws:SourceAccount/aws:SourceArn conditions; the SNS topic
+                    # source-account/source-ARN conditions; the SNS topic
                     # policy constrains the publisher account instead.
                     "Resource": "*",
                 },
@@ -166,12 +172,12 @@ def _topic_key_policy(account_id: str, partition: str) -> str:
                     "Sid": "AllowBudgetsForEncryptedSns",
                     "Effect": "Allow",
                     "Principal": {"Service": "budgets.amazonaws.com"},
-                    "Action": ["kms:Decrypt", "kms:GenerateDataKey*"],
+                    "Action": list(KMS_SNS_TOPIC_ACTIONS),
                     "Resource": "*",
                     "Condition": {
-                        "StringEquals": {"aws:SourceAccount": account_id},
+                        "StringEquals": {AWS_SOURCE_ACCOUNT_CONDITION_KEY: account_id},
                         "ArnLike": {
-                            "aws:SourceArn": _budget_source_arn(
+                            AWS_SOURCE_ARN_CONDITION_KEY: _budget_source_arn(
                                 account_id,
                                 partition,
                             )
@@ -182,10 +188,10 @@ def _topic_key_policy(account_id: str, partition: str) -> str:
                     "Sid": "AllowCostAnomalyForEncryptedSns",
                     "Effect": "Allow",
                     "Principal": {"Service": "costalerts.amazonaws.com"},
-                    "Action": ["kms:Decrypt", "kms:GenerateDataKey*"],
+                    "Action": list(KMS_SNS_TOPIC_ACTIONS),
                     "Resource": "*",
                     "Condition": {
-                        "StringEquals": {"aws:SourceAccount": account_id},
+                        "StringEquals": {AWS_SOURCE_ACCOUNT_CONDITION_KEY: account_id},
                     },
                 },
             ],
