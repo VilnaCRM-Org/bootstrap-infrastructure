@@ -292,6 +292,7 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
 @pytest.mark.parametrize(
     ("key", "value", "match"),
     [
+        ("monthlyBudgetLimitUsd", "not-a-number", "positive decimal"),
         ("monthlyBudgetLimitUsd", "0", "positive decimal"),
         ("costAnomalyThresholdUsd", "-1", "positive decimal"),
         ("monthlyBudgetLimitUsd", "nan", "finite positive decimal"),

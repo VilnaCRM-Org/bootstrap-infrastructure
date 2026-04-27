@@ -21,7 +21,10 @@ from infra import (
     pulumi_secrets,
     pulumi_state,
 )
-from infra.cost_controls import COST_ALLOCATION_TAG_KEYS
+from infra.cost_controls import (
+    COST_ALLOCATION_TAG_KEYS,
+    managed_cost_allocation_tag_keys,
+)
 from infra.iam import GitHubOidcRoles, github_oidc
 from infra.utils.outputs import future_output
 
@@ -40,6 +43,13 @@ def _resource_state_by_name(pulumi_mocks, name: str) -> dict:
                 return state
         asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.01))
     pytest.fail(f"Expected mock resource {name!r} to be registered.")
+
+
+def test_managed_cost_allocation_tag_keys_returns_stable_copy():
+    """Cost allocation tag helper should return a mutable copy of stable keys."""
+    tag_keys = managed_cost_allocation_tag_keys(("Owner", "CostCenter"))
+
+    assert tag_keys == ["Owner", "CostCenter"]  # nosec B101
 
 
 def test_central_logging_buckets_rejects_long_replica(  # noqa: ARG001
