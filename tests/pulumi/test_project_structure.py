@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 import yaml
@@ -103,7 +104,20 @@ def test_makefile_exposes_current_ci_targets() -> None:
 
 
 def test_deploy_stack_exports_bootstrap_outputs() -> None:
-    main_text = (ROOT / "pulumi" / "__main__.py").read_text()
+    main_tree = ast.parse((ROOT / "pulumi" / "__main__.py").read_text())
+    exported_names = {
+        node.args[0].value
+        for node in ast.walk(main_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "pulumi"
+        and node.func.attr == "export"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    }
+
     for export_name in (
         "centralLogBucket",
         "centralLogBucketArn",
@@ -131,10 +145,7 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
         "runnerRepositoryName",
         "runnerRepositoryUrl",
     ):
-        assert (  # nosec B101
-            f'pulumi.export("{export_name}"' in main_text
-            or f'"{export_name}"' in main_text
-        )
+        assert export_name in exported_names  # nosec B101
 
 
 def test_repository_uses_current_python_tooling_contract() -> None:

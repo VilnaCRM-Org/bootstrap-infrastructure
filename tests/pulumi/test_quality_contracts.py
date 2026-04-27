@@ -62,6 +62,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "app",
         "infra",
         "policy",
+        "validate_repository_catalogs",
     ]
     assert deptry["known_first_party"] == expected_first_party  # nosec B101
     assert deptry["package_module_name_map"]["pyyaml"] == ["yaml"]

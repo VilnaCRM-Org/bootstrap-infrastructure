@@ -616,6 +616,7 @@ def aws_sns_alert_route(
         ],
         runner=runner,
     )
+    protocols = protocols if isinstance(protocols, list) else []
     blockers = []
     if not topic_ok:
         blockers.append(f"Unable to query SNS topic attributes: {topic_error}")
@@ -631,8 +632,8 @@ def aws_sns_alert_route(
         evidence={
             "topicArn": topic_arn,
             "encrypted": bool(kms_key_id),
-            "subscriptionCount": len(protocols) if isinstance(protocols, list) else 0,
-            "subscriptionProtocols": sorted(set(protocols or [])),
+            "subscriptionCount": len(protocols),
+            "subscriptionProtocols": sorted(set(protocols)),
         },
         blockers=blockers,
     )

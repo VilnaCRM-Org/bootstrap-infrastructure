@@ -1277,6 +1277,21 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert module.aws_sns_alert_route("arn:topic", runner=failing_runner)["status"] == (
         "failed"
     )
+    null_subscription_result = module.aws_sns_alert_route(
+        "arn:topic",
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(
+                {"KmsMasterKeyId": "alias/bootstrap"}
+                if command[:3] == ["aws", "sns", "get-topic-attributes"]
+                else None
+            ),
+            "",
+        ),
+    )
+    assert null_subscription_result["status"] == "failed"  # nosec B101
+    assert null_subscription_result["evidence"]["subscriptionProtocols"] == []  # nosec B101
     assert module.aws_restore_jobs(90, runner=failing_runner)["status"] == "unknown"
     assert (
         module.repository_fanout_evidence(tmp_path, missing_fanout_args)["status"]
