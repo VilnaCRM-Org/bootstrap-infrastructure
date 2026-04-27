@@ -161,24 +161,30 @@ _AUTOMATION_SQS_ACTIONS = (
 )
 _AUTOMATION_BUDGETS_ACTIONS = (
     "budgets:ModifyBudget",
+    "budgets:DescribeBudget",
     "budgets:ViewBudget",
     "budgets:ListTagsForResource",
     "budgets:TagResource",
     "budgets:UntagResource",
 )
-_AUTOMATION_COST_EXPLORER_CREATE_ACTIONS = (
-    "ce:CreateAnomalyMonitor",
+_AUTOMATION_COST_EXPLORER_MONITOR_CREATE_ACTIONS = ("ce:CreateAnomalyMonitor",)
+_AUTOMATION_COST_EXPLORER_SUBSCRIPTION_CREATE_ACTIONS = (
     "ce:CreateAnomalySubscription",
 )
-_AUTOMATION_COST_EXPLORER_RESOURCE_ACTIONS = (
+_AUTOMATION_COST_EXPLORER_MONITOR_RESOURCE_ACTIONS = (
     "ce:DeleteAnomalyMonitor",
-    "ce:DeleteAnomalySubscription",
     "ce:GetAnomalyMonitors",
-    "ce:GetAnomalySubscriptions",
     "ce:ListTagsForResource",
     "ce:TagResource",
     "ce:UntagResource",
     "ce:UpdateAnomalyMonitor",
+)
+_AUTOMATION_COST_EXPLORER_SUBSCRIPTION_RESOURCE_ACTIONS = (
+    "ce:DeleteAnomalySubscription",
+    "ce:GetAnomalySubscriptions",
+    "ce:ListTagsForResource",
+    "ce:TagResource",
+    "ce:UntagResource",
     "ce:UpdateAnomalySubscription",
 )
 _AUTOMATION_COST_ALLOCATION_TAG_ACTIONS = (
@@ -315,12 +321,14 @@ def _automation_budget_resources(
     return [f"arn:aws:budgets::{account_id}:budget/bootstrap-{environment}-*"]
 
 
-def _automation_cost_explorer_resources(account_id: str) -> list[str]:
-    """Scope Cost Explorer management to anomaly monitor/subscription resources."""
-    return [
-        f"arn:aws:ce::{account_id}:anomalymonitor/*",
-        f"arn:aws:ce::{account_id}:anomalysubscription/*",
-    ]
+def _automation_cost_explorer_monitor_resources(account_id: str) -> list[str]:
+    """Scope Cost Explorer management to anomaly monitor resources."""
+    return [f"arn:aws:ce::{account_id}:anomalymonitor/*"]
+
+
+def _automation_cost_explorer_subscription_resources(account_id: str) -> list[str]:
+    """Scope Cost Explorer management to anomaly subscription resources."""
+    return [f"arn:aws:ce::{account_id}:anomalysubscription/*"]
 
 
 def _automation_budget_service_linked_role_resource(account_id: str) -> str:
@@ -386,22 +394,28 @@ def _automation_policy(
             AWS_RESOURCE_TAG_PURPOSE_KEY: kms_purposes,
         }
     }
-    cost_explorer_request_tag_condition = {
+    cost_explorer_monitor_request_tag_condition = {
         "StringEquals": {
             AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
-            AWS_REQUEST_TAG_PURPOSE_KEY: [
-                "cost-anomaly-monitor",
-                "cost-anomaly-subscription",
-            ],
+            AWS_REQUEST_TAG_PURPOSE_KEY: "cost-anomaly-monitor",
         }
     }
-    cost_explorer_resource_tag_condition = {
+    cost_explorer_subscription_request_tag_condition = {
+        "StringEquals": {
+            AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_REQUEST_TAG_PURPOSE_KEY: "cost-anomaly-subscription",
+        }
+    }
+    cost_explorer_monitor_resource_tag_condition = {
         "StringEquals": {
             AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
-            AWS_RESOURCE_TAG_PURPOSE_KEY: [
-                "cost-anomaly-monitor",
-                "cost-anomaly-subscription",
-            ],
+            AWS_RESOURCE_TAG_PURPOSE_KEY: "cost-anomaly-monitor",
+        }
+    }
+    cost_explorer_subscription_resource_tag_condition = {
+        "StringEquals": {
+            AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_RESOURCE_TAG_PURPOSE_KEY: "cost-anomaly-subscription",
         }
     }
     return json.dumps(
@@ -583,18 +597,38 @@ def _automation_policy(
                     "Resource": "*",
                 },
                 {
-                    "Sid": "CreateBootstrapCostExplorer",
+                    "Sid": "CreateBootstrapCostAnomalyMonitor",
                     "Effect": "Allow",
-                    "Action": list(_AUTOMATION_COST_EXPLORER_CREATE_ACTIONS),
+                    "Action": list(_AUTOMATION_COST_EXPLORER_MONITOR_CREATE_ACTIONS),
                     "Resource": "*",
-                    "Condition": cost_explorer_request_tag_condition,
+                    "Condition": cost_explorer_monitor_request_tag_condition,
                 },
                 {
-                    "Sid": "ManageBootstrapCostExplorer",
+                    "Sid": "CreateBootstrapCostAnomalySubscription",
                     "Effect": "Allow",
-                    "Action": list(_AUTOMATION_COST_EXPLORER_RESOURCE_ACTIONS),
-                    "Resource": _automation_cost_explorer_resources(account_id),
-                    "Condition": cost_explorer_resource_tag_condition,
+                    "Action": list(
+                        _AUTOMATION_COST_EXPLORER_SUBSCRIPTION_CREATE_ACTIONS
+                    ),
+                    "Resource": "*",
+                    "Condition": cost_explorer_subscription_request_tag_condition,
+                },
+                {
+                    "Sid": "ManageBootstrapCostAnomalyMonitors",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_COST_EXPLORER_MONITOR_RESOURCE_ACTIONS),
+                    "Resource": _automation_cost_explorer_monitor_resources(account_id),
+                    "Condition": cost_explorer_monitor_resource_tag_condition,
+                },
+                {
+                    "Sid": "ManageBootstrapCostAnomalySubscriptions",
+                    "Effect": "Allow",
+                    "Action": list(
+                        _AUTOMATION_COST_EXPLORER_SUBSCRIPTION_RESOURCE_ACTIONS
+                    ),
+                    "Resource": _automation_cost_explorer_subscription_resources(
+                        account_id
+                    ),
+                    "Condition": cost_explorer_subscription_resource_tag_condition,
                 },
                 *(
                     [

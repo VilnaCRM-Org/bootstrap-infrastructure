@@ -508,18 +508,22 @@ def _review_threads_command(
     return command
 
 
+def _dict_child(payload: dict[str, Any], key: str) -> dict[str, Any]:
+    """Return a nested mapping child, treating null GraphQL leaves as absent."""
+    value = payload.get(key)
+    return value if isinstance(value, dict) else {}
+
+
 def _review_threads_page(payload: dict[str, Any]) -> tuple[list[dict], dict[str, Any]]:
     """Extract one review-thread page from a GraphQL response."""
-    review_threads = (
-        payload.get("data", {})
-        .get("repository", {})
-        .get("pullRequest", {})
-        .get("reviewThreads", {})
-    )
-    page_nodes = review_threads.get("nodes", [])
-    page_info = review_threads.get("pageInfo") or {}
+    data = _dict_child(payload, "data")
+    repository = _dict_child(data, "repository")
+    pull_request = _dict_child(repository, "pullRequest")
+    review_threads = _dict_child(pull_request, "reviewThreads")
+    page_nodes = review_threads.get("nodes") or []
+    page_info = _dict_child(review_threads, "pageInfo")
     nodes = [node for node in page_nodes if isinstance(node, dict)]
-    return nodes, page_info if isinstance(page_info, dict) else {}
+    return nodes, page_info
 
 
 def _github_rulesets(

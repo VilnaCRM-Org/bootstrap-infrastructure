@@ -1082,37 +1082,49 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "Action": ["billing:GetBillingViewData"],
         "Resource": "*",
     }
-    assert statements["CreateBootstrapCostExplorer"]["Resource"] == "*"  # nosec B101
-    assert statements["CreateBootstrapCostExplorer"]["Condition"] == {  # nosec B101
+    assert statements["CreateBootstrapCostAnomalyMonitor"]["Resource"] == "*"  # nosec B101
+    assert statements["CreateBootstrapCostAnomalyMonitor"]["Action"] == [  # nosec B101
+        "ce:CreateAnomalyMonitor"
+    ]
+    assert statements["CreateBootstrapCostAnomalyMonitor"]["Condition"] == {  # nosec B101
         "StringEquals": {
             "aws:RequestTag/Environment": "test",
-            "aws:RequestTag/Purpose": [
-                "cost-anomaly-monitor",
-                "cost-anomaly-subscription",
-            ],
+            "aws:RequestTag/Purpose": "cost-anomaly-monitor",
         }
     }
-    assert statements["ManageBootstrapCostExplorer"]["Resource"] == [  # nosec B101
-        "arn:aws:ce::123456789012:anomalymonitor/*",
-        "arn:aws:ce::123456789012:anomalysubscription/*",
+    assert statements["CreateBootstrapCostAnomalySubscription"]["Resource"] == "*"  # nosec B101
+    assert statements["CreateBootstrapCostAnomalySubscription"]["Action"] == [  # nosec B101
+        "ce:CreateAnomalySubscription"
     ]
-    assert statements["ManageBootstrapCostExplorer"]["Condition"] == {  # nosec B101
+    assert statements["CreateBootstrapCostAnomalySubscription"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:RequestTag/Environment": "test",
+            "aws:RequestTag/Purpose": "cost-anomaly-subscription",
+        }
+    }
+    assert statements["ManageBootstrapCostAnomalyMonitors"]["Resource"] == [  # nosec B101
+        "arn:aws:ce::123456789012:anomalymonitor/*",
+    ]
+    assert statements["ManageBootstrapCostAnomalyMonitors"]["Condition"] == {  # nosec B101
         "StringEquals": {
             "aws:ResourceTag/Environment": "test",
-            "aws:ResourceTag/Purpose": [
-                "cost-anomaly-monitor",
-                "cost-anomaly-subscription",
-            ],
+            "aws:ResourceTag/Purpose": "cost-anomaly-monitor",
+        }
+    }
+    assert statements["ManageBootstrapCostAnomalySubscriptions"]["Resource"] == [  # nosec B101
+        "arn:aws:ce::123456789012:anomalysubscription/*",
+    ]
+    assert statements["ManageBootstrapCostAnomalySubscriptions"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": "cost-anomaly-subscription",
         }
     }
     assert (  # nosec B101
         "ManageBootstrapCostAllocationTags" not in statements
     )
     assert "budgets:ModifyBudget" in statements["ManageBootstrapBudgets"]["Action"]  # nosec B101
-    assert (  # nosec B101
-        "ce:CreateAnomalySubscription"
-        in statements["CreateBootstrapCostExplorer"]["Action"]
-    )
+    assert "budgets:DescribeBudget" in statements["ManageBootstrapBudgets"]["Action"]  # nosec B101
 
 
 def test_github_automation_requires_repo(monkeypatch):

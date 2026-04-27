@@ -1757,6 +1757,32 @@ def test_collect_well_architected_evidence_paginates_review_threads(
     assert "exceeded 20 pages" in endless["blockers"][0]  # nosec B101
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"data": None},
+        {"data": {"repository": None}},
+        {"data": {"repository": {"pullRequest": None}}},
+        {"data": {"repository": {"pullRequest": {"reviewThreads": None}}}},
+        {
+            "data": {
+                "repository": {
+                    "pullRequest": {"reviewThreads": {"nodes": None, "pageInfo": None}}
+                }
+            }
+        },
+    ],
+)
+def test_collect_well_architected_evidence_handles_null_review_thread_leaves(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, object],
+) -> None:
+    """Review thread parsing should tolerate nullable GraphQL leaves."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    assert module._review_threads_page(payload) == ([], {})  # nosec B101  # noqa: SLF001
+
+
 def test_collect_well_architected_evidence_reports_missing_required_checks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

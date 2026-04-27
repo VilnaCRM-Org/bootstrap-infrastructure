@@ -168,6 +168,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "sns:CreateTopic" in actions  # nosec B101
     assert "sqs:CreateQueue" in actions  # nosec B101
     assert "budgets:ModifyBudget" in actions  # nosec B101
+    assert "budgets:DescribeBudget" in actions  # nosec B101
     assert "ce:CreateAnomalyMonitor" in actions  # nosec B101
     assert "billing:GetBillingViewData" in actions  # nosec B101
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
@@ -199,17 +200,22 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
         "arn:aws:budgets::123456789012:budget/bootstrap-test-*"
     ]
-    assert statements["ManageBootstrapCostExplorer"]["Resource"] == [  # nosec B101
+    assert statements["ManageBootstrapCostAnomalyMonitors"]["Resource"] == [  # nosec B101
         "arn:aws:ce::123456789012:anomalymonitor/*",
-        "arn:aws:ce::123456789012:anomalysubscription/*",
     ]
-    assert statements["ManageBootstrapCostExplorer"]["Condition"] == {  # nosec B101
+    assert statements["ManageBootstrapCostAnomalyMonitors"]["Condition"] == {  # nosec B101
         "StringEquals": {
             "aws:ResourceTag/Environment": "test",
-            "aws:ResourceTag/Purpose": [
-                "cost-anomaly-monitor",
-                "cost-anomaly-subscription",
-            ],
+            "aws:ResourceTag/Purpose": "cost-anomaly-monitor",
+        }
+    }
+    assert statements["ManageBootstrapCostAnomalySubscriptions"]["Resource"] == [  # nosec B101
+        "arn:aws:ce::123456789012:anomalysubscription/*",
+    ]
+    assert statements["ManageBootstrapCostAnomalySubscriptions"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": "cost-anomaly-subscription",
         }
     }
     assert (  # nosec B101
@@ -260,7 +266,8 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         if statement["Resource"] == "*"
     } == {
         "CreateBootstrapKmsKeys",
-        "CreateBootstrapCostExplorer",
+        "CreateBootstrapCostAnomalyMonitor",
+        "CreateBootstrapCostAnomalySubscription",
         "CreateBootstrapOidcProvider",
         "ListBootstrapOidcProviders",
         "ListBootstrapKmsAliases",
