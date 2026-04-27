@@ -305,9 +305,11 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             bucket=bucket.id,
             rules=[
                 aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    blocked_encryption_types=["SSE-C"],
+                    bucket_key_enabled=False,
                     apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                         sse_algorithm="AES256"
-                    )
+                    ),
                 )
             ],
             opts=primary_resource_opts,
@@ -318,9 +320,11 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             bucket=replica_bucket.id,
             rules=[
                 aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    blocked_encryption_types=["SSE-C"],
+                    bucket_key_enabled=False,
                     apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                         sse_algorithm="AES256"
-                    )
+                    ),
                 )
             ],
             opts=replica_resource_opts,

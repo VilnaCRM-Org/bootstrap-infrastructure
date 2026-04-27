@@ -45,6 +45,7 @@ DEFAULT_PULUMI_STACK ?= $(shell \
 	fi)
 PULUMI_STACK     ?= $(DEFAULT_PULUMI_STACK)
 PULUMI_SECRETS_PROVIDER ?=
+PULUMI_PLAN_DIR ?= .artifacts/pulumi-plan
 export PULUMI_STACK
 PULUMI_LOGIN_CMD  = pulumi $(PULUMI_CWD_FLAG) login "$${PULUMI_BACKEND_URL:-file:///workspace/.pulumi-backend}" >/dev/null
 COVERAGE_OPTS            ?= --cov=./pulumi --cov-report=term-missing

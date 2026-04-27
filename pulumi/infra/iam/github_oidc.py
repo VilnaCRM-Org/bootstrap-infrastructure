@@ -21,6 +21,7 @@ from ..utils.tags import base_tags
 
 _ROLE_NAME_PREFIX = "PulumiDeploy-"
 _MAX_IAM_ROLE_NAME_LENGTH = 64
+_GITHUB_OIDC_URL = "https://token.actions.githubusercontent.com"
 
 
 @dataclass(frozen=True)
@@ -46,6 +47,18 @@ def _role_exists(name: str) -> bool:
         raise
     else:
         return True
+
+
+def _existing_github_oidc_provider_arn() -> str | None:
+    """Return the account-level GitHub OIDC provider ARN when it already exists."""
+    try:
+        provider = aws.iam.get_open_id_connect_provider(url=_GITHUB_OIDC_URL)
+    except Exception as exc:
+        message = str(exc)
+        if "NoSuchEntity" in message or "couldn't find resource" in message:
+            return None
+        raise
+    return provider.arn
 
 
 def _repo_suffix(repo_name: str, settings_obj: BootstrapSettings | None = None) -> str:
@@ -165,10 +178,13 @@ def _provider_resource(
     settings_obj: BootstrapSettings,
 ) -> aws.iam.OpenIdConnectProvider:
     """Return the shared GitHub Actions OIDC provider resource."""
-    if settings_obj.github_oidc_provider_arn:
+    provider_arn = (
+        settings_obj.github_oidc_provider_arn or _existing_github_oidc_provider_arn()
+    )
+    if provider_arn:
         return aws.iam.OpenIdConnectProvider.get(
             f"{name}-provider",
-            settings_obj.github_oidc_provider_arn,
+            provider_arn,
             opts=pulumi.ResourceOptions(parent=parent),
         )
     return aws.iam.OpenIdConnectProvider(
@@ -179,7 +195,7 @@ def _provider_resource(
             "1c58a3a8518e8759bf075b76b750d4f2df264fcd",
         ],
         tags=base_tags({"Purpose": "github-actions-oidc"}, settings=settings_obj),
-        url="https://token.actions.githubusercontent.com",
+        url=_GITHUB_OIDC_URL,
         opts=pulumi.ResourceOptions(parent=parent),
     )
 

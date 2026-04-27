@@ -205,11 +205,20 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     central_logging_encryption_state = _resource_state_by_name(
         pulumi_mocks, "central-logging-primary-encryption"
     )
+    central_logging_replica_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "central-logging-replica-encryption"
+    )
     state_bucket_logging_state = _resource_state_by_name(
         pulumi_mocks, "pulumi-state-repo-logging"
     )
+    state_bucket_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "pulumi-state-repo-encryption"
+    )
     replica_state_bucket_logging_state = _resource_state_by_name(
         pulumi_mocks, "pulumi-state-replica-repo-logging"
+    )
+    replica_state_bucket_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "pulumi-state-replica-repo-encryption"
     )
     alert_topic_state = _resource_state_by_name(
         pulumi_mocks, "operations-monitoring-topic"
@@ -260,7 +269,15 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
         pulumi_mocks, "operations-monitoring-kms-risk-rule"
     )
 
-    assert central_logging_encryption_state["rules"] is not None  # nosec B101
+    managed_bucket_encryption_rules = [
+        central_logging_encryption_state["rules"][0],
+        central_logging_replica_encryption_state["rules"][0],
+        state_bucket_encryption_state["rules"][0],
+        replica_state_bucket_encryption_state["rules"][0],
+    ]
+    for encryption_rule in managed_bucket_encryption_rules:
+        assert encryption_rule["blockedEncryptionTypes"] == ["SSE-C"]  # nosec B101
+        assert encryption_rule["bucketKeyEnabled"] is False  # nosec B101
     assert central_logging_state["tags"]["LoggingExempt"] == "true"  # nosec B101
     assert (
         central_logging_state["tags"]["LoggingExemptReason"]
@@ -385,6 +402,12 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
         cloudtrail_bucket_encryption_state["rules"],
         sort_keys=True,
     )
+    assert (  # nosec B101
+        cloudtrail_bucket_encryption_state["rules"][0]["bucketKeyEnabled"] is False
+    )
+    assert cloudtrail_bucket_encryption_state["rules"][0][  # nosec B101
+        "blockedEncryptionTypes"
+    ] == ["SSE-C"]
     assert "aws:kms" in cloudtrail_bucket_encryption  # nosec B101
     assert (  # nosec B101
         "arn:aws:kms:us-east-1:123456789012:key/"
@@ -764,6 +787,84 @@ def test_github_oidc_roles_with_existing_provider(  # noqa: ARG001
     assert roles.deploy_role_arns  # nosec B101
 
 
+def test_github_oidc_roles_reuse_discovered_provider(  # noqa: ARG001
+    monkeypatch, pulumi_mocks
+):
+    class FakeLookup:
+        arn = (
+            "arn:aws:iam::123456789012:oidc-provider/"
+            "token.actions.githubusercontent.com"
+        )
+
+    class FakeProvider:
+        arn = pulumi.Output.from_input(FakeLookup.arn)
+
+    captured = {}
+
+    def fake_get_provider(url):
+        captured["url"] = url
+        return FakeLookup()
+
+    def fake_get_resource(_name, provider_arn, **_kwargs):
+        captured["provider_arn"] = provider_arn
+        return FakeProvider()
+
+    monkeypatch.setattr(github_oidc.settings, "github_oidc_provider_arn", None)
+    monkeypatch.setattr(github_oidc, "_role_exists", lambda _name: False)
+    monkeypatch.setattr(
+        github_oidc.aws.iam,
+        "get_open_id_connect_provider",
+        fake_get_provider,
+    )
+    monkeypatch.setattr(
+        github_oidc.aws.iam.OpenIdConnectProvider,
+        "get",
+        fake_get_resource,
+    )
+
+    repos = [config.ManagedRepository(name="repo-discovered", default_branch="main")]
+    roles = GitHubOidcRoles("github-oidc-discovered", repositories=repos)
+
+    assert roles.deploy_role_arns  # nosec B101
+    assert captured == {  # nosec B101
+        "url": "https://token.actions.githubusercontent.com",
+        "provider_arn": FakeLookup.arn,
+    }
+    provider_resource_names = {
+        name
+        for resource_type, name, _state in pulumi_mocks.resources
+        if resource_type == "aws:iam/openIdConnectProvider:OpenIdConnectProvider"
+    }
+    assert "github-oidc-discovered-provider" not in provider_resource_names  # nosec B101
+
+
+def test_github_oidc_existing_provider_lookup_handles_missing(monkeypatch):
+    def raise_missing(**_kwargs):
+        raise RuntimeError("couldn't find resource")
+
+    monkeypatch.setattr(
+        github_oidc.aws.iam,
+        "get_open_id_connect_provider",
+        raise_missing,
+    )
+
+    assert github_oidc._existing_github_oidc_provider_arn() is None  # nosec B101
+
+
+def test_github_oidc_existing_provider_lookup_raises_unexpected(monkeypatch):
+    def raise_unexpected(**_kwargs):
+        raise RuntimeError("throttled")
+
+    monkeypatch.setattr(
+        github_oidc.aws.iam,
+        "get_open_id_connect_provider",
+        raise_unexpected,
+    )
+
+    with pytest.raises(RuntimeError, match="throttled"):
+        github_oidc._existing_github_oidc_provider_arn()
+
+
 def test_pulumi_secrets_keys_emit_expected_resources_and_outputs(
     pulumi_mocks, monkeypatch
 ):  # noqa: ARG001
@@ -1062,6 +1163,7 @@ def test_github_oidc_roles_create_provider_when_missing(monkeypatch, pulumi_mock
     monkeypatch.setattr(github_oidc.settings, "github_oidc_provider_arn", None)
     monkeypatch.setattr(github_oidc.settings, "org", "VilnaCRM-Org")
     monkeypatch.setattr(github_oidc.settings, "environment", "test")
+    monkeypatch.setattr(github_oidc, "_existing_github_oidc_provider_arn", lambda: None)
 
     repos = [config.ManagedRepository(name="repo3", default_branch="main")]
     roles = GitHubOidcRoles("github-oidc-created", repositories=repos)

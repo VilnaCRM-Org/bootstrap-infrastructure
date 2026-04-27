@@ -231,9 +231,11 @@ def _state_bucket_encryption_rules() -> list[
     """Return the shared AES256 bucket encryption policy."""
     return [
         aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+            blocked_encryption_types=["SSE-C"],
+            bucket_key_enabled=False,
             apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                 sse_algorithm="AES256"
-            )
+            ),
         )
     ]
 

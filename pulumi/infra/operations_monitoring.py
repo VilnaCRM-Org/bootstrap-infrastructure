@@ -490,10 +490,12 @@ class OperationsMonitoring(pulumi.ComponentResource):
                 bucket=trail_bucket.id,
                 rules=[
                     aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                        blocked_encryption_types=["SSE-C"],
+                        bucket_key_enabled=False,
                         apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                             kms_master_key_id=trail_key.arn,
                             sse_algorithm="aws:kms",
-                        )
+                        ),
                     )
                 ],
                 opts=base_opts,
