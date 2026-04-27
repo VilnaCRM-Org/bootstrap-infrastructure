@@ -46,7 +46,8 @@ def _environment_part(settings: BootstrapSettings) -> str:
 
 def _topic_name(settings: BootstrapSettings) -> str:
     """Return the deterministic operations SNS topic name."""
-    return f"bootstrap-{_environment_part(settings)}-operations"
+    environment = _environment_part(settings).replace(".", "-")
+    return f"bootstrap-{environment}-operations"
 
 
 def _topic_key_alias_name(settings: BootstrapSettings) -> str:

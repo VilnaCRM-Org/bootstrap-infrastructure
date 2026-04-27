@@ -411,6 +411,14 @@ EOF
   [[ "$output" == *"./scripts/run_pulumi_preview.py"* ]]
 }
 
+@test "make test-preview-unprivileged clears stale cost proxy artifacts" {
+  run make -n test-preview-unprivileged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rm -f .artifacts/pulumi-preview/*.json .artifacts/pulumi-preview/summary.md .artifacts/pulumi-preview/cost-proxy.md"* ]]
+  [[ "$output" == *"rm -rf .artifacts/pulumi-preview/reports"* ]]
+  [[ "$output" == *"pulumi_ci_guardrails.py summarize"* ]]
+}
+
 @test "make test-destructive-diff enforces destructive resource guardrails" {
   run env GITHUB_TOKEN=ghs_test_token make -n test-destructive-diff
   [ "$status" -eq 0 ]
@@ -427,8 +435,10 @@ EOF
   [[ "$output" == *"-e PULUMI_SECRETS_PROVIDER"* ]]
   [[ "$output" == *"-e PULUMI_BACKEND_URL"* ]]
   [[ "$output" == *"-e PULUMI_PREVIEW_STACKS"* ]]
+  [[ "$output" == *"rm -f .artifacts/pulumi-preview/reports/cost-proxy.json .artifacts/pulumi-preview/reports/cost-proxy.md .artifacts/pulumi-preview/cost-proxy.md"* ]]
   [[ "$output" == *"pulumi_ci_guardrails.py cost-proxy"* ]]
   [[ "$output" == *"reports/cost-proxy.json"* ]]
+  [[ "$output" == *"reports/cost-proxy.md"* ]]
 }
 
 @test "make test-iam-validation validates previewed IAM policies" {

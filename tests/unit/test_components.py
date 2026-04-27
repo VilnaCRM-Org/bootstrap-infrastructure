@@ -15,6 +15,7 @@ from infra import (
     PulumiSecretsKeys,
     PulumiStateBuckets,
     S3BackupPlan,
+    automation,
     config,
     logging_bucket,
     operations_monitoring,
@@ -79,6 +80,72 @@ def test_operations_monitoring_rejects_long_cloudtrail_bucket_name(monkeypatch):
             "123456789012",
             "eu-central-1",
         )
+
+
+def test_operations_monitoring_topic_name_normalizes_dot_environment():
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="prod.eu",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    assert (  # nosec B101
+        operations_monitoring._topic_name(settings) == "bootstrap-prod-eu-operations"
+    )
+
+
+def test_github_automation_policy_normalizes_sns_environment_and_allocation_tags():
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="prod.eu",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+        manage_cost_allocation_tags=True,
+    )
+
+    policy = json.loads(
+        automation._automation_policy(
+            "123456789012",
+            settings,
+            "bootstrap-infrastructure",
+        )
+    )
+    statements = {statement["Sid"]: statement for statement in policy["Statement"]}
+
+    assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
+        "arn:aws:sns:*:123456789012:bootstrap-prod-eu-operations"
+    ]
+    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == [  # nosec B101
+        "arn:aws:sns:*:123456789012:bootstrap-prod-eu-operations:*"
+    ]
+    assert statements["ManageBootstrapCostAllocationTags"] == {  # nosec B101
+        "Sid": "ManageBootstrapCostAllocationTags",
+        "Effect": "Allow",
+        "Action": [
+            "ce:ListCostAllocationTags",
+            "ce:UpdateCostAllocationTagsStatus",
+        ],
+        "Resource": "*",
+    }
 
 
 def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001

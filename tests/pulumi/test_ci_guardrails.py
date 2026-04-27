@@ -99,6 +99,14 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         ),
         None,
     )
+    cost_proxy_run = next(
+        (
+            step.get("run", "")
+            for step in jobs["destructive_diff"]["steps"]
+            if step.get("name") == "Enforce cost and quota proxy"
+        ),
+        "",
+    )
     iam_download_step = next(
         (
             step
@@ -226,6 +234,9 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     assert any(  # nosec B101
         "make test-cost-proxy" in step.get("run", "")
         for step in jobs["destructive_diff"]["steps"]
+    )
+    assert (  # nosec B101
+        "cat .artifacts/pulumi-preview/reports/cost-proxy.md" in cost_proxy_run
     )
     assert any(  # nosec B101
         'cp "${GITHUB_EVENT_PATH}" .artifacts/github-event.json' in run

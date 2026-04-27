@@ -253,7 +253,7 @@ test-preview: ## Generate non-destructive Pulumi previews for configured stacks.
 
 test-preview-unprivileged: ## Generate an unprivileged placeholder preview artifact.
 	mkdir -p .artifacts/pulumi-preview
-	rm -f .artifacts/pulumi-preview/*.json .artifacts/pulumi-preview/summary.md
+	rm -f .artifacts/pulumi-preview/*.json .artifacts/pulumi-preview/summary.md .artifacts/pulumi-preview/cost-proxy.md
 	rm -rf .artifacts/pulumi-preview/reports
 	printf '%s\n' '{"changeSummary": {}, "steps": []}' > .artifacts/pulumi-preview/unprivileged.json
 	$(REPO_PYTHON) ./scripts/pulumi_ci_guardrails.py summarize \
@@ -276,12 +276,13 @@ test-destructive-diff: ## Fail when Pulumi previews delete or replace critical r
 test-cost-proxy: ## Fail when Pulumi previews exceed static cost and quota fanout thresholds.
 	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) bash -lc '\
 		mkdir -p .artifacts/pulumi-preview/reports; \
+		rm -f .artifacts/pulumi-preview/reports/cost-proxy.json .artifacts/pulumi-preview/reports/cost-proxy.md .artifacts/pulumi-preview/cost-proxy.md; \
 		if ! compgen -G ".artifacts/pulumi-preview/*.json" >/dev/null; then \
 			$(REPO_PYTHON) ./scripts/run_pulumi_preview.py >/dev/null; \
 		fi; \
 		uv run python ./scripts/pulumi_ci_guardrails.py cost-proxy \
 			--output-json .artifacts/pulumi-preview/reports/cost-proxy.json \
-			--output-md .artifacts/pulumi-preview/cost-proxy.md \
+			--output-md .artifacts/pulumi-preview/reports/cost-proxy.md \
 			.artifacts/pulumi-preview/*.json'
 
 test-iam-validation: ## Validate previewed IAM policies with AWS IAM Access Analyzer.

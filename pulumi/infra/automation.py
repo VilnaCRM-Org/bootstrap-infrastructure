@@ -193,6 +193,11 @@ def _environment_resource_part(settings: BootstrapSettings) -> str:
     return settings.sanitize_bucket_component(settings.environment, "environment")
 
 
+def _sns_environment_resource_part(settings: BootstrapSettings) -> str:
+    """Return the environment segment as it appears in SNS resource names."""
+    return _environment_resource_part(settings).replace(".", "-")
+
+
 def _automation_s3_resources(settings: BootstrapSettings) -> list[str]:
     """Scope bootstrap S3 management to state and central logging buckets."""
     environment = _environment_resource_part(settings)
@@ -282,7 +287,7 @@ def _automation_sns_resources(
     account_id: str, settings: BootstrapSettings
 ) -> list[str]:
     """Scope SNS management to the bootstrap operations alert topic."""
-    environment = _environment_resource_part(settings)
+    environment = _sns_environment_resource_part(settings)
     return [f"arn:aws:sns:*:{account_id}:bootstrap-{environment}-operations"]
 
 
@@ -290,7 +295,7 @@ def _automation_sns_subscription_resources(
     account_id: str, settings: BootstrapSettings
 ) -> list[str]:
     """Scope SNS subscription management to operations alert subscriptions."""
-    environment = _environment_resource_part(settings)
+    environment = _sns_environment_resource_part(settings)
     return [f"arn:aws:sns:*:{account_id}:bootstrap-{environment}-operations:*"]
 
 
