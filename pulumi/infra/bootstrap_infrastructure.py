@@ -113,7 +113,10 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             "managedRepositoryMetadata": repository_catalog.metadata_mapping(),
             "backupVaultName": self.backup.vault.name,
             "backupVaultArn": self.backup.vault.arn,
+            "backupRoleArn": self.backup.role.arn,
             "operationsAlertTopicArn": self.monitoring.topic.arn,
+            "operationsCloudTrailBucketName": self.monitoring.cloudtrail_bucket_name,
+            "operationsCloudTrailName": self.monitoring.cloudtrail_name,
             "operationsAlertRuleNames": {
                 suffix: rule.name for suffix, rule in self.monitoring.rules.items()
             },

@@ -22,7 +22,7 @@ PER_ENVIRONMENT_FANOUT = {
     "backupSelections": 1,
 }
 CENTRAL_STACK_FANOUT = {
-    "s3Buckets": 2,
+    "s3Buckets": 3,
     "kmsKeys": 1,
     "backupVaults": 1,
     "backupPlans": 1,
@@ -33,6 +33,7 @@ CENTRAL_STACK_FANOUT = {
     "snsSubscriptions": 1,
     "sqsQueues": 1,
     "eventRules": 4,
+    "cloudTrailTrails": 1,
     "budgets": 1,
     "costAnomalyMonitors": 1,
     "costAnomalySubscriptions": 1,
@@ -276,6 +277,7 @@ def _fanout_thresholds(args: argparse.Namespace) -> dict[str, int]:
         "budgets": args.max_budgets,
         "snsSubscriptions": args.max_sns_subscriptions,
         "sqsQueues": args.max_sqs_queues,
+        "cloudTrailTrails": args.max_cloudtrail_trails,
         "costAnomalyMonitors": args.max_cost_anomaly_monitors,
         "costAnomalySubscriptions": args.max_cost_anomaly_subscriptions,
         "costAllocationTags": args.max_cost_allocation_tags,
@@ -341,6 +343,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-budgets", type=int, default=20)
     parser.add_argument("--max-sns-subscriptions", type=int, default=50)
     parser.add_argument("--max-sqs-queues", type=int, default=50)
+    parser.add_argument("--max-cloudtrail-trails", type=int, default=20)
     parser.add_argument("--max-cost-anomaly-monitors", type=int, default=20)
     parser.add_argument("--max-cost-anomaly-subscriptions", type=int, default=20)
     parser.add_argument("--max-cost-allocation-tags", type=int, default=100)

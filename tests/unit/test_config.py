@@ -229,6 +229,7 @@ def test_bootstrap_settings_from_pulumi_config_uses_defaults_and_stack_fallback(
     assert settings_obj.cost_anomaly_threshold_usd == "10"  # nosec B101
     assert settings_obj.cost_anomaly_monitor_arn is None  # nosec B101
     assert settings_obj.manage_cost_allocation_tags is False  # nosec B101
+    assert settings_obj.operations_cloudtrail_name is None  # nosec B101
 
 
 def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch):
@@ -253,6 +254,7 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
                 "arn:aws:ce::123456789012:anomalymonitor/"
                 "e5509927-1fcc-400c-9536-0fdd01314bc9"
             ),
+            "operationsCloudTrailName": "existing-management-events",
             "manageCostAllocationTags": "true",
             "githubOidcProviderArn": "arn:aws:iam::123456789012:oidc-provider/test",
             "repositoryCatalogPath": "repositories.json",
@@ -286,6 +288,9 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
     assert settings_obj.cost_anomaly_monitor_arn == (  # nosec B101
         "arn:aws:ce::123456789012:anomalymonitor/e5509927-1fcc-400c-9536-0fdd01314bc9"
     )
+    assert settings_obj.operations_cloudtrail_name == (  # nosec B101
+        "existing-management-events"
+    )
     assert settings_obj.manage_cost_allocation_tags is True  # nosec B101
 
 
@@ -317,6 +322,19 @@ def test_bootstrap_settings_rejects_invalid_cost_anomaly_monitor_arn():
     )
 
     with pytest.raises(ValueError, match="Cost Anomaly monitor ARN"):
+        BootstrapSettings.from_pulumi_config(config_obj)
+
+
+def test_bootstrap_settings_rejects_invalid_cloudtrail_name():
+    """Existing trail reuse should fail fast when the name is malformed."""
+    config_obj = DummyPulumiConfig(
+        values={
+            "githubOrg": "VilnaCRM-Org",
+            "operationsCloudTrailName": "invalid trail name",
+        }
+    )
+
+    with pytest.raises(ValueError, match="valid CloudTrail trail name"):
         BootstrapSettings.from_pulumi_config(config_obj)
 
 

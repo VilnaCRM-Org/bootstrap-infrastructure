@@ -351,6 +351,7 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
         "backupSelections": 2,
         "backupVaults": 1,
         "budgets": 1,
+        "cloudTrailTrails": 1,
         "costAllocationTags": 0,
         "costAnomalyMonitors": 1,
         "costAnomalySubscriptions": 1,
@@ -361,7 +362,7 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
         "kmsKeys": 3,
         "oidcProviders": 1,
         "repositories": 1,
-        "s3Buckets": 6,
+        "s3Buckets": 7,
         "snsSubscriptions": 1,
         "snsTopics": 1,
         "sqsQueues": 1,
@@ -395,10 +396,11 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
     assert f"validated repository catalog: {catalog_path}" in output  # nosec B101
     assert "repository fanout estimate" in output  # nosec B101
     assert "repository fanout thresholds" in output  # nosec B101
-    assert '"current": 6' in output  # nosec B101
-    assert '"remaining": 194' in output  # nosec B101
+    assert '"current": 7' in output  # nosec B101
+    assert '"remaining": 193' in output  # nosec B101
     assert "s3Buckets fanout" in captured.err  # nosec B101
     assert "budgets fanout" in captured.err  # nosec B101
+    assert "cloudTrailTrails" in output  # nosec B101
 
 
 def test_validate_repository_catalogs_reports_schema_errors(
@@ -1051,18 +1053,83 @@ def test_run_pulumi_command_safe_artifact_stem_handles_empty_sanitized_name(
 
 def test_collect_well_architected_evidence_success_path(  # noqa: C901
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Metadata evidence collector should score proven controls without secrets."""
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    reviewed_at = module.dt.datetime.now(module.dt.timezone.utc).isoformat()
+    restore_evidence = tmp_path / "restore-drill.json"
+    restore_evidence.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "environment": "test",
+                "completedAt": "2026-04-27T10:00:00Z",
+                "sourceRecoveryPointArn": (
+                    "arn:aws:backup:us-east-1:123456789012:recovery-point:test"
+                ),
+                "targetRestoreLocation": "s3://awsbackup-restore-test-bootstrap-123456789012-drill",
+                "validationResult": "passed",
+                "cleanupConfirmed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    question_matrix_evidence = tmp_path / "question-matrix.json"
+    question_matrix_evidence.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "owner": "platform",
+                "reviewedAt": reviewed_at,
+                "questionCount": 57,
+                "unresolvedQuestionCount": 0,
+                "evidenceLocation": (
+                    "specs/issue-17-well-architected-5-of-5/question-matrix.md"
+                ),
+            }
+        ),
+        encoding="utf-8",
+    )
+    external_control_evidence = tmp_path / "external-controls.json"
+    external_control_evidence.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "owner": "platform",
+                "reviewedAt": reviewed_at,
+                "controlCount": 8,
+                "unresolvedControlCount": 0,
+                "controls": [
+                    {"id": "alert_route"},
+                    {"id": "backup_restore"},
+                    {"id": "branch_protection"},
+                    {"id": "finops"},
+                    {"id": "production_approval"},
+                    {"id": "quota_headroom"},
+                    {"id": "security_account_controls"},
+                    {"id": "sustainability_governance"},
+                ],
+                "evidenceLocation": "internal-control-ledger",
+                "fallbackPlan": "Block final score claims until evidence is refreshed.",
+            }
+        ),
+        encoding="utf-8",
+    )
 
-    def runner(command, **_kwargs):
+    def runner(command, **_kwargs):  # noqa: C901
         command_text = " ".join(command)
         payload: object
+        if command[:4] == ["git", "-C", str(PROJECT_ROOT), "rev-parse"]:
+            return subprocess.CompletedProcess(command, 0, "abc123\n", "")
+        if command[:4] == ["git", "-C", str(PROJECT_ROOT), "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
         if command[:3] == ["gh", "pr", "view"]:
             payload = {
                 "mergeStateStatus": "CLEAN",
                 "reviewDecision": "APPROVED",
                 "headRefOid": "abc123",
+                "headRefName": "feature",
                 "statusCheckRollup": [
                     {
                         "__typename": "CheckRun",
@@ -1111,6 +1178,21 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
             payload = "arn:aws:kms:us-east-1:123456789012:key/topic"
         elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
             payload = ["sqs"]
+        elif command[:3] == ["aws", "cloudtrail", "get-trail"]:
+            payload = {
+                "Name": "bootstrap-test-management-events",
+                "IsMultiRegionTrail": True,
+                "IncludeGlobalServiceEvents": True,
+                "LogFileValidationEnabled": True,
+                "KmsKeyId": "arn:aws:kms:us-east-1:123456789012:key/cloudtrail",
+            }
+        elif command[:3] == ["aws", "cloudtrail", "get-trail-status"]:
+            payload = {
+                "IsLogging": True,
+                "LatestDeliveryTime": "2026-04-27T10:00:00Z",
+            }
+        elif command[:3] == ["aws", "cloudtrail", "get-event-selectors"]:
+            payload = [{"IncludeManagementEvents": True, "ReadWriteType": "All"}]
         elif command[:3] == ["aws", "backup", "list-restore-jobs"]:
             payload = ["COMPLETED"]
         else:  # pragma: no cover - fail fast if the command contract changes.
@@ -1127,6 +1209,14 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
             "123456789012",
             "--operations-topic-arn",
             "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations",
+            "--operations-cloudtrail-name",
+            "bootstrap-test-management-events",
+            "--restore-drill-evidence",
+            str(restore_evidence),
+            "--question-matrix-evidence",
+            str(question_matrix_evidence),
+            "--external-control-evidence",
+            str(external_control_evidence),
             "--required-status-check",
             "Unit",
             "--root-dir",
@@ -1136,6 +1226,8 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
     report = module.collect_evidence(args, runner=runner)
 
     assert report["blockers"] == []  # nosec B101
+    assert report["scoreBlockers"] == []  # nosec B101
+    assert report["proxyPillarScores"] == report["pillarScores"]  # nosec B101
     assert all(score == 5 for score in report["pillarScores"].values())  # nosec B101
     assert {check["status"] for check in report["checks"]} == {"passed"}  # nosec B101
 
@@ -1146,12 +1238,17 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
     """Collector should keep blockers explicit when metadata is insufficient."""
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
 
-    def runner(command, **_kwargs):
+    def runner(command, **_kwargs):  # noqa: C901
+        if command[0] == "git" and command[3:5] == ["rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(command, 0, "local123\n", "")
+        if command[0] == "git" and command[3] == "status":
+            return subprocess.CompletedProcess(command, 0, " M file.py\n", "")
         if command[:3] == ["gh", "pr", "view"]:
             payload = {
                 "mergeStateStatus": "DIRTY",
                 "reviewDecision": "REVIEW_REQUIRED",
                 "headRefOid": "abc123",
+                "headRefName": "feature",
                 "statusCheckRollup": [
                     {
                         "__typename": "CheckRun",
@@ -1194,6 +1291,18 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
             payload = None
         elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
             payload = []
+        elif command[:3] == ["aws", "cloudtrail", "get-trail"]:
+            payload = {
+                "Name": "bootstrap-test-management-events",
+                "IsMultiRegionTrail": False,
+                "IncludeGlobalServiceEvents": False,
+                "LogFileValidationEnabled": False,
+                "KmsKeyId": None,
+            }
+        elif command[:3] == ["aws", "cloudtrail", "get-trail-status"]:
+            payload = {"IsLogging": False}
+        elif command[:3] == ["aws", "cloudtrail", "get-event-selectors"]:
+            payload = []
         elif command[:3] == ["aws", "backup", "list-restore-jobs"]:
             payload = []
         else:  # pragma: no cover - fail fast if the command contract changes.
@@ -1208,6 +1317,8 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
             "22",
             "--operations-topic-arn",
             "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations",
+            "--operations-cloudtrail-name",
+            "bootstrap-test-management-events",
             "--root-dir",
             str(PROJECT_ROOT),
         ]
@@ -1216,11 +1327,16 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
     statuses = {check["name"]: check["status"] for check in report["checks"]}
 
     assert statuses["github_pr_checks"] == "failed"  # nosec B101
+    assert statuses["github_pr_local_state"] == "failed"  # nosec B101
     assert statuses["github_review_threads"] == "failed"  # nosec B101
     assert statuses["github_branch_protection"] == "failed"  # nosec B101
     assert statuses["aws_cost_controls"] == "failed"  # nosec B101
     assert statuses["aws_sns_alert_route"] == "failed"  # nosec B101
+    assert statuses["aws_cloudtrail_management_events"] == "failed"  # nosec B101
     assert statuses["aws_restore_jobs"] == "failed"  # nosec B101
+    assert statuses["restore_drill_evidence"] == "missing"  # nosec B101
+    assert report["scoreBlockers"]  # nosec B101
+    assert max(report["pillarScores"].values()) <= 4  # nosec B101
     assert report["blockers"]  # nosec B101
 
 
@@ -1253,10 +1369,20 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert module._account_id_from_identity({"evidence": "unknown"}) == ""  # noqa: SLF001
     assert module._all_blockers([{"blockers": "unknown"}]) == []  # noqa: SLF001
     assert module.github_pr_checks("org/repo", None)["status"] == "missing"
+    assert (
+        module.github_pr_local_state("org/repo", None, tmp_path)["status"] == "missing"
+    )
     assert module.github_review_threads("org/repo", None)["status"] == "missing"
     assert module.aws_sns_alert_route(None)["status"] == "missing"
+    assert module.aws_cloudtrail_management_events(None)["status"] == "missing"
     assert module.github_pr_checks("org/repo", 1, runner=failing_runner)["status"] == (
         "unknown"
+    )
+    assert (
+        module.github_pr_local_state("org/repo", 1, tmp_path, runner=failing_runner)[
+            "status"
+        ]
+        == "failed"
     )
     assert (
         module.github_review_threads("org/repo", 1, runner=failing_runner)["status"]
@@ -1292,10 +1418,142 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     )
     assert null_subscription_result["status"] == "failed"  # nosec B101
     assert null_subscription_result["evidence"]["subscriptionProtocols"] == []  # nosec B101
+    assert (
+        module.aws_cloudtrail_management_events(
+            "bootstrap-test-management-events", runner=failing_runner
+        )["status"]
+        == "failed"
+    )
     assert module.aws_restore_jobs(90, runner=failing_runner)["status"] == "unknown"
+    assert module.restore_drill_evidence(None)["status"] == "missing"
+    assert module.restore_drill_evidence(tmp_path / "missing.json")["status"] == (
+        "failed"
+    )
+    malformed_restore_evidence = tmp_path / "malformed-restore.json"
+    malformed_restore_evidence.write_text("{", encoding="utf-8")
+    assert module.restore_drill_evidence(malformed_restore_evidence)["status"] == (
+        "failed"
+    )
+    list_restore_evidence = tmp_path / "list-restore.json"
+    list_restore_evidence.write_text("[]", encoding="utf-8")
+    assert module.restore_drill_evidence(list_restore_evidence)["status"] == "failed"
+    invalid_restore_evidence = tmp_path / "restore.json"
+    invalid_restore_evidence.write_text(
+        json.dumps({"workload": "other", "cleanupConfirmed": False}),
+        encoding="utf-8",
+    )
+    invalid_restore = module.restore_drill_evidence(invalid_restore_evidence)
+    assert invalid_restore["status"] == "failed"  # nosec B101
+    assert "bootstrap-infrastructure" in " ".join(invalid_restore["blockers"])  # nosec B101
+    legacy_args = module.build_parser().parse_args(
+        [
+            "--question-matrix-evidence-confirmed",
+            "--external-control-evidence-confirmed",
+        ]
+    )
+    assert module.question_matrix_evidence(legacy_args)["status"] == "missing"
+    legacy_blockers = module.question_matrix_evidence(legacy_args)["blockers"]
+    assert "boolean" in " ".join(legacy_blockers)
+    malformed_structured = tmp_path / "malformed-structured.json"
+    malformed_structured.write_text("{", encoding="utf-8")
+    malformed_args = module.build_parser().parse_args(
+        ["--question-matrix-evidence", str(malformed_structured)]
+    )
+    assert module.question_matrix_evidence(malformed_args)["status"] == "failed"
+    missing_structured_args = module.build_parser().parse_args(
+        ["--external-control-evidence", str(tmp_path / "missing-structured.json")]
+    )
+    assert module.external_control_evidence(missing_structured_args)["status"] == (
+        "failed"
+    )
+    list_structured = tmp_path / "list-structured.json"
+    list_structured.write_text("[]", encoding="utf-8")
+    list_args = module.build_parser().parse_args(
+        ["--external-control-evidence", str(list_structured)]
+    )
+    assert module.external_control_evidence(list_args)["status"] == "failed"
+    incomplete_external = tmp_path / "incomplete-external.json"
+    incomplete_external.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "owner": "platform",
+                "reviewedAt": module.dt.datetime.now(
+                    module.dt.timezone.utc
+                ).isoformat(),
+                "controlCount": 8,
+                "unresolvedControlCount": 0,
+                "controls": [{"id": "alert_route"}],
+                "evidenceLocation": "ledger",
+                "fallbackPlan": "block",
+            }
+        ),
+        encoding="utf-8",
+    )
+    incomplete_external_args = module.build_parser().parse_args(
+        ["--external-control-evidence", str(incomplete_external)]
+    )
+    incomplete_external_check = module.external_control_evidence(
+        incomplete_external_args
+    )
+    assert incomplete_external_check["status"] == "failed"  # nosec B101
+    assert "branch_protection" in " ".join(  # nosec B101
+        incomplete_external_check["blockers"]
+    )
+    stale_structured = tmp_path / "stale-structured.json"
+    stale_structured.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "owner": "platform",
+                "reviewedAt": "2025-01-01",
+                "questionCount": 1,
+                "unresolvedQuestionCount": 2,
+                "evidenceLocation": "spec",
+            }
+        ),
+        encoding="utf-8",
+    )
+    stale_args = module.build_parser().parse_args(
+        ["--question-matrix-evidence", str(stale_structured)]
+    )
+    stale_question_matrix = module.question_matrix_evidence(stale_args)
+    assert stale_question_matrix["status"] == "failed"  # nosec B101
+    assert "older than" in " ".join(stale_question_matrix["blockers"])  # nosec B101
+    future_blockers = module._structured_evidence_freshness_blockers(  # noqa: SLF001
+        {
+            "reviewedAt": (
+                module.dt.datetime.now(module.dt.timezone.utc)
+                + module.dt.timedelta(days=1)
+            ).isoformat()
+        },
+        "Future evidence",
+    )
+    assert "future" in future_blockers[0]  # nosec B101
+    invalid_blockers = module._structured_evidence_freshness_blockers(  # noqa: SLF001
+        {"reviewedAt": 123},
+        "Invalid evidence",
+    )
+    assert "ISO-8601" in invalid_blockers[0]  # nosec B101
+    assert module._parse_reviewed_at("not-a-date") is None  # noqa: SLF001
+    assert (  # nosec B101
+        module._parse_reviewed_at("2026-04-27T10:00:00").tzinfo  # noqa: SLF001
+        is not None
+    )
     assert (
         module.repository_fanout_evidence(tmp_path, missing_fanout_args)["status"]
         == "missing"
+    )
+    evidence_catalog_paths = module._evidence_repository_catalog_paths(PROJECT_ROOT)  # noqa: SLF001
+    assert [path.name for path in evidence_catalog_paths] == [  # nosec B101
+        "repositories.bootstrap.json"
+    ]
+    assert (
+        module.repository_fanout_evidence(
+            PROJECT_ROOT,
+            module.build_parser().parse_args(["--root-dir", str(PROJECT_ROOT)]),
+        )["status"]
+        == "passed"
     )
     assert (
         module.repository_fanout_evidence(PROJECT_ROOT, low_threshold_args)["status"]
@@ -1303,7 +1561,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     )
     monkeypatch.setattr(
         module,
-        "repository_catalog_paths",
+        "_evidence_repository_catalog_paths",
         lambda root_dir: [root_dir / "pulumi" / "repositories.example.json"],
     )
     monkeypatch.setattr(

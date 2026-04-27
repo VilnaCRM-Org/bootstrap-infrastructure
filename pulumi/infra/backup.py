@@ -8,7 +8,101 @@ import pulumi_aws as aws
 import pulumi
 
 from .bootstrap_settings import BootstrapSettings
+from .config import settings as default_settings
 from .utils.tags import base_tags
+
+
+def _environment_part(settings: BootstrapSettings | None) -> str:
+    """Return the resource-name-safe environment segment."""
+    configured_settings = settings or default_settings
+    return configured_settings.sanitize_bucket_component(
+        configured_settings.environment, "environment"
+    )
+
+
+def _restore_drill_bucket_pattern(
+    account_id: str,
+    partition: str,
+    settings: BootstrapSettings | None,
+) -> str:
+    """Return the isolated AWS Backup restore-drill bucket ARN pattern."""
+    environment = _environment_part(settings).replace(".", "-")
+    return (
+        f"arn:{partition}:s3:::awsbackup-restore-{environment}-bootstrap-{account_id}-*"
+    )
+
+
+def _restore_drill_policy(
+    account_id: str,
+    partition: str,
+    settings: BootstrapSettings | None,
+) -> str:
+    """Return a scoped restore policy for isolated non-production drill buckets."""
+    bucket_pattern = _restore_drill_bucket_pattern(account_id, partition, settings)
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "UseS3KmsKeysForIsolatedRestoreDrills",
+                    "Effect": "Allow",
+                    "Action": [
+                        "kms:Decrypt",
+                        "kms:DescribeKey",
+                        "kms:GenerateDataKey",
+                    ],
+                    "Resource": f"arn:{partition}:kms:*:{account_id}:key/*",
+                    "Condition": {
+                        "ForAnyValue:StringLike": {
+                            "kms:ResourceAliases": [
+                                "alias/pulumi-*-secrets",
+                                "alias/bootstrap-*-operations-cloudtrail",
+                            ]
+                        },
+                        "StringLike": {
+                            "kms:ViaService": [
+                                "s3.*.amazonaws.com",
+                            ]
+                        },
+                    },
+                },
+                {
+                    "Sid": "RestoreToIsolatedDrillBuckets",
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:CreateBucket",
+                        "s3:GetBucketLocation",
+                        "s3:GetBucketOwnershipControls",
+                        "s3:GetBucketVersioning",
+                        "s3:ListBucket",
+                        "s3:ListBucketVersions",
+                        "s3:PutBucketOwnershipControls",
+                        "s3:PutBucketVersioning",
+                    ],
+                    "Resource": bucket_pattern,
+                },
+                {
+                    "Sid": "RestoreObjectsToIsolatedDrillBuckets",
+                    "Effect": "Allow",
+                    "Action": [
+                        "s3:DeleteObject",
+                        "s3:GetObject",
+                        "s3:GetObjectAcl",
+                        "s3:GetObjectTagging",
+                        "s3:GetObjectVersion",
+                        "s3:GetObjectVersionAcl",
+                        "s3:ListMultipartUploadParts",
+                        "s3:PutObject",
+                        "s3:PutObjectAcl",
+                        "s3:PutObjectTagging",
+                        "s3:PutObjectVersionAcl",
+                    ],
+                    "Resource": f"{bucket_pattern}/*",
+                },
+            ],
+        },
+        sort_keys=True,
+    )
 
 
 class S3BackupPlan(pulumi.ComponentResource):
@@ -25,8 +119,10 @@ class S3BackupPlan(pulumi.ComponentResource):
         """Initialize the AWS Backup plan for S3 resources."""
         super().__init__("bootstrap:backup:S3BackupPlan", name, None, opts)
 
-        configured_settings = settings
+        configured_settings = settings or default_settings
         base_opts = pulumi.ResourceOptions(parent=self)
+        account_id = aws.get_caller_identity().account_id
+        partition = aws.get_partition().partition
 
         backup_vault = aws.backup.Vault(
             f"{name}-vault",
@@ -56,6 +152,12 @@ class S3BackupPlan(pulumi.ComponentResource):
             f"{name}-role-attachment",
             role=backup_role.name,
             policy_arn="arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup",
+            opts=base_opts,
+        )
+        restore_policy = aws.iam.RolePolicy(
+            f"{name}-restore-drill-policy",
+            role=backup_role.name,
+            policy=_restore_drill_policy(account_id, partition, configured_settings),
             opts=base_opts,
         )
 
@@ -92,6 +194,7 @@ class S3BackupPlan(pulumi.ComponentResource):
         self.vault = backup_vault
         self.plan = backup_plan
         self.role = backup_role
+        self.restore_policy = restore_policy
 
         self.register_outputs(
             {

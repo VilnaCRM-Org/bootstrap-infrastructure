@@ -256,7 +256,7 @@ EOF
   [ "$status" -eq 0 ]
   assert_compose_env_file
   [[ "$output" == *"rm -f .coverage.integration .coverage.integration.*"* ]]
-  [[ "$output" == *"pytest -q tests/integration"* ]]
+  [[ "$output" == *"coverage run --parallel-mode -m pytest -q tests/integration"* ]]
   [[ "$output" == *"coverage combine"* ]]
   [[ "$output" == *"coverage report --show-missing"* ]]
   [[ "$output" == *"--fail-under=100"* ]]
@@ -391,7 +391,7 @@ EOF
   run make -n test-secrets
   [ "$status" -eq 0 ]
   assert_compose_env_file
-  [[ "$output" == *"gitleaks git . --config .gitleaks.toml --no-banner --redact"* ]]
+  [[ "$output" == *"gitleaks git . --log-opts=\"-1\" --config .gitleaks.toml --no-banner --redact"* ]]
 }
 
 @test "make test-deps-security executes pip-audit in strict mode" {

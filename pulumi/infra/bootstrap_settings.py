@@ -23,6 +23,7 @@ _IPV4_PATTERN = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
 _COST_ANOMALY_MONITOR_ARN_PATTERN = re.compile(
     r"^arn:[a-z0-9-]+:ce::\d{12}:anomalymonitor/[A-Za-z0-9][A-Za-z0-9._/-]*$"
 )
+_CLOUDTRAIL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$")
 
 
 @dataclass
@@ -48,6 +49,7 @@ class BootstrapSettings:
     cost_anomaly_threshold_usd: str = "10"
     cost_anomaly_monitor_arn: str | None = None
     manage_cost_allocation_tags: bool = False
+    operations_cloudtrail_name: str | None = None
 
     @classmethod
     def from_pulumi_config(
@@ -79,6 +81,10 @@ class BootstrapSettings:
                 "10",
             ),
             cost_anomaly_monitor_arn=cls.optional_cost_anomaly_monitor_arn(config),
+            operations_cloudtrail_name=cls.optional_cloudtrail_name(
+                config,
+                "operationsCloudTrailName",
+            ),
             manage_cost_allocation_tags=cls.optional_bool_config_value(
                 config,
                 "manageCostAllocationTags",
@@ -137,6 +143,16 @@ class BootstrapSettings:
             raise ValueError(
                 "costAnomalyMonitorArn must be a Cost Anomaly monitor ARN."
             )
+        return value
+
+    @staticmethod
+    def optional_cloudtrail_name(cfg: pulumi.Config, key: str) -> str | None:
+        """Load and validate an optional existing CloudTrail trail name."""
+        value = cfg.get(key)
+        if value is None:
+            return None
+        if not _CLOUDTRAIL_NAME_PATTERN.fullmatch(value):
+            raise ValueError(f"{key} must be a valid CloudTrail trail name.")
         return value
 
     @staticmethod

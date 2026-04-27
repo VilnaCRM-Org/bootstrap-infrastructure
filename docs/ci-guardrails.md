@@ -132,7 +132,7 @@ supported override because it leaves an auditable trail in GitHub.
 destructive-diff gate. It counts create and replace operations for resource
 families that usually affect cost, quotas, or operational fanout, including S3
 buckets, KMS keys, IAM roles, AWS Backup resources, ECR repositories, SNS
-topics, EventBridge rules, and S3 replication configuration.
+topics, EventBridge rules, CloudTrail trails, and S3 replication configuration.
 
 The proxy is intentionally static. It does not estimate monthly spend and it
 does not replace the repo-managed AWS Budget, Cost Anomaly Detection resources,
@@ -186,6 +186,10 @@ Optional or job-specific environment variables:
 | `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for preview |
 | `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks |
 | `AWS_APPLY_ROLE_ARN` | OIDC role used by test or production apply jobs |
+| `OPERATIONS_CLOUDTRAIL_NAME` | Standard metadata input for evidence collection when the environment reuses an existing operations CloudTrail |
+| `RESTORE_DRILL_EVIDENCE` | Standard metadata input pointing to the latest workload-scoped restore drill evidence record |
+| `QUESTION_MATRIX_EVIDENCE` | Standard metadata input pointing to the structured 57-question review evidence record |
+| `EXTERNAL_CONTROL_EVIDENCE` | Standard metadata input pointing to the structured external-control owner and freshness evidence record |
 
 Optional environment secrets:
 
@@ -218,6 +222,13 @@ bundle for PR readiness, branch protection, AWS identity, account cost controls,
 optional operations topic routing, restore-job freshness, and repository fanout.
 The report is written to `.artifacts/well-architected/evidence.json`; missing
 external evidence is reported as a blocker rather than treated as success.
+When set, `OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
+`QUESTION_MATRIX_EVIDENCE`, and `EXTERNAL_CONTROL_EVIDENCE` are standard
+evidence inputs, not secrets. Restore evidence must be scoped to this bootstrap
+workload and include cleanup confirmation for any isolated restore location.
+Question-matrix and external-control records must include owner, freshness,
+coverage, unresolved-count, evidence-location, and fallback fields; boolean
+confirmation flags do not unlock final 5/5 scores.
 
 ### Example IAM trust policy
 

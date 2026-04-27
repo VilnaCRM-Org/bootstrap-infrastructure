@@ -13,6 +13,9 @@ target controls still require external evidence or account-owner decisions,
 including branch protection proof, confirmed alert subscriptions, live AWS quota
 headroom, activated cost allocation tags, monthly FinOps review artifacts,
 restore drills, and production approval evidence.
+Any proxy score or guardrail pass is therefore an interim readiness signal, not
+a final 5/5 Well-Architected score, while question-matrix gaps and external
+evidence remain open.
 
 ## Alignment Checks
 
@@ -33,6 +36,7 @@ restore drills, and production approval evidence.
 | --- | --- |
 | Automation IAM | Repository Pulumi secrets KMS data-plane actions were removed from bootstrap automation; new SNS/EventBridge permissions are scoped to deterministic operations resources. |
 | Operations monitoring | `OperationsMonitoring` creates the environment operations SNS topic, a dedicated customer-managed KMS key for encrypted EventBridge delivery, and EventBridge rules for Backup failure, KMS risk, IAM/OIDC risk, and S3 control-plane risk events. |
+| CloudTrail evidence | Environments may pass `OPERATIONS_CLOUDTRAIL_NAME` as standard evidence input to reuse an existing operations CloudTrail and avoid creating or managing duplicate management trails. |
 | Cost controls | `CostControls` creates the monthly AWS Budget, 80% actual and 100% forecast notifications, creates or reuses a service-dimensional Cost Anomaly Detection monitor, creates an immediate anomaly subscription, supports optional cost allocation tag activation, and exports non-secret review handles. |
 | Classification | `DataClassification`, `Criticality`, and `RetentionClass` are default tags, committed stack config values, and policy-pack required tags. |
 | Catalog demand metadata | Repository catalogs support `owner`, `lifecycleState`, `lastReviewed`, and `expectedEnvironments`; metadata is exported and tagged where repository resources are created. |
@@ -59,9 +63,9 @@ restore drills, and production approval evidence.
 | Alert routing destination | Epic 4 | Confirmed SNS subscription, ChatOps, ticketing, or external incident tool ownership and routing evidence. |
 | Backup Vault Lock decision | Epic 5 | In-repo implementation evidence or external-control exemption. |
 | Quota ownership | Epic 7 | Service quota thresholds, approval owner, and escalation path. |
-| Restore drill evidence | Epic 5 | Latest non-production restore date, operator, source backup, validation result, and cleanup confirmation. |
+| Restore drill evidence | Epic 5 | `RESTORE_DRILL_EVIDENCE` record for this bootstrap workload with latest non-production restore date, operator, source backup, validation result, isolated restore location, and cleanup confirmation. |
 | Production approval evidence | Epic 1 | Protected environment reviewer rules, approved apply evidence, reviewed SHA, and skipped-check policy. |
-| Security account controls | SEC1-SEC11 | MFA/SSO posture, CloudTrail/GuardDuty/Security Hub/Config evidence, vulnerability SLA, and exception register where applicable. |
+| Security account controls | SEC1-SEC11 | MFA/SSO posture, CloudTrail live-apply evidence, GuardDuty/Security Hub/Config evidence, vulnerability SLA, and exception register where applicable. |
 | Sustainability goals | Epic 8 | Owner-approved goals for region selection, retention, backups, and cleanup. |
 | Well-Architected review owner | Epic 0 | Owner for question-matrix updates, score changes, evidence expiry, and follow-up review. |
 
@@ -77,7 +81,7 @@ claim is blocked until all of the following are current and non-secret:
   enabled, spend policy, and transfer-cost model.
 - Live AWS Service Quotas or account headroom evidence for catalog expansion.
 - Backup Vault Lock decision or documented exemption plus quarterly restore
-  drill evidence.
+  drill evidence scoped to this workload and cleanup-confirmed.
 - Named RACI owners, severity escalation path, KPI observations, and runbook
   drill records for each shared environment.
 - Security account evidence for human access posture and external detection
@@ -95,6 +99,8 @@ claim is blocked until all of the following are current and non-secret:
 - Validate risky changes in ephemeral stacks such as `pr-<number>` or `smoke`, then destroy the stack after validation.
 - Do not treat skipped privileged checks as success for same-repo infrastructure changes unless the skip policy explicitly allows it.
 - Do not raise a question score unless the `question-matrix.md` row includes implemented evidence, owner, freshness SLA, fallback action, and comparison with `main`.
+- Do not treat proxy scores, static fanout checks, or guardrail pass/fail status as final 5/5 Well-Architected scores while question-matrix gaps, restore-drill evidence, or external evidence blockers remain.
+- Do not use boolean confirmation flags for score increases; final score evidence must be structured JSON with owner, freshness, coverage, unresolved-count, evidence-location, and fallback fields.
 - Prefer existing OIDC-backed GitHub workflows for test-account Pulumi apply evidence when local Pulumi or KMS backend metadata is not safely configured.
 
 ## Test-Account Validation Strategy
@@ -142,7 +148,8 @@ This PR should be validated by:
   `make test-repository-fanout` to prove the new guardrails work without AWS
   credentials.
 - Confirming the question matrix still contains all 57 AWS Well-Architected
-  questions and does not claim final 5/5 scores before external evidence exists.
+  questions and does not claim final 5/5 scores before structured
+  `QUESTION_MATRIX_EVIDENCE` and `EXTERNAL_CONTROL_EVIDENCE` records exist.
 - Dispatching or observing the existing `Pulumi Test Deploy` workflow, or a
   safe equivalent test-account Pulumi run, before merge readiness is claimed.
 

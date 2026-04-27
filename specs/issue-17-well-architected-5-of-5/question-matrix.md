@@ -6,6 +6,9 @@ The original planning package was planning-only. The rows below remain the
 evidence contract for implementation PRs; adding implemented evidence here does
 not raise a score unless the target evidence, owner, freshness, validation, and
 fallback requirements are complete.
+Proxy scores and guardrail pass/fail summaries are not final 5/5
+Well-Architected scores while any question-matrix gap or external-evidence
+blocker remains open.
 
 ## Evidence Contract
 
@@ -17,6 +20,14 @@ Every target evidence item must record:
 - Review cadence: who reviews the evidence and how often.
 - Fallback action: what happens if evidence is missing, stale, or contradictory.
 - Secret-safety classification: public repo artifact, internal non-secret artifact, AWS metadata-only output, or secret-managed artifact that must not be printed.
+
+Final score evidence must be supplied as structured, non-secret JSON to
+`make report-well-architected-evidence`: `QUESTION_MATRIX_EVIDENCE` proves
+57-question coverage with zero unresolved questions, and
+`EXTERNAL_CONTROL_EVIDENCE` proves owner/freshness/fallback records for branch
+protection, alert route, backup/restore, FinOps, quota headroom, security
+account controls, sustainability governance, and production approval.
+Boolean confirmation flags are not sufficient for a final 5/5 claim.
 
 ## Operational Excellence
 
@@ -41,7 +52,7 @@ Every target evidence item must record:
 | SEC1 | How do you securely operate your workload? | OIDC workflows, account checks, policy pack, security scans, SRE/security docs. | No SEC-specific ownership model, threat-model refresh, or external-control ledger. | SEC evidence ledger with owner, evidence source, expiry, threat-model cadence, and external-control fallbacks. Owner: security reviewer. Cadence: quarterly. |
 | SEC2 | How do you manage authentication for people and machines? | GitHub OIDC trust is scoped by repo, branch, and environment; CI validates account IDs. | Human MFA/SSO and local static-key posture are external or undocumented; local Docker can pass AWS credentials. | Authentication matrix separating CI OIDC, human access, local exceptions, static-key rotation, and MFA/SSO evidence. Owner: security reviewer. Cadence: quarterly. |
 | SEC3 | How do you manage permissions for people and machines? | Per-repo deploy roles are narrow; automation IAM is scoped with prefixes, tags, and conditions, and no longer grants KMS data-plane actions against repository Pulumi secrets keys. | Remaining wildcard/list/create actions need action-level justification; permissions boundary decision is missing. | Role permission matrix, Access Analyzer evidence, wildcard justification, permissions boundary decision, and regression tests. Owner: security reviewer. Cadence: per IAM change. |
-| SEC4 | How do you detect and investigate security events? | State bucket logging, central log bucket policy, nightly drift, security scanning workflows, and EventBridge rules for Backup, KMS, IAM/OIDC, and S3 control-plane risk events. | CloudTrail/GuardDuty/Security Hub/Config evidence, confirmed SNS subscription route, and full investigation runbooks are still incomplete. | Detection matrix with event source, alert route, investigation steps, retention, and external-control evidence. Owner: security reviewer plus SRE. Cadence: monthly. |
+| SEC4 | How do you detect and investigate security events? | State bucket logging, central log bucket policy, operations CloudTrail evidence via `OPERATIONS_CLOUDTRAIL_NAME`, nightly drift, security scanning workflows, and EventBridge rules for Backup, KMS, IAM/OIDC, and S3 control-plane risk events. | GuardDuty/Security Hub/Config evidence, confirmed SNS subscription route, CloudTrail live-apply or reuse evidence, and full investigation runbooks are still incomplete. | Detection matrix with event source, alert route, investigation steps, retention, and external-control evidence; existing CloudTrail reuse should be documented to avoid duplicate management trails. Owner: security reviewer plus SRE. Cadence: monthly. |
 | SEC5 | How do you protect your network resources? | Policy pack blocks broad SSH/RDP exposure for future resources. | Current workload has no VPC/WAF/LB plane, but not-applicable status is not documented; future controls are conditional. | Network applicability statement plus future VPC flow logs, public ingress, WAF, TLS listener, and route guardrail requirements. Owner: security reviewer. Cadence: per network resource introduction. |
 | SEC6 | How do you protect your compute resources? | ECR repository uses immutable tags, scan-on-push, and lifecycle tests; no runtime compute is provisioned. | Runner hardening, image vulnerability remediation SLA, and Inspector/ECR scan evidence are not specified. | Compute applicability statement, ECR scan evidence, remediation SLA, base-image refresh cadence, and runner hardening evidence. Owner: security reviewer plus platform owner. Cadence: monthly. |
 | SEC7 | How do you classify your data? | Required ownership, cost, `DataClassification`, `Criticality`, and `RetentionClass` tags exist for bootstrap resources, stacks, and policy-pack enforcement. | A complete taxonomy and external activated-tag/cost-allocation evidence are still missing. | Data classification taxonomy with tags or schema, retention class, sensitivity, owner, and tests. Owner: security reviewer. Cadence: quarterly. |
@@ -62,7 +73,7 @@ Every target evidence item must record:
 | REL6 | How do you monitor workload resources? | Nightly drift, CI guardrail workflows, and EventBridge-to-SNS alerts for Backup failures and critical KMS/IAM/S3 control-plane changes exist. | Replication metrics/alarms, tested alert subscription, and CI safety failure routing are still incomplete. | Alarm matrix with source, metric/event, threshold, owner, route, runbook, and test evidence. Owner: SRE. Cadence: monthly. |
 | REL7 | How do you design your workload to adapt to changes in demand? | Repository catalog drives resource creation and now supports owner, lifecycle state, last-reviewed date, and expected environment count with static fanout thresholds. | Demand signal review, stale repository cleanup, and live quota checks are still missing. | Catalog metadata and demand model with growth thresholds, quota checks, cleanup signals, and approval path. Owner: maintainer plus SRE. Cadence: per catalog change. |
 | REL8 | How do you implement change? | PR guardrails, test deploy workflow, prod gated deploy workflow, policy tests, and exact same-repo privileged check contract. | Branch protection evidence remains external; the documented skipped-check policy still needs owner-managed proof in GitHub settings. | Branch protection evidence for exact required checks, environment approval rules, and same-repo privileged validation evidence. Owner: maintainer. Cadence: per workflow or branch protection change. |
-| REL9 | How do you back up data? | AWS Backup vault and plan, state/log bucket versioning, retention policies. | No Vault Lock/copy decision, restore audit, or restore drill evidence. | Backup evidence with Vault Lock or exemption, restore runbook, latest successful restore drill, and backup job health. Owner: SRE. Cadence: monthly backup review and quarterly restore drill. |
+| REL9 | How do you back up data? | AWS Backup vault and plan, state/log bucket versioning, retention policies. | No Vault Lock/copy decision, restore audit, or workload-scoped restore drill evidence. | Backup evidence with Vault Lock or exemption, restore runbook, latest successful `RESTORE_DRILL_EVIDENCE` record scoped to this workload with cleanup confirmation, and backup job health. Owner: SRE. Cadence: monthly backup review and quarterly restore drill. |
 | REL10 | How do you use fault isolation to protect your workload? | Per-repo buckets, KMS aliases, deploy roles, and environment separation. | No explicit proof that repo/env roles cannot access unrelated state or keys. | Fault-isolation test matrix for repo/env boundaries, IAM conditions, bucket policies, and KMS grants. Owner: security reviewer plus SRE. Cadence: per IAM/storage change. |
 | REL11 | How do you design your workload to withstand component failures? | Replication, backups, versioning, drift detection. | Component failure scenarios are not tested or documented end to end. | Scenario playbooks and drills for primary state bucket unavailable, replica lag, KMS pending deletion, log bucket unavailable, and workflow failure. Owner: SRE. Cadence: quarterly. |
 | REL12 | How do you test reliability? | Unit, policy, project structure, workflow, and guardrail tests exist. | Reliability tests do not cover quotas, alarms, restore drills, fault scenarios, or DR exercises. | Reliability test plan with unit/policy/metadata/drill coverage and evidence retention. Owner: SRE. Cadence: per PR plus quarterly drills. |
@@ -114,3 +125,4 @@ A future implementation PR may raise a question score only when all of the follo
 - The relevant tests, policy checks, workflow checks, AWS metadata checks, or external-control attestations are linked.
 - The owner and cadence are still valid.
 - The implementation is compared with `main` so the review can identify whether the score improved, regressed, or stayed the same.
+- Proxy scores are labeled as readiness indicators and are not presented as final 5/5 Well-Architected scores.

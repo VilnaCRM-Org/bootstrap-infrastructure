@@ -154,6 +154,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "backup:*" not in actions  # nosec B101
     assert "ecr:*" not in actions  # nosec B101
     assert "events:*" not in actions  # nosec B101
+    assert "cloudtrail:*" not in actions  # nosec B101
     assert "sns:*" not in actions  # nosec B101
     assert "s3:CreateBucket" in actions  # nosec B101
     assert "kms:CreateKey" in actions  # nosec B101
@@ -163,6 +164,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "backup:CreateBackupPlan" in actions  # nosec B101
     assert "ecr:CreateRepository" in actions  # nosec B101
     assert "events:PutRule" in actions  # nosec B101
+    assert "cloudtrail:CreateTrail" in actions  # nosec B101
     assert "sns:CreateTopic" in actions  # nosec B101
     assert "sqs:CreateQueue" in actions  # nosec B101
     assert "budgets:ModifyBudget" in actions  # nosec B101
@@ -173,6 +175,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "arn:aws:s3:::pulumi-*-test-state-replication",
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-replication",
+        "arn:aws:s3:::bootstrap-*-test-cloudtrail",
     ]
     assert statements["ManageBootstrapEcr"]["Resource"] == [  # nosec B101
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
@@ -180,6 +183,9 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     ]
     assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
         "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
+    ]
+    assert statements["ManageBootstrapCloudTrail"]["Resource"] == [  # nosec B101
+        "arn:aws:cloudtrail:*:123456789012:trail/bootstrap-test-management-events"
     ]
     assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
         "arn:aws:sns:*:123456789012:bootstrap-test-operations"
@@ -197,6 +203,15 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "arn:aws:ce::123456789012:anomalymonitor/*",
         "arn:aws:ce::123456789012:anomalysubscription/*",
     ]
+    assert statements["ManageBootstrapCostExplorer"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": [
+                "cost-anomaly-monitor",
+                "cost-anomaly-subscription",
+            ],
+        }
+    }
     assert (  # nosec B101
         "arn:aws:iam::123456789012:role/PulumiAutomation-"
         "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
@@ -205,22 +220,38 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         statements["ManageBootstrapKmsKeys"]["Condition"]["StringEquals"]
         == {
             "aws:ResourceTag/Environment": "test",
-            "aws:ResourceTag/Purpose": ["pulumi-secrets", "operations-alerting"],
+            "aws:ResourceTag/Purpose": [
+                "pulumi-secrets",
+                "operations-alerting",
+                "operations-cloudtrail",
+            ],
         }
     )
     assert statements["CreateBootstrapKmsKeys"]["Condition"]["StringEquals"] == {  # nosec B101
         "aws:RequestTag/Environment": "test",
-        "aws:RequestTag/Purpose": ["pulumi-secrets", "operations-alerting"],
+        "aws:RequestTag/Purpose": [
+            "pulumi-secrets",
+            "operations-alerting",
+            "operations-cloudtrail",
+        ],
     }
     assert (  # nosec B101
         "arn:aws:kms:*:123456789012:alias/bootstrap-test-operations-alerting"
         in statements["ManageBootstrapKmsAliases"]["Resource"]
     )
     assert (  # nosec B101
+        "arn:aws:kms:*:123456789012:alias/bootstrap-test-operations-cloudtrail"
+        in statements["ManageBootstrapKmsAliases"]["Resource"]
+    )
+    assert (  # nosec B101
         statements["ManageBootstrapKmsAliases"]["Condition"]["StringEqualsIfExists"]
         == {
             "aws:ResourceTag/Environment": "test",
-            "aws:ResourceTag/Purpose": ["pulumi-secrets", "operations-alerting"],
+            "aws:ResourceTag/Purpose": [
+                "pulumi-secrets",
+                "operations-alerting",
+                "operations-cloudtrail",
+            ],
         }
     )
     assert {

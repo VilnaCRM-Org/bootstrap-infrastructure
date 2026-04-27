@@ -10,6 +10,8 @@ COMPOSE_ENV_FILE := $(if $(EFFECTIVE_ENV_FILE),$(EFFECTIVE_ENV_FILE),$(EMPTY_ENV
 UID ?= $(shell id -u 2>/dev/null || echo 1000)
 GID ?= $(shell id -g 2>/dev/null || echo 1000)
 USER ?= $(shell id -un 2>/dev/null || echo dev)
+GIT_COMMON_DIR ?= $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+GITLEAKS_GIT_MOUNTS = $(if $(GIT_COMMON_DIR),-v $(GIT_COMMON_DIR):$(GIT_COMMON_DIR):ro,)
 
 export UID
 export GID
@@ -150,7 +152,7 @@ test-unit: ## Execute fast unit tests for the Pulumi application layer.
 test-integration: ## Execute Pulumi automation-based integration tests.
 	rm -f .coverage.integration .coverage.integration.*
 	$(COMPOSE) run --rm $(INTEGRATION_COVERAGE_ENV) \
-		$(COMPOSE_SERVICE) uv run pytest -q tests/integration
+		$(COMPOSE_SERVICE) uv run coverage run --parallel-mode -m pytest -q tests/integration
 	$(COMPOSE) run --rm -e COVERAGE_FILE=/workspace/.coverage.integration \
 		-e COVERAGE_RCFILE=/workspace/.coveragerc \
 		$(COMPOSE_SERVICE) uv run coverage combine
@@ -240,7 +242,7 @@ test-dockerfile: ## Lint the development Dockerfile with hadolint.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) hadolint --config .hadolint.yaml Dockerfile
 
 test-secrets: ## Scan tracked Git content for accidentally committed secrets.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) gitleaks git . --config .gitleaks.toml --no-banner --redact
+	$(COMPOSE) run --rm $(GITLEAKS_GIT_MOUNTS) $(COMPOSE_SERVICE) gitleaks git . --log-opts="-1" --config .gitleaks.toml --no-banner --redact
 
 test-deps-security: ## Audit Python dependencies for known vulnerabilities.
 	$(COMPOSE) run --rm -e XDG_CACHE_HOME=/tmp/xdg-cache $(COMPOSE_SERVICE) bash -lc 'uv export --all-groups --format requirements.txt --no-hashes --no-emit-project --frozen -o /tmp/pip-audit-requirements.txt >/dev/null && uv run pip-audit --strict -r /tmp/pip-audit-requirements.txt'
@@ -374,11 +376,20 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		pr_arg=""; \
 		account_arg=""; \
 		topic_arg=""; \
+		cloudtrail_arg=""; \
+		restore_arg=""; \
+		question_matrix_arg=""; \
+		external_control_arg=""; \
 		if [ -n "$${PR_NUMBER:-}" ]; then pr_arg="--pr $${PR_NUMBER}"; fi; \
 		if [ -n "$${AWS_ACCOUNT_ID:-}" ]; then account_arg="--aws-account-id $${AWS_ACCOUNT_ID}"; fi; \
 		if [ -n "$${OPERATIONS_TOPIC_ARN:-}" ]; then topic_arg="--operations-topic-arn $${OPERATIONS_TOPIC_ARN}"; fi; \
+		if [ -n "$${OPERATIONS_CLOUDTRAIL_NAME:-}" ]; then cloudtrail_arg="--operations-cloudtrail-name $${OPERATIONS_CLOUDTRAIL_NAME}"; fi; \
+		if [ -n "$${RESTORE_DRILL_EVIDENCE:-}" ]; then restore_arg="--restore-drill-evidence $${RESTORE_DRILL_EVIDENCE}"; fi; \
+		if [ -n "$${QUESTION_MATRIX_EVIDENCE:-}" ]; then question_matrix_arg="--question-matrix-evidence $${QUESTION_MATRIX_EVIDENCE}"; fi; \
+		if [ -n "$${EXTERNAL_CONTROL_EVIDENCE:-}" ]; then external_control_arg="--external-control-evidence $${EXTERNAL_CONTROL_EVIDENCE}"; fi; \
 		$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
-			$$pr_arg $$account_arg $$topic_arg \
+			$$pr_arg $$account_arg $$topic_arg $$cloudtrail_arg $$restore_arg \
+			$$question_matrix_arg $$external_control_arg \
 			--output .artifacts/well-architected/evidence.json'
 
 report-quality: ## Run scheduled quality reports and generate fresh artifacts.

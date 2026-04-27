@@ -70,6 +70,17 @@ def test_central_logging_buckets_reject_same_replication_region(  # noqa: ARG001
         CentralLoggingBuckets("central-logs", replication_region="us-east-1")
 
 
+def test_operations_monitoring_rejects_long_cloudtrail_bucket_name(monkeypatch):
+    monkeypatch.setattr(config.settings, "environment", "x" * 40)
+
+    with pytest.raises(ValueError, match="CloudTrail bucket name exceeds"):
+        operations_monitoring._cloudtrail_bucket_name(
+            config.settings,
+            "123456789012",
+            "eu-central-1",
+        )
+
+
 def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(config.settings, "logging_prefix", "company")
     monkeypatch.setattr(config.settings, "repo", "bootstrap-infrastructure")
@@ -142,6 +153,12 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     alert_topic_key_alias_state = _resource_state_by_name(
         pulumi_mocks, "operations-monitoring-topic-key-alias"
     )
+    cloudtrail_key_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-key"
+    )
+    cloudtrail_key_alias_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-key-alias"
+    )
     alert_topic_policy_state = _resource_state_by_name(
         pulumi_mocks, "operations-monitoring-topic-policy"
     )
@@ -153,6 +170,21 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     )
     alert_queue_subscription_state = _resource_state_by_name(
         pulumi_mocks, "operations-monitoring-alert-queue-subscription"
+    )
+    cloudtrail_bucket_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-bucket"
+    )
+    cloudtrail_bucket_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-bucket-encryption"
+    )
+    cloudtrail_bucket_policy_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-bucket-policy"
+    )
+    cloudtrail_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail"
+    )
+    backup_restore_policy_state = _resource_state_by_name(
+        pulumi_mocks, "backup-restore-drill-policy"
     )
     backup_rule_state = _resource_state_by_name(
         pulumi_mocks, "operations-monitoring-backup-failed-rule"
@@ -252,6 +284,115 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     assert alert_queue_subscription_state["endpoint"] == (  # nosec B101
         "arn:aws:sqs:us-east-1:123456789012:bootstrap-test-operations-alerts"
     )
+    assert cloudtrail_bucket_state["bucket"] == (  # nosec B101
+        "bootstrap-123456789012-us-east-1-test-cloudtrail"
+    )
+    cloudtrail_key_policy = json.loads(cloudtrail_key_state["policy"])
+    cloudtrail_key_statements = {
+        statement["Sid"]: statement for statement in cloudtrail_key_policy["Statement"]
+    }
+    assert cloudtrail_key_state["enableKeyRotation"] is True  # nosec B101
+    assert cloudtrail_key_state["tags"]["Purpose"] == (  # nosec B101
+        "operations-cloudtrail"
+    )
+    assert cloudtrail_key_alias_state["name"] == (  # nosec B101
+        "alias/bootstrap-test-operations-cloudtrail"
+    )
+    assert cloudtrail_key_statements["AllowCloudTrailEncryptLogs"][  # nosec B101
+        "Condition"
+    ] == {
+        "StringEquals": {
+            "aws:SourceArn": (
+                "arn:aws:cloudtrail:us-east-1:123456789012:trail/"
+                "bootstrap-test-management-events"
+            )
+        },
+        "StringLike": {
+            "kms:EncryptionContext:aws:cloudtrail:arn": (
+                "arn:aws:cloudtrail:*:123456789012:trail/"
+                "bootstrap-test-management-events"
+            )
+        },
+    }
+    cloudtrail_bucket_encryption = json.dumps(
+        cloudtrail_bucket_encryption_state["rules"],
+        sort_keys=True,
+    )
+    assert "aws:kms" in cloudtrail_bucket_encryption  # nosec B101
+    assert (  # nosec B101
+        "arn:aws:kms:us-east-1:123456789012:key/"
+        "operations-monitoring-cloudtrail-key" in cloudtrail_bucket_encryption
+    )
+    cloudtrail_bucket_policy = json.loads(cloudtrail_bucket_policy_state["policy"])
+    cloudtrail_put_statement = next(
+        statement
+        for statement in cloudtrail_bucket_policy["Statement"]
+        if statement["Sid"] == "AllowCloudTrailPutObject"
+    )
+    assert cloudtrail_put_statement["Condition"] == {  # nosec B101
+        "ArnLike": {
+            "aws:SourceArn": (
+                "arn:aws:cloudtrail:us-east-1:123456789012:trail/"
+                "bootstrap-test-management-events"
+            )
+        },
+        "StringEquals": {
+            "aws:SourceAccount": "123456789012",
+            "s3:x-amz-acl": "bucket-owner-full-control",
+        },
+    }
+    assert cloudtrail_state["name"] == (  # nosec B101
+        "bootstrap-test-management-events"
+    )
+    assert cloudtrail_state["enableLogFileValidation"] is True  # nosec B101
+    assert cloudtrail_state["includeGlobalServiceEvents"] is True  # nosec B101
+    assert cloudtrail_state["isMultiRegionTrail"] is True  # nosec B101
+    assert cloudtrail_state["kmsKeyId"] == (  # nosec B101
+        "arn:aws:kms:us-east-1:123456789012:key/operations-monitoring-cloudtrail-key"
+    )
+    backup_restore_policy = json.loads(backup_restore_policy_state["policy"])
+    restore_policy_resources = {
+        resource
+        for statement in backup_restore_policy["Statement"]
+        for resource in (
+            statement["Resource"]
+            if isinstance(statement["Resource"], list)
+            else [statement["Resource"]]
+        )
+    }
+    assert (  # nosec B101
+        "arn:aws:s3:::awsbackup-restore-test-bootstrap-123456789012-*"
+        in restore_policy_resources
+    )
+    assert (  # nosec B101
+        "arn:aws:s3:::awsbackup-restore-test-bootstrap-123456789012-*/*"
+        in restore_policy_resources
+    )
+    assert (  # nosec B101
+        "arn:aws:kms:*:123456789012:key/*" in restore_policy_resources
+    )
+    kms_restore_statement = next(
+        statement
+        for statement in backup_restore_policy["Statement"]
+        if statement["Sid"] == "UseS3KmsKeysForIsolatedRestoreDrills"
+    )
+    assert kms_restore_statement["Condition"] == {  # nosec B101
+        "ForAnyValue:StringLike": {
+            "kms:ResourceAliases": [
+                "alias/pulumi-*-secrets",
+                "alias/bootstrap-*-operations-cloudtrail",
+            ]
+        },
+        "StringLike": {"kms:ViaService": ["s3.*.amazonaws.com"]},
+    }
+    restore_policy_attachments = [
+        state
+        for resource_type, _name, state in pulumi_mocks.resources
+        if resource_type == "aws:iam/rolePolicyAttachment:RolePolicyAttachment"
+        and state.get("policyArn")
+        == "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Restore"
+    ]
+    assert restore_policy_attachments == []  # nosec B101
     assert (  # nosec B101
         alert_topic_key_alias_state["name"]
         == "alias/bootstrap-test-operations-alerting"
@@ -268,6 +409,31 @@ def test_operations_monitoring_rule_name_guard(monkeypatch):
 
     with pytest.raises(ValueError, match="EventBridge rule name"):
         operations_monitoring._rule_name(config.settings, "backup-failed")  # noqa: SLF001
+
+
+def test_operations_monitoring_can_reuse_existing_cloudtrail(pulumi_mocks, monkeypatch):  # noqa: ARG001
+    """Existing management trails should avoid duplicate CloudTrail resources."""
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(
+        config.settings,
+        "operations_cloudtrail_name",
+        "existing-management-events",
+    )
+
+    monitoring = OperationsMonitoring("operations-monitoring-reuse")
+
+    assert monitoring.cloudtrail is None  # nosec B101
+    assert monitoring.cloudtrail_bucket is None  # nosec B101
+    assert _sync_await(future_output(monitoring.cloudtrail_name)) == (  # nosec B101
+        "existing-management-events"
+    )
+    assert _sync_await(future_output(monitoring.cloudtrail_bucket_name)) is None  # nosec B101
+    cloudtrail_resource_names = {
+        name
+        for resource_type, name, _state in pulumi_mocks.resources
+        if resource_type == "aws:cloudtrail/trail:Trail"
+    }
+    assert cloudtrail_resource_names == set()  # nosec B101
 
 
 def test_operations_monitoring_policies_are_partition_aware():
@@ -466,6 +632,7 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert "operationsAlertQueueArn" in bootstrap.outputs  # nosec B101
     assert "operationsAlertQueueSubscriptionArn" in bootstrap.outputs  # nosec B101
     assert "backupVaultArn" in bootstrap.outputs  # nosec B101
+    assert "backupRoleArn" in bootstrap.outputs  # nosec B101
     log_delivery_dependencies = bootstrap.state._log_delivery_dependencies  # noqa: SLF001
     expected_log_delivery_dependencies = [
         bootstrap.logging.bucket,
@@ -701,6 +868,7 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "arn:aws:s3:::pulumi-*-test-state-replication",
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-replication",
+        "arn:aws:s3:::bootstrap-*-test-cloudtrail",
     ]
     all_actions = {
         action
@@ -711,8 +879,13 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert "kms:Encrypt" not in all_actions  # nosec B101
     assert "kms:GenerateDataKey" not in all_actions  # nosec B101
     assert "kms:ReEncryptFrom" not in all_actions  # nosec B101
+    assert "cloudtrail:*" not in all_actions  # nosec B101
+    assert "cloudtrail:CreateTrail" in all_actions  # nosec B101
     assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
         "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
+    ]
+    assert statements["ManageBootstrapCloudTrail"]["Resource"] == [  # nosec B101
+        "arn:aws:cloudtrail:*:123456789012:trail/bootstrap-test-management-events"
     ]
     assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
         "arn:aws:sns:*:123456789012:bootstrap-test-operations"
@@ -755,6 +928,15 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "arn:aws:ce::123456789012:anomalymonitor/*",
         "arn:aws:ce::123456789012:anomalysubscription/*",
     ]
+    assert statements["ManageBootstrapCostExplorer"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": [
+                "cost-anomaly-monitor",
+                "cost-anomaly-subscription",
+            ],
+        }
+    }
     assert (  # nosec B101
         "ManageBootstrapCostAllocationTags" not in statements
     )

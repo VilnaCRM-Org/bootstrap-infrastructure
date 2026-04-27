@@ -22,6 +22,7 @@ CRITICAL_TYPE_PATTERNS = (
     "aws:iam/",
     "aws:kms/",
     "aws:s3/bucket:Bucket",
+    "aws:cloudtrail/trail:Trail",
     "aws:rds/",
     "aws:secretsmanager/",
     "aws:route53/",
@@ -43,6 +44,7 @@ COST_DRIVER_TYPE_PATTERNS = (
     ("snsSubscriptions", "aws:sns/topicSubscription:TopicSubscription", 1),
     ("sqsQueues", "aws:sqs/queue:Queue", 1),
     ("eventRules", "aws:cloudwatch/eventRule:EventRule", 1),
+    ("cloudTrailTrails", "aws:cloudtrail/trail:Trail", 2),
     ("budgets", "aws:budgets/budget:Budget", 3),
     ("costAnomalyMonitors", "aws:costexplorer/anomalyMonitor:AnomalyMonitor", 2),
     (

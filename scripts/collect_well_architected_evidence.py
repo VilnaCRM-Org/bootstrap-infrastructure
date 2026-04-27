@@ -6,7 +6,7 @@ import datetime as dt
 import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from _script_support import repo_root, run
 from validate_repository_catalogs import (
@@ -39,6 +39,50 @@ DEFAULT_REQUIRED_STATUS_CHECKS = (
     "CodeQL (python)",
     "CodeQL (actions)",
 )
+RESTORE_DRILL_REQUIRED_FIELDS = (
+    "workload",
+    "environment",
+    "completedAt",
+    "sourceRecoveryPointArn",
+    "targetRestoreLocation",
+    "validationResult",
+    "cleanupConfirmed",
+)
+READINESS_GATES = (
+    "question_matrix_evidence",
+    "external_control_evidence",
+)
+QUESTION_MATRIX_REQUIRED_FIELDS = (
+    "workload",
+    "owner",
+    "reviewedAt",
+    "questionCount",
+    "unresolvedQuestionCount",
+    "evidenceLocation",
+)
+EXTERNAL_CONTROL_REQUIRED_FIELDS = (
+    "workload",
+    "owner",
+    "reviewedAt",
+    "controlCount",
+    "unresolvedControlCount",
+    "controls",
+    "evidenceLocation",
+    "fallbackPlan",
+)
+REQUIRED_EXTERNAL_CONTROL_IDS = (
+    "branch_protection",
+    "alert_route",
+    "backup_restore",
+    "finops",
+    "quota_headroom",
+    "security_account_controls",
+    "sustainability_governance",
+    "production_approval",
+)
+EXPECTED_WELL_ARCHITECTED_QUESTION_COUNT = 57
+STRUCTURED_EVIDENCE_MAX_AGE_DAYS = 30
+EXAMPLE_CATALOG_NAMES = frozenset({"repositories.example.json"})
 
 
 def _check(
@@ -160,6 +204,168 @@ def github_pr_checks(
         },
         blockers=blockers,
     )
+
+
+def github_pr_local_state(
+    repo: str,
+    pr_number: int | None,
+    root_dir: Path,
+    *,
+    runner: Runner = run,
+) -> dict[str, object]:
+    """Verify the local checkout matches the PR head and has no uncommitted work."""
+    if pr_number is None:
+        return _check(
+            "github_pr_local_state",
+            status="missing",
+            blockers=["PR number is required for local PR state evidence."],
+        )
+
+    head_ok, local_head, head_error = _local_git_head(root_dir, runner=runner)
+    status_ok, dirty_count, status_error = _local_git_dirty_count(
+        root_dir,
+        runner=runner,
+    )
+    pr_ok, pr_payload, pr_error = _github_pr_head_metadata(
+        repo,
+        pr_number,
+        runner=runner,
+    )
+    blockers = _github_pr_local_state_blockers(
+        head_ok=head_ok,
+        local_head=local_head,
+        head_error=head_error,
+        status_ok=status_ok,
+        dirty_count=dirty_count,
+        status_error=status_error,
+        pr_ok=pr_ok,
+        pr_payload=pr_payload,
+        pr_error=pr_error,
+    )
+    evidence = _github_pr_local_state_evidence(
+        head_ok=head_ok,
+        local_head=local_head,
+        status_ok=status_ok,
+        dirty_count=dirty_count,
+        pr_payload=pr_payload if isinstance(pr_payload, dict) else {},
+    )
+    return _check(
+        "github_pr_local_state",
+        status="passed" if not blockers else "failed",
+        evidence=evidence,
+        blockers=blockers,
+    )
+
+
+def _local_git_head(root_dir: Path, *, runner: Runner = run) -> tuple[bool, str, str]:
+    """Return the local git HEAD commit."""
+    return _run_text(
+        ["git", "-C", str(root_dir), "rev-parse", "HEAD"],
+        runner=runner,
+    )
+
+
+def _local_git_dirty_count(
+    root_dir: Path, *, runner: Runner = run
+) -> tuple[bool, int, str]:
+    """Return the count of local dirty status entries without returning paths."""
+    ok, output, error = _run_text(
+        [
+            "git",
+            "-C",
+            str(root_dir),
+            "status",
+            "--porcelain=v1",
+            "--untracked-files=all",
+        ],
+        runner=runner,
+    )
+    return ok, len([line for line in output.splitlines() if line.strip()]), error
+
+
+def _github_pr_head_metadata(
+    repo: str,
+    pr_number: int,
+    *,
+    runner: Runner = run,
+) -> tuple[bool, Any, str]:
+    """Return GitHub PR head metadata."""
+    return _run_json(
+        [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            repo,
+            "--json",
+            "headRefOid,headRefName",
+        ],
+        runner=runner,
+    )
+
+
+def _github_pr_local_state_blockers(
+    *,
+    head_ok: bool,
+    local_head: str,
+    head_error: str,
+    status_ok: bool,
+    dirty_count: int,
+    status_error: str,
+    pr_ok: bool,
+    pr_payload: Any,
+    pr_error: str,
+) -> list[str]:
+    """Return blockers for local PR state evidence."""
+    blockers = []
+    if not head_ok:
+        blockers.append(f"Unable to query local git HEAD: {head_error}")
+    if not status_ok:
+        blockers.append(f"Unable to query local git status: {status_error}")
+    elif dirty_count:
+        blockers.append("Local worktree has uncommitted tracked or untracked changes.")
+    if not pr_ok or not isinstance(pr_payload, dict):
+        blockers.append(f"Unable to query PR head metadata: {pr_error}")
+    if head_ok and _pr_head_oid(pr_payload) and local_head != _pr_head_oid(pr_payload):
+        blockers.append("Local HEAD does not match the GitHub PR head commit.")
+    return blockers
+
+
+def _github_pr_local_state_evidence(
+    *,
+    head_ok: bool,
+    local_head: str,
+    status_ok: bool,
+    dirty_count: int,
+    pr_payload: dict[str, Any],
+) -> dict[str, object]:
+    """Return non-secret local PR state evidence."""
+    return {
+        "localHead": local_head if head_ok else None,
+        "prHeadRefOid": _pr_head_oid(pr_payload) or None,
+        "prHeadRefName": pr_payload.get("headRefName"),
+        "dirtyFileCount": dirty_count if status_ok else None,
+    }
+
+
+def _pr_head_oid(payload: Any) -> str:
+    """Return a PR head OID from a decoded payload."""
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("headRefOid") or "")
+
+
+def _run_text(
+    command: list[str],
+    *,
+    runner: Runner = run,
+) -> tuple[bool, str, str]:
+    """Run a metadata command and return stripped text output."""
+    result = runner(command, check=False, capture_output=True)
+    if result.returncode != 0:
+        return False, "", result.stderr.strip() or "command failed"
+    return True, result.stdout.strip(), ""
 
 
 def github_review_threads(
@@ -639,8 +845,170 @@ def aws_sns_alert_route(
     )
 
 
+def _metadata_dict(
+    ok: bool,
+    payload: object,
+    error: str,
+    label: str,
+) -> tuple[dict[str, object], list[str]]:
+    """Normalize a metadata command expected to return a JSON object."""
+    if ok and isinstance(payload, dict):
+        return cast(dict[str, object], payload), []
+    return {}, [f"Unable to query {label}: {error}"]
+
+
+def _metadata_list(
+    ok: bool,
+    payload: object,
+    error: str,
+    label: str,
+) -> tuple[list[object], list[str]]:
+    """Normalize a metadata command expected to return a JSON list."""
+    if ok and isinstance(payload, list):
+        return cast(list[object], payload), []
+    return [], [f"Unable to query {label}: {error}"]
+
+
+def _cloudtrail_management_selector_found(selectors: Sequence[object]) -> bool:
+    """Return whether CloudTrail captures all read/write management events."""
+    return any(
+        isinstance(selector, dict)
+        and selector.get("IncludeManagementEvents") is True
+        and selector.get("ReadWriteType") == "All"
+        for selector in selectors
+    )
+
+
+def _cloudtrail_trail_blockers(trail: dict[str, object]) -> list[str]:
+    """Return blockers from CloudTrail static metadata."""
+    if not trail:
+        return []
+    required_flags = (
+        ("IsMultiRegionTrail", "Operations CloudTrail is not multi-region."),
+        (
+            "IncludeGlobalServiceEvents",
+            "Operations CloudTrail does not include global service events.",
+        ),
+        (
+            "LogFileValidationEnabled",
+            "Operations CloudTrail log file validation is not enabled.",
+        ),
+        ("KmsKeyId", "Operations CloudTrail is not encrypted with a KMS key."),
+    )
+    return [message for key, message in required_flags if not trail.get(key)]
+
+
+def _cloudtrail_status_blockers(status: dict[str, object]) -> list[str]:
+    """Return blockers from CloudTrail logging status."""
+    if not status or status.get("IsLogging"):
+        return []
+    return ["Operations CloudTrail is not logging."]
+
+
+def _cloudtrail_selector_blockers(
+    *, selectors_queried: bool, management_selector_found: bool
+) -> list[str]:
+    """Return blockers from CloudTrail event selector metadata."""
+    if not selectors_queried or management_selector_found:
+        return []
+    return ["Operations CloudTrail does not capture all read/write management events."]
+
+
+def aws_cloudtrail_management_events(
+    trail_name: str | None, *, runner: Runner = run
+) -> dict[str, object]:
+    """Collect metadata-only evidence for the operations CloudTrail trail."""
+    if not trail_name:
+        return _check(
+            "aws_cloudtrail_management_events",
+            status="missing",
+            blockers=["Operations CloudTrail trail name is required for evidence."],
+        )
+    trail_ok, trail, trail_error = _run_json(
+        [
+            "aws",
+            "cloudtrail",
+            "get-trail",
+            "--name",
+            trail_name,
+            "--query",
+            "Trail.{Name:Name,IsMultiRegionTrail:IsMultiRegionTrail,IncludeGlobalServiceEvents:IncludeGlobalServiceEvents,LogFileValidationEnabled:LogFileValidationEnabled,KmsKeyId:KmsKeyId}",
+            "--output",
+            "json",
+        ],
+        runner=runner,
+    )
+    status_ok, status, status_error = _run_json(
+        [
+            "aws",
+            "cloudtrail",
+            "get-trail-status",
+            "--name",
+            trail_name,
+            "--query",
+            "{IsLogging:IsLogging,LatestDeliveryTime:LatestDeliveryTime}",
+            "--output",
+            "json",
+        ],
+        runner=runner,
+    )
+    selectors_ok, selectors, selectors_error = _run_json(
+        [
+            "aws",
+            "cloudtrail",
+            "get-event-selectors",
+            "--trail-name",
+            trail_name,
+            "--query",
+            "EventSelectors[].{IncludeManagementEvents:IncludeManagementEvents,ReadWriteType:ReadWriteType}",
+            "--output",
+            "json",
+        ],
+        runner=runner,
+    )
+    trail, trail_blockers = _metadata_dict(
+        trail_ok, trail, trail_error, "CloudTrail trail metadata"
+    )
+    status, status_blockers = _metadata_dict(
+        status_ok, status, status_error, "CloudTrail trail status"
+    )
+    selectors, selector_blockers = _metadata_list(
+        selectors_ok,
+        selectors,
+        selectors_error,
+        "CloudTrail management event selectors",
+    )
+    management_selector_found = _cloudtrail_management_selector_found(selectors)
+    blockers = [
+        *trail_blockers,
+        *status_blockers,
+        *selector_blockers,
+        *_cloudtrail_trail_blockers(trail),
+        *_cloudtrail_status_blockers(status),
+        *_cloudtrail_selector_blockers(
+            selectors_queried=selectors_ok,
+            management_selector_found=management_selector_found,
+        ),
+    ]
+    return _check(
+        "aws_cloudtrail_management_events",
+        status="passed" if not blockers else "failed",
+        evidence={
+            "trailName": trail_name,
+            "isLogging": bool(status.get("IsLogging")),
+            "isMultiRegion": bool(trail.get("IsMultiRegionTrail")),
+            "includeGlobalServiceEvents": bool(trail.get("IncludeGlobalServiceEvents")),
+            "logFileValidationEnabled": bool(trail.get("LogFileValidationEnabled")),
+            "kmsEncrypted": bool(trail.get("KmsKeyId")),
+            "managementEventSelectorCount": len(selectors),
+            "capturesAllManagementEvents": management_selector_found,
+        },
+        blockers=blockers,
+    )
+
+
 def aws_restore_jobs(days: int, *, runner: Runner = run) -> dict[str, object]:
-    """Collect recent AWS Backup restore-job status counts."""
+    """Collect recent AWS Backup restore-job status counts as account context."""
     created_after = (
         dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -674,17 +1042,90 @@ def aws_restore_jobs(days: int, *, runner: Runner = run) -> dict[str, object]:
     )
 
 
+def _read_restore_drill_payload(
+    evidence_path: Path,
+) -> tuple[dict[str, Any], list[str]]:
+    """Read and parse a restore-drill evidence payload."""
+    try:
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return {}, [f"Unable to read restore-drill evidence: {exc}"]
+    except json.JSONDecodeError as exc:
+        return {}, [f"Restore-drill evidence is not valid JSON: {exc.msg}"]
+    if not isinstance(payload, dict):
+        return {}, ["Restore-drill evidence must be a JSON object."]
+    return payload, []
+
+
+def _restore_drill_payload_blockers(payload: dict[str, Any]) -> list[str]:
+    """Return blockers for workload-scoped restore-drill evidence."""
+    blockers: list[str] = [
+        f"Restore-drill evidence is missing required field: {field}"
+        for field in RESTORE_DRILL_REQUIRED_FIELDS
+        if not payload.get(field)
+    ]
+
+    if payload.get("workload") != "bootstrap-infrastructure":
+        blockers.append(
+            "Restore-drill evidence must be scoped to the bootstrap-infrastructure "
+            "workload."
+        )
+    if payload.get("validationResult") != "passed":
+        blockers.append("Restore-drill evidence validationResult must be passed.")
+    if payload.get("cleanupConfirmed") is not True:
+        blockers.append("Restore-drill evidence must confirm cleanup.")
+
+    return blockers
+
+
+def _restore_drill_evidence_payload(payload: dict[str, Any]) -> dict[str, object]:
+    """Return the non-secret restore-drill evidence fields."""
+    return {
+        "workload": payload.get("workload"),
+        "environment": payload.get("environment"),
+        "completedAt": payload.get("completedAt"),
+        "targetRestoreLocation": payload.get("targetRestoreLocation"),
+        "validationResult": payload.get("validationResult"),
+        "cleanupConfirmed": payload.get("cleanupConfirmed") is True,
+    }
+
+
+def restore_drill_evidence(evidence_path: Path | None) -> dict[str, object]:
+    """Validate a workload-scoped restore-drill evidence record."""
+    if evidence_path is None:
+        return _check(
+            "restore_drill_evidence",
+            status="missing",
+            blockers=[
+                "RESTORE_DRILL_EVIDENCE path is required for workload-scoped "
+                "restore evidence."
+            ],
+        )
+
+    payload, read_blockers = _read_restore_drill_payload(evidence_path)
+    blockers = [*read_blockers, *_restore_drill_payload_blockers(payload)]
+    return _check(
+        "restore_drill_evidence",
+        status="passed" if not blockers else "failed",
+        evidence=_restore_drill_evidence_payload(payload),
+        blockers=blockers,
+    )
+
+
 def repository_fanout_evidence(
     root_dir: Path, args: argparse.Namespace
 ) -> dict[str, object]:
     """Collect static repository fanout evidence from committed catalogs."""
     schema_path = root_dir / "pulumi" / "repositories.schema.json"
-    catalog_paths = repository_catalog_paths(root_dir)
+    catalog_paths = _evidence_repository_catalog_paths(root_dir)
     if not catalog_paths:
         return _check(
             "repository_fanout",
             status="missing",
-            blockers=["No repository catalog JSON files were found."],
+            blockers=[
+                "No non-example repository catalog JSON files were found for "
+                "fanout evidence."
+            ],
         )
     thresholds = _fanout_thresholds(args)
     reports = []
@@ -713,33 +1154,48 @@ def repository_fanout_evidence(
     )
 
 
+def _evidence_repository_catalog_paths(root_dir: Path) -> list[Path]:
+    """Return non-example repository catalogs that can support evidence claims."""
+    return [
+        path
+        for path in repository_catalog_paths(root_dir)
+        if path.name not in EXAMPLE_CATALOG_NAMES
+    ]
+
+
 PILLAR_CHECKS = {
     "Operational Excellence": (
         "github_pr_checks",
+        "github_pr_local_state",
         "github_review_threads",
         "github_branch_protection",
         "aws_sns_alert_route",
+        "aws_cloudtrail_management_events",
     ),
     "Security": (
         "github_pr_checks",
+        "github_pr_local_state",
         "github_review_threads",
         "github_branch_protection",
         "aws_identity",
+        "aws_cloudtrail_management_events",
     ),
     "Reliability": (
         "github_pr_checks",
+        "github_pr_local_state",
         "aws_sns_alert_route",
-        "aws_restore_jobs",
+        "restore_drill_evidence",
         "repository_fanout",
     ),
     "Performance Efficiency": ("repository_fanout",),
     "Cost Optimization": ("aws_cost_controls", "repository_fanout"),
     "Sustainability": ("repository_fanout",),
 }
+WELL_ARCHITECTED_SCORE_CAP = 4.0
 
 
 def pillar_scores(checks: Sequence[dict[str, object]]) -> dict[str, float]:
-    """Calculate evidence-backed pillar scores from normalized checks."""
+    """Calculate proxy readiness scores from normalized metadata checks."""
     by_name = {str(check["name"]): check for check in checks}
     scores: dict[str, float] = {}
     for pillar, check_names in PILLAR_CHECKS.items():
@@ -752,12 +1208,274 @@ def pillar_scores(checks: Sequence[dict[str, object]]) -> dict[str, float]:
     return scores
 
 
+def well_architected_scores(
+    proxy_scores: dict[str, float],
+    checks: Sequence[dict[str, object]],
+) -> dict[str, float]:
+    """Cap final score claims until question-level evidence gates pass."""
+    by_name = {str(check["name"]): check for check in checks}
+    readiness_passed = all(
+        by_name.get(gate, {}).get("status") == "passed" for gate in READINESS_GATES
+    )
+    if readiness_passed:
+        return proxy_scores
+    return {
+        pillar: min(score, WELL_ARCHITECTED_SCORE_CAP)
+        for pillar, score in proxy_scores.items()
+    }
+
+
+def score_blockers(checks: Sequence[dict[str, object]]) -> list[str]:
+    """Return score-claim blockers for final Well-Architected scoring."""
+    by_name = {str(check["name"]): check for check in checks}
+    blockers: list[str] = []
+    for gate in READINESS_GATES:
+        if by_name.get(gate, {}).get("status") != "passed":
+            blockers.append(
+                f"{gate} is required before proxy readiness scores can be treated "
+                "as final Well-Architected scores."
+            )
+    return blockers
+
+
+def question_matrix_evidence(args: argparse.Namespace) -> dict[str, object]:
+    """Validate structured evidence for all Well-Architected questions."""
+    return _structured_evidence_check(
+        name="question_matrix_evidence",
+        label="Question-matrix evidence",
+        evidence_path=args.question_matrix_evidence,
+        legacy_confirmed=args.question_matrix_evidence_confirmed,
+        required_fields=QUESTION_MATRIX_REQUIRED_FIELDS,
+        count_field="questionCount",
+        unresolved_field="unresolvedQuestionCount",
+        minimum_count=EXPECTED_WELL_ARCHITECTED_QUESTION_COUNT,
+    )
+
+
+def external_control_evidence(args: argparse.Namespace) -> dict[str, object]:
+    """Validate structured evidence for external control ownership and freshness."""
+    return _structured_evidence_check(
+        name="external_control_evidence",
+        label="External-control evidence",
+        evidence_path=args.external_control_evidence,
+        legacy_confirmed=args.external_control_evidence_confirmed,
+        required_fields=EXTERNAL_CONTROL_REQUIRED_FIELDS,
+        count_field="controlCount",
+        unresolved_field="unresolvedControlCount",
+        minimum_count=len(REQUIRED_EXTERNAL_CONTROL_IDS),
+        required_control_ids=REQUIRED_EXTERNAL_CONTROL_IDS,
+    )
+
+
+def _structured_evidence_check(
+    *,
+    name: str,
+    label: str,
+    evidence_path: Path | None,
+    legacy_confirmed: bool,
+    required_fields: Sequence[str],
+    count_field: str,
+    unresolved_field: str,
+    minimum_count: int,
+    required_control_ids: Sequence[str] = (),
+) -> dict[str, object]:
+    """Validate a non-secret, owner-backed evidence record."""
+    if evidence_path is None:
+        blockers = [
+            f"{label} JSON path is required for final Well-Architected scoring."
+        ]
+        if legacy_confirmed:
+            blockers.append(
+                f"{label} cannot be satisfied by a boolean confirmation flag."
+            )
+        return _check(name, status="missing", blockers=blockers)
+
+    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
+    blockers.extend(_structured_evidence_payload_blockers(payload, required_fields))
+    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
+    blockers.extend(
+        _structured_evidence_count_blockers(
+            payload,
+            label=label,
+            count_field=count_field,
+            unresolved_field=unresolved_field,
+            minimum_count=minimum_count,
+        )
+    )
+    blockers.extend(
+        _structured_evidence_control_id_blockers(payload, required_control_ids)
+    )
+    return _check(
+        name,
+        status="passed" if not blockers else "failed",
+        evidence=_structured_evidence_payload(payload, count_field, unresolved_field),
+        blockers=blockers,
+    )
+
+
+def _read_structured_evidence_payload(
+    evidence_path: Path,
+    label: str,
+) -> tuple[dict[str, Any], list[str]]:
+    """Read one structured evidence JSON object."""
+    try:
+        payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        return {}, [f"Unable to read {label}: {exc}"]
+    except json.JSONDecodeError as exc:
+        return {}, [f"{label} is not valid JSON: {exc.msg}"]
+    if not isinstance(payload, dict):
+        return {}, [f"{label} must be a JSON object."]
+    return payload, []
+
+
+def _structured_evidence_payload_blockers(
+    payload: dict[str, Any],
+    required_fields: Sequence[str],
+) -> list[str]:
+    """Return blockers for common structured evidence fields."""
+    blockers = [
+        f"Structured evidence is missing required field: {field}"
+        for field in required_fields
+        if not _structured_evidence_field_present(payload, field)
+    ]
+    if payload.get("workload") != "bootstrap-infrastructure":
+        blockers.append(
+            "Structured evidence must be scoped to the bootstrap-infrastructure "
+            "workload."
+        )
+    return blockers
+
+
+def _structured_evidence_field_present(payload: dict[str, Any], field: str) -> bool:
+    """Return whether a required structured evidence field is populated."""
+    if field not in payload or payload[field] is None:
+        return False
+    value = payload[field]
+    return not (isinstance(value, str) and not value.strip())
+
+
+def _structured_evidence_freshness_blockers(
+    payload: dict[str, Any],
+    label: str,
+) -> list[str]:
+    """Return blockers for stale or invalid reviewedAt values."""
+    reviewed_at = payload.get("reviewedAt")
+    if not reviewed_at:
+        return []
+    parsed_at = _parse_reviewed_at(reviewed_at)
+    if parsed_at is None:
+        return [f"{label} reviewedAt must be an ISO-8601 date or timestamp."]
+    now = dt.datetime.now(dt.timezone.utc)
+    if parsed_at > now + dt.timedelta(minutes=5):
+        return [f"{label} reviewedAt is in the future."]
+    max_age = dt.timedelta(days=STRUCTURED_EVIDENCE_MAX_AGE_DAYS)
+    if now - parsed_at > max_age:
+        return [f"{label} is older than {STRUCTURED_EVIDENCE_MAX_AGE_DAYS} days."]
+    return []
+
+
+def _parse_reviewed_at(value: object) -> dt.datetime | None:
+    """Parse an ISO date or timestamp into an aware UTC datetime."""
+    if not isinstance(value, str):
+        return None
+    try:
+        if "T" not in value:
+            parsed_date = dt.date.fromisoformat(value)
+            return dt.datetime.combine(
+                parsed_date,
+                dt.time.min,
+                tzinfo=dt.timezone.utc,
+            )
+        parsed_datetime = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed_datetime.tzinfo is None:
+        parsed_datetime = parsed_datetime.replace(tzinfo=dt.timezone.utc)
+    return parsed_datetime.astimezone(dt.timezone.utc)
+
+
+def _structured_evidence_count_blockers(
+    payload: dict[str, Any],
+    *,
+    label: str,
+    count_field: str,
+    unresolved_field: str,
+    minimum_count: int,
+) -> list[str]:
+    """Return blockers for coverage and unresolved counts."""
+    blockers = []
+    count = payload.get(count_field)
+    unresolved = payload.get(unresolved_field)
+    if isinstance(count, bool) or not isinstance(count, int):
+        blockers.append(f"{label} {count_field} must be an integer.")
+    elif count < minimum_count:
+        blockers.append(f"{label} {count_field} must be at least {minimum_count}.")
+    if isinstance(unresolved, bool) or not isinstance(unresolved, int):
+        blockers.append(f"{label} {unresolved_field} must be an integer.")
+    elif unresolved != 0:
+        blockers.append(f"{label} has {unresolved} unresolved item(s).")
+    return blockers
+
+
+def _structured_evidence_control_id_blockers(
+    payload: dict[str, Any],
+    required_control_ids: Sequence[str],
+) -> list[str]:
+    """Return blockers when external-control evidence omits required controls."""
+    if not required_control_ids:
+        return []
+    controls = payload.get("controls")
+    if not isinstance(controls, list):
+        return ["External-control evidence controls must be a list."]
+    observed = {
+        str(control.get("id"))
+        for control in controls
+        if isinstance(control, dict) and control.get("id")
+    }
+    missing = sorted(set(required_control_ids) - observed)
+    if missing:
+        return [
+            "External-control evidence is missing required controls: "
+            f"{', '.join(missing)}."
+        ]
+    return []
+
+
+def _structured_evidence_payload(
+    payload: dict[str, Any],
+    count_field: str,
+    unresolved_field: str,
+) -> dict[str, object]:
+    """Return non-secret structured evidence fields."""
+    controls = payload.get("controls")
+    control_ids = (
+        sorted(
+            str(control.get("id"))
+            for control in controls
+            if isinstance(control, dict) and control.get("id")
+        )
+        if isinstance(controls, list)
+        else []
+    )
+    return {
+        "workload": payload.get("workload"),
+        "owner": payload.get("owner"),
+        "reviewedAt": payload.get("reviewedAt"),
+        "evidenceLocation": payload.get("evidenceLocation"),
+        count_field: payload.get(count_field),
+        unresolved_field: payload.get(unresolved_field),
+        "controlIds": control_ids,
+    }
+
+
 def collect_evidence(
     args: argparse.Namespace, *, runner: Runner = run
 ) -> dict[str, Any]:
     """Collect metadata-only Well-Architected evidence."""
     checks = [
         github_pr_checks(args.repo, args.pr, runner=runner),
+        github_pr_local_state(args.repo, args.pr, args.root_dir, runner=runner),
         github_review_threads(args.repo, args.pr, runner=runner),
         github_branch_protection(
             args.repo,
@@ -770,17 +1488,26 @@ def collect_evidence(
         aws_identity(runner=runner),
         aws_cost_controls(args.aws_account_id, runner=runner),
         aws_sns_alert_route(args.operations_topic_arn, runner=runner),
+        aws_cloudtrail_management_events(
+            args.operations_cloudtrail_name, runner=runner
+        ),
         aws_restore_jobs(args.restore_window_days, runner=runner),
+        restore_drill_evidence(args.restore_drill_evidence),
         repository_fanout_evidence(args.root_dir, args),
+        question_matrix_evidence(args),
+        external_control_evidence(args),
     ]
+    proxy_scores = pillar_scores(checks)
     return {
         "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat(),
         "repo": args.repo,
         "pr": args.pr,
         "branch": args.branch,
         "checks": checks,
-        "pillarScores": pillar_scores(checks),
-        "blockers": _all_blockers(checks),
+        "proxyPillarScores": proxy_scores,
+        "pillarScores": well_architected_scores(proxy_scores, checks),
+        "scoreBlockers": score_blockers(checks),
+        "blockers": [*_all_blockers(checks), *score_blockers(checks)],
     }
 
 
@@ -807,7 +1534,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pr", type=int)
     parser.add_argument("--aws-account-id")
     parser.add_argument("--operations-topic-arn")
+    parser.add_argument("--operations-cloudtrail-name")
+    parser.add_argument("--restore-drill-evidence", type=Path)
+    parser.add_argument("--question-matrix-evidence", type=Path)
+    parser.add_argument("--external-control-evidence", type=Path)
     parser.add_argument("--restore-window-days", type=int, default=90)
+    parser.add_argument(
+        "--question-matrix-evidence-confirmed",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--external-control-evidence-confirmed",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument(
         "--required-status-check",
         action="append",
@@ -826,6 +1567,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-budgets", type=int, default=20)
     parser.add_argument("--max-sns-subscriptions", type=int, default=50)
     parser.add_argument("--max-sqs-queues", type=int, default=50)
+    parser.add_argument("--max-cloudtrail-trails", type=int, default=20)
     parser.add_argument("--max-cost-anomaly-monitors", type=int, default=20)
     parser.add_argument("--max-cost-anomaly-subscriptions", type=int, default=20)
     parser.add_argument("--max-cost-allocation-tags", type=int, default=100)

@@ -445,6 +445,9 @@ def test_coverage_bearing_make_targets_enforce_full_line_coverage() -> None:
         in makefile_text
     )
     assert (
+        "coverage run --parallel-mode -m pytest -q tests/integration" in makefile_text
+    )
+    assert (
         "coverage report --show-missing --fail-under=100 "
         "--include='$(INTEGRATION_COVERAGE_INCLUDE)'" in makefile_text
     )
@@ -582,8 +585,9 @@ def test_makefile_secret_and_guardrail_targets_stay_developer_safe() -> None:
     """Keep secret and preview guardrails aligned with local developer workflows."""
     makefile_text = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
 
-    assert "gitleaks git . --config .gitleaks.toml --no-banner --redact" in (
-        makefile_text
+    assert (
+        'gitleaks git . --log-opts="-1" --config .gitleaks.toml --no-banner --redact'
+        in makefile_text
     )
     assert "gitleaks dir ." not in makefile_text
     guardrails_block = makefile_text.split("test-guardrails:", maxsplit=1)[1].split(

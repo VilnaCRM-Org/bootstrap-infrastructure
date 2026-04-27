@@ -66,8 +66,17 @@ if bootstrap_requested:
     pulumi.export("managedRepositoryMetadata", managed_repository_metadata)
     pulumi.export("backupVaultName", bootstrap.outputs["backupVaultName"])
     pulumi.export("backupVaultArn", bootstrap.outputs["backupVaultArn"])
+    pulumi.export("backupRoleArn", bootstrap.outputs["backupRoleArn"])
     operations_alert_topic_arn = bootstrap.outputs["operationsAlertTopicArn"]
     pulumi.export("operationsAlertTopicArn", operations_alert_topic_arn)
+    pulumi.export(
+        "operationsCloudTrailBucketName",
+        bootstrap.outputs["operationsCloudTrailBucketName"],
+    )
+    pulumi.export(
+        "operationsCloudTrailName",
+        bootstrap.outputs["operationsCloudTrailName"],
+    )
     operations_alert_rule_names = bootstrap.outputs["operationsAlertRuleNames"]
     pulumi.export("operationsAlertRuleNames", operations_alert_rule_names)
     operations_alert_key_alias_name = bootstrap.outputs[

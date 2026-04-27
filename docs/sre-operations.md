@@ -225,6 +225,10 @@ secret-bearing dumps. Retain these non-secret handles when validating a stack:
 - `costAnomalyMonitorArn`
 - `costAnomalySubscriptionArn`
 - `backupVaultName` and `backupVaultArn`
+- `OPERATIONS_CLOUDTRAIL_NAME` when an existing operations trail is reused
+- `RESTORE_DRILL_EVIDENCE` for the latest workload-scoped restore drill record
+- `QUESTION_MATRIX_EVIDENCE` for the structured 57-question review record
+- `EXTERNAL_CONTROL_EVIDENCE` for structured external-control evidence
 
 For each environment, the monthly evidence bundle should also record the
 reviewer, review date, alert subscription status, incident route, last backup
@@ -235,9 +239,14 @@ objects.
 
 Run `make report-well-architected-evidence` after privileged guardrails or a
 test-account smoke deploy to create the standard metadata-only evidence bundle.
-Set `PR_NUMBER`, `AWS_ACCOUNT_ID`, and `OPERATIONS_TOPIC_ARN` only when those
-non-secret identifiers are available; the collector records missing values as
-blockers so operators can close them without fabricating 5/5 evidence.
+Set `PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
+`OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
+`QUESTION_MATRIX_EVIDENCE`, and `EXTERNAL_CONTROL_EVIDENCE` only when those
+non-secret identifiers or evidence records are available; the collector records
+missing values as blockers so operators can close them without fabricating 5/5
+evidence. External-control evidence must name the required control IDs for
+branch protection, alert route, backup/restore, FinOps, quota headroom,
+security account controls, sustainability governance, and production approval.
 
 ## Ownership And RACI
 
@@ -303,7 +312,10 @@ Monthly backup review should record the stack, account, vault name, plan name,
 last successful backup job timestamp, and any failed job IDs. Quarterly restore
 drills should restore into an isolated location and verify object metadata only;
 do not inspect Pulumi state contents, decrypted stack values, or secret payloads
-as part of routine evidence collection.
+as part of routine evidence collection. Restore evidence must identify the
+bootstrap workload, source recovery point, operator, validation result, and
+cleanup confirmation for the isolated restore location; generic account-level
+restore evidence is not enough for this workload.
 
 Target recovery posture for bootstrap state is:
 

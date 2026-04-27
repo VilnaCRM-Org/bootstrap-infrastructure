@@ -15,7 +15,7 @@ when the field is omitted.
 Tracked categories include S3 buckets, KMS keys, IAM roles, AWS Backup
 selections, the shared backup vault and plan, the shared GitHub OIDC provider,
 the runner ECR repository, the operations SNS topic, the operations alert KMS
-key, and EventBridge alert rules. Thresholds are static and deliberately
+key, CloudTrail management-event trail, and EventBridge alert rules. Thresholds are static and deliberately
 conservative; raise them only with a capacity review and an owner recorded in
 the pull request.
 

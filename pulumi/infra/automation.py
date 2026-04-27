@@ -13,6 +13,11 @@ from .config import settings as default_settings
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
+AWS_REQUEST_TAG_ENVIRONMENT_KEY = "aws:RequestTag/Environment"
+AWS_REQUEST_TAG_PURPOSE_KEY = "aws:RequestTag/Purpose"
+AWS_RESOURCE_TAG_ENVIRONMENT_KEY = "aws:ResourceTag/Environment"
+AWS_RESOURCE_TAG_PURPOSE_KEY = "aws:ResourceTag/Purpose"
+
 _AUTOMATION_S3_ACTIONS = (
     "s3:CreateBucket",
     "s3:DeleteBucket",
@@ -115,6 +120,20 @@ _AUTOMATION_EVENTS_ACTIONS = (
     "events:TagResource",
     "events:UntagResource",
 )
+_AUTOMATION_CLOUDTRAIL_ACTIONS = (
+    "cloudtrail:AddTags",
+    "cloudtrail:CreateTrail",
+    "cloudtrail:DeleteTrail",
+    "cloudtrail:GetEventSelectors",
+    "cloudtrail:GetTrail",
+    "cloudtrail:GetTrailStatus",
+    "cloudtrail:ListTags",
+    "cloudtrail:PutEventSelectors",
+    "cloudtrail:RemoveTags",
+    "cloudtrail:StartLogging",
+    "cloudtrail:StopLogging",
+    "cloudtrail:UpdateTrail",
+)
 _AUTOMATION_SNS_ACTIONS = (
     "sns:CreateTopic",
     "sns:DeleteTopic",
@@ -186,6 +205,7 @@ def _automation_s3_resources(settings: BootstrapSettings) -> list[str]:
         f"pulumi-*-{environment}-state-replication",
         f"{logging_prefix}-central-logs-*-{environment}",
         f"{logging_prefix}-central-logs-*-{environment}-replication",
+        f"bootstrap-*-{environment}-cloudtrail",
     )
     return [f"arn:aws:s3:::{bucket_name}" for bucket_name in bucket_names]
 
@@ -198,6 +218,7 @@ def _automation_kms_alias_resources(
     return [
         f"arn:aws:kms:*:{account_id}:alias/pulumi-*-{environment}-secrets",
         f"arn:aws:kms:*:{account_id}:alias/bootstrap-{environment}-operations-alerting",
+        f"arn:aws:kms:*:{account_id}:alias/bootstrap-{environment}-operations-cloudtrail",
     ]
 
 
@@ -244,6 +265,17 @@ def _automation_eventbridge_resources(
     """Scope EventBridge management to bootstrap operations rules."""
     environment = _environment_resource_part(settings)
     return [f"arn:aws:events:*:{account_id}:rule/bootstrap-{environment}-*"]
+
+
+def _automation_cloudtrail_resources(
+    account_id: str, settings: BootstrapSettings
+) -> list[str]:
+    """Scope CloudTrail management to bootstrap operations trails."""
+    environment = _environment_resource_part(settings)
+    return [
+        f"arn:aws:cloudtrail:*:{account_id}:trail/"
+        f"bootstrap-{environment}-management-events"
+    ]
 
 
 def _automation_sns_resources(
@@ -330,29 +362,38 @@ def _automation_policy(
         f"arn:aws:iam::{account_id}:oidc-provider/token.actions.githubusercontent.com"
     )
     iam_role_resources = _automation_iam_role_resources(account_id, settings, repo_name)
-    kms_purposes = ["pulumi-secrets", "operations-alerting"]
+    kms_purposes = ["pulumi-secrets", "operations-alerting", "operations-cloudtrail"]
     kms_tag_condition = {
         "StringEquals": {
-            "aws:ResourceTag/Environment": settings.environment,
-            "aws:ResourceTag/Purpose": kms_purposes,
+            AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_RESOURCE_TAG_PURPOSE_KEY: kms_purposes,
         }
     }
     kms_request_tag_condition = {
         "StringEquals": {
-            "aws:RequestTag/Environment": settings.environment,
-            "aws:RequestTag/Purpose": kms_purposes,
+            AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_REQUEST_TAG_PURPOSE_KEY: kms_purposes,
         }
     }
     kms_alias_condition = {
         "StringEqualsIfExists": {
-            "aws:ResourceTag/Environment": settings.environment,
-            "aws:ResourceTag/Purpose": kms_purposes,
+            AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_RESOURCE_TAG_PURPOSE_KEY: kms_purposes,
         }
     }
     cost_explorer_request_tag_condition = {
         "StringEquals": {
-            "aws:RequestTag/Environment": settings.environment,
-            "aws:RequestTag/Purpose": [
+            AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_REQUEST_TAG_PURPOSE_KEY: [
+                "cost-anomaly-monitor",
+                "cost-anomaly-subscription",
+            ],
+        }
+    }
+    cost_explorer_resource_tag_condition = {
+        "StringEquals": {
+            AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_RESOURCE_TAG_PURPOSE_KEY: [
                 "cost-anomaly-monitor",
                 "cost-anomaly-subscription",
             ],
@@ -487,6 +528,12 @@ def _automation_policy(
                     "Resource": _automation_eventbridge_resources(account_id, settings),
                 },
                 {
+                    "Sid": "ManageBootstrapCloudTrail",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_CLOUDTRAIL_ACTIONS),
+                    "Resource": _automation_cloudtrail_resources(account_id, settings),
+                },
+                {
                     "Sid": "ManageBootstrapSns",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_SNS_ACTIONS),
@@ -542,6 +589,7 @@ def _automation_policy(
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_COST_EXPLORER_RESOURCE_ACTIONS),
                     "Resource": _automation_cost_explorer_resources(account_id),
+                    "Condition": cost_explorer_resource_tag_condition,
                 },
                 *(
                     [

@@ -72,8 +72,13 @@ def test_summarize_preview_and_find_destructive_steps(
                 "urn": "urn:pulumi:dev::stack::aws:rds/instance:Instance::db",
                 "newState": {"type": "aws:rds/instance:Instance"},
             },
+            {
+                "op": "delete",
+                "urn": "urn:pulumi:dev::stack::aws:cloudtrail/trail:Trail::audit",
+                "oldState": {"type": "aws:cloudtrail/trail:Trail"},
+            },
         ],
-        summary={"create": 1, "replace": 2},
+        summary={"create": 1, "delete": 1, "replace": 2},
     )
 
     preview = guardrails_module.load_preview(path)
@@ -82,11 +87,12 @@ def test_summarize_preview_and_find_destructive_steps(
     )
     rendered = guardrails_module.summarize_preview(path, stack="dev")
 
-    assert len(destructive) == 1
+    assert len(destructive) == 2
     assert "Pulumi Preview: dev" in rendered
     assert "| create | 1 |" in rendered
-    assert "Destructive-step count: `1`" in rendered
+    assert "Destructive-step count: `2`" in rendered
     assert "aws:rds/instance:Instance" in rendered
+    assert "aws:cloudtrail/trail:Trail" in rendered
 
     empty_path = _write_preview(
         tmp_path / "empty.json",
@@ -122,6 +128,10 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
             },
             {
                 "op": "create",
+                "newState": {"type": "aws:cloudtrail/trail:Trail"},
+            },
+            {
+                "op": "create",
                 "newState": {"type": "aws:cloudwatch/logGroup:LogGroup"},
             },
         ],
@@ -131,12 +141,13 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
     report = guardrails_module.cost_proxy_report(guardrails_module.load_preview(path))
     rendered = guardrails_module.render_cost_proxy_markdown(path, report)
 
-    assert report["weightedChange"] == 10  # nosec B101
+    assert report["weightedChange"] == 12  # nosec B101
     assert report["categories"]["s3Buckets"] == 1  # nosec B101
     assert report["categories"]["kmsKeys"] == 1  # nosec B101
     assert report["categories"]["snsTopics"] == 0  # nosec B101
     assert report["categories"]["eventRules"] == 1  # nosec B101
-    assert "Weighted cost/quota change: `10`" in rendered  # nosec B101
+    assert report["categories"]["cloudTrailTrails"] == 1  # nosec B101
+    assert "Weighted cost/quota change: `12`" in rendered  # nosec B101
     empty_rendered = guardrails_module.render_cost_proxy_markdown(
         path,
         guardrails_module.cost_proxy_report({"steps": []}),
@@ -199,7 +210,7 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
             [
                 "cost-proxy",
                 "--max-weighted-change",
-                "10",
+                "12",
                 str(path),
             ]
         )
@@ -211,7 +222,7 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
             [
                 "cost-proxy",
                 "--max-weighted-change",
-                "9",
+                "11",
                 "--output-json",
                 str(json_path),
                 "--output-md",
@@ -225,7 +236,7 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
     assert "cost proxy blocked" in captured.err  # nosec B101
     assert "s3Buckets" in markdown_path.read_text(encoding="utf-8")  # nosec B101
     assert (  # nosec B101
-        json.loads(json_path.read_text(encoding="utf-8"))[0]["weightedChange"] == 10
+        json.loads(json_path.read_text(encoding="utf-8"))[0]["weightedChange"] == 12
     )
     iam_inputs_path = tmp_path / "iam-inputs.json"
     iam_inputs_path.write_text("[]", encoding="utf-8")
@@ -237,7 +248,7 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
             [
                 "cost-proxy",
                 "--max-weighted-change",
-                "10",
+                "12",
                 str(path),
                 str(iam_inputs_path),
             ]

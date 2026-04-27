@@ -69,6 +69,9 @@ Future implementation PRs must use this method before changing any score:
 3. Link repo evidence, CI evidence, metadata-only AWS evidence, or external-control evidence.
 4. Record owner, freshness SLA, review cadence, fallback action, and secret-safety classification.
 5. Keep the score unchanged if evidence is missing, stale, secret-bearing in normal output, or not reproducible.
+6. Run `make report-well-architected-evidence` with structured
+   `QUESTION_MATRIX_EVIDENCE` and `EXTERNAL_CONTROL_EVIDENCE`; do not use
+   boolean confirmations to unlock final scores.
 
 ## Required Evidence By Pillar
 
