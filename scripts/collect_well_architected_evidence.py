@@ -4,7 +4,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -19,7 +18,7 @@ from validate_repository_catalogs import (
 )
 
 ROOT_DIR = repo_root(__file__)
-Runner = Callable[..., subprocess.CompletedProcess[str]]
+Runner = Callable[..., Any]
 
 PASSING_CHECK_CONCLUSIONS = {"SUCCESS"}
 PASSING_STATUS_STATES = {"SUCCESS"}
@@ -88,6 +87,34 @@ def _rollup_entry_passed(entry: dict[str, Any]) -> bool:
     return False
 
 
+def _rollup_entry_label(entry: dict[str, Any]) -> str:
+    """Return the human-readable name for a GitHub rollup entry."""
+    return str(entry.get("name") or entry.get("context") or "unknown")
+
+
+def _non_passing_rollup_labels(entries: Sequence[dict[str, Any]]) -> list[str]:
+    """Return non-passing GitHub status/check names."""
+    return [
+        _rollup_entry_label(entry)
+        for entry in entries
+        if not _rollup_entry_passed(entry)
+    ]
+
+
+def _github_pr_check_blockers(
+    payload: dict[str, Any], failing: Sequence[str]
+) -> list[str]:
+    """Return blockers from PR merge, review, and check metadata."""
+    blockers = []
+    if payload.get("mergeStateStatus") != "CLEAN":
+        blockers.append("PR merge state is not CLEAN.")
+    if payload.get("reviewDecision") != "APPROVED":
+        blockers.append("PR is not approved.")
+    if failing:
+        blockers.append(f"Non-passing check contexts: {', '.join(sorted(failing))}.")
+    return blockers
+
+
 def github_pr_checks(
     repo: str,
     pr_number: int | None,
@@ -119,18 +146,8 @@ def github_pr_checks(
 
     rollup = payload.get("statusCheckRollup", [])
     entries = [entry for entry in rollup if isinstance(entry, dict)]
-    failing = [
-        str(entry.get("name") or entry.get("context") or "unknown")
-        for entry in entries
-        if not _rollup_entry_passed(entry)
-    ]
-    blockers = []
-    if payload.get("mergeStateStatus") != "CLEAN":
-        blockers.append("PR merge state is not CLEAN.")
-    if payload.get("reviewDecision") != "APPROVED":
-        blockers.append("PR is not approved.")
-    if failing:
-        blockers.append(f"Non-passing check contexts: {', '.join(sorted(failing))}.")
+    failing = _non_passing_rollup_labels(entries)
+    blockers = _github_pr_check_blockers(payload, failing)
     return _check(
         "github_pr_checks",
         status="passed" if not blockers else "failed",
@@ -159,58 +176,17 @@ def github_review_threads(
             blockers=["PR number is required for review-thread evidence."],
         )
     owner, name = repo.split("/", 1)
-    query = (
-        "query($owner:String!, $name:String!, $number:Int!, $after:String) { "
-        "repository(owner:$owner, name:$name) { "
-        "pullRequest(number:$number) { "
-        "reviewThreads(first:100, after:$after) { "
-        "nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }"
+    nodes, pagination_error = _collect_review_thread_nodes(
+        owner,
+        name,
+        pr_number,
+        runner=runner,
     )
-    nodes = []
-    after: str | None = None
-    for _page in range(20):
-        command = [
-            "gh",
-            "api",
-            "graphql",
-            "-f",
-            f"owner={owner}",
-            "-f",
-            f"name={name}",
-            "-F",
-            f"number={pr_number}",
-            "-f",
-            f"query={query}",
-        ]
-        if after:
-            command.extend(["-f", f"after={after}"])
-        ok, payload, error = _run_json(command, runner=runner)
-        if not ok or not isinstance(payload, dict):
-            return _check("github_review_threads", status="unknown", blockers=[error])
-
-        review_threads = (
-            payload.get("data", {})
-            .get("repository", {})
-            .get("pullRequest", {})
-            .get("reviewThreads", {})
-        )
-        page_nodes = review_threads.get("nodes", [])
-        nodes.extend(node for node in page_nodes if isinstance(node, dict))
-        page_info = review_threads.get("pageInfo") or {}
-        if not page_info.get("hasNextPage"):
-            break
-        after = page_info.get("endCursor")
-        if not after:
-            return _check(
-                "github_review_threads",
-                status="unknown",
-                blockers=["GitHub review thread pagination did not return a cursor."],
-            )
-    else:
+    if pagination_error:
         return _check(
             "github_review_threads",
             status="unknown",
-            blockers=["GitHub review thread pagination exceeded 20 pages."],
+            blockers=[pagination_error],
         )
 
     unresolved = [
@@ -226,6 +202,118 @@ def github_review_threads(
             else []
         ),
     )
+
+
+def _collect_review_thread_nodes(
+    owner: str,
+    name: str,
+    pr_number: int,
+    *,
+    runner: Runner = run,
+) -> tuple[list[dict], str]:
+    """Collect paginated review-thread nodes or return a blocker."""
+    query = _review_threads_query()
+    nodes = []
+    after: str | None = None
+    for _page in range(20):
+        page_nodes, page_info, error = _fetch_review_thread_page(
+            owner,
+            name,
+            pr_number,
+            query,
+            after,
+            runner=runner,
+        )
+        if error:
+            return [], error
+        nodes.extend(page_nodes)
+        should_continue, after, error = _next_review_thread_cursor(page_info)
+        if error:
+            return [], error
+        if not should_continue:
+            return nodes, ""
+    return [], "GitHub review thread pagination exceeded 20 pages."
+
+
+def _fetch_review_thread_page(
+    owner: str,
+    name: str,
+    pr_number: int,
+    query: str,
+    after: str | None,
+    *,
+    runner: Runner = run,
+) -> tuple[list[dict], dict[str, Any], str]:
+    """Fetch one review-thread page."""
+    command = _review_threads_command(owner, name, pr_number, query, after)
+    ok, payload, error = _run_json(command, runner=runner)
+    if not ok or not isinstance(payload, dict):
+        return [], {}, error
+    page_nodes, page_info = _review_threads_page(payload)
+    return page_nodes, page_info, ""
+
+
+def _next_review_thread_cursor(
+    page_info: dict[str, Any],
+) -> tuple[bool, str | None, str]:
+    """Return pagination decision, cursor, and blocker."""
+    if not page_info.get("hasNextPage"):
+        return False, None, ""
+    after = page_info.get("endCursor")
+    if after:
+        return True, after, ""
+    return False, None, "GitHub review thread pagination did not return a cursor."
+
+
+def _review_threads_query() -> str:
+    """Return the paginated review-thread GraphQL query."""
+    return (
+        "query($owner:String!, $name:String!, $number:Int!, $after:String) { "
+        "repository(owner:$owner, name:$name) { "
+        "pullRequest(number:$number) { "
+        "reviewThreads(first:100, after:$after) { "
+        "nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }"
+    )
+
+
+def _review_threads_command(
+    owner: str,
+    name: str,
+    pr_number: int,
+    query: str,
+    after: str | None,
+) -> list[str]:
+    """Build a metadata-only review-thread GraphQL command."""
+    command = [
+        "gh",
+        "api",
+        "graphql",
+        "-f",
+        f"owner={owner}",
+        "-f",
+        f"name={name}",
+        "-F",
+        f"number={pr_number}",
+        "-f",
+        f"query={query}",
+    ]
+    if after:
+        command.extend(["-f", f"after={after}"])
+    return command
+
+
+def _review_threads_page(payload: dict[str, Any]) -> tuple[list[dict], dict[str, Any]]:
+    """Extract one review-thread page from a GraphQL response."""
+    review_threads = (
+        payload.get("data", {})
+        .get("repository", {})
+        .get("pullRequest", {})
+        .get("reviewThreads", {})
+    )
+    page_nodes = review_threads.get("nodes", [])
+    page_info = review_threads.get("pageInfo") or {}
+    nodes = [node for node in page_nodes if isinstance(node, dict)]
+    return nodes, page_info if isinstance(page_info, dict) else {}
 
 
 def _github_rulesets(
@@ -257,7 +345,7 @@ def _github_rulesets(
 def _ruleset_has_pull_request_reviews(rulesets: Sequence[dict]) -> bool:
     """Return whether any active branch ruleset requires pull request review."""
     for ruleset in rulesets:
-        if ruleset.get("target") != "branch" or ruleset.get("enforcement") != "active":
+        if not _is_active_branch_ruleset(ruleset):
             continue
         rules = ruleset.get("rules") or []
         if any(rule.get("type") == "pull_request" for rule in rules):
@@ -269,20 +357,29 @@ def _ruleset_required_status_check_contexts(rulesets: Sequence[dict]) -> set[str
     """Return required status check contexts from active branch rulesets."""
     contexts: set[str] = set()
     for ruleset in rulesets:
-        if ruleset.get("target") != "branch" or ruleset.get("enforcement") != "active":
+        if not _is_active_branch_ruleset(ruleset):
             continue
         for rule in ruleset.get("rules") or []:
-            if rule.get("type") != "required_status_checks":
-                continue
-            parameters = rule.get("parameters") or {}
-            checks = parameters.get("required_status_checks") or []
-            contexts.update(
-                str(check.get("context") or check.get("name"))
-                for check in checks
-                if isinstance(check, dict)
-                and (check.get("context") or check.get("name"))
-            )
+            contexts.update(_required_status_contexts_from_rule(rule))
     return contexts
+
+
+def _is_active_branch_ruleset(ruleset: dict[str, Any]) -> bool:
+    """Return whether a ruleset is an active branch ruleset."""
+    return ruleset.get("target") == "branch" and ruleset.get("enforcement") == "active"
+
+
+def _required_status_contexts_from_rule(rule: dict[str, Any]) -> set[str]:
+    """Return required status contexts from one ruleset rule."""
+    if rule.get("type") != "required_status_checks":
+        return set()
+    parameters = rule.get("parameters") or {}
+    checks = parameters.get("required_status_checks") or []
+    return {
+        str(check.get("context") or check.get("name"))
+        for check in checks
+        if isinstance(check, dict) and (check.get("context") or check.get("name"))
+    }
 
 
 def github_branch_protection(
@@ -309,13 +406,8 @@ def github_branch_protection(
             blockers=[protection_error, *ruleset_errors],
         )
 
-    protection = payload if protection_ok and isinstance(payload, dict) else {}
-    required_checks = protection.get("required_status_checks") or {}
-    contexts = {
-        str(context)
-        for context in required_checks.get("contexts") or []
-        if isinstance(context, str) and context
-    }
+    protection = _protection_payload(protection_ok, payload)
+    contexts = _classic_required_check_contexts(protection)
     contexts.update(_ruleset_required_status_check_contexts(rulesets))
     required_reviews = protection.get("required_pull_request_reviews")
     ruleset_reviews = _ruleset_has_pull_request_reviews(rulesets)
@@ -323,28 +415,18 @@ def github_branch_protection(
     missing_required_checks = sorted(
         set(expected_required_status_checks) - set(contexts)
     )
-    blockers = []
-    if not contexts:
-        blockers.append("Branch protection does not report required status checks.")
-    elif missing_required_checks:
-        blockers.append(
-            "Branch protection is missing required status checks: "
-            f"{', '.join(missing_required_checks)}."
-        )
-    if not required_reviews and not ruleset_reviews:
-        blockers.append("Branch protection does not require pull request reviews.")
+    blockers = _branch_protection_blockers(
+        contexts=contexts,
+        missing_required_checks=missing_required_checks,
+        requires_reviews=bool(required_reviews or ruleset_reviews),
+    )
     return _check(
         "github_branch_protection",
         status="passed" if not blockers else "failed",
         evidence={
             "branch": branch,
             "classicProtectionReadable": protection_ok,
-            "activeRulesetCount": sum(
-                1
-                for ruleset in rulesets
-                if ruleset.get("target") == "branch"
-                and ruleset.get("enforcement") == "active"
-            ),
+            "activeRulesetCount": _active_branch_ruleset_count(rulesets),
             "requiredStatusCheckCount": len(contexts),
             "requiredStatusChecks": sorted(contexts),
             "expectedRequiredStatusChecks": list(expected_required_status_checks),
@@ -354,6 +436,46 @@ def github_branch_protection(
         },
         blockers=blockers,
     )
+
+
+def _protection_payload(protection_ok: bool, payload: Any) -> dict[str, Any]:
+    """Return classic protection payload when readable."""
+    return payload if protection_ok and isinstance(payload, dict) else {}
+
+
+def _classic_required_check_contexts(protection: dict[str, Any]) -> set[str]:
+    """Return classic branch-protection required status contexts."""
+    required_checks = protection.get("required_status_checks") or {}
+    return {
+        str(context)
+        for context in required_checks.get("contexts") or []
+        if isinstance(context, str) and context
+    }
+
+
+def _branch_protection_blockers(
+    *,
+    contexts: set[str],
+    missing_required_checks: Sequence[str],
+    requires_reviews: bool,
+) -> list[str]:
+    """Return blockers for branch-protection metadata."""
+    blockers = []
+    if not contexts:
+        blockers.append("Branch protection does not report required status checks.")
+    elif missing_required_checks:
+        blockers.append(
+            "Branch protection is missing required status checks: "
+            f"{', '.join(missing_required_checks)}."
+        )
+    if not requires_reviews:
+        blockers.append("Branch protection does not require pull request reviews.")
+    return blockers
+
+
+def _active_branch_ruleset_count(rulesets: Sequence[dict]) -> int:
+    """Return active branch ruleset count."""
+    return sum(1 for ruleset in rulesets if _is_active_branch_ruleset(ruleset))
 
 
 def aws_identity(*, runner: Runner = run) -> dict[str, object]:
@@ -376,8 +498,7 @@ def aws_cost_controls(
 ) -> dict[str, object]:
     """Collect account-level Budget and Cost Anomaly Detection availability."""
     if not account_id:
-        identity = aws_identity(runner=runner)
-        account_id = str(identity["evidence"].get("account", ""))
+        account_id = _account_id_from_identity(aws_identity(runner=runner))
     if not account_id:
         return _check(
             "aws_cost_controls",
@@ -385,7 +506,7 @@ def aws_cost_controls(
             blockers=["Unable to determine AWS account id."],
         )
 
-    budget_ok, budget_count, budget_error = _run_json(
+    budget_ok, budget_count, budget_error = _run_count(
         [
             "aws",
             "budgets",
@@ -401,7 +522,7 @@ def aws_cost_controls(
         ],
         runner=runner,
     )
-    anomaly_ok, anomaly_count, anomaly_error = _run_json(
+    anomaly_ok, anomaly_count, anomaly_error = _run_count(
         [
             "aws",
             "ce",
@@ -418,24 +539,43 @@ def aws_cost_controls(
     blockers = []
     if not budget_ok:
         blockers.append(f"Unable to query AWS Budgets: {budget_error}")
-    elif int(budget_count or 0) < 1:
+    elif budget_count < 1:
         blockers.append("No AWS Budgets were found in the target account.")
     if not anomaly_ok:
         blockers.append(f"Unable to query Cost Anomaly monitors: {anomaly_error}")
-    elif int(anomaly_count or 0) < 1:
+    elif anomaly_count < 1:
         blockers.append("No Cost Anomaly monitors were found in the target account.")
     return _check(
         "aws_cost_controls",
         status="passed" if not blockers else "failed",
         evidence={
             "account": account_id,
-            "budgetCountAtLeast": int(budget_count or 0) if budget_ok else 0,
-            "anomalyMonitorCountAtLeast": (
-                int(anomaly_count or 0) if anomaly_ok else 0
-            ),
+            "budgetCountAtLeast": budget_count if budget_ok else 0,
+            "anomalyMonitorCountAtLeast": anomaly_count if anomaly_ok else 0,
         },
         blockers=blockers,
     )
+
+
+def _account_id_from_identity(identity: dict[str, object]) -> str:
+    """Return account id from a normalized identity check."""
+    evidence = identity.get("evidence", {})
+    if not isinstance(evidence, dict):
+        return ""
+    account = evidence.get("account")
+    return str(account) if account is not None else ""
+
+
+def _run_count(
+    command: list[str],
+    *,
+    runner: Runner = run,
+) -> tuple[bool, int, str]:
+    """Run a count query and normalize the result."""
+    ok, count, error = _run_json(command, runner=runner)
+    if not ok:
+        return False, 0, error
+    return True, int(count or 0), ""
 
 
 def aws_sns_alert_route(
@@ -633,13 +773,21 @@ def collect_evidence(
         "branch": args.branch,
         "checks": checks,
         "pillarScores": pillar_scores(checks),
-        "blockers": [
-            blocker
-            for check in checks
-            for blocker in check.get("blockers", [])
-            if isinstance(blocker, str)
-        ],
+        "blockers": _all_blockers(checks),
     }
+
+
+def _all_blockers(checks: Sequence[dict[str, object]]) -> list[str]:
+    """Return every string blocker from normalized checks."""
+    blockers: list[str] = []
+    for check in checks:
+        check_blockers = check.get("blockers", [])
+        if not isinstance(check_blockers, list):
+            continue
+        blockers.extend(
+            blocker for blocker in check_blockers if isinstance(blocker, str)
+        )
+    return blockers
 
 
 def build_parser() -> argparse.ArgumentParser:

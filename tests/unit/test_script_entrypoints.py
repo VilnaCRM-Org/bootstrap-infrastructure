@@ -1250,6 +1250,8 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert invalid_ok is False  # nosec B101
     assert invalid_payload is None  # nosec B101
     assert "invalid JSON output" in invalid_error  # nosec B101
+    assert module._account_id_from_identity({"evidence": "unknown"}) == ""  # noqa: SLF001
+    assert module._all_blockers([{"blockers": "unknown"}]) == []  # noqa: SLF001
     assert module.github_pr_checks("org/repo", None)["status"] == "missing"
     assert module.github_review_threads("org/repo", None)["status"] == "missing"
     assert module.aws_sns_alert_route(None)["status"] == "missing"
