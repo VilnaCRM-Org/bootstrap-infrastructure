@@ -213,6 +213,12 @@ Privileged jobs should emit sanitized evidence in the job summary or logs:
 Do not print raw secrets, stack exports, decrypted values, or secret-bearing
 Pulumi output.
 
+Use `make report-well-architected-evidence` to collect a metadata-only evidence
+bundle for PR readiness, branch protection, AWS identity, account cost controls,
+optional operations topic routing, restore-job freshness, and repository fanout.
+The report is written to `.artifacts/well-architected/evidence.json`; missing
+external evidence is reported as a blocker rather than treated as success.
+
 ### Example IAM trust policy
 
 Replace the account ID, organization, repository name, and GitHub environment

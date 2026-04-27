@@ -205,9 +205,10 @@ high-severity control-plane signals:
 | IAM OIDC provider or role policy changes | `aws.iam` CloudTrail events | Confirm the GitHub OIDC trust still matches approved branches or environments |
 | S3 bucket encryption, logging, policy, or replication changes | `aws.s3` CloudTrail events | Confirm state and log buckets still enforce encryption, TLS, logging, and replication |
 
-SNS subscriptions and escalation routes are account-local operations controls.
-Do not treat the alerting foundation as complete until the target account has a
-confirmed subscription, owner, and incident route.
+The stack creates an account-local SQS subscription for durable alert capture.
+Do not treat human escalation as complete until the target account also has a
+confirmed owner and incident route for processing that queue or forwarding the
+SNS topic into ChatOps, ticketing, or paging.
 
 ## Operations Evidence Contract
 
@@ -217,6 +218,9 @@ secret-bearing dumps. Retain these non-secret handles when validating a stack:
 - `operationsAlertTopicArn`
 - `operationsAlertRuleNames`
 - `operationsAlertTopicKeyAliasName`
+- `operationsAlertQueueArn`
+- `operationsAlertQueueName`
+- `operationsAlertQueueSubscriptionArn`
 - `monthlyBudgetName`
 - `costAnomalyMonitorArn`
 - `costAnomalySubscriptionArn`
@@ -228,6 +232,12 @@ review, last restore drill, last drift run, budget threshold, anomaly threshold,
 and any missed KPI actions. Do not include stack exports, decrypted Pulumi
 config, secret values, access keys, tokens, private keys, or contents of state
 objects.
+
+Run `make report-well-architected-evidence` after privileged guardrails or a
+test-account smoke deploy to create the standard metadata-only evidence bundle.
+Set `PR_NUMBER`, `AWS_ACCOUNT_ID`, and `OPERATIONS_TOPIC_ARN` only when those
+non-secret identifiers are available; the collector records missing values as
+blockers so operators can close them without fabricating 5/5 evidence.
 
 ## Ownership And RACI
 

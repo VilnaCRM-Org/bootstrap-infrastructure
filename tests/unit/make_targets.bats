@@ -50,6 +50,7 @@ assert_help_target() {
     report-maintainability-trends
     report-quality
     report-sbom
+    report-well-architected-evidence
     sh
     start
     test
@@ -59,6 +60,7 @@ assert_help_target() {
     test-bandit
     test-coverage
     test-crossguard
+    test-cost-proxy
     test-dependency-hygiene
     test-deps-security
     test-dockerfile
@@ -80,6 +82,7 @@ assert_help_target() {
     test-preview-unprivileged
     test-repo-hygiene
     test-repository-catalogs
+    test-repository-fanout
     test-ruff
     test-security
     test-secrets
@@ -482,6 +485,20 @@ EOF
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
   [[ "$output" == *"./scripts/run_pulumi_drift_check.py"* ]]
+}
+
+@test "make report-well-architected-evidence executes metadata collector" {
+  run env \
+    PR_NUMBER=22 \
+    AWS_ACCOUNT_ID=123456789012 \
+    OPERATIONS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations \
+    make -n report-well-architected-evidence
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/collect_well_architected_evidence.py"* ]]
+  [[ "$output" == *".artifacts/well-architected/evidence.json"* ]]
+  [[ "$output" == *'PR_NUMBER:-'* ]]
+  [[ "$output" == *'OPERATIONS_TOPIC_ARN:-'* ]]
+  [[ "$output" != *"bootstrap-test-operations"* ]]
 }
 
 @test "make test-quality delegates to the Rust-based quality suite" {

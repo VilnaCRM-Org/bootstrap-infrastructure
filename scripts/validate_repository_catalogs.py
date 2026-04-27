@@ -30,6 +30,8 @@ CENTRAL_STACK_FANOUT = {
     "oidcProviders": 1,
     "ecrRepositories": 1,
     "snsTopics": 1,
+    "snsSubscriptions": 1,
+    "sqsQueues": 1,
     "eventRules": 4,
     "budgets": 1,
     "costAnomalyMonitors": 1,
@@ -272,6 +274,8 @@ def _fanout_thresholds(args: argparse.Namespace) -> dict[str, int]:
         "backupSelections": args.max_backup_selections,
         "ecrRepositories": args.max_ecr_repositories,
         "budgets": args.max_budgets,
+        "snsSubscriptions": args.max_sns_subscriptions,
+        "sqsQueues": args.max_sqs_queues,
         "costAnomalyMonitors": args.max_cost_anomaly_monitors,
         "costAnomalySubscriptions": args.max_cost_anomaly_subscriptions,
         "costAllocationTags": args.max_cost_allocation_tags,
@@ -335,6 +339,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-backup-selections", type=int, default=500)
     parser.add_argument("--max-ecr-repositories", type=int, default=50)
     parser.add_argument("--max-budgets", type=int, default=20)
+    parser.add_argument("--max-sns-subscriptions", type=int, default=50)
+    parser.add_argument("--max-sqs-queues", type=int, default=50)
     parser.add_argument("--max-cost-anomaly-monitors", type=int, default=20)
     parser.add_argument("--max-cost-anomaly-subscriptions", type=int, default=20)
     parser.add_argument("--max-cost-allocation-tags", type=int, default=100)

@@ -172,10 +172,15 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
                         "type": ("aws:costexplorer/costAllocationTag:CostAllocationTag")
                     },
                 },
+                {
+                    "op": "create",
+                    "newState": {"type": "aws:sns/topicSubscription:TopicSubscription"},
+                },
+                {"op": "create", "newState": {"type": "aws:sqs/queue:Queue"}},
             ]
         }
     )
-    assert cost_controls_report["weightedChange"] == 8  # nosec B101
+    assert cost_controls_report["weightedChange"] == 10  # nosec B101
     assert cost_controls_report["categories"]["budgets"] == 1  # nosec B101
     assert (  # nosec B101
         cost_controls_report["categories"]["costAnomalyMonitors"] == 1
@@ -184,6 +189,8 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
         cost_controls_report["categories"]["costAnomalySubscriptions"] == 1
     )
     assert cost_controls_report["categories"]["costAllocationTags"] == 1  # nosec B101
+    assert cost_controls_report["categories"]["snsSubscriptions"] == 1  # nosec B101
+    assert cost_controls_report["categories"]["sqsQueues"] == 1  # nosec B101
 
     json_path = tmp_path / "cost-proxy.json"
     markdown_path = tmp_path / "cost-proxy.md"

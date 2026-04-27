@@ -42,6 +42,8 @@ def _apply_mock_resource_defaults(
         "aws:kms/alias:Alias": _mock_kms_alias,
         "aws:backup/vault:Vault": _mock_backup_vault,
         "aws:sns/topic:Topic": _mock_sns_topic,
+        "aws:sns/topicSubscription:TopicSubscription": _mock_sns_topic_subscription,
+        "aws:sqs/queue:Queue": _mock_sqs_queue,
         "aws:cloudwatch/eventRule:EventRule": _mock_event_rule,
         "aws:budgets/budget:Budget": _mock_budget,
         "aws:costexplorer/anomalyMonitor:AnomalyMonitor": _mock_anomaly_monitor,
@@ -114,6 +116,23 @@ def _mock_sns_topic(name: str, inputs: dict[str, Any], state: dict[str, Any]) ->
     state.setdefault(
         "arn",
         f"arn:aws:sns:us-east-1:123456789012:{topic_name}",
+    )
+
+
+def _mock_sns_topic_subscription(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    topic_arn = inputs.get("topic", "arn:aws:sns:us-east-1:123456789012:topic")
+    state.setdefault("arn", f"{topic_arn}:{name}")
+
+
+def _mock_sqs_queue(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    queue_name = inputs.get("name") or name
+    state.setdefault("name", queue_name)
+    state.setdefault("arn", f"arn:aws:sqs:us-east-1:123456789012:{queue_name}")
+    state.setdefault(
+        "url",
+        f"https://sqs.us-east-1.amazonaws.com/123456789012/{queue_name}",
     )
 
 

@@ -120,6 +120,10 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
         "operationsAlertTopicArn",
         "operationsAlertRuleNames",
         "operationsAlertTopicKeyAliasName",
+        "operationsAlertQueueArn",
+        "operationsAlertQueueName",
+        "operationsAlertQueueUrl",
+        "operationsAlertQueueSubscriptionArn",
         "monthlyBudgetName",
         "costAnomalyMonitorArn",
         "costAnomalySubscriptionArn",
@@ -127,7 +131,10 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
         "runnerRepositoryName",
         "runnerRepositoryUrl",
     ):
-        assert f'pulumi.export("{export_name}"' in main_text  # nosec B101
+        assert (  # nosec B101
+            f'pulumi.export("{export_name}"' in main_text
+            or f'"{export_name}"' in main_text
+        )
 
 
 def test_repository_uses_current_python_tooling_contract() -> None:

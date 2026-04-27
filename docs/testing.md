@@ -239,6 +239,7 @@ Coverage:
 - `make test-cli`
 - `make test`
 - `make report-quality`
+- `make report-well-architected-evidence`
 - `make nightly-quality`
 - `make clean`
 

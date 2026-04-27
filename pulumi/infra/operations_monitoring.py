@@ -47,6 +47,12 @@ def _topic_key_alias_name(settings: BootstrapSettings) -> str:
     return f"alias/bootstrap-{environment}-operations-alerting"
 
 
+def _queue_name(settings: BootstrapSettings) -> str:
+    """Return the deterministic operations alert queue name."""
+    environment = _environment_part(settings).replace(".", "-")
+    return f"bootstrap-{environment}-operations-alerts"
+
+
 def _rule_name(settings: BootstrapSettings, suffix: str) -> str:
     """Return an EventBridge rule name within the 64-character limit."""
     name = f"bootstrap-{_environment_part(settings)}-{suffix}"
@@ -101,6 +107,29 @@ def _topic_policy(topic_arn: str, account_id: str, partition: str) -> str:
                     "Action": "sns:Publish",
                     "Resource": topic_arn,
                     "Condition": {
+                        "StringEquals": {"aws:SourceAccount": account_id},
+                    },
+                },
+            ],
+        },
+        sort_keys=True,
+    )
+
+
+def _queue_policy(queue_arn: str, topic_arn: str, account_id: str) -> str:
+    """Allow only the account-local operations topic to send queue messages."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "AllowOperationsTopicSendMessage",
+                    "Effect": "Allow",
+                    "Principal": {"Service": "sns.amazonaws.com"},
+                    "Action": "sqs:SendMessage",
+                    "Resource": queue_arn,
+                    "Condition": {
+                        "ArnEquals": {"aws:SourceArn": topic_arn},
                         "StringEquals": {"aws:SourceAccount": account_id},
                     },
                 },
@@ -297,6 +326,37 @@ class OperationsMonitoring(pulumi.ComponentResource):
 
         self.topic = topic
         self.topic_policy = topic_policy
+        alert_queue = aws.sqs.Queue(
+            f"{name}-alert-queue",
+            name=_queue_name(configured_settings),
+            sqs_managed_sse_enabled=True,
+            tags=base_tags(
+                {"Purpose": "operations-alerting"},
+                settings=configured_settings,
+            ),
+            opts=base_opts,
+        )
+        alert_queue_policy = aws.sqs.QueuePolicy(
+            f"{name}-alert-queue-policy",
+            queue_url=alert_queue.url,
+            policy=pulumi.Output.all(alert_queue.arn, topic.arn).apply(
+                lambda values: _queue_policy(values[0], values[1], account_id)
+            ),
+            opts=base_opts,
+        )
+        alert_queue_subscription = aws.sns.TopicSubscription(
+            f"{name}-alert-queue-subscription",
+            topic=topic.arn,
+            protocol="sqs",
+            endpoint=alert_queue.arn,
+            opts=pulumi.ResourceOptions(
+                parent=self,
+                depends_on=[alert_queue_policy],
+            ),
+        )
+        self.alert_queue = alert_queue
+        self.alert_queue_policy = alert_queue_policy
+        self.alert_queue_subscription = alert_queue_subscription
         self.rules: dict[str, aws.cloudwatch.EventRule] = {}
         for suffix, pattern in _event_patterns().items():
             rule = aws.cloudwatch.EventRule(
@@ -324,6 +384,10 @@ class OperationsMonitoring(pulumi.ComponentResource):
                 "topic_arn": topic.arn,
                 "topic_key_arn": topic_key.arn,
                 "topic_key_alias_name": topic_key_alias.name,
+                "alert_queue_arn": alert_queue.arn,
+                "alert_queue_url": alert_queue.url,
+                "alert_queue_name": alert_queue.name,
+                "alert_queue_subscription_arn": alert_queue_subscription.arn,
                 "rule_names": {
                     suffix: rule.name for suffix, rule in self.rules.items()
                 },

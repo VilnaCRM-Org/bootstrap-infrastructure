@@ -118,6 +118,12 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
                 suffix: rule.name for suffix, rule in self.monitoring.rules.items()
             },
             "operationsAlertTopicKeyAliasName": self.monitoring.topic_key_alias.name,
+            "operationsAlertQueueArn": self.monitoring.alert_queue.arn,
+            "operationsAlertQueueName": self.monitoring.alert_queue.name,
+            "operationsAlertQueueUrl": self.monitoring.alert_queue.url,
+            "operationsAlertQueueSubscriptionArn": (
+                self.monitoring.alert_queue_subscription.arn
+            ),
             "monthlyBudgetName": self.cost_controls.monthly_budget.name,
             "costAnomalyMonitorArn": self.cost_controls.anomaly_monitor_arn,
             "costAnomalySubscriptionArn": (self.cost_controls.anomaly_subscription.arn),

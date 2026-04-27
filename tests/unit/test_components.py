@@ -114,6 +114,9 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     _sync_await(future_output(logging.bucket.bucket))
     _sync_await(future_output(state.backend_urls["repo"]))
     _sync_await(future_output(monitoring.topic.arn))
+    _sync_await(future_output(monitoring.alert_queue.arn))
+    _sync_await(future_output(monitoring.alert_queue.url))
+    _sync_await(future_output(monitoring.alert_queue_subscription.arn))
 
     resource_states = [state for _typ, _name, state in pulumi_mocks.resources]
     central_logging_state = next(
@@ -141,6 +144,15 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     )
     alert_topic_policy_state = _resource_state_by_name(
         pulumi_mocks, "operations-monitoring-topic-policy"
+    )
+    alert_queue_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-alert-queue"
+    )
+    alert_queue_policy_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-alert-queue-policy"
+    )
+    alert_queue_subscription_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-alert-queue-subscription"
     )
     backup_rule_state = _resource_state_by_name(
         pulumi_mocks, "operations-monitoring-backup-failed-rule"
@@ -205,6 +217,41 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     assert topic_statements["AllowCostAnomalyPublish"]["Condition"] == {  # nosec B101
         "StringEquals": {"aws:SourceAccount": "123456789012"},
     }
+    assert alert_queue_state["name"] == "bootstrap-test-operations-alerts"  # nosec B101
+    assert alert_queue_state["sqsManagedSseEnabled"] is True  # nosec B101
+    assert alert_queue_state["tags"]["Purpose"] == "operations-alerting"  # nosec B101
+    assert alert_queue_policy_state["queueUrl"] == (  # nosec B101
+        "https://sqs.us-east-1.amazonaws.com/123456789012/"
+        "bootstrap-test-operations-alerts"
+    )
+    alert_queue_policy = json.loads(alert_queue_policy_state["policy"])
+    queue_statements = {
+        statement["Sid"]: statement for statement in alert_queue_policy["Statement"]
+    }
+    assert queue_statements["AllowOperationsTopicSendMessage"] == {  # nosec B101
+        "Sid": "AllowOperationsTopicSendMessage",
+        "Effect": "Allow",
+        "Principal": {"Service": "sns.amazonaws.com"},
+        "Action": "sqs:SendMessage",
+        "Resource": (
+            "arn:aws:sqs:us-east-1:123456789012:bootstrap-test-operations-alerts"
+        ),
+        "Condition": {
+            "ArnEquals": {
+                "aws:SourceArn": (
+                    "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+                )
+            },
+            "StringEquals": {"aws:SourceAccount": "123456789012"},
+        },
+    }
+    assert alert_queue_subscription_state["topic"] == (  # nosec B101
+        "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+    )
+    assert alert_queue_subscription_state["protocol"] == "sqs"  # nosec B101
+    assert alert_queue_subscription_state["endpoint"] == (  # nosec B101
+        "arn:aws:sqs:us-east-1:123456789012:bootstrap-test-operations-alerts"
+    )
     assert (  # nosec B101
         alert_topic_key_alias_state["name"]
         == "alias/bootstrap-test-operations-alerting"
@@ -232,6 +279,16 @@ def test_operations_monitoring_policies_are_partition_aware():
             "aws-us-gov",
         )
     )
+    queue_policy = json.loads(
+        operations_monitoring._queue_policy(  # noqa: SLF001
+            (
+                "arn:aws-us-gov:sqs:us-gov-west-1:123456789012:"
+                "bootstrap-test-operations-alerts"
+            ),
+            ("arn:aws-us-gov:sns:us-gov-west-1:123456789012:bootstrap-test-operations"),
+            "123456789012",
+        )
+    )
     topic_key_policy = json.loads(
         operations_monitoring._topic_key_policy("123456789012", "aws-us-gov")  # noqa: SLF001
     )
@@ -242,6 +299,9 @@ def test_operations_monitoring_policies_are_partition_aware():
     key_statements = {
         statement["Sid"]: statement for statement in topic_key_policy["Statement"]
     }
+    queue_statements = {
+        statement["Sid"]: statement for statement in queue_policy["Statement"]
+    }
 
     assert topic_statements["AllowAccountTopicAdministration"]["Principal"] == {  # nosec B101
         "AWS": "arn:aws-us-gov:iam::123456789012:root"
@@ -251,6 +311,18 @@ def test_operations_monitoring_policies_are_partition_aware():
     }
     assert topic_statements["AllowBudgetsPublish"]["Condition"]["ArnLike"] == {  # nosec B101
         "aws:SourceArn": "arn:aws-us-gov:budgets::123456789012:*"
+    }
+    assert queue_statements["AllowOperationsTopicSendMessage"]["Resource"] == (  # nosec B101
+        "arn:aws-us-gov:sqs:us-gov-west-1:123456789012:bootstrap-test-operations-alerts"
+    )
+    assert queue_statements["AllowOperationsTopicSendMessage"]["Condition"] == {  # nosec B101
+        "ArnEquals": {
+            "aws:SourceArn": (
+                "arn:aws-us-gov:sns:us-gov-west-1:123456789012:"
+                "bootstrap-test-operations"
+            )
+        },
+        "StringEquals": {"aws:SourceAccount": "123456789012"},
     }
 
 
@@ -391,6 +463,8 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
         "expectedEnvironments": 2,
     }  # nosec B101
     assert "operationsAlertTopicArn" in bootstrap.outputs  # nosec B101
+    assert "operationsAlertQueueArn" in bootstrap.outputs  # nosec B101
+    assert "operationsAlertQueueSubscriptionArn" in bootstrap.outputs  # nosec B101
     assert "backupVaultArn" in bootstrap.outputs  # nosec B101
     log_delivery_dependencies = bootstrap.state._log_delivery_dependencies  # noqa: SLF001
     expected_log_delivery_dependencies = [

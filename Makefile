@@ -76,7 +76,8 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         pulumi-up pulumi-up-plan pulumi-refresh \
         pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
         report-maintainability-trends report-dead-code report-docstrings \
-        report-sbom test-quality test-ruff test-ty test-maintainability \
+        report-sbom report-well-architected-evidence \
+        test-quality test-ruff test-ty test-maintainability \
         test-architecture test-dependency-hygiene test-lockfile test-coverage \
         test-bandit test-actionlint test-yaml test-dockerfile \
         test-deps-security test-destructive-diff test-cost-proxy test-drift test-guardrails \
@@ -365,6 +366,20 @@ report-sbom: ## Generate a CycloneDX SBOM for the synced Python environment.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc '\
 		python_env="$${UV_PROJECT_ENVIRONMENT:-.venv}" \
 		&& uv run cyclonedx-py environment "$${python_env}" --pyproject pyproject.toml --output-reproducible --of JSON -o $(SBOM_ARTIFACT_DIR)/python-environment.cdx.json'
+
+report-well-architected-evidence: ## Collect metadata-only Well-Architected evidence.
+	@bash -lc '\
+		set -euo pipefail; \
+		mkdir -p .artifacts/well-architected; \
+		pr_arg=""; \
+		account_arg=""; \
+		topic_arg=""; \
+		if [ -n "$${PR_NUMBER:-}" ]; then pr_arg="--pr $${PR_NUMBER}"; fi; \
+		if [ -n "$${AWS_ACCOUNT_ID:-}" ]; then account_arg="--aws-account-id $${AWS_ACCOUNT_ID}"; fi; \
+		if [ -n "$${OPERATIONS_TOPIC_ARN:-}" ]; then topic_arg="--operations-topic-arn $${OPERATIONS_TOPIC_ARN}"; fi; \
+		$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
+			$$pr_arg $$account_arg $$topic_arg \
+			--output .artifacts/well-architected/evidence.json'
 
 report-quality: ## Run scheduled quality reports and generate fresh artifacts.
 	$(MAKE) report-maintainability-trends

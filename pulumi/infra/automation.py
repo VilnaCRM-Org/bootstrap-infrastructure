@@ -124,6 +124,16 @@ _AUTOMATION_SNS_ACTIONS = (
     "sns:TagResource",
     "sns:UntagResource",
 )
+_AUTOMATION_SQS_ACTIONS = (
+    "sqs:CreateQueue",
+    "sqs:DeleteQueue",
+    "sqs:GetQueueAttributes",
+    "sqs:GetQueueUrl",
+    "sqs:ListQueueTags",
+    "sqs:SetQueueAttributes",
+    "sqs:TagQueue",
+    "sqs:UntagQueue",
+)
 _AUTOMATION_BUDGETS_ACTIONS = (
     "budgets:ModifyBudget",
     "budgets:ViewBudget",
@@ -236,6 +246,14 @@ def _automation_sns_resources(
     """Scope SNS management to the bootstrap operations alert topic."""
     environment = _environment_resource_part(settings)
     return [f"arn:aws:sns:*:{account_id}:bootstrap-{environment}-operations"]
+
+
+def _automation_sqs_resources(
+    account_id: str, settings: BootstrapSettings
+) -> list[str]:
+    """Scope SQS management to the bootstrap operations alert queue."""
+    environment = _environment_resource_part(settings).replace(".", "-")
+    return [f"arn:aws:sqs:*:{account_id}:bootstrap-{environment}-operations-alerts"]
 
 
 def _automation_budget_resources(
@@ -459,6 +477,12 @@ def _automation_policy(
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_SNS_ACTIONS),
                     "Resource": _automation_sns_resources(account_id, settings),
+                },
+                {
+                    "Sid": "ManageBootstrapSqs",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_SQS_ACTIONS),
+                    "Resource": _automation_sqs_resources(account_id, settings),
                 },
                 {
                     "Sid": "ManageBootstrapBudgets",

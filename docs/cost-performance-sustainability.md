@@ -68,6 +68,8 @@ Pulumi exports provide non-secret evidence handles for reviews:
 - `costAnomalyMonitorArn`
 - `costAnomalySubscriptionArn`
 - `operationsAlertTopicArn`
+- `operationsAlertQueueArn`
+- `operationsAlertQueueSubscriptionArn`
 
 Do not inspect invoices, Cost Explorer report contents, or billing exports in
 routine repository evidence. For Well-Architected review, metadata such as the
@@ -94,8 +96,8 @@ honest 5/5 still needs account-owner evidence outside the codebase:
 
 - FinOps owner approval for the monthly budget limit and anomaly threshold.
 - Cost Explorer enabled in the target account before Pulumi apply.
-- Confirmed SNS subscription or downstream incident route for the operations
-  topic.
+- Confirmed downstream incident route for the durable operations alert queue or
+  the operations SNS topic.
 - Activated cost allocation tag evidence when the payer account supports it.
 - Monthly cost report or dashboard location with reviewer and date.
 - Spend approval thresholds by account and environment.
@@ -114,5 +116,11 @@ For every catalog expansion, reviewers should check:
   more durable resources
 - whether the monthly budget and anomaly threshold still match the expected
   spend profile
-- whether the operations alert route has a confirmed owner and subscription
+- whether the operations alert queue has a confirmed owner and downstream route
 - whether live AWS quota or payer-account evidence is needed before apply
+
+`make report-well-architected-evidence` records the current static fanout
+report together with metadata-only AWS Budget and Cost Anomaly Detection checks.
+It does not query invoices or spend details. A 5/5 cost or sustainability claim
+still needs owner-approved thresholds, recurring review evidence, and live
+account headroom where catalog growth can affect quotas.

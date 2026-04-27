@@ -164,6 +164,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "ecr:CreateRepository" in actions  # nosec B101
     assert "events:PutRule" in actions  # nosec B101
     assert "sns:CreateTopic" in actions  # nosec B101
+    assert "sqs:CreateQueue" in actions  # nosec B101
     assert "budgets:ModifyBudget" in actions  # nosec B101
     assert "ce:CreateAnomalyMonitor" in actions  # nosec B101
     assert "billing:GetBillingViewData" in actions  # nosec B101
@@ -182,6 +183,9 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     ]
     assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
         "arn:aws:sns:*:123456789012:bootstrap-test-operations"
+    ]
+    assert statements["ManageBootstrapSqs"]["Resource"] == [  # nosec B101
+        "arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"
     ]
     assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
         "arn:aws:budgets::123456789012:budget/bootstrap-test-*"

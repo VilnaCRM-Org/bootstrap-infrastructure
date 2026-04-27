@@ -40,6 +40,8 @@ COST_DRIVER_TYPE_PATTERNS = (
     ("backupSelections", "aws:backup/selection:Selection", 1),
     ("ecrRepositories", "aws:ecr/repository:Repository", 2),
     ("snsTopics", "aws:sns/topic:Topic", 1),
+    ("snsSubscriptions", "aws:sns/topicSubscription:TopicSubscription", 1),
+    ("sqsQueues", "aws:sqs/queue:Queue", 1),
     ("eventRules", "aws:cloudwatch/eventRule:EventRule", 1),
     ("budgets", "aws:budgets/budget:Budget", 3),
     ("costAnomalyMonitors", "aws:costexplorer/anomalyMonitor:AnomalyMonitor", 2),

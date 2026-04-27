@@ -362,7 +362,9 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
         "oidcProviders": 1,
         "repositories": 1,
         "s3Buckets": 6,
+        "snsSubscriptions": 1,
         "snsTopics": 1,
+        "sqsQueues": 1,
     }
     assert module._fanout_threshold_report(  # nosec B101
         {"s3Buckets": 6, "kmsKeys": 3},
@@ -1045,6 +1047,489 @@ def test_run_pulumi_command_safe_artifact_stem_handles_empty_sanitized_name(
 
     assert stem.startswith("stack-")  # nosec B101
     assert len(stem) == len("stack-") + 8  # nosec B101
+
+
+def test_collect_well_architected_evidence_success_path(  # noqa: C901
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Metadata evidence collector should score proven controls without secrets."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        command_text = " ".join(command)
+        payload: object
+        if command[:3] == ["gh", "pr", "view"]:
+            payload = {
+                "mergeStateStatus": "CLEAN",
+                "reviewDecision": "APPROVED",
+                "headRefOid": "abc123",
+                "statusCheckRollup": [
+                    {
+                        "__typename": "CheckRun",
+                        "name": "Unit",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                    },
+                    {
+                        "__typename": "CheckRun",
+                        "name": "Preview (Unprivileged)",
+                        "status": "COMPLETED",
+                        "conclusion": "SKIPPED",
+                    },
+                    {
+                        "__typename": "StatusContext",
+                        "context": "qlty check",
+                        "state": "SUCCESS",
+                    },
+                ],
+            }
+        elif command[:3] == ["gh", "api", "graphql"]:
+            payload = {
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "reviewThreads": {
+                                "nodes": [{"isResolved": True}, {"isResolved": True}]
+                            }
+                        }
+                    }
+                }
+            }
+        elif command[:2] == ["gh", "api"]:
+            payload = {
+                "required_status_checks": {"contexts": ["Unit"]},
+                "required_pull_request_reviews": {"required_approving_review_count": 1},
+                "enforce_admins": {"enabled": True},
+            }
+        elif command[:3] == ["aws", "sts", "get-caller-identity"]:
+            payload = {"Account": "123456789012", "Arn": "arn:aws:iam::123:user/test"}
+        elif command[:3] == ["aws", "budgets", "describe-budgets"]:
+            payload = 1
+        elif command[:3] == ["aws", "ce", "get-anomaly-monitors"]:
+            payload = 1
+        elif command[:3] == ["aws", "sns", "get-topic-attributes"]:
+            payload = "arn:aws:kms:us-east-1:123456789012:key/topic"
+        elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
+            payload = ["sqs"]
+        elif command[:3] == ["aws", "backup", "list-restore-jobs"]:
+            payload = ["COMPLETED"]
+        else:  # pragma: no cover - fail fast if the command contract changes.
+            raise AssertionError(command_text)
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    args = module.build_parser().parse_args(
+        [
+            "--repo",
+            "VilnaCRM-Org/bootstrap-infrastructure",
+            "--pr",
+            "22",
+            "--aws-account-id",
+            "123456789012",
+            "--operations-topic-arn",
+            "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations",
+            "--required-status-check",
+            "Unit",
+            "--root-dir",
+            str(PROJECT_ROOT),
+        ]
+    )
+    report = module.collect_evidence(args, runner=runner)
+
+    assert report["blockers"] == []  # nosec B101
+    assert all(score == 5 for score in report["pillarScores"].values())  # nosec B101
+    assert {check["status"] for check in report["checks"]} == {"passed"}  # nosec B101
+
+
+def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C901
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Collector should keep blockers explicit when metadata is insufficient."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        if command[:3] == ["gh", "pr", "view"]:
+            payload = {
+                "mergeStateStatus": "DIRTY",
+                "reviewDecision": "REVIEW_REQUIRED",
+                "headRefOid": "abc123",
+                "statusCheckRollup": [
+                    {
+                        "__typename": "CheckRun",
+                        "name": "Unit",
+                        "status": "IN_PROGRESS",
+                        "conclusion": "",
+                    },
+                    {
+                        "__typename": "StatusContext",
+                        "context": "qlty check",
+                        "state": "ERROR",
+                    },
+                    {"__typename": "Unknown", "name": "mystery"},
+                ],
+            }
+        elif command[:3] == ["gh", "api", "graphql"]:
+            payload = {
+                "data": {
+                    "repository": {
+                        "pullRequest": {
+                            "reviewThreads": {
+                                "nodes": [{"isResolved": False}, {"isResolved": True}]
+                            }
+                        }
+                    }
+                }
+            }
+        elif command[:2] == ["gh", "api"]:
+            payload = {
+                "required_status_checks": {"contexts": []},
+                "enforce_admins": {"enabled": False},
+            }
+        elif command[:3] == ["aws", "sts", "get-caller-identity"]:
+            payload = {"Account": "123456789012", "Arn": "arn:aws:iam::123:user/test"}
+        elif command[:3] == ["aws", "budgets", "describe-budgets"]:
+            payload = 0
+        elif command[:3] == ["aws", "ce", "get-anomaly-monitors"]:
+            payload = 0
+        elif command[:3] == ["aws", "sns", "get-topic-attributes"]:
+            payload = None
+        elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
+            payload = []
+        elif command[:3] == ["aws", "backup", "list-restore-jobs"]:
+            payload = []
+        else:  # pragma: no cover - fail fast if the command contract changes.
+            raise AssertionError(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    args = module.build_parser().parse_args(
+        [
+            "--repo",
+            "VilnaCRM-Org/bootstrap-infrastructure",
+            "--pr",
+            "22",
+            "--operations-topic-arn",
+            "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations",
+            "--root-dir",
+            str(PROJECT_ROOT),
+        ]
+    )
+    report = module.collect_evidence(args, runner=runner)
+    statuses = {check["name"]: check["status"] for check in report["checks"]}
+
+    assert statuses["github_pr_checks"] == "failed"  # nosec B101
+    assert statuses["github_review_threads"] == "failed"  # nosec B101
+    assert statuses["github_branch_protection"] == "failed"  # nosec B101
+    assert statuses["aws_cost_controls"] == "failed"  # nosec B101
+    assert statuses["aws_sns_alert_route"] == "failed"  # nosec B101
+    assert statuses["aws_restore_jobs"] == "failed"  # nosec B101
+    assert report["blockers"]  # nosec B101
+
+
+def test_collect_well_architected_evidence_unknown_and_missing_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unknown command results and missing inputs should be represented safely."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def failing_runner(command, **_kwargs):
+        return subprocess.CompletedProcess(command, 1, "", "not available")
+
+    invalid_ok, invalid_payload, invalid_error = module._run_json(  # noqa: SLF001
+        ["tool"],
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, "not-json", ""
+        ),
+    )
+    missing_fanout_args = module.build_parser().parse_args(
+        ["--root-dir", str(tmp_path)]
+    )
+    (tmp_path / "pulumi").mkdir()
+    low_threshold_args = module.build_parser().parse_args(
+        ["--root-dir", str(PROJECT_ROOT), "--max-s3-buckets", "0"]
+    )
+
+    assert invalid_ok is False  # nosec B101
+    assert invalid_payload is None  # nosec B101
+    assert "invalid JSON output" in invalid_error  # nosec B101
+    assert module.github_pr_checks("org/repo", None)["status"] == "missing"
+    assert module.github_review_threads("org/repo", None)["status"] == "missing"
+    assert module.aws_sns_alert_route(None)["status"] == "missing"
+    assert module.github_pr_checks("org/repo", 1, runner=failing_runner)["status"] == (
+        "unknown"
+    )
+    assert (
+        module.github_review_threads("org/repo", 1, runner=failing_runner)["status"]
+        == "unknown"
+    )
+    assert (
+        module.github_branch_protection("org/repo", "main", runner=failing_runner)[
+            "status"
+        ]
+        == "unknown"
+    )
+    assert module.aws_identity(runner=failing_runner)["status"] == "unknown"
+    assert module.aws_cost_controls(None, runner=failing_runner)["status"] == "unknown"
+    assert (
+        module.aws_cost_controls("123456789012", runner=failing_runner)["status"]
+        == "failed"
+    )
+    assert module.aws_sns_alert_route("arn:topic", runner=failing_runner)["status"] == (
+        "failed"
+    )
+    assert module.aws_restore_jobs(90, runner=failing_runner)["status"] == "unknown"
+    assert (
+        module.repository_fanout_evidence(tmp_path, missing_fanout_args)["status"]
+        == "missing"
+    )
+    assert (
+        module.repository_fanout_evidence(PROJECT_ROOT, low_threshold_args)["status"]
+        == "failed"
+    )
+
+
+def test_collect_well_architected_evidence_reads_ruleset_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rulesets should provide branch evidence when classic protection is absent."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        command_path = command[-1]
+        if command_path.endswith("/protection"):
+            return subprocess.CompletedProcess(command, 1, "", "not found")
+        if command_path.endswith("/rulesets"):
+            payload = [
+                {"id": 1},
+                {"id": 2},
+                {"id": 3},
+                {"name": "missing id"},
+                "malformed",
+            ]
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        if command_path.endswith("/rulesets/1"):
+            payload = {
+                "name": "main",
+                "target": "branch",
+                "enforcement": "active",
+                "rules": [
+                    {
+                        "type": "required_status_checks",
+                        "parameters": {
+                            "required_status_checks": [
+                                {"context": "Unit"},
+                                {"context": "Policy"},
+                            ]
+                        },
+                    },
+                    {"type": "pull_request", "parameters": {}},
+                ],
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        if command_path.endswith("/rulesets/2"):
+            return subprocess.CompletedProcess(command, 1, "", "denied")
+        if command_path.endswith("/rulesets/3"):
+            payload = {
+                "name": "tag rules",
+                "target": "tag",
+                "enforcement": "active",
+                "rules": [{"type": "pull_request", "parameters": {}}],
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        raise AssertionError(command)  # pragma: no cover
+
+    evidence = module.github_branch_protection(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        "main",
+        expected_required_status_checks=("Unit", "Policy"),
+        runner=runner,
+    )
+
+    assert evidence["status"] == "passed"  # nosec B101
+    assert evidence["evidence"]["classicProtectionReadable"] is False  # nosec B101
+    assert evidence["evidence"]["activeRulesetCount"] == 1  # nosec B101
+    assert evidence["evidence"]["requiredStatusCheckCount"] == 2  # nosec B101
+    assert evidence["evidence"]["requiresPullRequestReviews"] is True  # nosec B101
+    assert (  # nosec B101
+        module._ruleset_has_pull_request_reviews(  # noqa: SLF001
+            [
+                {
+                    "target": "branch",
+                    "enforcement": "active",
+                    "rules": [{"type": "required_status_checks"}],
+                },
+                {
+                    "target": "tag",
+                    "enforcement": "active",
+                    "rules": [{"type": "pull_request"}],
+                },
+                {
+                    "target": "branch",
+                    "enforcement": "evaluate",
+                    "rules": [{"type": "pull_request"}],
+                },
+            ]
+        )
+        is False
+    )
+
+
+def test_collect_well_architected_evidence_paginates_review_threads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review thread collection should follow cursors and surface bad pagination."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    calls: list[list[str]] = []
+
+    def runner(command, **_kwargs):
+        calls.append(command)
+        after_arg = next(
+            (argument for argument in command if argument.startswith("after=")),
+            None,
+        )
+        payload = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": [{"isResolved": after_arg is None}],
+                            "pageInfo": {
+                                "hasNextPage": after_arg is None,
+                                "endCursor": "cursor-1",
+                            },
+                        }
+                    }
+                }
+            }
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    evidence = module.github_review_threads(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        22,
+        runner=runner,
+    )
+
+    assert evidence["status"] == "failed"  # nosec B101
+    assert evidence["evidence"]["threadCount"] == 2  # nosec B101
+    assert evidence["evidence"]["unresolvedThreadCount"] == 1  # nosec B101
+    assert any("after=cursor-1" in command for command in calls)  # nosec B101
+
+    def missing_cursor_runner(command, **_kwargs):
+        payload = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": [],
+                            "pageInfo": {"hasNextPage": True},
+                        }
+                    }
+                }
+            }
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    missing_cursor = module.github_review_threads(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        22,
+        runner=missing_cursor_runner,
+    )
+
+    assert missing_cursor["status"] == "unknown"  # nosec B101
+    assert "pagination did not return a cursor" in missing_cursor["blockers"][0]  # nosec B101
+
+    def endless_runner(command, **_kwargs):
+        payload = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": [],
+                            "pageInfo": {
+                                "hasNextPage": True,
+                                "endCursor": "cursor-loop",
+                            },
+                        }
+                    }
+                }
+            }
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    endless = module.github_review_threads(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        22,
+        runner=endless_runner,
+    )
+
+    assert endless["status"] == "unknown"  # nosec B101
+    assert "exceeded 20 pages" in endless["blockers"][0]  # nosec B101
+
+
+def test_collect_well_architected_evidence_reports_missing_required_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Branch evidence should name required contexts absent from protection."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        command_path = command[-1]
+        if command_path.endswith("/protection"):
+            payload = {
+                "required_status_checks": {"contexts": ["Preview"]},
+                "required_pull_request_reviews": {"required_approving_review_count": 1},
+                "enforce_admins": {"enabled": True},
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        if command_path.endswith("/rulesets"):
+            return subprocess.CompletedProcess(command, 0, "[]", "")
+        raise AssertionError(command)  # pragma: no cover
+
+    evidence = module.github_branch_protection(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        "main",
+        expected_required_status_checks=("Preview", "IAM Validation"),
+        runner=runner,
+    )
+
+    assert evidence["status"] == "failed"  # nosec B101
+    assert evidence["evidence"]["requiredStatusChecks"] == ["Preview"]  # nosec B101
+    assert evidence["evidence"]["missingRequiredStatusChecks"] == [  # nosec B101
+        "IAM Validation"
+    ]
+    assert "IAM Validation" in evidence["blockers"][0]  # nosec B101
+
+
+def test_collect_well_architected_evidence_main_writes_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """CLI wrapper should write evidence reports and signal blockers."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    output_path = tmp_path / "evidence.json"
+
+    monkeypatch.setattr(
+        module,
+        "collect_evidence",
+        lambda _args: {
+            "checks": [],
+            "pillarScores": {},
+            "blockers": [],
+        },
+    )
+    assert module.main(["--output", str(output_path)]) == 0
+    assert json.loads(output_path.read_text(encoding="utf-8"))["blockers"] == []
+    assert '"blockers": []' in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        module,
+        "collect_evidence",
+        lambda _args: {
+            "checks": [],
+            "pillarScores": {},
+            "blockers": ["missing evidence"],
+        },
+    )
+    assert module.main([]) == 1
+    assert "missing evidence" in capsys.readouterr().out
 
 
 def test_run_pulumi_command_branch_helpers_return_select_failures(

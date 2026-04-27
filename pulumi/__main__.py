@@ -74,6 +74,18 @@ if bootstrap_requested:
         "operationsAlertTopicKeyAliasName"
     ]
     pulumi.export("operationsAlertTopicKeyAliasName", operations_alert_key_alias_name)
+    operations_alert_queue_arn = bootstrap.outputs["operationsAlertQueueArn"]
+    pulumi.export("operationsAlertQueueArn", operations_alert_queue_arn)
+    operations_alert_queue_name = bootstrap.outputs["operationsAlertQueueName"]
+    pulumi.export("operationsAlertQueueName", operations_alert_queue_name)
+    operations_alert_queue_url = bootstrap.outputs["operationsAlertQueueUrl"]
+    pulumi.export("operationsAlertQueueUrl", operations_alert_queue_url)
+    operations_alert_queue_subscription_arn = bootstrap.outputs[
+        "operationsAlertQueueSubscriptionArn"
+    ]
+    pulumi.export(
+        "operationsAlertQueueSubscriptionArn", operations_alert_queue_subscription_arn
+    )
     pulumi.export("monthlyBudgetName", bootstrap.outputs["monthlyBudgetName"])
     pulumi.export("costAnomalyMonitorArn", bootstrap.outputs["costAnomalyMonitorArn"])
     cost_anomaly_subscription_arn = bootstrap.outputs["costAnomalySubscriptionArn"]
