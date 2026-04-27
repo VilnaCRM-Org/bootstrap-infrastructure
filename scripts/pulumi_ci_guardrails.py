@@ -54,7 +54,7 @@ COST_DRIVER_TYPE_PATTERNS = (
     ),
     ("costAllocationTags", "aws:costexplorer/costAllocationTag:CostAllocationTag", 1),
 )
-DEFAULT_MAX_COST_PROXY_WEIGHT = 50
+DEFAULT_MAX_COST_PROXY_WEIGHT = 60
 GENERATED_PREVIEW_ARTIFACT_NAMES = frozenset({"iam-inputs.json"})
 COUNT_TABLE_SEPARATOR = "| --- | ---: |"
 

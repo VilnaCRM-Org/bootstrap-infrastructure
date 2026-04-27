@@ -140,6 +140,11 @@ Service Quotas, or a FinOps review. It gives reviewers an early signal that a
 pull request is adding or replacing unusually many durable resources before the
 change reaches the test account.
 
+The default weighted threshold is `60`, which is just above the expected full
+bootstrap footprint after the management CloudTrail, backup, cost, and
+operations controls are included. Pull requests that exceed that threshold need
+an explicit guardrail change or a reduction in durable-resource fanout.
+
 ## IAM validation
 
 `scripts/pulumi_ci_guardrails.py validate-iam` extracts IAM policy documents
