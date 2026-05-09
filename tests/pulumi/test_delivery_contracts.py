@@ -773,6 +773,7 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
         (WORKFLOWS_DIR / "pulumi-test-deploy.yml").read_text(encoding="utf-8")
     )
     test_preview_env = test_workflow["jobs"]["preview"]["env"]
+    test_iam_env = test_workflow["jobs"]["iam_validation"]["env"]
     test_apply_env = test_workflow["jobs"]["apply"]["env"]
     test_drift_env = test_workflow["jobs"]["post_apply_drift"]["env"]
     prod_preview_lines = "\n".join(
@@ -810,6 +811,14 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert (  # nosec B101
         test_preview_env["PULUMI_DRIFT_STACKS"]
         == "${{ vars.PULUMI_DRIFT_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
+    )
+    assert (  # nosec B101
+        test_iam_env["PULUMI_BACKEND_URL"]
+        == "${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}"
+    )
+    assert (  # nosec B101
+        test_iam_env["PULUMI_PREVIEW_STACKS"]
+        == "${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
     )
     assert (  # nosec B101
         test_apply_env["AWS_APPLY_ROLE_ARN"]
