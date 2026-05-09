@@ -36,7 +36,8 @@
       "id": "finops",
       "status": "unresolved",
       "evidence": [
-        "AWS Budget and Cost Anomaly Detection subscription exist and collect_well_architected_evidence aws_cost_controls passed."
+        "AWS Budget and Cost Anomaly Detection subscription exist and collect_well_architected_evidence aws_cost_controls passed.",
+        "aws ce list-cost-allocation-tags --status Active returned no active cost allocation tags on 2026-05-09."
       ],
       "unresolvedReason": "Named FinOps owner, approved thresholds, monthly report location, and payer-account cost allocation tag activation evidence remain external."
     },
@@ -52,7 +53,10 @@
       "id": "security_account_controls",
       "status": "unresolved",
       "evidence": [
-        "OIDC roles, policy pack checks, CodeQL/Bandit/Gitleaks/pip-audit workflows, KMS keys, CloudTrail, and alert rules are defined."
+        "OIDC roles, policy pack checks, CodeQL/Bandit/Gitleaks/pip-audit workflows, KMS keys, CloudTrail, and alert rules are defined.",
+        "aws guardduty list-detectors in eu-central-1 returned no detectors on 2026-05-09.",
+        "aws securityhub describe-hub in eu-central-1 returned InvalidAccessException because the account is not subscribed on 2026-05-09.",
+        "aws configservice describe-configuration-recorders and describe-delivery-channels in eu-central-1 returned empty lists on 2026-05-09."
       ],
       "unresolvedReason": "Human MFA/SSO, GuardDuty/Security Hub/Config posture, threat-model refresh, permissions-boundary decision, and external security owner ledger remain outside the repository evidence."
     },

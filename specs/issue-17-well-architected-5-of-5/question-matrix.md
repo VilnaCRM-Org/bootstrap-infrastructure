@@ -1,6 +1,6 @@
 # AWS Well-Architected Question Matrix
 
-Scope: issue #17 planning for the bootstrap infrastructure repository. This matrix uses the current AWS Well-Architected Framework question set verified on 2026-04-26 and maps every question to current repository evidence, the gap to an evidence-backed 5/5, and the future evidence that must exist before any score increase is claimed.
+Scope: issue #17 planning for the bootstrap infrastructure repository. This matrix uses the current AWS Well-Architected Framework question set re-checked against the AWS public documentation on 2026-05-09 and maps every question to current repository evidence, the gap to an evidence-backed 5/5, and the future evidence that must exist before any score increase is claimed.
 
 The original planning package was planning-only. The rows below remain the
 evidence contract for implementation PRs; adding implemented evidence here does

@@ -55,6 +55,16 @@ The issue #17 baseline remains the source assessment for this planning PR, but c
 
 Documentation and evidence-contract score: `4.8/5`.
 
+## Current Question-Level Review Evidence
+
+The 2026-05-09 evidence record at
+`question-matrix-evidence-2026-05-09.json` now includes a 1-5 score for each of
+the 57 AWS Well-Architected Framework questions. These scores are current
+review observations for this PR and the repository, not final 5/5 claims. Every
+question remains unresolved because each row still has at least one missing
+owner, freshness, validation, fallback, drill, account, or administrator-owned
+evidence item.
+
 Final Well-Architected score change claimed by this PR: `0.0`. The current
 branch adds remediation evidence for some questions, but the pillar scores stay
 unchanged until the remaining external blockers are closed and the

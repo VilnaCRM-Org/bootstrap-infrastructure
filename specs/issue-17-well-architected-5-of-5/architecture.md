@@ -3,7 +3,7 @@
 ## Context
 Issue #17 tracks follow-up work from an AWS Well-Architected review of PR #14. The issue documents an overall repository score of 2.63/5 and a target of 5/5 across Operational Excellence, Security, Reliability, Performance Efficiency, Cost Optimization, and Sustainability. The original package was planning-only; the current branch now includes a bounded repo-owned implementation slice. This document records the target architecture, current implementation evidence, and remaining blockers without claiming final 5/5 readiness.
 
-The AWS Well-Architected question set was re-checked during this planning update and is represented in `question-matrix.md`: OPS1-11, SEC1-11, REL1-13, PERF1-5, COST1-11, and SUS1-6. Future implementation work must update that matrix when evidence changes.
+The AWS Well-Architected question set was re-checked against the AWS public documentation on 2026-05-09 and is represented in `question-matrix.md`: OPS1-11, SEC1-11, REL1-13, PERF1-5, COST1-11, and SUS1-6. Future implementation work must update that matrix when evidence changes.
 
 ## Architecture Principles
 
