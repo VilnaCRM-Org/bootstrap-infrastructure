@@ -178,6 +178,8 @@ backup review cadence.
 Use the [2026-05-09 operating review](operating-review-2026-05-09.md) for the
 current KPI observations, demand review, service review, cost-of-effort notes,
 and sustainability governance record.
+Use the [region sustainability evidence](region-sustainability-evidence.md) for
+the primary/replica region decision matrix and exception gates.
 
 ## Well-Architected Evidence
 

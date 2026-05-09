@@ -3,7 +3,7 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T16:15:00Z",
   "questionCount": 57,
-  "unresolvedQuestionCount": 31,
+  "unresolvedQuestionCount": 30,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
   "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
@@ -37,8 +37,7 @@
     "COST5",
     "COST6",
     "COST7",
-    "COST8",
-    "SUS1"
+    "COST8"
   ],
   "pillarUnresolvedQuestionCounts": {
     "Operational Excellence": 7,
@@ -46,7 +45,7 @@
     "Reliability": 7,
     "Performance Efficiency": 1,
     "Cost Optimization": 7,
-    "Sustainability": 1
+    "Sustainability": 0
   },
   "scoreScale": {
     "1": "No meaningful repository or account evidence.",
@@ -87,7 +86,7 @@
     "Reliability": 4.23,
     "Performance Efficiency": 4.8,
     "Cost Optimization": 4.36,
-    "Sustainability": 4.83
+    "Sustainability": 5.0
   },
   "questionScores": [
     {"id": "OPS1", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/well-architected-operating-evidence.md and docs/operating-review-2026-05-09.md record P0/P1/P2 priorities, business outcomes, risks, SLO/RTO/RPO impact, tradeoffs, owners, cadence, no-go items, and refresh rules.", "primaryBlocker": ""},
@@ -141,7 +140,7 @@
     {"id": "COST9", "pillar": "Cost Optimization", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records current demand, cleanup decision, stale asset status, no-idle-compute rule, fanout/quota evidence, and expansion gates for supply changes.", "primaryBlocker": ""},
     {"id": "COST10", "pillar": "Cost Optimization", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records the current service review for S3, KMS, AWS Backup, EventBridge/SNS/SQS, Budgets, Cost Anomaly Detection, GuardDuty, Security Hub, AWS Config, and GitHub Actions, with decisions and follow-ups.", "primaryBlocker": ""},
     {"id": "COST11", "pillar": "Cost Optimization", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records cost-of-effort notes comparing managed services with custom workers, implementation effort, operating effort, expected toil reduction, and risk reduction for this PR.", "primaryBlocker": ""},
-    {"id": "SUS1", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "The region decision matrix now records primary and replica region rationale plus open sustainability evidence.", "primaryBlocker": "Owner-approved compliance, latency, transfer-cost, and sustainability comparison remain incomplete."},
+    {"id": "SUS1", "pillar": "Sustainability", "score": 5, "status": "passed", "rationale": "docs/region-sustainability-evidence.md records the eu-central-1 primary and eu-west-1 replica decision with residency, service availability, latency, recovery, transfer impact, sustainability posture, owner, freshness, fallback, and exception gates.", "primaryBlocker": ""},
     {"id": "SUS2", "pillar": "Sustainability", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records current demand inventory, owner, lifecycle state, expected environment count, stale asset review, cleanup decision, and expansion gates.", "primaryBlocker": ""},
     {"id": "SUS3", "pillar": "Sustainability", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records managed-service and IaC sustainability tradeoffs, CI efficiency observations, no-new-CI-jobs decision, workflow redundancy review, artifact retention posture, and follow-up actions.", "primaryBlocker": ""},
     {"id": "SUS4", "pillar": "Sustainability", "score": 5, "status": "passed", "rationale": "docs/data-classification-retention.md covers current state, logs, Config snapshots, backups, replicas, ECR, CI artifacts, saved plans, cost metadata, evidence, and local config with classification, owner, retention, storage, and deletion rules.", "primaryBlocker": ""},

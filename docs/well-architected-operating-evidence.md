@@ -57,6 +57,7 @@ owner attestations before any final 5/5 claim.
 | Security account services | Repository code now provisions GuardDuty, Security Hub, AWS Config recorder, and the Config delivery bucket; `docs/security-operating-evidence.md` records identity, permission, wildcard, boundary, and exception evidence; live account evidence remains pending until apply. | Blocked. | Security owner must enable or formally exempt these account controls and retain post-apply evidence. |
 | Data protection and recovery | `docs/data-protection-recovery-evidence.md` records at-rest protection, Vault Lock/Object Lock posture, restore runbook, backup review cadence, and degraded-mode playbooks. | Current for repository-owned SEC8 and REL9 evidence. | Refresh before storage, backup, KMS, retention, or replica changes. |
 | Current operating review | `docs/operating-review-2026-05-09.md` records KPI observations, demand/stale asset review, service review, cost-of-effort notes, improvement actions, and sustainability governance. | Current for repository-owned review-loop evidence. | Refresh monthly for KPIs and quarterly for sustainability/service review. |
+| Region sustainability | `docs/region-sustainability-evidence.md` records the primary/replica region decision matrix, service availability, residency, latency, transfer impact, recovery rationale, sustainability posture, and exception path. | Current for repository-owned SUS1 evidence. | Refresh before region, replica, residency, or replicated-data changes. |
 
 ## KPI And Review Register
 
@@ -117,6 +118,8 @@ The no-idle-compute rule for future service selection is retained in
 
 Region changes must compare compliance, service availability, latency, data
 transfer cost, sustainability inputs, and recovery objectives before merge.
+The current region decision matrix is retained in
+`docs/region-sustainability-evidence.md`.
 
 ### Storage, Retention, And Transit
 

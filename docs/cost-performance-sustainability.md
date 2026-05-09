@@ -37,6 +37,9 @@ demand review, stale asset review, service review, cost-of-effort notes,
 performance observations, CI efficiency review, and sustainability governance
 record.
 
+Use `docs/region-sustainability-evidence.md` for the primary/replica region
+decision matrix and the exception gate before region or replicated-data changes.
+
 ## Preview Cost Proxy
 
 `make test-cost-proxy` reads Pulumi preview JSON and counts create or replace
