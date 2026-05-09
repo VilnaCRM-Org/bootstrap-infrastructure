@@ -153,6 +153,157 @@ def test_doctor_main_reports_missing_and_ready_states(
     assert "env file present: no" in capsys.readouterr().err
 
 
+def test_configure_github_repository_controls_payloads(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Build the GitHub admin-control payloads without applying them."""
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    existing_pull_request_rule = {
+        "type": "pull_request",
+        "parameters": {"required_approving_review_count": 2},
+    }
+    existing_code_quality_rule = {
+        "type": "code_quality",
+        "parameters": {"severity": "errors"},
+    }
+
+    payload = module.ruleset_payload(
+        [
+            existing_pull_request_rule,
+            existing_code_quality_rule,
+            {"type": "ignored_rule"},
+        ]
+    )
+    rules = {rule["type"]: rule for rule in payload["rules"]}
+    contexts = [
+        check["context"]
+        for check in rules["required_status_checks"]["parameters"][
+            "required_status_checks"
+        ]
+    ]
+
+    assert contexts == list(module.REQUIRED_STATUS_CHECKS)  # nosec B101
+    assert rules["pull_request"] == existing_pull_request_rule  # nosec B101
+    assert rules["code_quality"] == existing_code_quality_rule  # nosec B101
+    assert module.prod_environment_payload(9444106) == {  # nosec B101
+        "wait_timer": 0,
+        "prevent_self_review": True,
+        "reviewers": [{"type": "User", "id": 9444106}],
+        "deployment_branch_policy": {
+            "protected_branches": True,
+            "custom_branch_policies": False,
+        },
+    }
+
+    monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
+    assert (  # nosec B101
+        module.main(["--repo", "VilnaCRM-Org/bootstrap-infrastructure"]) == 0
+    )
+    rendered = json.loads(capsys.readouterr().out)
+    assert rendered["prodEnvironment"]["reviewers"][0]["id"] == 0  # nosec B101
+    assert rendered["prodEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
+
+
+def test_configure_github_repository_controls_api_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cover gh api parsing, ruleset lookup, and reviewer resolution paths."""
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    calls: list[tuple[list[str], str | None]] = []
+    responses = [
+        '{"ok": true}',
+        "",
+        '"scalar"',
+        '[{"name":"other"},{"name":"main","target":"branch","id":123}]',
+        '{"id":123,"rules":[{"type":"deletion"}]}',
+        '{"not":"a-list"}',
+        '["invalid", {"name":"main","target":"branch","id":"not-int"}]',
+        '{"id":9444106}',
+        "{}",
+    ]
+
+    def fake_run(command, input=None, check=None, capture_output=None, text=None):
+        calls.append((command, input))
+        return subprocess.CompletedProcess(command, 0, stdout=responses.pop(0))
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    assert module._run_gh_api(["repos/example/repo"]) == {"ok": True}  # nosec B101
+    assert (  # nosec B101
+        module._run_gh_api(["repos/example/repo"], input_payload={"x": 1}) == {}
+    )
+    assert module._run_gh_api(["repos/example/repo"]) == {}  # nosec B101
+    assert module._main_ruleset("example/repo") == {  # nosec B101
+        "id": 123,
+        "rules": [{"type": "deletion"}],
+    }
+    assert module._main_ruleset("example/repo") is None  # nosec B101
+    assert module._main_ruleset("example/repo") is None  # nosec B101
+    assert module._github_user_id("Kravalg") == 9444106  # nosec B101
+    with pytest.raises(ValueError, match="Could not resolve"):
+        module._github_user_id("missing")
+    assert calls[1][1] == '{"x": 1}'  # nosec B101
+
+    def failing_run(command, input=None, check=None, capture_output=None, text=None):
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="denied")
+
+    monkeypatch.setattr(module.subprocess, "run", failing_run)
+    with pytest.raises(RuntimeError, match="denied"):
+        module._run_gh_api(["repos/example/repo"])
+
+
+def test_configure_github_repository_controls_apply_paths(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Apply existing and new ruleset paths through gh api wrappers."""
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    calls: list[tuple[list[str], dict]] = []
+    existing = {"id": 123, "rules": "invalid"}
+
+    monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: 9444106)
+
+    def fake_run_gh_api(args, *, input_payload=None):
+        calls.append((list(args), dict(input_payload or {})))
+        return {}
+
+    monkeypatch.setattr(module, "_run_gh_api", fake_run_gh_api)
+    monkeypatch.setattr(module, "_main_ruleset", lambda _repo: existing)
+
+    assert module.configure("example/repo", "Kravalg", apply=True) == 0  # nosec B101
+    assert calls[0][0] == [  # nosec B101
+        "repos/example/repo/rulesets/123",
+        "--method",
+        "PUT",
+    ]
+    assert calls[1][0] == [  # nosec B101
+        "repos/example/repo/environments/prod",
+        "--method",
+        "PUT",
+    ]
+    rendered = json.loads(capsys.readouterr().out)
+    assert rendered["prodEnvironment"]["reviewers"][0]["id"] == 9444106  # nosec B101
+
+    calls.clear()
+    monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
+    assert module.configure("example/repo", "Kravalg", apply=True) == 0  # nosec B101
+    assert calls[0][0] == ["repos/example/repo/rulesets", "--method", "POST"]  # nosec B101
+
+
+def test_configure_github_repository_controls_main_reports_errors(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Return a non-zero exit when GitHub rejects the admin update."""
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+
+    def fail_configure(*_args, **_kwargs):
+        raise RuntimeError("admin required")
+
+    monkeypatch.setattr(module, "configure", fail_configure)
+
+    assert module.main(["--repo", "example/repo", "--apply"]) == 1  # nosec B101
+    assert "error:" in capsys.readouterr().err  # nosec B101
+
+
 def test_prepare_docker_context_main_bootstraps_and_rejects_invalid_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

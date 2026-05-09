@@ -316,6 +316,18 @@ The workflows are committed in this repository, but maintainers still need to:
 6. decide whether production repositories want stricter stack lists or narrower
    IAM role scopes than the template defaults
 
+Repository administrators can make steps 4 and 5 reproducible with:
+
+```bash
+python3 scripts/configure_github_repository_controls.py \
+  --repo VilnaCRM-Org/bootstrap-infrastructure \
+  --prod-reviewer Kravalg \
+  --apply
+```
+
+Run the same command without `--apply` to inspect the ruleset and protected
+environment payloads first.
+
 ## Current limitations
 
 - CodeQL is GitHub-native; the repository keeps the workflow under structural
