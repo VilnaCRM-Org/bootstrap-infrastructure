@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7-labs
 
 # Debian slim keeps the image small while remaining compatible with AWS CLI v2.
-ARG BASE_IMAGE=python:3.11.9-slim-bookworm@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317
+ARG BASE_IMAGE=python:3.11.15-slim-bookworm@sha256:cd67330292a51e2963156f74ff340455d66b2172e9190e99f40dff9357471177
 FROM ${BASE_IMAGE} AS tooling
 
 # TARGETARCH is supplied by BuildKit; do not default it or cross-platform builds

@@ -169,7 +169,7 @@ def test_dockerfile_pins_base_image_and_verifies_downloads() -> None:
     """Require checksum verification for externally downloaded tooling."""
     dockerfile_text = DOCKERFILE.read_text(encoding="utf-8")
 
-    assert "python:3.11.9-slim-bookworm@" in dockerfile_text
+    assert "python:3.11.15-slim-bookworm@" in dockerfile_text
     assert "FROM ${BASE_IMAGE} AS tooling" in dockerfile_text
     assert "FROM ${BASE_IMAGE} AS runtime-base" in dockerfile_text
     assert "ARG TARGETARCH" in dockerfile_text
