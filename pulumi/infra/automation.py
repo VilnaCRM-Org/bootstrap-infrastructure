@@ -204,6 +204,52 @@ def _sns_environment_resource_part(settings: BootstrapSettings) -> str:
     return _environment_resource_part(settings).replace(".", "-")
 
 
+def _ecr_repository_exists(name: str) -> bool:
+    """Return True when the ECR repository already exists."""
+    try:
+        aws.ecr.get_repository(name=name)
+    except Exception as exc:
+        message = str(exc)
+        if (
+            "RepositoryNotFoundException" in message
+            or "RepositoryNotFound" in message
+            or "not found" in message.lower()
+            or "couldn't find resource" in message
+        ):
+            return False
+        raise
+    return True
+
+
+def _iam_role_exists(name: str) -> bool:
+    """Return True when the IAM role already exists."""
+    try:
+        aws.iam.get_role(name=name)
+    except Exception as exc:
+        message = str(exc)
+        if (
+            "NoSuchEntity" in message
+            or "NoSuchEntityException" in message
+            or "not found" in message.lower()
+            or "couldn't find resource" in message
+        ):
+            return False
+        raise
+    return True
+
+
+def _resource_options(
+    parent: pulumi.Resource,
+    *,
+    import_id: str | None = None,
+) -> pulumi.ResourceOptions:
+    """Build consistent resource options for automation resources."""
+    kwargs: dict[str, object] = {"parent": parent}
+    if import_id is not None:
+        kwargs["import_"] = import_id
+    return pulumi.ResourceOptions(**kwargs)
+
+
 def _automation_s3_resources(settings: BootstrapSettings) -> list[str]:
     """Scope bootstrap S3 management to state and central logging buckets."""
     environment = _environment_resource_part(settings)
@@ -213,9 +259,9 @@ def _automation_s3_resources(settings: BootstrapSettings) -> list[str]:
     )
     bucket_names = (
         f"pulumi-*-{environment}-state",
-        f"pulumi-*-{environment}-state-replication",
+        f"pulumi-*-{environment}-state-*-replication",
         f"{logging_prefix}-central-logs-*-{environment}",
-        f"{logging_prefix}-central-logs-*-{environment}-replication",
+        f"{logging_prefix}-central-logs-*-{environment}-*-replication",
         f"bootstrap-*-{environment}-cloudtrail",
     )
     return [f"arn:aws:s3:::{bucket_name}" for bucket_name in bucket_names]
@@ -676,7 +722,7 @@ class GitHubAutomation(pulumi.ComponentResource):
         repo_project = repository_project or repo_name
         ecr_repository_name = configured_settings.runner_ecr_repository_name(repo_name)
         role_name = configured_settings.automation_role_name(repo_name)
-        base_opts = pulumi.ResourceOptions(parent=self)
+        base_opts = _resource_options(self)
 
         repository = aws.ecr.Repository(
             f"{name}-repository",
@@ -694,7 +740,14 @@ class GitHubAutomation(pulumi.ComponentResource):
                 },
                 settings=configured_settings,
             ),
-            opts=base_opts,
+            opts=_resource_options(
+                self,
+                import_id=(
+                    ecr_repository_name
+                    if _ecr_repository_exists(ecr_repository_name)
+                    else None
+                ),
+            ),
         )
 
         aws.ecr.LifecyclePolicy(
@@ -752,7 +805,10 @@ class GitHubAutomation(pulumi.ComponentResource):
                 },
                 settings=configured_settings,
             ),
-            opts=base_opts,
+            opts=_resource_options(
+                self,
+                import_id=role_name if _iam_role_exists(role_name) else None,
+            ),
         )
 
         policy = aws.iam.RolePolicy(

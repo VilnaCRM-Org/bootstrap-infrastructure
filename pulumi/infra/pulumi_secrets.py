@@ -45,6 +45,35 @@ def _key_policy(account_id: str) -> str:
     )
 
 
+def _kms_alias_exists(name: str) -> bool:  # pragma: no mutate
+    """Return True when the KMS alias already exists."""
+    try:  # pragma: no mutate
+        aws.kms.get_alias(name=name)  # pragma: no mutate
+    except Exception as exc:  # pragma: no mutate
+        message = str(exc)  # pragma: no mutate
+        if (  # pragma: no mutate
+            "NotFoundException" in message
+            or "NotFound" in message
+            or "not found" in message.lower()
+            or "couldn't find resource" in message
+        ):  # pragma: no mutate
+            return False  # pragma: no mutate
+        raise  # pragma: no mutate
+    return True  # pragma: no mutate
+
+
+def _resource_options(  # pragma: no mutate
+    parent: pulumi.Resource,  # pragma: no mutate
+    *,  # pragma: no mutate
+    import_id: str | None = None,  # pragma: no mutate
+) -> pulumi.ResourceOptions:  # pragma: no mutate
+    """Build consistent resource options for Pulumi secrets resources."""
+    kwargs: dict[str, object] = {"parent": parent}  # pragma: no mutate
+    if import_id is not None:  # pragma: no mutate
+        kwargs["import_"] = import_id  # pragma: no mutate
+    return pulumi.ResourceOptions(**kwargs)  # pragma: no mutate
+
+
 class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
     """Create a customer-managed KMS key and alias for each managed repository."""
 
@@ -102,14 +131,17 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
                     },
                     settings=configured_settings,
                 ),  # pragma: no mutate
-                opts=pulumi.ResourceOptions(parent=self),  # pragma: no mutate
+                opts=_resource_options(self),  # pragma: no mutate
             )  # pragma: no mutate
 
             alias = aws.kms.Alias(  # pragma: no mutate
                 f"{name}-alias-{suffix}",  # pragma: no mutate
                 name=alias_name,  # pragma: no mutate
                 target_key_id=key.key_id,  # pragma: no mutate
-                opts=pulumi.ResourceOptions(parent=self),  # pragma: no mutate
+                opts=_resource_options(  # pragma: no mutate
+                    self,  # pragma: no mutate
+                    import_id=alias_name if _kms_alias_exists(alias_name) else None,
+                ),  # pragma: no mutate
             )  # pragma: no mutate
 
             self.key_arns[repo.name] = key.arn  # pragma: no mutate

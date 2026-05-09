@@ -53,15 +53,11 @@ def test_managed_cost_allocation_tag_keys_returns_stable_copy():
     assert tag_keys == ["Owner", "CostCenter"]  # nosec B101
 
 
-def test_central_logging_buckets_rejects_long_replica(  # noqa: ARG001
-    pulumi_mocks, monkeypatch
-):
-    monkeypatch.setattr(
-        logging_bucket, "central_logging_bucket_name", lambda _region: "a" * 60
-    )
-    monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
-    with pytest.raises(ValueError):
-        CentralLoggingBuckets("central-logs")
+def test_central_logging_buckets_truncates_long_replica_name():
+    replica_name = logging_bucket._replica_bucket_name("a" * 60, "us-west-2")
+
+    assert len(replica_name) <= 63  # nosec B101
+    assert replica_name.endswith("-us-west-2-replication")  # nosec B101
 
 
 def test_central_logging_buckets_reject_same_replication_region(  # noqa: ARG001
@@ -289,7 +285,7 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     )  # nosec B101
     assert (
         replica_state_bucket_logging_state["targetBucket"]
-        == "company-central-logs-us-east-1-test-replication"
+        == "company-central-logs-us-east-1-test-us-west-2-replication"
     )  # nosec B101
     assert alert_topic_state["name"] == "bootstrap-test-operations"  # nosec B101
     assert (  # nosec B101
@@ -1036,9 +1032,9 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     )
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
-        "arn:aws:s3:::pulumi-*-test-state-replication",
+        "arn:aws:s3:::pulumi-*-test-state-*-replication",
         "arn:aws:s3:::company-central-logs-*-test",
-        "arn:aws:s3:::company-central-logs-*-test-replication",
+        "arn:aws:s3:::company-central-logs-*-test-*-replication",
         "arn:aws:s3:::bootstrap-*-test-cloudtrail",
     ]
     all_actions = {

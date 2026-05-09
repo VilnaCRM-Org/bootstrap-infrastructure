@@ -1,6 +1,6 @@
 import pulumi.errors as pulumi_errors
 import pytest
-from infra import config, pulumi_state
+from infra import pulumi_state
 
 
 class BucketLookupNotFoundError(RuntimeError):
@@ -96,20 +96,15 @@ def test_replica_import_id_returns_existing_bucket(monkeypatch):
     component = object.__new__(pulumi_state.PulumiStateBuckets)
 
     assert (
-        component._replica_import_id("repo-state", replica_provider=object())
-        == "repo-state-replication"
+        component._replica_import_id(
+            "repo-state", "us-west-2", replica_provider=object()
+        )
+        == "repo-state-us-west-2-replication"
     )  # nosec B101
 
 
-def test_replica_bucket_name_length_guard(pulumi_mocks, monkeypatch):  # noqa: ARG001
-    monkeypatch.setattr(
-        pulumi_state, "state_bucket_name_for_repo", lambda _repo: "a" * 60
-    )
-    monkeypatch.setattr(
-        pulumi_state, "_bucket_exists", lambda _name, provider=None: False
-    )
-    repos = [config.ManagedRepository(name="repo", default_branch="main")]
-    with pytest.raises(ValueError):
-        pulumi_state.PulumiStateBuckets(
-            "pulumi-state", repositories=repos, replication_region="us-west-2"
-        )
+def test_replica_bucket_name_length_guard():
+    replica_name = pulumi_state._replica_bucket_name("a" * 60, "us-west-2")
+
+    assert len(replica_name) <= 63  # nosec B101
+    assert replica_name.endswith("-us-west-2-replication")  # nosec B101
