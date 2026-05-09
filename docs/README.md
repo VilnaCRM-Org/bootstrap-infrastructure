@@ -169,6 +169,12 @@ Use the [cost, performance, and sustainability guide](cost-performance-sustainab
 for repository catalog fanout, preview cost proxy evidence, and review
 expectations before durable AWS resources are applied.
 
+## Well-Architected Evidence
+
+Use the [Well-Architected operating evidence register](well-architected-operating-evidence.md)
+for the current owner registry, KPI cadence, runbooks, decision matrices, and
+fallback actions that support repository-owned Well-Architected score evidence.
+
 ## Security Baseline
 
 Use the [security baseline](security-baseline.md) for the template's enforced

@@ -29,6 +29,13 @@ protection, alert route, backup/restore, FinOps, quota headroom, security
 account controls, sustainability governance, and production approval.
 Boolean confirmation flags are not sufficient for a final 5/5 claim.
 
+Repository-owned operating evidence that supports the current 2026-05-09
+question scores is retained in `docs/well-architected-operating-evidence.md`.
+That artifact supplies owners, cadence, fallback actions, runbooks, decision
+matrices, and KPI expectations for repository-controlled gaps, but it does not
+replace administrator-owned GitHub settings, payer-account controls, security
+account services, or production approval evidence.
+
 ## Operational Excellence
 
 | ID | AWS question | Current repository evidence | Gap to 5/5 | Target evidence and ownership |

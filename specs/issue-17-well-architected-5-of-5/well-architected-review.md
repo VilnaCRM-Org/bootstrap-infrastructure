@@ -65,6 +65,13 @@ question remains unresolved because each row still has at least one missing
 owner, freshness, validation, fallback, drill, account, or administrator-owned
 evidence item.
 
+Repository-owned operating evidence for owners, KPI cadence, priority/risk
+tradeoffs, runbooks, decision matrices, and sustainability governance is now
+recorded in `docs/well-architected-operating-evidence.md`. It improves the
+current question-level scores, but does not close external blockers such as
+branch protection, production environment approvals, FinOps account evidence,
+or security account services.
+
 Final Well-Architected score change claimed by this PR: `0.0`. The current
 branch adds remediation evidence for some questions, but the pillar scores stay
 unchanged until the remaining external blockers are closed and the

@@ -3,7 +3,7 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T16:15:00Z",
   "controlCount": 8,
-  "unresolvedControlCount": 5,
+  "unresolvedControlCount": 4,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores while any external control remains unresolved; keep deployment gated by PR review, local CI, AWS metadata checks, and explicit owner approval.",
   "controls": [
@@ -62,17 +62,19 @@
     },
     {
       "id": "sustainability_governance",
-      "status": "unresolved",
+      "status": "passed",
       "evidence": [
-        "Lifecycle policies, backup retention, ECR cleanup, and repository fanout checks exist."
-      ],
-      "unresolvedReason": "Named sustainability owner, region sustainability decision matrix, CI/build efficiency targets, stale asset report, and KPI review cadence remain incomplete."
+        "Lifecycle policies, backup retention, ECR cleanup, and repository fanout checks exist.",
+        "docs/well-architected-operating-evidence.md records platform-maintainers as sustainability owner, region and retention decision matrices, CI/build efficiency targets, stale-asset fallback, KPI cadence, and exception process."
+      ]
     },
     {
       "id": "production_approval",
       "status": "unresolved",
       "evidence": [
-        "Production workflow has preview/apply split and commit SHA gates."
+        "Production workflow has preview/apply split and commit SHA gates.",
+        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod returned 404 on 2026-05-09.",
+        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod-preview showed no protection rules on 2026-05-09."
       ],
       "unresolvedReason": "GitHub environment approval evidence, required reviewer settings, and production no-go evidence are external and not yet confirmed."
     }
