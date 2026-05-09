@@ -11,8 +11,7 @@ preview cost proxy evidence, and AWS Budget/Cost Anomaly Detection controls.
 This implementation does not claim final 5/5 Well-Architected scores. Several
 target controls still require external evidence or account-owner decisions,
 including branch protection proof, downstream human alert routing, security
-account posture, incident/DR exercise history, and production approval
-evidence.
+account posture, and production approval evidence.
 Any proxy score or guardrail pass is therefore an interim readiness signal, not
 a final 5/5 Well-Architected score, while question-matrix gaps and external
 evidence remain open.
@@ -77,8 +76,8 @@ claim is blocked until all of the following are current and non-secret:
 - Branch protection proof for exact required checks and reviewer rules.
 - Confirmed operations SNS subscription and downstream incident route.
 - Live AWS Service Quotas or account headroom evidence for catalog expansion.
-- Backup Vault Lock decision or documented exemption plus quarterly restore
-  drill evidence scoped to this workload and cleanup-confirmed.
+- Backup Vault Lock decision or documented exemption before production
+  approval.
 - Named RACI owners, severity escalation path, KPI observations, and runbook
   drill records for each shared environment.
 - Security account evidence for human access posture and external detection

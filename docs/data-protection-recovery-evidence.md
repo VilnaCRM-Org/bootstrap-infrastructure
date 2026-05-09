@@ -66,6 +66,12 @@ Latest accepted drill:
 records restore job `d7f25510-1dfd-4f11-8953-72ed1c971c2c`, completed on
 2026-04-27, validation `passed`, and cleanup confirmed on 2026-05-09.
 
+Latest incident and DR scenario drill:
+`docs/incident-drill-evidence-2026-05-09.md` records completed backup metadata,
+state and log replication rules, replica object parity samples, KMS/IAM/OIDC,
+logging, backup, and hosted workflow scenarios, and degraded-mode decisions for
+the current test workload.
+
 ## Backup Review Cadence
 
 Monthly backup review must retain:

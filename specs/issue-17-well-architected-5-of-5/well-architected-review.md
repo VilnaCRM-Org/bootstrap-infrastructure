@@ -38,7 +38,7 @@ The issue #17 baseline remains the source assessment for this planning PR, but c
 | Automation IAM | Automation permissions are already partly scoped with resource patterns, deterministic names, and tag conditions. | Add action-level wildcard justification, IAM Access Analyzer evidence, permissions-boundary decision, and tests that prove blast-radius limits. |
 | CI guardrails | Same-repo workflows already include account checks, preview, destructive diff, IAM validation, saved-plan apply, and post-apply drift. | Add branch protection evidence, skipped-check policy, check-name contract, and test-account deployment evidence tied to the PR head SHA. |
 | Lifecycle controls | Primary logs, state versions, backups, and ECR images have lifecycle or retention rules. | Add replica lifecycle rationale, data classification, storage-class decisions, cost and sustainability review, and stale cleanup evidence. |
-| Operations evidence | The bootstrap stack exports operations alert topic/rule/key handles, and docs now define RACI, severity, KPI, and runbook expectations. | Confirm SNS subscriptions, downstream route ownership, reviewed KPI observations, incident drill evidence, and named owners per environment. |
+| Operations evidence | The bootstrap stack exports operations alert topic/rule/key handles, and docs now define RACI, severity, KPI, runbook expectations, route-test evidence, and current incident/DR drill evidence. | Confirm downstream human route ownership and administrator-owned controls per environment. |
 | Cost controls | The bootstrap stack provisions a monthly AWS Budget, 80% actual and 100% forecast notifications, a service-dimensional Cost Anomaly Detection monitor or configured existing monitor ARN, and an immediate anomaly subscription to the operations topic when Cost Explorer is enabled in the target account; `docs/finops-review-2026-05-09.md` records active allocation tags, owner, thresholds, monthly cost, and transfer evidence. | Refresh FinOps evidence before production approval, catalog growth, new replicated data classes, or service-family expansion. |
 
 ## Current Branch Documentation Score
@@ -61,7 +61,7 @@ The 2026-05-09 evidence record at
 `question-matrix-evidence-2026-05-09.json` now includes a 1-5 score for each of
 the 57 AWS Well-Architected Framework questions. These scores are current
 review observations for this PR and the repository, not final 5/5 claims. As of
-the 2026-05-09 review, 19 questions remain unresolved because those rows still
+the 2026-05-09 review, 13 questions remain unresolved because those rows still
 have at least one missing owner, freshness, validation, fallback, drill,
 account, or administrator-owned evidence item.
 
@@ -119,7 +119,7 @@ Future evidence must include:
 - Restore drills for Pulumi state and central logs.
 - Backup Vault Lock implementation or documented external control.
 - Quota preflight for repository fanout and service limits.
-- Fault-isolation proof, saved-plan integrity, component-failure scenarios, reliability tests, and DR exercise evidence.
+- Fault-isolation proof, saved-plan integrity, component-failure scenarios, reliability tests, and DR exercise evidence for future component or production changes.
 
 ### Performance Efficiency
 

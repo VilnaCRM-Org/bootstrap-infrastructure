@@ -66,11 +66,12 @@ service-event injection.
 
 ## Fallbacks
 
-- Keep OPS8, OPS10, and human-escalation claims below 5/5 until the downstream
-  human alert route or incident tool is recorded with owner, target, and test
+- Keep OPS8 and human-escalation claims below 5/5 until the downstream human
+  alert route or incident tool is recorded with owner, target, and test
   evidence.
-- Keep REL6 below 5/5 when resource-specific metric coverage is stale or
-  incomplete, including future replica-lag, runtime, or public-endpoint
-  metrics.
+- Use `docs/incident-drill-evidence-2026-05-09.md` for the current OPS10 and
+  REL6 drill evidence. Keep REL6 below 5/5 when future resource-specific metric
+  coverage is stale or incomplete, including future replica-lag, runtime, or
+  public-endpoint metrics.
 - Add a new row before merging any new alert source, metric alarm, dashboard,
   downstream subscriber, runtime compute, or public endpoint.
