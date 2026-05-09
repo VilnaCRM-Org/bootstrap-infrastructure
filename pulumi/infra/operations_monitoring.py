@@ -415,13 +415,17 @@ class OperationsMonitoring(pulumi.ComponentResource):
         name: str,
         *,
         settings: BootstrapSettings | None = None,
+        resource_dependencies: Sequence[pulumi.Resource] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize operational monitoring resources."""
         super().__init__("bootstrap:ops:OperationsMonitoring", name, None, opts)
 
         configured_settings = settings or default_settings
-        base_opts = pulumi.ResourceOptions(parent=self)
+        base_opts = pulumi.ResourceOptions(
+            parent=self,
+            depends_on=list(resource_dependencies or []),
+        )
         account_id = aws.get_caller_identity().account_id
         partition = aws.get_partition().partition
         region = aws.get_region().region

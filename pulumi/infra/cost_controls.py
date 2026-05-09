@@ -75,6 +75,7 @@ class CostControls(pulumi.ComponentResource):
         *,
         operations_topic_arn: pulumi.Input[str],
         notification_dependencies: Sequence[pulumi.Resource] | None = None,
+        resource_dependencies: Sequence[pulumi.Resource] | None = None,
         settings: BootstrapSettings | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
@@ -83,10 +84,16 @@ class CostControls(pulumi.ComponentResource):
 
         configured_settings = settings or default_settings
         account_id = aws.get_caller_identity().account_id
-        base_opts = pulumi.ResourceOptions(parent=self)
+        base_opts = pulumi.ResourceOptions(
+            parent=self,
+            depends_on=list(resource_dependencies or []),
+        )
         notification_opts = pulumi.ResourceOptions(
             parent=self,
-            depends_on=list(notification_dependencies or []),
+            depends_on=[
+                *list(resource_dependencies or []),
+                *list(notification_dependencies or []),
+            ],
         )
 
         self.cost_allocation_tags: dict[str, aws.costexplorer.CostAllocationTag] = {}

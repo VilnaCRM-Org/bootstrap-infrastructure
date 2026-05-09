@@ -188,7 +188,7 @@ Optional or job-specific environment variables:
 | --- | --- |
 | `AWS_REGION` | AWS region used by `configure-aws-credentials`; defaults to `eu-central-1` |
 | `PULUMI_PR_BACKEND_URL` | Optional PR-only backend, useful while a legacy shared test stack is being migrated |
-| `PULUMI_PR_PREVIEW_STACKS` | Optional PR-only stack list; falls back to `PULUMI_PREVIEW_STACKS` |
+| `PULUMI_PR_PREVIEW_STACKS` | Optional PR-only stack list; used by trusted PR and test deploy fallbacks |
 | `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for preview |
 | `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks |
 | `AWS_APPLY_ROLE_ARN` | OIDC role used by test or production apply jobs |
@@ -205,6 +205,12 @@ Optional environment secrets:
 
 Shared backends should use an AWS KMS-backed Pulumi secrets provider rather
 than a passphrase-managed stack secret flow.
+
+`Pulumi Test Deploy` uses the generic backend, stack, apply-role, and drift-role
+variables when they exist. In the `test` environment it can fall back to
+`PULUMI_PR_BACKEND_URL`, `PULUMI_PR_PREVIEW_STACKS`, and `AWS_PREVIEW_ROLE_ARN`
+so an existing single bootstrap automation role can apply its own narrowed
+policy before creating new operations and cost-control resources.
 
 Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate. Same-repo pull requests fail fast when required

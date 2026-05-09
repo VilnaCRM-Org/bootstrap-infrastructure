@@ -59,6 +59,7 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             opts=child_opts,
         )
         self.automation = None
+        automation_policy_dependencies: list[pulumi.Resource] = []
         if settings.repo:
             automation_repository = next(
                 (
@@ -79,6 +80,7 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
                 oidc_provider_arn=self.oidc.provider.arn,
                 opts=child_opts,
             )
+            automation_policy_dependencies.append(self.automation.policy)
 
         backup_targets = [self.logging.bucket.arn, *self.state.bucket_arns.values()]
         self.backup = self.dependencies.backup_plan_cls(
@@ -90,12 +92,14 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
         self.monitoring = self.dependencies.monitoring_cls(
             "operations-monitoring",
             settings=settings,
+            resource_dependencies=automation_policy_dependencies,
             opts=child_opts,
         )
         self.cost_controls = self.dependencies.cost_controls_cls(
             "cost-controls",
             operations_topic_arn=self.monitoring.topic.arn,
             notification_dependencies=[self.monitoring.topic_policy],
+            resource_dependencies=automation_policy_dependencies,
             settings=settings,
             opts=child_opts,
         )

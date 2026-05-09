@@ -755,7 +755,7 @@ class GitHubAutomation(pulumi.ComponentResource):
             opts=base_opts,
         )
 
-        aws.iam.RolePolicy(
+        policy = aws.iam.RolePolicy(
             f"{name}-policy",
             name=f"{name}-policy",
             role=role.id,
@@ -769,11 +769,13 @@ class GitHubAutomation(pulumi.ComponentResource):
 
         self.repository = repository
         self.role = role
+        self.policy = policy
 
         self.register_outputs(
             {
                 "repository_name": repository.name,
                 "repository_url": repository.repository_url,
                 "role_arn": role.arn,
+                "policy_name": policy.name,
             }
         )

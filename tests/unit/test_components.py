@@ -734,6 +734,7 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert bootstrap.automation is not None  # nosec B101
     _sync_await(future_output(bootstrap.automation.repository.repository_url))
     _sync_await(future_output(bootstrap.automation.role.arn))
+    _sync_await(future_output(bootstrap.automation.policy.name))
 
     repository_state = next(
         state
@@ -746,9 +747,11 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
         if resource_type == "aws:iam/role:Role"
         and state.get("name") == "PulumiAutomation-core-service-infrastructure-test"
     )
+    policy_state = _resource_state_by_name(pulumi_mocks, "github-automation-policy")
 
     assert repository_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
     assert role_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
+    assert policy_state["name"] == "github-automation-policy"  # nosec B101
 
     topic_state = _resource_state_by_name(pulumi_mocks, "operations-monitoring-topic")
     assert topic_state["tags"]["Purpose"] == "operations-alerting"  # nosec B101

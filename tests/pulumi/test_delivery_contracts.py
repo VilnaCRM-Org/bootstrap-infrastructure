@@ -772,6 +772,9 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     test_workflow = yaml.safe_load(
         (WORKFLOWS_DIR / "pulumi-test-deploy.yml").read_text(encoding="utf-8")
     )
+    test_preview_env = test_workflow["jobs"]["preview"]["env"]
+    test_apply_env = test_workflow["jobs"]["apply"]["env"]
+    test_drift_env = test_workflow["jobs"]["post_apply_drift"]["env"]
     prod_preview_lines = "\n".join(
         _run_lines(prod_workflow["jobs"]["preview"]["steps"])
     )
@@ -796,6 +799,30 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert "12-digit AWS account ID" in test_preview_lines  # nosec B101
     assert "s3:// backend" in test_preview_lines  # nosec B101
     assert "awskms:// URI" in test_preview_lines  # nosec B101
+    assert (  # nosec B101
+        test_preview_env["PULUMI_BACKEND_URL"]
+        == "${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}"
+    )
+    assert (  # nosec B101
+        test_preview_env["PULUMI_PREVIEW_STACKS"]
+        == "${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
+    )
+    assert (  # nosec B101
+        test_preview_env["PULUMI_DRIFT_STACKS"]
+        == "${{ vars.PULUMI_DRIFT_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
+    )
+    assert (  # nosec B101
+        test_apply_env["AWS_APPLY_ROLE_ARN"]
+        == "${{ vars.AWS_APPLY_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}"
+    )
+    assert (  # nosec B101
+        test_apply_env["PULUMI_BACKEND_URL"]
+        == "${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}"
+    )
+    assert (  # nosec B101
+        test_drift_env["AWS_DRIFT_ROLE_ARN"]
+        == "${{ vars.AWS_DRIFT_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}"
+    )
     test_deploy_query = (
         "pulumi-test-deploy.yml/runs?head_sha=${TARGET_SHA}"
         + "&status=completed&per_page=100"
