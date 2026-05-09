@@ -3,13 +3,12 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T16:15:00Z",
   "questionCount": 57,
-  "unresolvedQuestionCount": 29,
+  "unresolvedQuestionCount": 28,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
   "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
   "unresolvedQuestionIds": [
     "OPS2",
-    "OPS4",
     "OPS5",
     "OPS6",
     "OPS7",
@@ -39,7 +38,7 @@
     "COST8"
   ],
   "pillarUnresolvedQuestionCounts": {
-    "Operational Excellence": 7,
+    "Operational Excellence": 6,
     "Security": 8,
     "Reliability": 6,
     "Performance Efficiency": 1,
@@ -80,7 +79,7 @@
     ]
   },
   "questionScoreAverages": {
-    "Operational Excellence": 4.27,
+    "Operational Excellence": 4.36,
     "Security": 4.27,
     "Reliability": 4.38,
     "Performance Efficiency": 4.8,
@@ -91,7 +90,7 @@
     {"id": "OPS1", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/well-architected-operating-evidence.md and docs/operating-review-2026-05-09.md record P0/P1/P2 priorities, business outcomes, risks, SLO/RTO/RPO impact, tradeoffs, owners, cadence, no-go items, and refresh rules.", "primaryBlocker": ""},
     {"id": "OPS2", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "RACI expectations, catalog ownership, and a current owner registry now cover repository-owned controls.", "primaryBlocker": "Administrator-owned branch protection and production approval owners remain unproven."},
     {"id": "OPS3", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records the current learning loop, improvement observations, actions taken in this PR, outcomes, follow-up owners, and future review expectations.", "primaryBlocker": ""},
-    {"id": "OPS4", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "EventBridge, encrypted SNS, SQS subscription, drift, CI summaries, and cost alerts exist; dashboard inventory and downstream human route remain incomplete.", "primaryBlocker": "Monthly alarm and dashboard inventory with confirmed escalation route."},
+    {"id": "OPS4", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/alert-routing-evidence.md records the no-runtime observability inventory, four enabled EventBridge rules, SNS targets, no runtime alarms/dashboards, SNS-to-SQS route-test evidence, owners, runbooks, freshness, and fallback rules.", "primaryBlocker": ""},
     {"id": "OPS5", "pillar": "Operational Excellence", "score": 3, "status": "unresolved", "rationale": "Local and CI guardrail contracts are strong, but GitHub branch protection currently reports zero required status checks.", "primaryBlocker": "Repository-admin proof that exact safety checks are required."},
     {"id": "OPS6", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "Preview/apply, destructive diff, IAM validation, SHA gates, and rollback or fail-forward playbook expectations are documented.", "primaryBlocker": "Hosted privileged evidence and production approval proof remain missing."},
     {"id": "OPS7", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "A current operational readiness record now captures owners, evidence, no-go items, and fallback actions.", "primaryBlocker": "The ORR still records no-go items for branch protection, production approval, and security account services."},
@@ -104,7 +103,7 @@
     {"id": "SEC3", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Automation IAM is materially narrowed; permission surfaces, wildcard justifications, policy-pack regression tests, IAM validation path, and the permissions-boundary decision are documented.", "primaryBlocker": "Administrator-owned permissions-boundary or exemption attestation and fresh hosted Access Analyzer evidence."},
     {"id": "SEC4", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "CloudTrail, EventBridge alerts, scans, drift checks, and Pulumi-managed GuardDuty, Security Hub, and AWS Config controls now exist; post-apply account evidence is still pending.", "primaryBlocker": "Live detection service posture and investigation runbooks."},
     {"id": "SEC5", "pillar": "Security", "score": 5, "status": "passed", "rationale": "docs/workload-applicability-evidence.md records no current VPC or public network plane, current managed-service paths, future VPC/public-ingress triggers, owners, validation sources, fallback behavior, and mandatory policy-pack controls for public S3 and open admin ports.", "primaryBlocker": ""},
-    {"id": "SEC6", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The compute applicability statement now records no always-on runtime compute and defines future runner and image requirements.", "primaryBlocker": "ECR scan-result review and runner hardening evidence remain incomplete."},
+    {"id": "SEC6", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The compute applicability statement records no always-on runtime compute, and docs/compute-runner-evidence.md now records immutable ECR repository metadata, scan-on-push, and current runner-image scan findings.", "primaryBlocker": "The current runner image scan reports unremediated critical/high findings and runner hardening evidence remains incomplete."},
     {"id": "SEC7", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Tag taxonomy, storage data classes, retention classes, owner, storage, and deletion rationale are now recorded alongside enforced classification, criticality, and retention tags.", "primaryBlocker": "Payer-account active cost-allocation tag evidence remains missing."},
     {"id": "SEC8", "pillar": "Security", "score": 5, "status": "passed", "rationale": "docs/data-protection-recovery-evidence.md records the at-rest protection matrix for state, logs, replicas, CloudTrail, AWS Config, Pulumi secrets, operations alerts, AWS Backup recovery points, and saved plans, plus S3 SSE-KMS rationale and owner-expiring Vault Lock/Object Lock exemptions.", "primaryBlocker": ""},
     {"id": "SEC9", "pillar": "Security", "score": 5, "status": "passed", "rationale": "docs/workload-applicability-evidence.md records current S3, GitHub Actions, AWS API, EventBridge/SNS/SQS, Backup, KMS, CloudTrail, and AWS Config transit paths, with TLS protections and future public-endpoint listener, certificate, monitoring, abuse-control, and rollback requirements.", "primaryBlocker": ""},

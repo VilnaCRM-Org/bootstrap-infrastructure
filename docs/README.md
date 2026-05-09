@@ -182,6 +182,10 @@ Use the [region sustainability evidence](region-sustainability-evidence.md) for
 the primary/replica region decision matrix and exception gates.
 Use the [fault isolation evidence](fault-isolation-evidence.md) for
 per-repository state, KMS, IAM, OIDC, and environment boundary tests.
+Use the [alert routing evidence](alert-routing-evidence.md) for the current
+EventBridge/SNS/SQS inventory, route-test evidence, and alert fallback rules.
+Use the [compute runner evidence](compute-runner-evidence.md) for the optional
+ECR runner-image scan posture and SEC6 remediation gate.
 
 ## Well-Architected Evidence
 
