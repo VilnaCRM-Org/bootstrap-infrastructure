@@ -242,7 +242,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PULUMI_EXPECTED_SHA: ${{ github.sha }}
-        run: make pulumi-up-plan
+        run: |
+          set +e
+          make pulumi-up-plan 2>&1 | tee .artifacts/pulumi-plan/apply.log
+          apply_rc="${PIPESTATUS[0]}"
+          set -e
+          if [[ "${apply_rc}" -eq 0 ]]; then
+            exit 0
+          fi
+          if grep -Fq "decrypting secret value: cipher: message authentication failed" .artifacts/pulumi-plan/apply.log; then
+            echo "::warning::Saved Pulumi plan failed with the known KMS plan-decrypt error; retrying guarded direct test apply after preview, destructive diff, and IAM validation gates."
+            make pulumi-up
+            exit 0
+          fi
+          exit "${apply_rc}"
 
   post_apply_drift:
     name: Test Post-Apply Drift

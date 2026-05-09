@@ -783,6 +783,7 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     test_preview_lines = "\n".join(
         _run_lines(test_workflow["jobs"]["preview"]["steps"])
     )
+    test_apply_lines = "\n".join(_run_lines(test_workflow["jobs"]["apply"]["steps"]))
 
     assert prod_workflow["permissions"]["actions"] == "read"  # nosec B101
     assert (  # nosec B101
@@ -849,6 +850,12 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert "git rev-parse HEAD" not in prod_apply_lines  # nosec B101
     assert "make pulumi-plan" in prod_preview_lines  # nosec B101
     assert "make pulumi-plan" in test_preview_lines  # nosec B101
+    assert "make pulumi-up-plan" in test_apply_lines  # nosec B101
+    assert "decrypting secret value: cipher: message authentication failed" in (  # nosec B101
+        test_apply_lines
+    )
+    assert re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
+    assert not re.search(r"(?m)^\s*make pulumi-up$", prod_apply_lines)  # nosec B101
     assert "make publish-pulumi-preview-summary" not in prod_preview_lines  # nosec B101
     assert "make publish-pulumi-preview-summary" not in test_preview_lines  # nosec B101
 
