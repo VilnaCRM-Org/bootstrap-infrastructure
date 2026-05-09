@@ -1744,6 +1744,32 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
         "Invalid evidence",
     )
     assert "ISO-8601" in invalid_blockers[0]  # nosec B101
+    unresolved_payload = module._structured_evidence_payload(  # noqa: SLF001
+        {
+            "workload": "bootstrap-infrastructure",
+            "owner": "platform",
+            "reviewedAt": "2026-04-27T10:00:00Z",
+            "controlCount": 2,
+            "unresolvedControlCount": 1,
+            "controls": [
+                {"id": "alert_route", "status": "passed"},
+                {"id": "branch_protection", "status": "unresolved"},
+            ],
+            "evidenceLocation": "ledger",
+        },
+        "controlCount",
+        "unresolvedControlCount",
+    )
+    assert unresolved_payload["unresolvedControlIds"] == [  # nosec B101
+        "branch_protection"
+    ]
+    assert module._string_list(["OPS1", 2]) is None  # noqa: SLF001  # nosec B101
+    assert (  # noqa: SLF001  # nosec B101
+        module._string_key_number_map({"Security": True}) is None
+    )
+    assert module._string_key_number_map({"Security": "5"}) is None  # noqa: SLF001  # nosec B101
+    assert module._string_key_int_map({"Security": False}) is None  # noqa: SLF001  # nosec B101
+    assert module._string_key_int_map({"Security": 5.0}) is None  # noqa: SLF001  # nosec B101
     assert module._parse_reviewed_at("not-a-date") is None  # noqa: SLF001
     assert (  # nosec B101
         module._parse_reviewed_at("2026-04-27T10:00:00").tzinfo  # noqa: SLF001
