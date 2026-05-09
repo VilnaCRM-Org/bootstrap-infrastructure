@@ -86,6 +86,14 @@ public-ingress triggers, owners, validation sources, and fallback behavior.
 Policy-pack coverage blocks public S3 exposure and public SSH/RDP exposure for
 future resources.
 
+## At-Rest Protection
+
+`docs/data-protection-recovery-evidence.md` records the at-rest protection
+matrix for state, logs, replicas, CloudTrail, AWS Config, Pulumi secrets,
+operations alerts, AWS Backup recovery points, and saved plans. It also records
+the current S3 Object Lock, AWS Backup Vault Lock, and S3 SSE-KMS exemptions
+with owners, expiry, rationale, and fallback behavior.
+
 ## Exception Register
 
 | Exception | Status | Owner | Expiry | Required follow-up |

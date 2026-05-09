@@ -55,6 +55,7 @@ owner attestations before any final 5/5 claim.
 | Branch protection | Collector reports zero required status checks. | Blocked. | Repository admin must update the active ruleset. |
 | Production approval | `gh api repos/.../environments/prod` returns 404; `prod-preview` has no protection rules. | Blocked. | Create protected `prod` environment with required reviewers before production claims. |
 | Security account services | Repository code now provisions GuardDuty, Security Hub, AWS Config recorder, and the Config delivery bucket; `docs/security-operating-evidence.md` records identity, permission, wildcard, boundary, and exception evidence; live account evidence remains pending until apply. | Blocked. | Security owner must enable or formally exempt these account controls and retain post-apply evidence. |
+| Data protection and recovery | `docs/data-protection-recovery-evidence.md` records at-rest protection, Vault Lock/Object Lock posture, restore runbook, backup review cadence, and degraded-mode playbooks. | Current for repository-owned SEC8 and REL9 evidence. | Refresh before storage, backup, KMS, retention, or replica changes. |
 
 ## KPI And Review Register
 
@@ -129,6 +130,8 @@ transfer cost, sustainability inputs, and recovery objectives before merge.
 All current repository data paths are S3 or GitHub artifact paths and must
 enforce TLS in transit. Future public endpoints must document TLS listener
 policy, certificate ownership, WAF or ingress posture, and monitoring.
+At-rest protection and recovery decisions are retained in
+`docs/data-protection-recovery-evidence.md`.
 
 ### Cost And Demand
 

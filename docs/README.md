@@ -172,6 +172,9 @@ Use the [performance operating evidence](performance-operating-evidence.md) for
 resource-selection, storage, region, network, and fanout ADRs.
 Use the [workload applicability evidence](workload-applicability-evidence.md)
 for the no-VPC, no-public-endpoint, dependency, and no-idle-compute record.
+Use the [data protection and recovery evidence](data-protection-recovery-evidence.md)
+for at-rest protection, Vault Lock/Object Lock posture, restore runbooks, and
+backup review cadence.
 
 ## Well-Architected Evidence
 
