@@ -808,8 +808,13 @@ def test_security_account_controls_emit_detection_and_config_resources(
     assert delivery_state["snapshotDeliveryProperties"]["deliveryFrequency"] == (  # nosec B101
         "TwentyFour_Hours"
     )
-    assert (  # nosec B101
-        "config.amazonaws.com" in role_state["assumeRolePolicy"]
+    assume_role_policy = json.loads(role_state["assumeRolePolicy"])
+    assume_role_statements = assume_role_policy["Statement"]
+    assert any(  # nosec B101
+        statement.get("Principal", {}).get("Service")
+        == security_account_controls.AWS_CONFIG_SERVICE_PRINCIPAL
+        and statement.get("Action") == "sts:AssumeRole"
+        for statement in assume_role_statements
     )
     assert "AWSConfigBucketDelivery" in bucket_policy_state["policy"]  # nosec B101
 
