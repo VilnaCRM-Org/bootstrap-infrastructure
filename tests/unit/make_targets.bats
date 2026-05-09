@@ -188,6 +188,7 @@ EOF
   assert_compose_env_file
   assert_pulumi_secrets_provider_passthrough
   [[ "$output" == *"-e PULUMI_PLAN_DIR=\".artifacts/pulumi-plan\""* ]]
+  [[ "$output" == *"-e PULUMI_COMMIT_SHA=\"\""* ]]
   [[ "$output" == *"./scripts/run_pulumi_command.py plan"* ]]
 }
 
@@ -205,6 +206,7 @@ EOF
   assert_compose_env_file
   assert_pulumi_secrets_provider_passthrough
   [[ "$output" == *"-e PULUMI_PLAN_DIR=\".artifacts/pulumi-plan\""* ]]
+  [[ "$output" == *"-e PULUMI_EXPECTED_SHA=\"\""* ]]
   [[ "$output" == *"./scripts/run_pulumi_command.py up-plan"* ]]
 }
 
