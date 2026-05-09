@@ -17,6 +17,7 @@ AWS_REQUEST_TAG_ENVIRONMENT_KEY = "aws:RequestTag/Environment"
 AWS_REQUEST_TAG_PURPOSE_KEY = "aws:RequestTag/Purpose"
 AWS_RESOURCE_TAG_ENVIRONMENT_KEY = "aws:ResourceTag/Environment"
 AWS_RESOURCE_TAG_PURPOSE_KEY = "aws:ResourceTag/Purpose"
+IAM_ROLE_INLINE_POLICY_MAX_BYTES = 10_240
 IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES = 6_144
 
 _AUTOMATION_MANAGED_POLICY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
@@ -945,9 +946,15 @@ def _automation_policy_documents(
         if statements:
             documents.append((policy_suffix, _compact_policy_document(statements)))
 
+    inline_policy_name, inline_policy_document = documents[0]
+    if inline_policy_name != "policy":
+        raise ValueError("the first automation policy document must be policy.")
+    if len(inline_policy_document.encode("utf-8")) > IAM_ROLE_INLINE_POLICY_MAX_BYTES:
+        raise ValueError("automation inline policy document exceeds AWS size limit.")
+
     oversized = [
         name
-        for name, document in documents
+        for name, document in documents[1:]
         if len(document.encode("utf-8")) > IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES
     ]
     if oversized:
@@ -1076,13 +1083,24 @@ class GitHubAutomation(pulumi.ComponentResource):
             ),
         )
 
-        policies: list[aws.iam.Policy] = []
-        policy_attachments: list[aws.iam.RolePolicyAttachment] = []
-        for policy_suffix, policy_document in _automation_policy_documents(
+        policy_documents = _automation_policy_documents(
             aws.get_caller_identity().account_id,
             configured_settings,
             repo_name,
-        ):
+        )
+        inline_policy_suffix, inline_policy_document = policy_documents[0]
+        inline_policy_name = f"{name}-{inline_policy_suffix}"
+        inline_policy = aws.iam.RolePolicy(
+            inline_policy_name,
+            name=inline_policy_name,
+            role=role.id,
+            policy=inline_policy_document,
+            opts=base_opts,
+        )
+
+        managed_policies: list[aws.iam.Policy] = []
+        policy_attachments: list[aws.iam.RolePolicyAttachment] = []
+        for policy_suffix, policy_document in policy_documents[1:]:
             policy_name = f"{name}-{policy_suffix}"
             policy = aws.iam.Policy(
                 policy_name,
@@ -1099,7 +1117,7 @@ class GitHubAutomation(pulumi.ComponentResource):
                 ),
                 opts=base_opts,
             )
-            policies.append(policy)
+            managed_policies.append(policy)
             policy_attachments.append(
                 aws.iam.RolePolicyAttachment(
                     f"{policy_name}-attachment",
@@ -1111,10 +1129,11 @@ class GitHubAutomation(pulumi.ComponentResource):
 
         self.repository = repository
         self.role = role
-        self.policy = policies[0]
-        self.policies = policies
+        self.policy = inline_policy
+        self.managed_policies = managed_policies
+        self.policies = [inline_policy, *managed_policies]
         self.policy_attachments = policy_attachments
-        self.policy_dependencies = policy_attachments
+        self.policy_dependencies = [inline_policy, *policy_attachments]
 
         self.register_outputs(
             {
@@ -1122,7 +1141,7 @@ class GitHubAutomation(pulumi.ComponentResource):
                 "repository_url": repository.repository_url,
                 "role_arn": role.arn,
                 "policy_name": self.policy.name,
-                "policy_names": [policy.name for policy in policies],
-                "policy_arns": [policy.arn for policy in policies],
+                "policy_names": [policy.name for policy in self.policies],
+                "managed_policy_arns": [policy.arn for policy in managed_policies],
             }
         )

@@ -1252,13 +1252,14 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "github-automation-cost-policy",
         "github-automation-security-policy",
     ]
+    managed_policy_names = policy_names[1:]
     policy_states = [
         _resource_state_by_name(pulumi_mocks, policy_name)
         for policy_name in policy_names
     ]
     attachment_states = [
         _resource_state_by_name(pulumi_mocks, f"{policy_name}-attachment")
-        for policy_name in policy_names
+        for policy_name in managed_policy_names
     ]
 
     assert repository_type == "aws:ecr/repository:Repository"  # nosec B101
@@ -1270,7 +1271,11 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
         in role_state["assumeRolePolicy"]
     )  # nosec B101
-    for managed_policy_state in policy_states:
+    assert (  # nosec B101
+        len(policy_states[0]["policy"].encode("utf-8"))
+        <= automation.IAM_ROLE_INLINE_POLICY_MAX_BYTES
+    )
+    for managed_policy_state in policy_states[1:]:
         assert (  # nosec B101
             len(managed_policy_state["policy"].encode("utf-8"))
             <= automation.IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES
