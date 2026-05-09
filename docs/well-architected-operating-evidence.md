@@ -35,6 +35,21 @@ owner attestations before any final 5/5 claim.
 | Workload applicability and dependency inventory | Maintainer | SRE and security reviewer | Quarterly and per new runtime, network, or dependency path | Use `docs/workload-applicability-evidence.md`; block affected 5/5 claims until scope, owners, and future gates are refreshed. |
 | Sustainability governance | `platform-maintainers` | Platform owner | Quarterly and per region or retention change | Block sustainability score increases until owner, KPI, and exception records are refreshed. |
 
+## External-Control Owner Registry
+
+PR #22 and issue #17 use the same assigned repository-admin set for external
+control routing: `Kravalg`, `pixelTM`, and `vilnacrm`. These assignments name
+the escalation owners for the current 5/5 closeout; they do not replace the
+required metadata or owner attestation for each control.
+
+| Control | Tracking issue | Assigned owners | Required closeout evidence |
+| --- | --- | --- | --- |
+| Branch protection required checks | #26 | `Kravalg`, `pixelTM`, `vilnacrm` | Active `main` ruleset requires Preview, Destructive Diff Gate, IAM Validation, Secrets Scan, Dependency Audit, Bandit, Actionlint, CodeQL (python), and CodeQL (actions). |
+| Production approval | #27 | `Kravalg`, `pixelTM`, `vilnacrm` | `prod` GitHub environment exists, blocks self-review, restricts deployment branches, and records required reviewer settings. |
+| Security account attestations | #28 | `Kravalg`, `pixelTM`, `vilnacrm` | Non-secret security-owner attestation records human MFA/SSO posture, static-key exception or remediation, and permissions-boundary or exemption approval. |
+| Default-branch vulnerability closeout | #29 | `Kravalg`, `pixelTM`, `vilnacrm` | Default-branch GitPython Dependabot alerts close after merge or receive owner-approved time-bound exceptions. |
+| Downstream alert consumption | #30 | `Kravalg`, `pixelTM`, `vilnacrm` | SRE records the downstream human alert route, route test or accepted operating proof, and monthly observation history. |
+
 ## Priority And Risk Register
 
 | Priority | Business outcome | Risk controlled | SLO or SLA impact | Tradeoff | Owner | Review cadence |

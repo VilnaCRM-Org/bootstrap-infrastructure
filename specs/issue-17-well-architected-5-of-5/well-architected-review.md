@@ -61,7 +61,7 @@ The 2026-05-09 evidence record at
 `question-matrix-evidence-2026-05-09.json` now includes a 1-5 score for each of
 the 57 AWS Well-Architected Framework questions. These scores are current
 review observations for this PR and the repository, not final 5/5 claims. As of
-the 2026-05-09 review, 11 questions remain unresolved because those rows still
+the 2026-05-09 review, 10 questions remain unresolved because those rows still
 have at least one missing owner, freshness, validation, fallback, drill,
 account, or administrator-owned evidence item.
 

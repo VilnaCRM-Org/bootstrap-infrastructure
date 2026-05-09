@@ -261,8 +261,14 @@ can support a 5/5 claim.
 | Budget, anomaly, transfer-cost, and quota evidence | `platform-maintainers` for the test workload; FinOps owner for future shared or production workloads | Maintainer | SRE | Security reviewer |
 | Repository catalog owner and stale cleanup review | Maintainer | Repository owner | SRE, FinOps owner | Platform owner |
 
-If any role is unnamed for an environment, the related Well-Architected score
-must stay unchanged and the review should record the missing owner as a blocker.
+Current external-control closeout for PR #22 is routed through issues #26-#30.
+Those issues are assigned to `Kravalg`, `pixelTM`, and `vilnacrm` because the
+remaining controls require repository admin, security-owner, or SRE evidence
+outside the current automation token.
+
+If any role or external-control owner is unnamed for an environment, the
+related Well-Architected score must stay unchanged and the review should record
+the missing owner as a blocker.
 
 ## Severity Model
 

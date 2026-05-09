@@ -3,12 +3,11 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T22:15:40Z",
   "questionCount": 57,
-  "unresolvedQuestionCount": 11,
+  "unresolvedQuestionCount": 10,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
   "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
   "unresolvedQuestionIds": [
-    "OPS2",
     "OPS5",
     "OPS6",
     "OPS7",
@@ -21,7 +20,7 @@
     "REL13"
   ],
   "pillarUnresolvedQuestionCounts": {
-    "Operational Excellence": 5,
+    "Operational Excellence": 4,
     "Security": 4,
     "Reliability": 2,
     "Performance Efficiency": 0,
@@ -62,7 +61,7 @@
     ]
   },
   "questionScoreAverages": {
-    "Operational Excellence": 4.45,
+    "Operational Excellence": 4.55,
     "Security": 4.64,
     "Reliability": 4.77,
     "Performance Efficiency": 5.0,
@@ -71,7 +70,7 @@
   },
   "questionScores": [
     {"id": "OPS1", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/well-architected-operating-evidence.md and docs/operating-review-2026-05-09.md record P0/P1/P2 priorities, business outcomes, risks, SLO/RTO/RPO impact, tradeoffs, owners, cadence, no-go items, and refresh rules.", "primaryBlocker": ""},
-    {"id": "OPS2", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "RACI expectations, catalog ownership, and a current owner registry now cover repository-owned controls.", "primaryBlocker": "Administrator-owned branch protection and production approval owners remain unproven."},
+    {"id": "OPS2", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/sre-operations.md and docs/well-architected-operating-evidence.md now record the RACI, escalation path, and external-control owner registry tying PR #22 and issues #26-#30 to assigned closeout owners Kravalg, pixelTM, and vilnacrm.", "primaryBlocker": ""},
     {"id": "OPS3", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records the current learning loop, improvement observations, actions taken in this PR, outcomes, follow-up owners, and future review expectations.", "primaryBlocker": ""},
     {"id": "OPS4", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/alert-routing-evidence.md records the no-runtime observability inventory, four enabled EventBridge rules, SNS targets, no runtime alarms/dashboards, SNS-to-SQS route-test evidence, owners, runbooks, freshness, and fallback rules.", "primaryBlocker": ""},
     {"id": "OPS5", "pillar": "Operational Excellence", "score": 3, "status": "unresolved", "rationale": "Local and CI guardrail contracts are strong, but GitHub branch protection currently reports zero required status checks.", "primaryBlocker": "Repository-admin proof that exact safety checks are required."},
