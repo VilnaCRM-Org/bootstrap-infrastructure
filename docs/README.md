@@ -168,6 +168,8 @@ job safely.
 Use the [cost, performance, and sustainability guide](cost-performance-sustainability.md)
 for repository catalog fanout, preview cost proxy evidence, and review
 expectations before durable AWS resources are applied.
+Use the [performance operating evidence](performance-operating-evidence.md) for
+resource-selection, storage, region, network, and fanout ADRs.
 
 ## Well-Architected Evidence
 

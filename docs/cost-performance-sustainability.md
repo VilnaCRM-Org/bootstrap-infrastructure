@@ -19,6 +19,15 @@ key, CloudTrail management-event trail, and EventBridge alert rules. Thresholds 
 conservative; raise them only with a capacity review and an owner recorded in
 the pull request.
 
+## Performance Operating Evidence
+
+Use `docs/performance-operating-evidence.md` for repository-owned performance
+ADRs. That file records resource-selection alternatives, fanout constraints,
+storage access patterns, storage-class rationale, region and network decisions,
+owners, cadence, validation sources, and fallback rules. It must be updated
+before adding new AWS service families, storage paths, regions, VPC resources,
+or public endpoints.
+
 ## Preview Cost Proxy
 
 `make test-cost-proxy` reads Pulumi preview JSON and counts create or replace

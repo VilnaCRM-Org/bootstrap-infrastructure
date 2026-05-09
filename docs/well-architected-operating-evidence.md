@@ -144,6 +144,7 @@ policy, certificate ownership, WAF or ingress posture, and monitoring.
 | Drift duration | Completes within scheduled window. | Drift workflow or `make test-drift`. | Reduce stack scope or split drift checks. |
 | Storage growth | Growth reviewed before thresholds or cost alerts fire. | Monthly KPI review and catalog report. | Add cleanup issue or retention change proposal. |
 | Data retention posture | Every current artifact class has classification, owner, retention, storage, and deletion rationale. | `docs/data-classification-retention.md`. | Block merge for new data classes until classification and retention evidence exists. |
+| Resource and region ADRs | Current resource, storage, region, network, fanout, owner, cadence, validation, and fallback evidence exists. | `docs/performance-operating-evidence.md`. | Block new service families, storage paths, regions, VPCs, or public endpoints until the ADR is updated. |
 
 ## Continuous Improvement Loop
 
