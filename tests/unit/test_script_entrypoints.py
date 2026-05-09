@@ -1272,6 +1272,15 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                 "reviewedAt": reviewed_at,
                 "questionCount": 57,
                 "unresolvedQuestionCount": 0,
+                "unresolvedQuestionIds": [],
+                "questionScoreAverages": {
+                    "Operational Excellence": 5.0,
+                    "Security": 5.0,
+                },
+                "pillarUnresolvedQuestionCounts": {
+                    "Operational Excellence": 0,
+                    "Security": 0,
+                },
                 "evidenceLocation": (
                     "specs/issue-17-well-architected-5-of-5/question-matrix.md"
                 ),
@@ -1289,14 +1298,14 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                 "controlCount": 8,
                 "unresolvedControlCount": 0,
                 "controls": [
-                    {"id": "alert_route"},
-                    {"id": "backup_restore"},
-                    {"id": "branch_protection"},
-                    {"id": "finops"},
-                    {"id": "production_approval"},
-                    {"id": "quota_headroom"},
-                    {"id": "security_account_controls"},
-                    {"id": "sustainability_governance"},
+                    {"id": "alert_route", "status": "passed"},
+                    {"id": "backup_restore", "status": "passed"},
+                    {"id": "branch_protection", "status": "passed"},
+                    {"id": "finops", "status": "passed"},
+                    {"id": "production_approval", "status": "passed"},
+                    {"id": "quota_headroom", "status": "passed"},
+                    {"id": "security_account_controls", "status": "passed"},
+                    {"id": "sustainability_governance", "status": "passed"},
                 ],
                 "evidenceLocation": "internal-control-ledger",
                 "fallbackPlan": "Block final score claims until evidence is refreshed.",
@@ -1418,6 +1427,17 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
     assert report["proxyPillarScores"] == report["pillarScores"]  # nosec B101
     assert all(score == 5 for score in report["pillarScores"].values())  # nosec B101
     assert {check["status"] for check in report["checks"]} == {"passed"}  # nosec B101
+    checks = {check["name"]: check for check in report["checks"]}
+    question_evidence = checks["question_matrix_evidence"]["evidence"]
+    assert question_evidence["unresolvedQuestionIds"] == []  # nosec B101
+    assert question_evidence["questionScoreAverages"]["Security"] == 5.0  # nosec B101
+    assert (  # nosec B101
+        question_evidence["pillarUnresolvedQuestionCounts"]["Security"] == 0
+    )
+    assert (  # nosec B101
+        checks["external_control_evidence"]["evidence"].get("unresolvedControlIds")
+        is None
+    )
 
 
 def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C901
@@ -1672,7 +1692,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
                 ).isoformat(),
                 "controlCount": 8,
                 "unresolvedControlCount": 0,
-                "controls": [{"id": "alert_route"}],
+                "controls": [{"id": "alert_route", "status": "passed"}],
                 "evidenceLocation": "ledger",
                 "fallbackPlan": "block",
             }

@@ -1481,7 +1481,7 @@ def _structured_evidence_payload(
         if isinstance(controls, list)
         else []
     )
-    return {
+    evidence: dict[str, object] = {
         "workload": payload.get("workload"),
         "owner": payload.get("owner"),
         "reviewedAt": payload.get("reviewedAt"),
@@ -1490,6 +1490,77 @@ def _structured_evidence_payload(
         unresolved_field: payload.get(unresolved_field),
         "controlIds": control_ids,
     }
+    unresolved_question_ids = _string_list(payload.get("unresolvedQuestionIds"))
+    if unresolved_question_ids is not None:
+        evidence["unresolvedQuestionIds"] = unresolved_question_ids
+    question_score_averages = _string_key_number_map(
+        payload.get("questionScoreAverages")
+    )
+    if question_score_averages is not None:
+        evidence["questionScoreAverages"] = question_score_averages
+    pillar_unresolved_counts = _string_key_int_map(
+        payload.get("pillarUnresolvedQuestionCounts")
+    )
+    if pillar_unresolved_counts is not None:
+        evidence["pillarUnresolvedQuestionCounts"] = pillar_unresolved_counts
+    unresolved_control_ids = _unresolved_control_ids(payload)
+    if unresolved_control_ids:
+        evidence["unresolvedControlIds"] = unresolved_control_ids
+    return evidence
+
+
+def _string_list(value: object) -> list[str] | None:
+    """Return a JSON-safe string list when all values are strings."""
+    if not isinstance(value, list):
+        return None
+    if not all(isinstance(item, str) for item in value):
+        return None
+    return cast("list[str]", list(value))
+
+
+def _string_key_number_map(value: object) -> dict[str, int | float] | None:
+    """Return a JSON-safe mapping with string keys and numeric values."""
+    if not isinstance(value, dict):
+        return None
+    result: dict[str, int | float] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or isinstance(item, bool):
+            return None
+        if not isinstance(item, (int, float)):
+            return None
+        result[key] = item
+    return result
+
+
+def _string_key_int_map(value: object) -> dict[str, int] | None:
+    """Return a JSON-safe mapping with string keys and integer values."""
+    if not isinstance(value, dict):
+        return None
+    result: dict[str, int] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or isinstance(item, bool):
+            return None
+        if not isinstance(item, int):
+            return None
+        result[key] = item
+    return result
+
+
+def _unresolved_control_ids(payload: dict[str, Any]) -> list[str]:
+    """Return non-passed external control ids from structured evidence."""
+    controls = payload.get("controls")
+    if not isinstance(controls, list):
+        return []
+    ids = [
+        str(control.get("id"))
+        for control in controls
+        if (
+            isinstance(control, dict)
+            and control.get("id")
+            and control.get("status") != "passed"
+        )
+    ]
+    return sorted(ids)
 
 
 def collect_evidence(
