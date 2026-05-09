@@ -3,7 +3,7 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T16:15:00Z",
   "questionCount": 57,
-  "unresolvedQuestionCount": 56,
+  "unresolvedQuestionCount": 55,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
   "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
@@ -30,7 +30,6 @@
     "SEC9",
     "SEC10",
     "SEC11",
-    "REL1",
     "REL2",
     "REL3",
     "REL5",
@@ -68,7 +67,7 @@
   "pillarUnresolvedQuestionCounts": {
     "Operational Excellence": 11,
     "Security": 11,
-    "Reliability": 12,
+    "Reliability": 11,
     "Performance Efficiency": 5,
     "Cost Optimization": 11,
     "Sustainability": 6
@@ -109,7 +108,7 @@
   "questionScoreAverages": {
     "Operational Excellence": 3.91,
     "Security": 4.0,
-    "Reliability": 3.85,
+    "Reliability": 3.92,
     "Performance Efficiency": 4.0,
     "Cost Optimization": 4.0,
     "Sustainability": 4.0
@@ -137,7 +136,7 @@
     {"id": "SEC9", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The transit matrix now covers current S3 and GitHub artifact paths and defines future endpoint requirements.", "primaryBlocker": "Future public endpoints must add TLS listener and monitoring evidence."},
     {"id": "SEC10", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Security incident scenarios for OIDC, KMS, state, logs, and backups now have first checks, recovery paths, and evidence rules.", "primaryBlocker": "Quarterly security incident drill records are still missing."},
     {"id": "SEC11", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Secure SDLC controls are backed by scans, policy tests, IAM validation paths, owner expectations, and exception fallback rules.", "primaryBlocker": "Security account services and recurring vulnerability review evidence remain incomplete."},
-    {"id": "REL1", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Catalog fanout and static quota proxy are implemented and within thresholds; live AWS Service Quotas ownership evidence is missing.", "primaryBlocker": "Live quota headroom report and approval behavior."},
+    {"id": "REL1", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "quota-headroom-evidence-2026-05-09.json records count-only AWS metadata, Service Quotas/default quota values, repository fanout projection, remaining headroom, owner, cadence, and no-go behavior for future expansion.", "primaryBlocker": ""},
     {"id": "REL2", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "The network applicability ADR now records no managed VPC and future topology gates.", "primaryBlocker": "Future VPC resources must add topology, route, endpoint, flow-log, and ingress evidence."},
     {"id": "REL3", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Repository modules, dependency areas, failure scenarios, and owners are now mapped in operating evidence.", "primaryBlocker": "A diagram or recurring dependency review artifact is still needed for sustained 5/5 evidence."},
     {"id": "REL4", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "Saved preview/apply uses a manifest with stack, backend, commit SHA, preview hash, plan hash, stale-plan rejection, and apply-time verification before Pulumi can run `up --plan`.", "primaryBlocker": ""},

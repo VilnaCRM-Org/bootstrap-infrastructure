@@ -127,3 +127,8 @@ report together with metadata-only AWS Budget and Cost Anomaly Detection checks.
 It does not query invoices or spend details. A 5/5 cost or sustainability claim
 still needs owner-approved thresholds, recurring review evidence, and live
 account headroom where catalog growth can affect quotas.
+
+The current Well-Architected quota headroom record is retained at
+`specs/issue-17-well-architected-5-of-5/quota-headroom-evidence-2026-05-09.json`.
+It uses count-only AWS metadata plus Service Quotas/default quota values and
+must be refreshed before catalog expansion.

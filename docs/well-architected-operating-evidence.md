@@ -67,6 +67,7 @@ owner attestations before any final 5/5 claim.
 | Alert route freshness | Operations SNS route has a subscription and downstream owner. | SNS topic is encrypted and has one SQS subscription; downstream human route remains external. | SRE | Monthly | Keep OPS4/REL6 below 5/5 until downstream route is confirmed. |
 | Cost alert readiness | Budget and anomaly thresholds reviewed in the last 30 days. | Budget and anomaly resources exist; FinOps approval and monthly report are missing. | FinOps owner | Monthly | Keep cost questions below 5/5. |
 | Catalog demand | Active repositories have owner, lifecycle state, last-reviewed date, and expected environments. | `pulumi/repositories.bootstrap.json` passes catalog and fanout validation. | Maintainer | Monthly | Block catalog expansion when metadata is stale or thresholds are exceeded. |
+| Quota headroom | Projected bootstrap fanout stays within live or default service quotas. | `quota-headroom-evidence-2026-05-09.json` records count-only AWS usage, Service Quotas values, projected count, and remaining headroom. | SRE | Per catalog change | Block merge when projected usage exceeds quota, leaves no CloudTrail slot, or lacks an owner-approved reduction or quota plan. |
 | Sustainability posture | Region, retention, idle-compute, and CI efficiency choices have a current review. | Region and retention rules are documented here; no always-on runtime compute exists. | `platform-maintainers` | Quarterly | Keep sustainability score below 5/5 if this register is older than one quarter. |
 
 ## Runbooks And Playbooks

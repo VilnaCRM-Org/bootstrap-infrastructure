@@ -47,6 +47,7 @@
       "status": "passed",
       "evidence": [
         "Repository fanout evidence is below configured thresholds for S3, KMS, IAM, Backup, ECR, Budgets, SNS, SQS, CloudTrail, and Cost Anomaly resources.",
+        "quota-headroom-evidence-2026-05-09.json records count-only AWS usage, Service Quotas/default quota values, projected bootstrap fanout, and no-go behavior for tight CloudTrail and AWS Config headroom.",
         "collect_well_architected_evidence repository_fanout check passed."
       ]
     },
