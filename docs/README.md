@@ -185,7 +185,7 @@ per-repository state, KMS, IAM, OIDC, and environment boundary tests.
 Use the [alert routing evidence](alert-routing-evidence.md) for the current
 EventBridge/SNS/SQS inventory, route-test evidence, and alert fallback rules.
 Use the [compute runner evidence](compute-runner-evidence.md) for the optional
-ECR runner-image scan posture and SEC6 remediation gate.
+ECR runner repository posture and future-image SEC6 gate.
 
 ## Well-Architected Evidence
 

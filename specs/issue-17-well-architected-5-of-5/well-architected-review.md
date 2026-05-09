@@ -60,10 +60,10 @@ Documentation and evidence-contract score: `4.8/5`.
 The 2026-05-09 evidence record at
 `question-matrix-evidence-2026-05-09.json` now includes a 1-5 score for each of
 the 57 AWS Well-Architected Framework questions. These scores are current
-review observations for this PR and the repository, not final 5/5 claims. Every
-question remains unresolved because each row still has at least one missing
-owner, freshness, validation, fallback, drill, account, or administrator-owned
-evidence item.
+review observations for this PR and the repository, not final 5/5 claims. As of
+the 2026-05-09 review, 27 questions remain unresolved because those rows still
+have at least one missing owner, freshness, validation, fallback, drill,
+account, or administrator-owned evidence item.
 
 Repository-owned operating evidence for owners, KPI cadence, priority/risk
 tradeoffs, runbooks, decision matrices, and sustainability governance is now

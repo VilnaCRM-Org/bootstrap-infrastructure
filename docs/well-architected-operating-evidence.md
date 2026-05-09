@@ -105,9 +105,10 @@ The current applicability statement and dependency inventory are retained in
 ### Compute Applicability
 
 This repository provisions no always-on runtime compute. Compute-adjacent
-surfaces are GitHub Actions runners and the optional ECR runner image. Future
-always-on compute must include a utilization target, image vulnerability SLA,
-patch cadence, autoscaling or shutdown behavior, and owner-approved exception.
+surfaces are GitHub Actions runners and the optional ECR runner repository,
+which currently has no image inventory. Future always-on compute must include a
+utilization target, image vulnerability SLA, patch cadence, autoscaling or
+shutdown behavior, and owner-approved exception.
 The no-idle-compute rule for future service selection is retained in
 `docs/workload-applicability-evidence.md`.
 
@@ -131,7 +132,7 @@ The current region decision matrix is retained in
 | Central logs | S3 encryption, logging controls, lifecycle transition, replica bucket. | Primary logs transition to lower-cost storage. | Replica lifecycle rationale and monthly growth trend. |
 | Backups | AWS Backup vault, plan, and restore drill evidence. | Backup retention is managed by the stack. | Recurring audit cadence and Vault Lock decision. |
 | ECR images | Immutable tags, scan-on-push, lifecycle cap. | Old images are cleaned by lifecycle policy. | Scan result review and remediation SLA. |
-| Optional runner image | `docs/compute-runner-evidence.md` records live ECR metadata and current scan findings. | Scan-on-push is enabled and tags are immutable. | Fresh scan with no unaccepted critical/high findings or a security-owner exception. |
+| Optional runner image | `docs/compute-runner-evidence.md` records live ECR metadata, stale vulnerable image deletion, and empty current inventory. | Scan-on-push is enabled, tags are immutable, and no deployable image remains. | Fresh scan with no unaccepted critical/high findings or a security-owner exception before any future image is used. |
 | CI artifacts | GitHub artifact retention and sanitized summaries. | Workflow-defined retention. | Production preview artifact retention review. |
 
 All current repository data paths are S3 or GitHub artifact paths and must
