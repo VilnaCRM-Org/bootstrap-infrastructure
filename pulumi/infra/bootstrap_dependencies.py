@@ -12,6 +12,7 @@ from .logging_bucket import CentralLoggingBuckets
 from .operations_monitoring import OperationsMonitoring
 from .pulumi_secrets import PulumiSecretsKeys
 from .pulumi_state import PulumiStateBuckets
+from .security_account_controls import SecurityAccountControls
 
 
 @dataclass(frozen=True)
@@ -26,3 +27,6 @@ class BootstrapInfrastructureDependencies:
     backup_plan_cls: type[S3BackupPlan] = S3BackupPlan
     monitoring_cls: type[OperationsMonitoring] = OperationsMonitoring
     cost_controls_cls: type[CostControls] = CostControls
+    security_account_controls_cls: type[SecurityAccountControls] = (
+        SecurityAccountControls
+    )

@@ -1279,6 +1279,97 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
         )
         == []
     )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["guardduty:ListDetectors"],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["guardduty:CreateDetector"],
+                                "Resource": "*",
+                                "Condition": {
+                                    "StringEquals": {
+                                        "aws:RequestTag/Environment": "test",
+                                        "aws:RequestTag/Purpose": "security-detection",
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "config:DeleteDeliveryChannel",
+                                    "config:DescribeDeliveryChannels",
+                                    "config:PutDeliveryChannel",
+                                ],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert policy_runtime.wildcard_iam_violations(  # nosec B101
+        "aws:iam/policy:Policy",
+        {
+            "policy": _json(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["guardduty:CreateDetector"],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+        },
+        config,
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
     assert policy_runtime.wildcard_iam_violations(  # nosec B101
         "aws:iam/policy:Policy",
         {

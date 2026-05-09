@@ -49,11 +49,11 @@ owner attestations before any final 5/5 claim.
 | Readiness item | Current evidence | Status | Fallback |
 | --- | --- | --- | --- |
 | Repository owner and RACI | This file and `docs/sre-operations.md`. | Current for repository-owned controls. | If owners are disputed, keep affected scores below 5/5. |
-| Local validation | `make ci-pr-unprivileged` passed on 2026-05-09 for head `707d7df`. | Current local signal. | Hosted GitHub checks are still required before merge readiness. |
+| Local validation | `make ci-pr-unprivileged` passed on 2026-05-09 after the account security-control changes. | Current local signal. | Hosted GitHub checks are still required before merge readiness. |
 | AWS identity and metadata collector | `make report-well-architected-evidence` collector output passed identity, alert topic, CloudTrail, restore, and fanout checks on 2026-05-09. | Current metadata signal. | Re-run after every new push or account change. |
 | Branch protection | Collector reports zero required status checks. | Blocked. | Repository admin must update the active ruleset. |
 | Production approval | `gh api repos/.../environments/prod` returns 404; `prod-preview` has no protection rules. | Blocked. | Create protected `prod` environment with required reviewers before production claims. |
-| Security account services | GuardDuty detector list is empty, Security Hub is not subscribed, AWS Config recorder and delivery channel lists are empty. | Blocked. | Security owner must enable or formally exempt these account controls. |
+| Security account services | Repository code now provisions GuardDuty, Security Hub, AWS Config recorder, and the Config delivery bucket; live account evidence remains pending until apply. | Blocked. | Security owner must enable or formally exempt these account controls and retain post-apply evidence. |
 
 ## KPI And Review Register
 
@@ -62,7 +62,7 @@ owner attestations before any final 5/5 claim.
 | Backup health | No unresolved failed, aborted, or expired protected-resource jobs. | Collector found one completed restore job in the last 90 days. | SRE | Monthly | Open SEV2 follow-up for failed jobs. |
 | Restore drill freshness | Latest non-production drill no older than 90 days. | Restore job `d7f25510-1dfd-4f11-8953-72ed1c971c2c` completed on 2026-04-27 and cleanup is confirmed. | SRE | Quarterly | Reliability score stays below 5/5 after 90 days without a fresh drill. |
 | Drift freshness | Shared-stack drift evidence no older than 24 hours. | Local `make test-drift` previously passed with `86 unchanged`; hosted run is queued. | SRE | Daily for shared stacks | Treat merge readiness as blocked when hosted drift evidence is absent for apply paths. |
-| Guardrail health | Same-repo required checks pass and are not skipped. | Local unprivileged battery passes; hosted checks remain queued. | Maintainer | Per PR | Do not merge until hosted checks pass or admin records a temporary exception. |
+| Guardrail health | Same-repo required checks pass and are not skipped. | Local unprivileged battery, real test preview, destructive gate, cost proxy, and IAM validation passed; hosted checks remain queued. | Maintainer | Per PR | Do not merge until hosted checks pass or admin records a temporary exception. |
 | Alert route freshness | Operations SNS route has a subscription and downstream owner. | SNS topic is encrypted and has one SQS subscription; downstream human route remains external. | SRE | Monthly | Keep OPS4/REL6 below 5/5 until downstream route is confirmed. |
 | Cost alert readiness | Budget and anomaly thresholds reviewed in the last 30 days. | Budget and anomaly resources exist; FinOps approval and monthly report are missing. | FinOps owner | Monthly | Keep cost questions below 5/5. |
 | Catalog demand | Active repositories have owner, lifecycle state, last-reviewed date, and expected environments. | `pulumi/repositories.bootstrap.json` passes catalog and fanout validation. | Maintainer | Monthly | Block catalog expansion when metadata is stale or thresholds are exceeded. |

@@ -10,6 +10,7 @@ config:
   bootstrap-infrastructure:githubBranch: main
   bootstrap-infrastructure:githubOrg: VilnaCRM-Org
   bootstrap-infrastructure:loggingPrefix: company
+  bootstrap-infrastructure:manageCostAllocationTags: "true"
   bootstrap-infrastructure:owner: platform
   bootstrap-infrastructure:retentionClass: standard
   bootstrap-infrastructure:repoSlug: bootstrap-infrastructure

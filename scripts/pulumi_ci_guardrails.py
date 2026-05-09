@@ -53,8 +53,12 @@ COST_DRIVER_TYPE_PATTERNS = (
         2,
     ),
     ("costAllocationTags", "aws:costexplorer/costAllocationTag:CostAllocationTag", 1),
+    ("guardDutyDetectors", "aws:guardduty/detector:Detector", 2),
+    ("securityHubAccounts", "aws:securityhub/account:Account", 2),
+    ("configRecorders", "aws:cfg/recorder:Recorder", 2),
+    ("configDeliveryChannels", "aws:cfg/deliveryChannel:DeliveryChannel", 2),
 )
-DEFAULT_MAX_COST_PROXY_WEIGHT = 64
+DEFAULT_MAX_COST_PROXY_WEIGHT = 66
 GENERATED_PREVIEW_ARTIFACT_NAMES = frozenset({"iam-inputs.json"})
 COUNT_TABLE_SEPARATOR = "| --- | ---: |"
 

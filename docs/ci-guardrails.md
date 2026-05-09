@@ -132,7 +132,8 @@ supported override because it leaves an auditable trail in GitHub.
 destructive-diff gate. It counts create and replace operations for resource
 families that usually affect cost, quotas, or operational fanout, including S3
 buckets, KMS keys, IAM roles, AWS Backup resources, ECR repositories, SNS
-topics, EventBridge rules, CloudTrail trails, and S3 replication configuration.
+topics, EventBridge rules, CloudTrail trails, S3 replication configuration,
+GuardDuty, Security Hub, and AWS Config recorder resources.
 
 The proxy is intentionally static. It does not estimate monthly spend and it
 does not replace the repo-managed AWS Budget, Cost Anomaly Detection resources,
@@ -140,11 +141,11 @@ Service Quotas, or a FinOps review. It gives reviewers an early signal that a
 pull request is adding or replacing unusually many durable resources before the
 change reaches the test account.
 
-The default weighted threshold is `64`, which matches the expected full
+The default weighted threshold is `66`, which matches the expected full
 first-time bootstrap footprint after automation, management CloudTrail, backup,
-cost, and operations controls are included. Pull requests that exceed that
-threshold need an explicit guardrail change or a reduction in durable-resource
-fanout.
+cost, security detection, configuration inventory, and operations controls are
+included. Pull requests that exceed that threshold need an explicit guardrail
+change or a reduction in durable-resource fanout.
 
 ## IAM validation
 

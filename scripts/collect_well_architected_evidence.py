@@ -1575,6 +1575,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-cost-anomaly-monitors", type=int, default=20)
     parser.add_argument("--max-cost-anomaly-subscriptions", type=int, default=20)
     parser.add_argument("--max-cost-allocation-tags", type=int, default=100)
+    parser.add_argument("--max-guardduty-detectors", type=int, default=20)
+    parser.add_argument("--max-security-hub-accounts", type=int, default=20)
+    parser.add_argument("--max-config-recorders", type=int, default=20)
+    parser.add_argument("--max-config-delivery-channels", type=int, default=20)
     return parser
 
 

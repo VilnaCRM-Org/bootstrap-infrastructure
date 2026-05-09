@@ -134,6 +134,22 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
                 "op": "create",
                 "newState": {"type": "aws:cloudwatch/logGroup:LogGroup"},
             },
+            {
+                "op": "create",
+                "newState": {"type": "aws:guardduty/detector:Detector"},
+            },
+            {
+                "op": "create",
+                "newState": {"type": "aws:securityhub/account:Account"},
+            },
+            {
+                "op": "create",
+                "newState": {"type": "aws:cfg/recorder:Recorder"},
+            },
+            {
+                "op": "create",
+                "newState": {"type": "aws:cfg/deliveryChannel:DeliveryChannel"},
+            },
         ],
         summary={"create": 2, "replace": 1, "update": 1},
     )
@@ -141,13 +157,17 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
     report = guardrails_module.cost_proxy_report(guardrails_module.load_preview(path))
     rendered = guardrails_module.render_cost_proxy_markdown(path, report)
 
-    assert report["weightedChange"] == 12  # nosec B101
+    assert report["weightedChange"] == 20  # nosec B101
     assert report["categories"]["s3Buckets"] == 1  # nosec B101
     assert report["categories"]["kmsKeys"] == 1  # nosec B101
     assert report["categories"]["snsTopics"] == 0  # nosec B101
     assert report["categories"]["eventRules"] == 1  # nosec B101
     assert report["categories"]["cloudTrailTrails"] == 1  # nosec B101
-    assert "Weighted cost/quota change: `12`" in rendered  # nosec B101
+    assert report["categories"]["guardDutyDetectors"] == 1  # nosec B101
+    assert report["categories"]["securityHubAccounts"] == 1  # nosec B101
+    assert report["categories"]["configRecorders"] == 1  # nosec B101
+    assert report["categories"]["configDeliveryChannels"] == 1  # nosec B101
+    assert "Weighted cost/quota change: `20`" in rendered  # nosec B101
     empty_rendered = guardrails_module.render_cost_proxy_markdown(
         path,
         guardrails_module.cost_proxy_report({"steps": []}),
@@ -210,7 +230,7 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
             [
                 "cost-proxy",
                 "--max-weighted-change",
-                "12",
+                "20",
                 str(path),
             ]
         )
@@ -236,7 +256,7 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
     assert "cost proxy blocked" in captured.err  # nosec B101
     assert "s3Buckets" in markdown_path.read_text(encoding="utf-8")  # nosec B101
     assert (  # nosec B101
-        json.loads(json_path.read_text(encoding="utf-8"))[0]["weightedChange"] == 12
+        json.loads(json_path.read_text(encoding="utf-8"))[0]["weightedChange"] == 20
     )
     iam_inputs_path = tmp_path / "iam-inputs.json"
     iam_inputs_path.write_text("[]", encoding="utf-8")
@@ -248,7 +268,7 @@ def test_cost_proxy_reports_cost_driving_preview_steps(
             [
                 "cost-proxy",
                 "--max-weighted-change",
-                "12",
+                "20",
                 str(path),
                 str(iam_inputs_path),
             ]

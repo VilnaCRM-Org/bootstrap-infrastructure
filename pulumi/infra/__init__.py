@@ -12,6 +12,7 @@ from .operations_monitoring import OperationsMonitoring
 from .pulumi_secrets import PulumiSecretsKeys
 from .pulumi_state import PulumiStateBuckets
 from .repository_catalog import ManagedRepositoryCatalog
+from .security_account_controls import SecurityAccountControls
 
 __all__ = (
     "BootstrapInfrastructure",
@@ -26,4 +27,5 @@ __all__ = (
     "PulumiSecretsKeys",
     "PulumiStateBuckets",
     "S3BackupPlan",
+    "SecurityAccountControls",
 )

@@ -192,6 +192,42 @@ _AUTOMATION_COST_ALLOCATION_TAG_ACTIONS = (
     "ce:UpdateCostAllocationTagsStatus",
 )
 _AUTOMATION_BILLING_ACTIONS = ("billing:GetBillingViewData",)
+_AUTOMATION_GUARDDUTY_CREATE_ACTIONS = ("guardduty:CreateDetector",)
+_AUTOMATION_GUARDDUTY_RESOURCE_ACTIONS = (
+    "guardduty:DeleteDetector",
+    "guardduty:GetDetector",
+    "guardduty:TagResource",
+    "guardduty:UntagResource",
+    "guardduty:UpdateDetector",
+)
+_AUTOMATION_GUARDDUTY_READ_ACTIONS = ("guardduty:ListDetectors",)
+_AUTOMATION_SECURITY_HUB_ACTIONS = (
+    "securityhub:DescribeHub",
+    "securityhub:DisableSecurityHub",
+    "securityhub:EnableSecurityHub",
+    "securityhub:GetEnabledStandards",
+    "securityhub:UpdateSecurityHubConfiguration",
+)
+_AUTOMATION_AWS_CONFIG_RECORDER_ACTIONS = (
+    "config:DeleteConfigurationRecorder",
+    "config:DescribeConfigurationRecorders",
+    "config:DescribeConfigurationRecorderStatus",
+    "config:ListTagsForResource",
+    "config:PutConfigurationRecorder",
+    "config:StartConfigurationRecorder",
+    "config:StopConfigurationRecorder",
+    "config:TagResource",
+    "config:UntagResource",
+)
+_AUTOMATION_AWS_CONFIG_DELIVERY_CHANNEL_ACTIONS = (
+    "config:DeleteDeliveryChannel",
+    "config:DescribeDeliveryChannels",
+    "config:PutDeliveryChannel",
+)
+_AUTOMATION_SECURITY_SERVICE_LINKED_ROLE_SERVICES = (
+    "guardduty.amazonaws.com",
+    "securityhub.amazonaws.com",
+)
 
 
 def _environment_resource_part(settings: BootstrapSettings) -> str:
@@ -263,6 +299,7 @@ def _automation_s3_resources(settings: BootstrapSettings) -> list[str]:
         f"{logging_prefix}-central-logs-*-{environment}",
         f"{logging_prefix}-central-logs-*-{environment}-*-replication",
         f"bootstrap-*-{environment}-cloudtrail",
+        f"bootstrap-*-{environment}-aws-config",
     )
     return [f"arn:aws:s3:::{bucket_name}" for bucket_name in bucket_names]
 
@@ -303,6 +340,7 @@ def _automation_iam_role_resources(
         f"arn:aws:iam::{account_id}:role/PulumiStateRepl-*",
         f"arn:aws:iam::{account_id}:role/central-logging-replication-role-*",
         f"arn:aws:iam::{account_id}:role/s3-backup-role-*",
+        f"arn:aws:iam::{account_id}:role/aws-config-recorder-role-*",
     ]
 
 
@@ -385,6 +423,33 @@ def _automation_budget_service_linked_role_resource(account_id: str) -> str:
     )
 
 
+def _automation_security_service_linked_role_resources(account_id: str) -> list[str]:
+    """Return service-linked role ARNs for account security services."""
+    return [f"arn:aws:iam::{account_id}:role/aws-service-role/*"]
+
+
+def _automation_guardduty_resources(account_id: str) -> list[str]:
+    """Scope GuardDuty management to account-local detectors."""
+    return [f"arn:aws:guardduty:*:{account_id}:detector/*"]
+
+
+def _automation_security_hub_resources(account_id: str) -> list[str]:
+    """Scope Security Hub account management to the default account hub."""
+    return [f"arn:aws:securityhub:*:{account_id}:hub/default"]
+
+
+def _automation_aws_config_recorder_resources(
+    account_id: str, settings: BootstrapSettings
+) -> list[str]:
+    """Scope AWS Config recorder management to the bootstrap recorder name."""
+    environment = _environment_resource_part(settings)
+    return [
+        "arn:aws:config:*:"
+        f"{account_id}:configuration-recorder/"
+        f"bootstrap-{environment}-configuration-recorder/*"
+    ]
+
+
 def _automation_assume_role_policy(
     oidc_provider_arn: str, org: str, repo_name: str, environment: str
 ) -> str:
@@ -462,6 +527,18 @@ def _automation_policy(
         "StringEquals": {
             AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
             AWS_RESOURCE_TAG_PURPOSE_KEY: "cost-anomaly-subscription",
+        }
+    }
+    guardduty_request_tag_condition = {
+        "StringEquals": {
+            AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_REQUEST_TAG_PURPOSE_KEY: "security-detection",
+        }
+    }
+    guardduty_resource_tag_condition = {
+        "StringEquals": {
+            AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_RESOURCE_TAG_PURPOSE_KEY: "security-detection",
         }
     }
     return json.dumps(
@@ -573,6 +650,17 @@ def _automation_policy(
                     },
                 },
                 {
+                    "Sid": "PassBootstrapRolesToConfig",
+                    "Effect": "Allow",
+                    "Action": ["iam:PassRole"],
+                    "Resource": [
+                        f"arn:aws:iam::{account_id}:role/aws-config-recorder-role-*"
+                    ],
+                    "Condition": {
+                        "StringEquals": {"iam:PassedToService": "config.amazonaws.com"}
+                    },
+                },
+                {
                     "Sid": "ManageBootstrapBackup",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_BACKUP_ACTIONS),
@@ -637,6 +725,21 @@ def _automation_policy(
                     },
                 },
                 {
+                    "Sid": "CreateSecurityServiceLinkedRoles",
+                    "Effect": "Allow",
+                    "Action": ["iam:CreateServiceLinkedRole"],
+                    "Resource": _automation_security_service_linked_role_resources(
+                        account_id
+                    ),
+                    "Condition": {
+                        "StringEquals": {
+                            "iam:AWSServiceName": list(
+                                _AUTOMATION_SECURITY_SERVICE_LINKED_ROLE_SERVICES
+                            )
+                        }
+                    },
+                },
+                {
                     "Sid": "ReadBillingViewDataForBudgets",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_BILLING_ACTIONS),
@@ -675,6 +778,46 @@ def _automation_policy(
                         account_id
                     ),
                     "Condition": cost_explorer_subscription_resource_tag_condition,
+                },
+                {
+                    "Sid": "ReadGuardDutyDetectors",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_GUARDDUTY_READ_ACTIONS),
+                    "Resource": "*",
+                },
+                {
+                    "Sid": "CreateBootstrapGuardDutyDetector",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_GUARDDUTY_CREATE_ACTIONS),
+                    "Resource": "*",
+                    "Condition": guardduty_request_tag_condition,
+                },
+                {
+                    "Sid": "ManageBootstrapGuardDutyDetector",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_GUARDDUTY_RESOURCE_ACTIONS),
+                    "Resource": _automation_guardduty_resources(account_id),
+                    "Condition": guardduty_resource_tag_condition,
+                },
+                {
+                    "Sid": "ManageSecurityHubAccount",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_SECURITY_HUB_ACTIONS),
+                    "Resource": _automation_security_hub_resources(account_id),
+                },
+                {
+                    "Sid": "ManageAwsConfigRecorder",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_AWS_CONFIG_RECORDER_ACTIONS),
+                    "Resource": _automation_aws_config_recorder_resources(
+                        account_id, settings
+                    ),
+                },
+                {
+                    "Sid": "ManageAwsConfigDeliveryChannel",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_AWS_CONFIG_DELIVERY_CHANNEL_ACTIONS),
+                    "Resource": "*",
                 },
                 *(
                     [

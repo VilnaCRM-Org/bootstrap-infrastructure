@@ -22,11 +22,11 @@ PER_ENVIRONMENT_FANOUT = {
     "backupSelections": 1,
 }
 CENTRAL_STACK_FANOUT = {
-    "s3Buckets": 3,
+    "s3Buckets": 4,
     "kmsKeys": 1,
     "backupVaults": 1,
     "backupPlans": 1,
-    "iamRoles": 2,
+    "iamRoles": 3,
     "oidcProviders": 1,
     "ecrRepositories": 1,
     "snsTopics": 1,
@@ -40,6 +40,10 @@ CENTRAL_STACK_FANOUT = {
     # Cost allocation tags are optional and config-driven; keep the category
     # visible without assuming the optional controls are enabled by default.
     "costAllocationTags": 0,
+    "guardDutyDetectors": 1,
+    "securityHubAccounts": 1,
+    "configRecorders": 1,
+    "configDeliveryChannels": 1,
 }
 LAST_REVIEWED_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 
@@ -281,6 +285,10 @@ def _fanout_thresholds(args: argparse.Namespace) -> dict[str, int]:
         "costAnomalyMonitors": args.max_cost_anomaly_monitors,
         "costAnomalySubscriptions": args.max_cost_anomaly_subscriptions,
         "costAllocationTags": args.max_cost_allocation_tags,
+        "guardDutyDetectors": args.max_guardduty_detectors,
+        "securityHubAccounts": args.max_security_hub_accounts,
+        "configRecorders": args.max_config_recorders,
+        "configDeliveryChannels": args.max_config_delivery_channels,
     }
 
 
@@ -347,6 +355,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-cost-anomaly-monitors", type=int, default=20)
     parser.add_argument("--max-cost-anomaly-subscriptions", type=int, default=20)
     parser.add_argument("--max-cost-allocation-tags", type=int, default=100)
+    parser.add_argument("--max-guardduty-detectors", type=int, default=20)
+    parser.add_argument("--max-security-hub-accounts", type=int, default=20)
+    parser.add_argument("--max-config-recorders", type=int, default=20)
+    parser.add_argument("--max-config-delivery-channels", type=int, default=20)
     args = parser.parse_args(argv)
 
     catalog_paths = list(args.catalogs) or repository_catalog_paths(ROOT_DIR)

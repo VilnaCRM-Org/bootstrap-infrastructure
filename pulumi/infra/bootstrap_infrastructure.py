@@ -103,6 +103,14 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             settings=settings,
             opts=child_opts,
         )
+        self.security_account_controls = (
+            self.dependencies.security_account_controls_cls(
+                "security-account-controls",
+                resource_dependencies=automation_policy_dependencies,
+                settings=settings,
+                opts=child_opts,
+            )
+        )
 
         self.outputs: dict[str, pulumi.Input[object]] = {
             "centralLogBucket": self.logging.bucket.bucket,
@@ -134,6 +142,21 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             "monthlyBudgetName": self.cost_controls.monthly_budget.name,
             "costAnomalyMonitorArn": self.cost_controls.anomaly_monitor_arn,
             "costAnomalySubscriptionArn": (self.cost_controls.anomaly_subscription.arn),
+            "guardDutyDetectorId": (
+                self.security_account_controls.guardduty_detector.id
+            ),
+            "securityHubAccountArn": (
+                self.security_account_controls.security_hub_account.arn
+            ),
+            "awsConfigRecorderName": (
+                self.security_account_controls.config_recorder.name
+            ),
+            "awsConfigDeliveryChannelName": (
+                self.security_account_controls.config_delivery_channel.name
+            ),
+            "awsConfigDeliveryBucketName": (
+                self.security_account_controls.config_bucket.bucket
+            ),
         }
         if self.automation is not None:
             self.outputs.update(

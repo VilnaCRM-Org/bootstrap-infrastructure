@@ -15,12 +15,14 @@ from infra import (
     PulumiSecretsKeys,
     PulumiStateBuckets,
     S3BackupPlan,
+    SecurityAccountControls,
     automation,
     config,
     logging_bucket,
     operations_monitoring,
     pulumi_secrets,
     pulumi_state,
+    security_account_controls,
 )
 from infra.cost_controls import (
     COST_ALLOCATION_TAG_KEYS,
@@ -100,6 +102,62 @@ def test_operations_monitoring_topic_name_normalizes_dot_environment():
     )
 
 
+def test_security_account_controls_normalizes_dot_environment():
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="prod.eu",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    assert (  # nosec B101
+        security_account_controls._config_bucket_name(
+            settings, "123456789012", "eu-central-1"
+        )
+        == "bootstrap-123456789012-eu-central-1-prod-eu-aws-config"
+    )
+    assert (  # nosec B101
+        security_account_controls._config_recorder_name(settings)
+        == "bootstrap-prod.eu-configuration-recorder"
+    )
+
+
+def test_security_account_controls_reject_long_resource_names():
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="x" * 40,
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    with pytest.raises(ValueError, match="AWS Config bucket name exceeds"):
+        security_account_controls._config_bucket_name(
+            settings,
+            "123456789012",
+            "eu-central-1",
+        )
+    with pytest.raises(ValueError, match="AWS Config recorder role name exceeds"):
+        security_account_controls._config_role_name(settings)
+
+
 def test_github_automation_policy_normalizes_sns_environment_and_allocation_tags():
     settings = config.BootstrapSettings(
         org="VilnaCRM-Org",
@@ -142,6 +200,23 @@ def test_github_automation_policy_normalizes_sns_environment_and_allocation_tags
         ],
         "Resource": "*",
     }
+    assert (  # nosec B101
+        "PassBootstrapRolesToConfig" in statements
+    )
+    assert (  # nosec B101
+        "CreateBootstrapGuardDutyDetector" in statements
+    )
+    assert (  # nosec B101
+        statements["CreateSecurityServiceLinkedRoles"]["Condition"]
+        == {
+            "StringEquals": {
+                "iam:AWSServiceName": [
+                    "guardduty.amazonaws.com",
+                    "securityhub.amazonaws.com",
+                ]
+            }
+        }
+    )
 
 
 def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
@@ -668,6 +743,77 @@ def test_cost_controls_can_reuse_existing_anomaly_monitor(pulumi_mocks, monkeypa
     assert subscription_state["monitorArnLists"] == [existing_monitor_arn]  # nosec B101
 
 
+def test_security_account_controls_emit_detection_and_config_resources(
+    pulumi_mocks, monkeypatch
+):  # noqa: ARG001
+    monkeypatch.setattr(config.settings, "environment", "test")
+
+    start = len(pulumi_mocks.resources)
+    controls = SecurityAccountControls("security-account-controls")
+
+    detector_id = _sync_await(future_output(controls.guardduty_detector.id))
+    hub_arn = _sync_await(future_output(controls.security_hub_account.arn))
+    recorder_name = _sync_await(future_output(controls.config_recorder.name))
+    delivery_channel_name = _sync_await(
+        future_output(controls.config_delivery_channel.name)
+    )
+    bucket_name = _sync_await(future_output(controls.config_bucket.bucket))
+
+    assert detector_id is not None  # nosec B101
+    assert hub_arn == "arn:aws:securityhub:us-east-1:123456789012:hub/default"  # nosec B101
+    assert recorder_name == "bootstrap-test-configuration-recorder"  # nosec B101
+    assert (  # nosec B101
+        delivery_channel_name == "bootstrap-test-configuration-delivery"
+    )
+    assert bucket_name == "bootstrap-123456789012-us-east-1-test-aws-config"  # nosec B101
+
+    new_resources = pulumi_mocks.resources[start:]
+    detector_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:guardduty/detector:Detector"
+    )
+    security_hub_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:securityhub/account:Account"
+    )
+    recorder_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:cfg/recorder:Recorder"
+    )
+    delivery_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:cfg/deliveryChannel:DeliveryChannel"
+    )
+    role_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:iam/role:Role"
+        and state.get("name") == "aws-config-recorder-role-test"
+    )
+    bucket_policy_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:s3/bucketPolicy:BucketPolicy"
+    )
+
+    assert detector_state["enable"] is True  # nosec B101
+    assert detector_state["findingPublishingFrequency"] == "FIFTEEN_MINUTES"  # nosec B101
+    assert security_hub_state["autoEnableControls"] is True  # nosec B101
+    assert recorder_state["recordingGroup"]["allSupported"] is True  # nosec B101
+    assert recorder_state["recordingMode"]["recordingFrequency"] == "DAILY"  # nosec B101
+    assert delivery_state["snapshotDeliveryProperties"]["deliveryFrequency"] == (  # nosec B101
+        "TwentyFour_Hours"
+    )
+    assert (  # nosec B101
+        "config.amazonaws.com" in role_state["assumeRolePolicy"]
+    )
+    assert "AWSConfigBucketDelivery" in bucket_policy_state["policy"]  # nosec B101
+
+
 def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(config.settings, "logging_prefix", "company")
     monkeypatch.setattr(config.settings, "repo", "core-service-infrastructure")
@@ -719,6 +865,9 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert "operationsAlertQueueSubscriptionArn" in bootstrap.outputs  # nosec B101
     assert "backupVaultArn" in bootstrap.outputs  # nosec B101
     assert "backupRoleArn" in bootstrap.outputs  # nosec B101
+    assert "guardDutyDetectorId" in bootstrap.outputs  # nosec B101
+    assert "securityHubAccountArn" in bootstrap.outputs  # nosec B101
+    assert "awsConfigRecorderName" in bootstrap.outputs  # nosec B101
     log_delivery_dependencies = bootstrap.state._log_delivery_dependencies  # noqa: SLF001
     expected_log_delivery_dependencies = [
         bootstrap.logging.bucket,
@@ -1036,6 +1185,7 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-*-replication",
         "arn:aws:s3:::bootstrap-*-test-cloudtrail",
+        "arn:aws:s3:::bootstrap-*-test-aws-config",
     ]
     all_actions = {
         action

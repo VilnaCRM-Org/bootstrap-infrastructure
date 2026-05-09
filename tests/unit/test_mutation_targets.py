@@ -221,6 +221,9 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "events:*" not in actions  # nosec B101
     assert "cloudtrail:*" not in actions  # nosec B101
     assert "sns:*" not in actions  # nosec B101
+    assert "guardduty:*" not in actions  # nosec B101
+    assert "securityhub:*" not in actions  # nosec B101
+    assert "config:*" not in actions  # nosec B101
     assert "s3:CreateBucket" in actions  # nosec B101
     assert "kms:CreateKey" in actions  # nosec B101
     assert "kms:Decrypt" not in actions  # nosec B101
@@ -236,12 +239,16 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "budgets:DescribeBudget" in actions  # nosec B101
     assert "ce:CreateAnomalyMonitor" in actions  # nosec B101
     assert "billing:GetBillingViewData" in actions  # nosec B101
+    assert "guardduty:CreateDetector" in actions  # nosec B101
+    assert "securityhub:EnableSecurityHub" in actions  # nosec B101
+    assert "config:PutConfigurationRecorder" in actions  # nosec B101
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
         "arn:aws:s3:::pulumi-*-test-state-*-replication",
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-*-replication",
         "arn:aws:s3:::bootstrap-*-test-cloudtrail",
+        "arn:aws:s3:::bootstrap-*-test-aws-config",
     ]
     assert statements["ManageBootstrapEcr"]["Resource"] == [  # nosec B101
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
@@ -325,6 +332,13 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
             ],
         }
     )
+    assert statements["ManageSecurityHubAccount"]["Resource"] == [  # nosec B101
+        "arn:aws:securityhub:*:123456789012:hub/default"
+    ]
+    assert statements["ManageAwsConfigRecorder"]["Resource"] == [  # nosec B101
+        "arn:aws:config:*:123456789012:configuration-recorder/"
+        "bootstrap-test-configuration-recorder/*"
+    ]
     assert {
         statement["Sid"]
         for statement in policy["Statement"]
@@ -334,9 +348,12 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "CreateBootstrapCostAnomalyMonitor",
         "CreateBootstrapCostAnomalySubscription",
         "CreateBootstrapOidcProvider",
+        "CreateBootstrapGuardDutyDetector",
         "ListBootstrapOidcProviders",
         "ListBootstrapKmsAliases",
+        "ManageAwsConfigDeliveryChannel",
         "ReadBillingViewDataForBudgets",
+        "ReadGuardDutyDetectors",
         "ReadIdentity",
     }  # nosec B101
 

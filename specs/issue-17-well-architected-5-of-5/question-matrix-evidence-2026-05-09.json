@@ -109,7 +109,7 @@
   },
   "questionScoreAverages": {
     "Operational Excellence": 3.91,
-    "Security": 3.73,
+    "Security": 3.82,
     "Reliability": 3.77,
     "Performance Efficiency": 4.0,
     "Cost Optimization": 4.0,
@@ -130,7 +130,7 @@
     {"id": "SEC1", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Security ownership, threat-model cadence, incident playbooks, and external-control fallbacks are now recorded for repository-owned controls.", "primaryBlocker": "Security account controls remain external and currently unproven."},
     {"id": "SEC2", "pillar": "Security", "score": 3, "status": "unresolved", "rationale": "GitHub OIDC trust is scoped and account checks exist, but human MFA/SSO and static-key posture remain external.", "primaryBlocker": "Authentication matrix with MFA/SSO and local-exception evidence."},
     {"id": "SEC3", "pillar": "Security", "score": 3, "status": "unresolved", "rationale": "Automation IAM is materially narrowed, but wildcard/list/create justifications and permissions-boundary decisions are not complete.", "primaryBlocker": "Permission matrix, Access Analyzer evidence, wildcard justifications, and boundary decision."},
-    {"id": "SEC4", "pillar": "Security", "score": 3, "status": "unresolved", "rationale": "CloudTrail, EventBridge alerts, scans, and drift checks exist; GuardDuty has no detector, Security Hub is not subscribed, and AWS Config has no recorder.", "primaryBlocker": "External detection service posture and investigation runbooks."},
+    {"id": "SEC4", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "CloudTrail, EventBridge alerts, scans, drift checks, and Pulumi-managed GuardDuty, Security Hub, and AWS Config controls now exist; post-apply account evidence is still pending.", "primaryBlocker": "Live detection service posture and investigation runbooks."},
     {"id": "SEC5", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The operating evidence now records that no VPC or public endpoint is provisioned and defines future network gates.", "primaryBlocker": "Future network resources must add flow-log, ingress, TLS, WAF, and route evidence before 5/5 stays valid."},
     {"id": "SEC6", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The compute applicability statement now records no always-on runtime compute and defines future runner and image requirements.", "primaryBlocker": "ECR scan-result review and runner hardening evidence remain incomplete."},
     {"id": "SEC7", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Tag taxonomy and storage data classes are now recorded alongside enforced classification, criticality, and retention tags.", "primaryBlocker": "Payer-account active cost-allocation tag evidence remains missing."},

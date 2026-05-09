@@ -584,6 +584,11 @@ _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
         "ce:createanomalysubscription",
         "ce:listcostallocationtags",
         "ce:updatecostallocationtagsstatus",
+        "config:deletedeliverychannel",
+        "config:describedeliverychannels",
+        "config:putdeliverychannel",
+        "guardduty:createdetector",
+        "guardduty:listdetectors",
         "iam:createopenidconnectprovider",
         "iam:listopenidconnectproviders",
         "kms:createkey",
@@ -607,6 +612,12 @@ _RESOURCE_WILDCARD_ACTION_REQUIRED_CONDITION_KEYS = {
         }
     ),
     "kms:createkey": frozenset(
+        {
+            REQUEST_TAG_ENVIRONMENT_KEY,
+            REQUEST_TAG_PURPOSE_KEY,
+        }
+    ),
+    "guardduty:createdetector": frozenset(
         {
             REQUEST_TAG_ENVIRONMENT_KEY,
             REQUEST_TAG_PURPOSE_KEY,

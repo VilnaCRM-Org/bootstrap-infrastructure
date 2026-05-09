@@ -48,6 +48,7 @@ if bootstrap_requested:
     backup = bootstrap.backup
     monitoring = bootstrap.monitoring
     cost_controls = bootstrap.cost_controls
+    security_account_controls = bootstrap.security_account_controls
     if bootstrap.automation is not None:
         automation = bootstrap.automation
 
@@ -99,6 +100,20 @@ if bootstrap_requested:
     pulumi.export("costAnomalyMonitorArn", bootstrap.outputs["costAnomalyMonitorArn"])
     cost_anomaly_subscription_arn = bootstrap.outputs["costAnomalySubscriptionArn"]
     pulumi.export("costAnomalySubscriptionArn", cost_anomaly_subscription_arn)
+    pulumi.export("guardDutyDetectorId", bootstrap.outputs["guardDutyDetectorId"])
+    pulumi.export("securityHubAccountArn", bootstrap.outputs["securityHubAccountArn"])
+    pulumi.export(
+        "awsConfigRecorderName",
+        bootstrap.outputs["awsConfigRecorderName"],
+    )
+    pulumi.export(
+        "awsConfigDeliveryChannelName",
+        bootstrap.outputs["awsConfigDeliveryChannelName"],
+    )
+    pulumi.export(
+        "awsConfigDeliveryBucketName",
+        bootstrap.outputs["awsConfigDeliveryBucketName"],
+    )
 
     if bootstrap.automation is not None:
         pulumi.export("automationRoleArn", bootstrap.outputs["automationRoleArn"])

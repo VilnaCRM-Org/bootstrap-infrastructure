@@ -28,9 +28,9 @@ Markdown and JSON evidence under `.artifacts/pulumi-preview/` in CI.
 The proxy does not calculate spend. It is a guardrail for unusual fanout,
 resource replacement, and quota pressure. It complements the AWS Budget, Cost
 Anomaly Detection, and Service Quotas controls used for account-level review.
-The current weighted threshold is `64`, matching the full first-time bootstrap
-baseline that includes automation, CloudTrail, backup, cost controls, and
-operations monitoring.
+The current weighted threshold is `66`, matching the full first-time bootstrap
+baseline that includes automation, CloudTrail, backup, cost controls, security
+detection, configuration inventory, and operations monitoring.
 
 ## AWS Budget And Cost Anomaly Controls
 

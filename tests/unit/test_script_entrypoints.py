@@ -352,17 +352,21 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
         "backupVaults": 1,
         "budgets": 1,
         "cloudTrailTrails": 1,
+        "configDeliveryChannels": 1,
+        "configRecorders": 1,
         "costAllocationTags": 0,
         "costAnomalyMonitors": 1,
         "costAnomalySubscriptions": 1,
         "ecrRepositories": 1,
         "environmentInstances": 2,
         "eventRules": 4,
-        "iamRoles": 6,
+        "guardDutyDetectors": 1,
+        "iamRoles": 7,
         "kmsKeys": 3,
         "oidcProviders": 1,
         "repositories": 1,
-        "s3Buckets": 7,
+        "s3Buckets": 8,
+        "securityHubAccounts": 1,
         "snsSubscriptions": 1,
         "snsTopics": 1,
         "sqsQueues": 1,
@@ -396,11 +400,12 @@ def test_validate_repository_catalogs_main_validates_default_catalogs(
     assert f"validated repository catalog: {catalog_path}" in output  # nosec B101
     assert "repository fanout estimate" in output  # nosec B101
     assert "repository fanout thresholds" in output  # nosec B101
-    assert '"current": 7' in output  # nosec B101
-    assert '"remaining": 193' in output  # nosec B101
+    assert '"current": 8' in output  # nosec B101
+    assert '"remaining": 192' in output  # nosec B101
     assert "s3Buckets fanout" in captured.err  # nosec B101
     assert "budgets fanout" in captured.err  # nosec B101
     assert "cloudTrailTrails" in output  # nosec B101
+    assert "guardDutyDetectors" in output  # nosec B101
 
 
 def test_validate_repository_catalogs_reports_schema_errors(

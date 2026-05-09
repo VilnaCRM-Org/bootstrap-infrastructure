@@ -50,6 +50,11 @@ def _apply_mock_resource_defaults(
         "aws:costexplorer/anomalySubscription:AnomalySubscription": (
             _mock_anomaly_subscription
         ),
+        "aws:guardduty/detector:Detector": _mock_guardduty_detector,
+        "aws:securityhub/account:Account": _mock_securityhub_account,
+        "aws:cfg/recorder:Recorder": _mock_config_recorder,
+        "aws:cfg/deliveryChannel:DeliveryChannel": _mock_config_delivery_channel,
+        "aws:cfg/recorderStatus:RecorderStatus": _mock_config_recorder_status,
     }
     handler = default_handlers.get(type_)
     if handler is not None:
@@ -174,6 +179,40 @@ def _mock_anomaly_subscription(
         "arn",
         f"arn:aws:ce::123456789012:anomalysubscription/{subscription_name}",
     )
+
+
+def _mock_guardduty_detector(
+    name: str, _inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("id", f"{name}-detector-id")
+    state.setdefault(
+        "arn",
+        f"arn:aws:guardduty:us-east-1:123456789012:detector/{name}-detector-id",
+    )
+
+
+def _mock_securityhub_account(
+    _name: str, _inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("arn", "arn:aws:securityhub:us-east-1:123456789012:hub/default")
+
+
+def _mock_config_recorder(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("name", inputs.get("name") or name)
+
+
+def _mock_config_delivery_channel(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("name", inputs.get("name") or name)
+
+
+def _mock_config_recorder_status(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("name", inputs.get("name") or name)
 
 
 class TestMocks(pulumi.runtime.Mocks):
