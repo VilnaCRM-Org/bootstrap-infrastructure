@@ -395,30 +395,38 @@ def github_review_threads(
             blockers=[pagination_error],
         )
 
+    evidence, blocking_count = _review_thread_counts(nodes)
+    return _check(
+        "github_review_threads",
+        status="passed" if not blocking_count else "failed",
+        evidence=evidence,
+        blockers=_review_thread_blockers(blocking_count),
+    )
+
+
+def _review_thread_counts(nodes: list[dict]) -> tuple[dict[str, int], int]:
+    """Return review-thread evidence counts and current blocking count."""
     unresolved = [
         node for node in nodes if isinstance(node, dict) and not node.get("isResolved")
     ]
-    outdated_unresolved = [
-        node for node in unresolved if bool(node.get("isOutdated"))
-    ]
-    blocking_unresolved = [
-        node for node in unresolved if not bool(node.get("isOutdated"))
-    ]
-    return _check(
-        "github_review_threads",
-        status="passed" if not blocking_unresolved else "failed",
-        evidence={
+    outdated_count = sum(1 for node in unresolved if bool(node.get("isOutdated")))
+    blocking_count = len(unresolved) - outdated_count
+    return (
+        {
             "threadCount": len(nodes),
             "unresolvedThreadCount": len(unresolved),
-            "outdatedUnresolvedThreadCount": len(outdated_unresolved),
-            "blockingThreadCount": len(blocking_unresolved),
+            "outdatedUnresolvedThreadCount": outdated_count,
+            "blockingThreadCount": blocking_count,
         },
-        blockers=(
-            [f"{len(blocking_unresolved)} current review thread(s) remain unresolved."]
-            if blocking_unresolved
-            else []
-        ),
+        blocking_count,
     )
+
+
+def _review_thread_blockers(blocking_count: int) -> list[str]:
+    """Return blockers for current unresolved review threads."""
+    if not blocking_count:
+        return []
+    return [f"{blocking_count} current review thread(s) remain unresolved."]
 
 
 def _collect_review_thread_nodes(
