@@ -55,13 +55,14 @@
       "status": "unresolved",
       "evidence": [
         "OIDC roles, policy pack checks, CodeQL/Bandit/Gitleaks/pip-audit workflows, KMS keys, CloudTrail, and alert rules are defined.",
+        "docs/security-operating-evidence.md records the authentication matrix, permission matrix, wildcard justifications, permissions-boundary decision, threat model, secure SDLC controls, and open security exceptions.",
         "The PR now adds Pulumi-managed GuardDuty, Security Hub, AWS Config recorder, Config delivery channel, and a dedicated encrypted AWS Config S3 delivery bucket.",
         "A real Pulumi preview for the test stack passed with the policy pack, destructive gate, cost proxy, and IAM validation on 2026-05-09.",
         "aws guardduty list-detectors in eu-central-1 returned no detectors on 2026-05-09.",
         "aws securityhub describe-hub in eu-central-1 returned InvalidAccessException because the account is not subscribed on 2026-05-09.",
         "aws configservice describe-configuration-recorders and describe-delivery-channels in eu-central-1 returned empty lists on 2026-05-09."
       ],
-      "unresolvedReason": "Human MFA/SSO, post-apply GuardDuty/Security Hub/Config posture, threat-model refresh, permissions-boundary decision, and external security owner ledger remain outside the repository evidence."
+      "unresolvedReason": "Human MFA/SSO, post-apply GuardDuty/Security Hub/Config posture, administrator-owned permissions-boundary or exemption attestation, and external security owner approval remain outside the repository evidence."
     },
     {
       "id": "sustainability_governance",

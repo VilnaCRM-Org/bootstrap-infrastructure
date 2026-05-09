@@ -4,6 +4,8 @@ This template is designed to give DevOps and SRE teams a safe default starting
 point rather than a bare Pulumi skeleton. The controls in this guide describe
 what is already enforced in the repository and what should remain true as the
 template evolves.
+For the current Well-Architected identity, permissions, wildcard, boundary, and
+exception ledger, see [Security Operating Evidence](security-operating-evidence.md).
 
 ## Threat Model
 

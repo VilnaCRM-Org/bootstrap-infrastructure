@@ -28,7 +28,7 @@ owner attestations before any final 5/5 claim.
 | Priority, risk, and tradeoff register | `platform-maintainers` | Maintainer | Quarterly and before major infrastructure changes | Keep affected question below 5/5 and require maintainer review before merge. |
 | CI guardrails and branch protection | `platform-maintainers` | Platform owner | Per workflow or ruleset change | Treat PR as not merge-ready until required checks and reviewer rules are proven by GitHub metadata. |
 | Operations alerts, runbooks, KPI review, and ORR | SRE | SRE | Monthly, plus before 5/5 reviews | Keep Operational Excellence and Reliability claims capped until a current bundle exists. |
-| Security controls, threat model, and incident response | Security reviewer | SRE | Quarterly and per IAM or detection change | Keep Security claims capped and require an explicit exception owner. |
+| Security controls, threat model, and incident response | Security reviewer | SRE | Quarterly and per IAM or detection change | Use `docs/security-operating-evidence.md`; keep Security claims capped when external security exceptions are open. |
 | Backup, restore, drift, and DR | SRE | SRE | Monthly backup review; quarterly restore or DR drill | Treat restore or DR readiness as stale after 90 days without a successful drill. |
 | Cost controls and transfer review | FinOps owner | Maintainer | Monthly and per catalog expansion | Block Cost Optimization 5/5 claims until thresholds, reports, and payer-account tag evidence are current. |
 | Performance and capacity review | Platform owner | Maintainer | Monthly and per catalog expansion | Require remediation issue for missed SLOs before adding durable fanout. |
@@ -53,7 +53,7 @@ owner attestations before any final 5/5 claim.
 | AWS identity and metadata collector | `make report-well-architected-evidence` collector output passed identity, alert topic, CloudTrail, restore, and fanout checks on 2026-05-09. | Current metadata signal. | Re-run after every new push or account change. |
 | Branch protection | Collector reports zero required status checks. | Blocked. | Repository admin must update the active ruleset. |
 | Production approval | `gh api repos/.../environments/prod` returns 404; `prod-preview` has no protection rules. | Blocked. | Create protected `prod` environment with required reviewers before production claims. |
-| Security account services | Repository code now provisions GuardDuty, Security Hub, AWS Config recorder, and the Config delivery bucket; live account evidence remains pending until apply. | Blocked. | Security owner must enable or formally exempt these account controls and retain post-apply evidence. |
+| Security account services | Repository code now provisions GuardDuty, Security Hub, AWS Config recorder, and the Config delivery bucket; `docs/security-operating-evidence.md` records identity, permission, wildcard, boundary, and exception evidence; live account evidence remains pending until apply. | Blocked. | Security owner must enable or formally exempt these account controls and retain post-apply evidence. |
 
 ## KPI And Review Register
 
