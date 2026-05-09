@@ -1,0 +1,76 @@
+{
+  "workload": "bootstrap-infrastructure",
+  "owner": "platform-maintainers",
+  "reviewedAt": "2026-05-09T16:15:00Z",
+  "controlCount": 8,
+  "unresolvedControlCount": 5,
+  "evidenceLocation": "specs/issue-17-well-architected-5-of-5/",
+  "fallbackPlan": "Do not claim final 5/5 Well-Architected scores while any external control remains unresolved; keep deployment gated by PR review, local CI, AWS metadata checks, and explicit owner approval.",
+  "controls": [
+    {
+      "id": "branch_protection",
+      "status": "unresolved",
+      "evidence": [
+        "collect_well_architected_evidence reports zero required status checks in branch protection/ruleset metadata.",
+        "Current GitHub token reports viewerPermission=WRITE and viewerCanAdminister=false, so ruleset repair requires a repository administrator."
+      ],
+      "unresolvedReason": "Admin-owned ruleset must require the documented status checks: Preview, Destructive Diff Gate, IAM Validation, Secrets Scan, Dependency Audit, Bandit, Actionlint, CodeQL (python), and CodeQL (actions)."
+    },
+    {
+      "id": "alert_route",
+      "status": "passed",
+      "evidence": [
+        "AWS SNS topic arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations exists, is KMS encrypted, and has an SQS subscription.",
+        "collect_well_architected_evidence aws_sns_alert_route check passed."
+      ]
+    },
+    {
+      "id": "backup_restore",
+      "status": "passed",
+      "evidence": [
+        "AWS Backup restore job d7f25510-1dfd-4f11-8953-72ed1c971c2c completed on 2026-04-27.",
+        "restore-drill-evidence-2026-04-27.json records the restore target and cleanup confirmation."
+      ]
+    },
+    {
+      "id": "finops",
+      "status": "unresolved",
+      "evidence": [
+        "AWS Budget and Cost Anomaly Detection subscription exist and collect_well_architected_evidence aws_cost_controls passed."
+      ],
+      "unresolvedReason": "Named FinOps owner, approved thresholds, monthly report location, and payer-account cost allocation tag activation evidence remain external."
+    },
+    {
+      "id": "quota_headroom",
+      "status": "passed",
+      "evidence": [
+        "Repository fanout evidence is below configured thresholds for S3, KMS, IAM, Backup, ECR, Budgets, SNS, SQS, CloudTrail, and Cost Anomaly resources.",
+        "collect_well_architected_evidence repository_fanout check passed."
+      ]
+    },
+    {
+      "id": "security_account_controls",
+      "status": "unresolved",
+      "evidence": [
+        "OIDC roles, policy pack checks, CodeQL/Bandit/Gitleaks/pip-audit workflows, KMS keys, CloudTrail, and alert rules are defined."
+      ],
+      "unresolvedReason": "Human MFA/SSO, GuardDuty/Security Hub/Config posture, threat-model refresh, permissions-boundary decision, and external security owner ledger remain outside the repository evidence."
+    },
+    {
+      "id": "sustainability_governance",
+      "status": "unresolved",
+      "evidence": [
+        "Lifecycle policies, backup retention, ECR cleanup, and repository fanout checks exist."
+      ],
+      "unresolvedReason": "Named sustainability owner, region sustainability decision matrix, CI/build efficiency targets, stale asset report, and KPI review cadence remain incomplete."
+    },
+    {
+      "id": "production_approval",
+      "status": "unresolved",
+      "evidence": [
+        "Production workflow has preview/apply split and commit SHA gates."
+      ],
+      "unresolvedReason": "GitHub environment approval evidence, required reviewer settings, and production no-go evidence are external and not yet confirmed."
+    }
+  ]
+}
