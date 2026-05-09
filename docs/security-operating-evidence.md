@@ -76,7 +76,7 @@ that explains why the scoped repository controls are sufficient.
 | Static credential exposure | OIDC-first workflows, `.env` ignored, Gitleaks in CI. | Per workflow change and monthly vulnerability review | Revoke exposed key, rotate affected credentials, and block merge until scan passes. |
 | Over-privileged automation | Scoped IAM resources, tag conditions, wildcard justification, Access Analyzer. | Per IAM change | Keep Security score below 5/5 and require security-owner exception. |
 | Tampered or stale deployment plan | Saved-plan manifest with commit, backend, stack, preview hash, plan hash, and age checks. | Per deploy workflow change | Regenerate preview and plan from the intended commit. |
-| Missed control-plane detection | CloudTrail evidence, EventBridge rules, GuardDuty/Security Hub/AWS Config resources in Pulumi. | Monthly after apply | Keep security account controls unresolved until live service posture is proven. |
+| Missed control-plane detection | CloudTrail evidence, EventBridge rules, GuardDuty/Security Hub/AWS Config resources in Pulumi. | Monthly after apply | Keep security account controls unresolved until the managed apply path succeeds and live service posture is proven. |
 | Vulnerable dependencies or workflow code | `pip-audit`, Bandit, CodeQL, actionlint, dependency hygiene checks, and `docs/vulnerability-review-2026-05-09.md`. | Per PR and monthly review | Patch, pin, or record a time-bound exception with owner approval. |
 
 ## Network And Transit Applicability
@@ -102,4 +102,5 @@ with owners, expiry, rationale, and fallback behavior.
 | --- | --- | --- | --- | --- |
 | Human MFA/SSO evidence | Open external control | Repository admin plus security reviewer | Before final 5/5 claim | Prove organization or repository human-access policy without exposing private user data. |
 | Live GuardDuty/Security Hub/AWS Config posture | Open external control | Security reviewer plus SRE | After apply | Retain metadata-only evidence that detector, hub, recorder, and delivery channel are enabled. |
+| Test stack secrets-provider migration | Open external control | Maintainer plus security reviewer | Before managed test apply can close security-account evidence | `Pulumi Test Deploy` run `25606158994` failed at `pulumi up --plan` with `decrypting secret value: cipher: message authentication failed`; migrate the stack with `pulumi stack change-secrets-provider` under the configured AWS KMS provider or record a formal exemption. |
 | Permissions boundary or exemption attestation | Open external control | Security reviewer | Before final 5/5 claim | Record administrator-owned boundary ARN or approved exemption. |

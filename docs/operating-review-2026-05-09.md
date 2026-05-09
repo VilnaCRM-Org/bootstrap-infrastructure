@@ -22,7 +22,7 @@ actions.
 | --- | --- | --- | --- |
 | GitHub required checks | Repository admin | Active ruleset reports zero required status checks. | Apply documented branch ruleset with exact required check names. |
 | Production approval | Repository admin plus SRE | `prod` environment evidence is missing. | Create protected `prod` environment with required reviewers and branch restrictions. |
-| Security account posture | Security reviewer plus SRE | GuardDuty, Security Hub, and AWS Config are defined in Pulumi but not proven live after apply. | Retain post-apply metadata evidence or formal exemption. |
+| Security account posture | Security reviewer plus SRE | GuardDuty, Security Hub, and AWS Config are defined in Pulumi, but the latest managed `Pulumi Test Deploy` apply attempt for run `25606158994` failed at `pulumi up --plan` with `decrypting secret value: cipher: message authentication failed`. | Migrate or formally exempt the test stack secrets provider, rerun managed test apply, and retain post-apply metadata evidence; otherwise keep the security account controls unresolved. |
 
 ## KPI Observations
 
@@ -55,7 +55,7 @@ actions.
 | Observation | Action taken | Outcome | Next action |
 | --- | --- | --- | --- |
 | Saved plans needed stronger apply integrity. | Added plan manifest hash, commit, stack, backend, preview hash, and stale-plan validation. | REL4 passed. | Preserve tests for future workflow changes. |
-| Account security services needed concrete implementation evidence. | Added GuardDuty, Security Hub, AWS Config recorder/delivery, and security evidence. | Security score improved but live posture remains external. | Retain post-apply metadata evidence. |
+| Account security services needed concrete implementation evidence. | Added GuardDuty, Security Hub, AWS Config recorder/delivery, and security evidence. | Security score improved, but managed test apply is currently blocked by a Pulumi stack secrets-provider/decryption mismatch. | Migrate the stack with the configured AWS KMS secrets provider or record a security-owner exemption, then retain post-apply metadata evidence. |
 | Quota and catalog growth needed current headroom evidence. | Added metadata-only quota headroom report and no-go rules. | REL1 passed. | Refresh before catalog expansion. |
 | Data classes and retention were implicit. | Added data classification and retention matrix. | SUS4 passed and SEC7 improved. | Update before new data classes. |
 | Performance, applicability, and data-protection decisions were scattered. | Added performance, workload applicability, and data-protection evidence. | PERF1, PERF3, PERF4, SEC5, SEC8, SEC9, REL2, REL3, REL9, and SUS5 passed. | Keep these docs current per service change. |
@@ -83,7 +83,7 @@ destroy safety check, and follow-up date before new durable fanout is added.
 | AWS Backup | Use managed daily backups and quarterly restore drills. | Avoids custom backup workers; restore drill effort is planned quarterly. | Review Vault Lock exemption before production approval. |
 | EventBridge/SNS/SQS | Use managed event routing and durable queue subscription. | Avoids polling compute; live inventory and SNS-to-SQS test are current; downstream human route still external. | SRE records downstream route owner. |
 | Budgets and Cost Anomaly Detection | Use account-level budget/anomaly metadata through operations topic. | Provides spend guardrails; current thresholds, active tags, monthly cost, and transfer evidence are recorded in the FinOps review. | Refresh by 2026-06-09 or before production approval and catalog expansion. |
-| GuardDuty/Security Hub/AWS Config | Use managed account security services. | Adds account-level resources but avoids custom security inventory workers. | Retain post-apply metadata evidence. |
+| GuardDuty/Security Hub/AWS Config | Use managed account security services. | Adds account-level resources but avoids custom security inventory workers; current apply path requires the test stack secrets-provider migration to complete first. | Migrate the stack secrets provider or record a security-owner exemption, then retain post-apply metadata evidence. |
 | GitHub Actions | Use hosted runners and Dockerized toolchain. | Avoids idle self-hosted compute; the current hosted check suite completed after queue wait on 2026-05-09. | Review queue/run time monthly and per workflow change. |
 
 Cost-of-effort decision: this PR favors managed services and repository
