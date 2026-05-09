@@ -80,7 +80,7 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
                 oidc_provider_arn=self.oidc.provider.arn,
                 opts=child_opts,
             )
-            automation_policy_dependencies.append(self.automation.policy)
+            automation_policy_dependencies.extend(self.automation.policy_dependencies)
 
         backup_targets = [self.logging.bucket.arn, *self.state.bucket_arns.values()]
         self.backup = self.dependencies.backup_plan_cls(

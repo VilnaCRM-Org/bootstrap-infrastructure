@@ -17,6 +17,20 @@ AWS_REQUEST_TAG_ENVIRONMENT_KEY = "aws:RequestTag/Environment"
 AWS_REQUEST_TAG_PURPOSE_KEY = "aws:RequestTag/Purpose"
 AWS_RESOURCE_TAG_ENVIRONMENT_KEY = "aws:ResourceTag/Environment"
 AWS_RESOURCE_TAG_PURPOSE_KEY = "aws:ResourceTag/Purpose"
+IAM_ROLE_INLINE_POLICY_MAX_BYTES = 10_240
+
+_AUTOMATION_ACCOUNT_CONTROL_POLICY_SIDS = frozenset(
+    {
+        "CreateSecurityServiceLinkedRoles",
+        "ReadGuardDutyDetectors",
+        "CreateBootstrapGuardDutyDetector",
+        "ManageBootstrapGuardDutyDetector",
+        "ManageSecurityHubAccount",
+        "ManageAwsConfigRecorder",
+        "ManageAwsConfigDeliveryChannel",
+        "ManageBootstrapCostAllocationTags",
+    }
+)
 
 _AUTOMATION_S3_ACTIONS = (
     "s3:CreateBucket",
@@ -836,6 +850,51 @@ def _automation_policy(
     )
 
 
+def _compact_policy_document(statements: list[dict[str, object]]) -> str:
+    """Return a compact IAM policy document for inline policy size limits."""
+    return json.dumps(
+        {"Version": "2012-10-17", "Statement": statements},
+        separators=(",", ":"),
+    )
+
+
+def _automation_policy_documents(
+    account_id: str, settings: BootstrapSettings, repo_name: str
+) -> list[tuple[str, str]]:
+    """Split automation permissions into IAM inline policies under AWS limits."""
+    policy = json.loads(_automation_policy(account_id, settings, repo_name))
+    core_statements = []
+    account_control_statements = []
+    for statement in policy["Statement"]:
+        target = (
+            account_control_statements
+            if statement["Sid"] in _AUTOMATION_ACCOUNT_CONTROL_POLICY_SIDS
+            else core_statements
+        )
+        target.append(statement)
+
+    documents = [("policy", _compact_policy_document(core_statements))]
+    if account_control_statements:
+        documents.append(
+            (
+                "account-controls-policy",
+                _compact_policy_document(account_control_statements),
+            )
+        )
+
+    oversized = [
+        name
+        for name, document in documents
+        if len(document.encode("utf-8")) > IAM_ROLE_INLINE_POLICY_MAX_BYTES
+    ]
+    if oversized:
+        raise ValueError(
+            "automation inline policy document exceeds AWS size limit: "
+            + ", ".join(oversized)
+        )
+    return documents
+
+
 class GitHubAutomation(pulumi.ComponentResource):
     """Provision the ECR runner repository and GitHub automation role."""
 
@@ -954,27 +1013,40 @@ class GitHubAutomation(pulumi.ComponentResource):
             ),
         )
 
-        policy = aws.iam.RolePolicy(
-            f"{name}-policy",
-            name=f"{name}-policy",
-            role=role.id,
-            policy=_automation_policy(
-                aws.get_caller_identity().account_id,
-                configured_settings,
-                repo_name,
-            ),
-            opts=base_opts,
-        )
+        policies: list[aws.iam.RolePolicy] = []
+        for policy_suffix, policy_document in _automation_policy_documents(
+            aws.get_caller_identity().account_id,
+            configured_settings,
+            repo_name,
+        ):
+            policy_name = f"{name}-{policy_suffix}"
+            policy_opts = (
+                base_opts
+                if not policies
+                else pulumi.ResourceOptions(parent=self, depends_on=list(policies))
+            )
+            policies.append(
+                aws.iam.RolePolicy(
+                    policy_name,
+                    name=policy_name,
+                    role=role.id,
+                    policy=policy_document,
+                    opts=policy_opts,
+                )
+            )
 
         self.repository = repository
         self.role = role
-        self.policy = policy
+        self.policy = policies[0]
+        self.policies = policies
+        self.policy_dependencies = policies
 
         self.register_outputs(
             {
                 "repository_name": repository.name,
                 "repository_url": repository.repository_url,
                 "role_arn": role.arn,
-                "policy_name": policy.name,
+                "policy_name": self.policy.name,
+                "policy_names": [policy.name for policy in policies],
             }
         )

@@ -213,6 +213,22 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         action for statement in policy["Statement"] for action in statement["Action"]
     }
     statements = {statement["Sid"]: statement for statement in policy["Statement"]}
+    split_documents = automation._automation_policy_documents(
+        "123456789012",
+        config.settings,
+        "bootstrap-infrastructure",
+    )
+    split_statements = {
+        statement["Sid"]: statement
+        for _name, document in split_documents
+        for statement in json.loads(document)["Statement"]
+    }
+
+    assert split_statements == statements  # nosec B101
+    assert all(  # nosec B101
+        len(document.encode("utf-8")) <= automation.IAM_ROLE_INLINE_POLICY_MAX_BYTES
+        for _name, document in split_documents
+    )
 
     assert "s3:*" not in actions  # nosec B101
     assert "kms:*" not in actions  # nosec B101

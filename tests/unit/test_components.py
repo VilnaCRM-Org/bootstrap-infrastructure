@@ -1222,10 +1222,12 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     )
 
     start = len(pulumi_mocks.resources)
-    automation = GitHubAutomation("github-automation")
+    automation_resource = GitHubAutomation("github-automation")
 
-    repository_url = _sync_await(future_output(automation.repository.repository_url))
-    role_arn = _sync_await(future_output(automation.role.arn))
+    repository_url = _sync_await(
+        future_output(automation_resource.repository.repository_url)
+    )
+    role_arn = _sync_await(future_output(automation_resource.role.arn))
     assert repository_url is not None  # nosec B101
     assert role_arn is not None  # nosec B101
     assert repository_url.endswith("/pulumi-runner/bootstrap-infrastructure-test")  # nosec B101
@@ -1244,6 +1246,10 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         and state.get("name") == "PulumiAutomation-bootstrap-infrastructure-test"
     )
     policy_state = _resource_state_by_name(pulumi_mocks, "github-automation-policy")
+    account_policy_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-automation-account-controls-policy",
+    )
 
     assert repository_type == "aws:ecr/repository:Repository"  # nosec B101
     assert repository_state["name"] == "pulumi-runner/bootstrap-infrastructure-test"  # nosec B101
@@ -1254,10 +1260,24 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
         in role_state["assumeRolePolicy"]
     )  # nosec B101
+    for inline_policy_state in (policy_state, account_policy_state):
+        assert (  # nosec B101
+            len(inline_policy_state["policy"].encode("utf-8"))
+            <= automation.IAM_ROLE_INLINE_POLICY_MAX_BYTES
+        )
     automation_policy = json.loads(policy_state["policy"])
+    account_controls_policy = json.loads(account_policy_state["policy"])
     statements = {
-        statement["Sid"]: statement for statement in automation_policy["Statement"]
+        statement["Sid"]: statement
+        for document in (automation_policy, account_controls_policy)
+        for statement in document["Statement"]
     }
+    account_control_sids = {
+        statement["Sid"] for statement in account_controls_policy["Statement"]
+    }
+    assert "ManageSecurityHubAccount" in account_control_sids  # nosec B101
+    assert "ManageAwsConfigRecorder" in account_control_sids  # nosec B101
+    assert "CreateBootstrapGuardDutyDetector" in account_control_sids  # nosec B101
     assert statements["ManageBootstrapEcr"]["Resource"] == [  # nosec B101
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
         "bootstrap-infrastructure-test"
