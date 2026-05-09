@@ -398,13 +398,24 @@ def github_review_threads(
     unresolved = [
         node for node in nodes if isinstance(node, dict) and not node.get("isResolved")
     ]
+    outdated_unresolved = [
+        node for node in unresolved if bool(node.get("isOutdated"))
+    ]
+    blocking_unresolved = [
+        node for node in unresolved if not bool(node.get("isOutdated"))
+    ]
     return _check(
         "github_review_threads",
-        status="passed" if not unresolved else "failed",
-        evidence={"threadCount": len(nodes), "unresolvedThreadCount": len(unresolved)},
+        status="passed" if not blocking_unresolved else "failed",
+        evidence={
+            "threadCount": len(nodes),
+            "unresolvedThreadCount": len(unresolved),
+            "outdatedUnresolvedThreadCount": len(outdated_unresolved),
+            "blockingThreadCount": len(blocking_unresolved),
+        },
         blockers=(
-            [f"{len(unresolved)} review thread(s) remain unresolved."]
-            if unresolved
+            [f"{len(blocking_unresolved)} current review thread(s) remain unresolved."]
+            if blocking_unresolved
             else []
         ),
     )
@@ -478,7 +489,7 @@ def _review_threads_query() -> str:
         "repository(owner:$owner, name:$name) { "
         "pullRequest(number:$number) { "
         "reviewThreads(first:100, after:$after) { "
-        "nodes { isResolved } pageInfo { hasNextPage endCursor } } } } }"
+        "nodes { isResolved isOutdated } pageInfo { hasNextPage endCursor } } } } }"
     )
 
 

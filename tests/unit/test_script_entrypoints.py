@@ -1860,7 +1860,37 @@ def test_collect_well_architected_evidence_paginates_review_threads(
     assert evidence["status"] == "failed"  # nosec B101
     assert evidence["evidence"]["threadCount"] == 2  # nosec B101
     assert evidence["evidence"]["unresolvedThreadCount"] == 1  # nosec B101
+    assert evidence["evidence"]["blockingThreadCount"] == 1  # nosec B101
     assert any("after=cursor-1" in command for command in calls)  # nosec B101
+
+    def outdated_thread_runner(command, **_kwargs):
+        payload = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": [
+                                {"isResolved": False, "isOutdated": True},
+                                {"isResolved": True, "isOutdated": False},
+                            ],
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                }
+            }
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    outdated_evidence = module.github_review_threads(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        22,
+        runner=outdated_thread_runner,
+    )
+
+    assert outdated_evidence["status"] == "passed"  # nosec B101
+    assert outdated_evidence["evidence"]["unresolvedThreadCount"] == 1  # nosec B101
+    assert outdated_evidence["evidence"]["outdatedUnresolvedThreadCount"] == 1  # nosec B101
+    assert outdated_evidence["evidence"]["blockingThreadCount"] == 0  # nosec B101
 
     def missing_cursor_runner(command, **_kwargs):
         payload = {
