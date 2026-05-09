@@ -36,6 +36,7 @@ def _apply_mock_resource_defaults(
     default_handlers = {
         "aws:s3/bucket:Bucket": _mock_s3_bucket,
         "aws:iam/role:Role": _mock_iam_role,
+        "aws:iam/policy:Policy": _mock_iam_policy,
         "aws:iam/openIdConnectProvider:OpenIdConnectProvider": _mock_oidc_provider,
         "aws:ecr/repository:Repository": _mock_ecr_repository,
         "aws:kms/key:Key": _mock_kms_key,
@@ -71,6 +72,12 @@ def _mock_iam_role(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> 
     role_name = inputs.get("name") or name
     state.setdefault("name", role_name)
     state.setdefault("arn", f"arn:aws:iam::123456789012:role/{role_name}")
+
+
+def _mock_iam_policy(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    policy_name = inputs.get("name") or name
+    state.setdefault("name", policy_name)
+    state.setdefault("arn", f"arn:aws:iam::123456789012:policy/{policy_name}")
 
 
 def _mock_oidc_provider(

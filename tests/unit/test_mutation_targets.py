@@ -226,7 +226,8 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
 
     assert split_statements == statements  # nosec B101
     assert all(  # nosec B101
-        len(document.encode("utf-8")) <= automation.IAM_ROLE_INLINE_POLICY_MAX_BYTES
+        len(document.encode("utf-8"))
+        <= automation.IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES
         for _name, document in split_documents
     )
 

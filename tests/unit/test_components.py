@@ -1245,11 +1245,21 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         if type_ == "aws:iam/role:Role"
         and state.get("name") == "PulumiAutomation-bootstrap-infrastructure-test"
     )
-    policy_state = _resource_state_by_name(pulumi_mocks, "github-automation-policy")
-    account_policy_state = _resource_state_by_name(
-        pulumi_mocks,
-        "github-automation-account-controls-policy",
-    )
+    policy_names = [
+        "github-automation-policy",
+        "github-automation-iam-policy",
+        "github-automation-operations-policy",
+        "github-automation-cost-policy",
+        "github-automation-security-policy",
+    ]
+    policy_states = [
+        _resource_state_by_name(pulumi_mocks, policy_name)
+        for policy_name in policy_names
+    ]
+    attachment_states = [
+        _resource_state_by_name(pulumi_mocks, f"{policy_name}-attachment")
+        for policy_name in policy_names
+    ]
 
     assert repository_type == "aws:ecr/repository:Repository"  # nosec B101
     assert repository_state["name"] == "pulumi-runner/bootstrap-infrastructure-test"  # nosec B101
@@ -1260,20 +1270,25 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
         in role_state["assumeRolePolicy"]
     )  # nosec B101
-    for inline_policy_state in (policy_state, account_policy_state):
+    for managed_policy_state in policy_states:
         assert (  # nosec B101
-            len(inline_policy_state["policy"].encode("utf-8"))
-            <= automation.IAM_ROLE_INLINE_POLICY_MAX_BYTES
+            len(managed_policy_state["policy"].encode("utf-8"))
+            <= automation.IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES
         )
-    automation_policy = json.loads(policy_state["policy"])
-    account_controls_policy = json.loads(account_policy_state["policy"])
+    for attachment_state in attachment_states:
+        assert (  # nosec B101
+            attachment_state["role"] == "PulumiAutomation-bootstrap-infrastructure-test"
+        )
+    automation_policies = [
+        json.loads(policy_state["policy"]) for policy_state in policy_states
+    ]
     statements = {
         statement["Sid"]: statement
-        for document in (automation_policy, account_controls_policy)
+        for document in automation_policies
         for statement in document["Statement"]
     }
     account_control_sids = {
-        statement["Sid"] for statement in account_controls_policy["Statement"]
+        statement["Sid"] for statement in automation_policies[-1]["Statement"]
     }
     assert "ManageSecurityHubAccount" in account_control_sids  # nosec B101
     assert "ManageAwsConfigRecorder" in account_control_sids  # nosec B101
@@ -1296,7 +1311,8 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     ]
     all_actions = {
         action
-        for statement in automation_policy["Statement"]
+        for document in automation_policies
+        for statement in document["Statement"]
         for action in statement["Action"]
     }
     assert "kms:Decrypt" not in all_actions  # nosec B101
