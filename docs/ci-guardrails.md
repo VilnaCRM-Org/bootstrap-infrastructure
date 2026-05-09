@@ -89,6 +89,10 @@ Test and production deployment workflows use `make pulumi-plan` to save the
 Pulumi update plan and write the corresponding preview JSON artifact in the same
 operation. Destructive-diff and IAM validation gates consume that uploaded
 artifact, so apply jobs use a plan whose preview has already passed guardrails.
+`make pulumi-plan` also writes `.artifacts/pulumi-plan/manifest.json` with the
+selected stack, backend URL, commit SHA, plan hash, and preview hash. `make
+pulumi-up-plan` refuses to apply when the manifest is missing, stale, from a
+different commit or backend, or when the saved plan hash no longer matches.
 
 Stack selection follows this order:
 

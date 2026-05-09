@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import json
 import os
@@ -2041,6 +2042,201 @@ def test_run_pulumi_command_branch_helpers_return_select_failures(
     assert module._run_up_plan_command(context, ["test"]) == 9  # nosec B101
 
 
+def test_run_pulumi_command_validates_plan_manifest_error_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Reject saved plans with stale or mismatched manifest evidence."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    pulumi_dir = repo_dir / "pulumi"
+    policy_dir = repo_dir / "policy"
+    plan_dir = repo_dir / ".artifacts" / "pulumi-plan"
+    preview_dir = repo_dir / ".artifacts" / "pulumi-preview"
+    pulumi_dir.mkdir(parents=True)
+    policy_dir.mkdir()
+    plan_dir.mkdir(parents=True)
+    preview_dir.mkdir(parents=True)
+    plan_file = plan_dir / "test.plan"
+    other_plan = plan_dir / "other.plan"
+    plan_file.write_text("plan", encoding="utf-8")
+    other_plan.write_text("other", encoding="utf-8")
+    context = module.CommandContext(
+        root_dir=repo_dir,
+        env={"PULUMI_PLAN_NOW_EPOCH": "1000", "PULUMI_EXPECTED_SHA": "sha-a"},
+        pulumi_dir=pulumi_dir,
+        policy_pack_dir=policy_dir,
+        plan_dir=plan_dir,
+        preview_artifact_dir=preview_dir,
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+    )
+
+    assert module._load_plan_manifest(context) is None  # nosec B101
+    assert "manifest not found" in capsys.readouterr().err  # nosec B101
+
+    valid_entry = {
+        "stack": "test",
+        "planFile": ".artifacts/pulumi-plan/test.plan",
+        "planSha256": hashlib.sha256(b"plan").hexdigest(),
+    }
+    valid_manifest = {
+        "schemaVersion": 1,
+        "createdAtEpoch": 1000,
+        "commitSha": "sha-a",
+        "backendUrl": "file:///tmp/backend",
+        "stacks": [
+            {"stack": "skip", "planFile": "unused", "planSha256": "unused"},
+            valid_entry,
+        ],
+    }
+    assert (  # nosec B101
+        module._validate_plan_manifest(context, valid_manifest, "test", plan_file)
+        is None
+    )
+
+    bad_schema = {**valid_manifest, "schemaVersion": 2}
+    assert module._validate_plan_manifest(context, bad_schema, "test", plan_file) == 1
+    context.env["PULUMI_PLAN_MAX_AGE_SECONDS"] = "10"
+    stale = {**valid_manifest, "createdAtEpoch": 0}
+    assert module._validate_plan_manifest(context, stale, "test", plan_file) == 1
+    context.env.pop("PULUMI_PLAN_MAX_AGE_SECONDS")
+    wrong_sha = {**valid_manifest, "commitSha": "sha-b"}
+    assert module._validate_plan_manifest(context, wrong_sha, "test", plan_file) == 1
+    wrong_backend = {**valid_manifest, "backendUrl": "s3://other"}
+    assert (  # nosec B101
+        module._validate_plan_manifest(context, wrong_backend, "test", plan_file) == 1
+    )
+    missing_stack = {**valid_manifest, "stacks": []}
+    assert (  # nosec B101
+        module._validate_plan_manifest(context, missing_stack, "test", plan_file) == 1
+    )
+    wrong_plan_path = {
+        **valid_manifest,
+        "stacks": [{**valid_entry, "planFile": ".artifacts/pulumi-plan/other.plan"}],
+    }
+    assert (  # nosec B101
+        module._validate_plan_manifest(context, wrong_plan_path, "test", plan_file) == 1
+    )
+    wrong_hash = {
+        **valid_manifest,
+        "stacks": [{**valid_entry, "planSha256": hashlib.sha256(b"bad").hexdigest()}],
+    }
+    assert module._validate_plan_manifest(context, wrong_hash, "test", plan_file) == 1
+    assert "hash does not match" in capsys.readouterr().err  # nosec B101
+
+
+def test_run_pulumi_command_requires_manifest_before_saved_plan_apply(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A saved plan cannot be applied without its manifest."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    plan_dir = repo_dir / ".artifacts" / "pulumi-plan"
+    plan_dir.mkdir(parents=True)
+    plan_file = plan_dir / f"{module._safe_artifact_stem('test')}.plan"
+    plan_file.write_text("plan", encoding="utf-8")
+    context = module.CommandContext(
+        root_dir=repo_dir,
+        env={},
+        pulumi_dir=repo_dir / "pulumi",
+        policy_pack_dir=repo_dir / "policy",
+        plan_dir=plan_dir,
+        preview_artifact_dir=repo_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    assert module._run_up_plan_command(context, ["test"]) == 1  # nosec B101
+    assert "manifest not found" in capsys.readouterr().err  # nosec B101
+
+    (plan_dir / "manifest.json").write_text(
+        json.dumps({"schemaVersion": 2, "stacks": []}),
+        encoding="utf-8",
+    )
+    assert module._run_up_plan_command(context, ["test"]) == 1  # nosec B101
+    assert "unsupported" in capsys.readouterr().err  # nosec B101
+
+
+def test_run_pulumi_command_reuses_manifest_for_multiple_plan_applications(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Multi-stack apply should load one manifest and validate every plan."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    plan_dir = repo_dir / ".artifacts" / "pulumi-plan"
+    plan_dir.mkdir(parents=True)
+    context = module.CommandContext(
+        root_dir=repo_dir,
+        env={"PULUMI_PLAN_NOW_EPOCH": "1000"},
+        pulumi_dir=repo_dir / "pulumi",
+        policy_pack_dir=repo_dir / "policy",
+        plan_dir=plan_dir,
+        preview_artifact_dir=repo_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+    stacks = ["test", "prod"]
+    entries = []
+    for stack in stacks:
+        plan_file = module._plan_file(plan_dir, stack)
+        plan_file.write_text(f"plan-{stack}", encoding="utf-8")
+        entries.append(
+            {
+                "stack": stack,
+                "planFile": f".artifacts/pulumi-plan/{plan_file.name}",
+                "planSha256": hashlib.sha256(f"plan-{stack}".encode()).hexdigest(),
+            }
+        )
+    (plan_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "createdAtEpoch": 1000,
+                "commitSha": "",
+                "backendUrl": "file:///tmp/backend",
+                "stacks": entries,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert module._run_up_plan_command(context, stacks) == 0  # nosec B101
+
+
+def test_run_pulumi_command_plan_fails_when_saved_plan_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The plan command must not publish a manifest without a real saved plan."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    pulumi_dir = repo_dir / "pulumi"
+    policy_dir = repo_dir / "policy"
+    pulumi_dir.mkdir(parents=True)
+    policy_dir.mkdir()
+    context = module.CommandContext(
+        root_dir=repo_dir,
+        env={},
+        pulumi_dir=pulumi_dir,
+        policy_pack_dir=policy_dir,
+        plan_dir=repo_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=repo_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    assert module._run_plan_command(context, ["test"]) == 1  # nosec B101
+    assert "plan file not created" in capsys.readouterr().err  # nosec B101
+
+
 def test_select_or_init_stack_requires_file_backend_secrets_provider(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2111,6 +2307,12 @@ def test_run_pulumi_command_plan_handles_multiple_configured_stacks(
             stdout = kwargs.get("stdout")
             if stdout is not None:
                 stdout.write('{"changeSummary": {"create": 1}, "steps": []}')
+            if "--save-plan" in command:
+                plan_path = Path(command[command.index("--save-plan") + 1])
+                plan_path.write_text(
+                    f"plan for {command[command.index('--stack') + 1]}",
+                    encoding="utf-8",
+                )
             return subprocess.CompletedProcess(command, 0)
         if command[:3] == ["uv", "--project", str(repo_dir)]:
             return subprocess.CompletedProcess(
@@ -2129,8 +2331,18 @@ def test_run_pulumi_command_plan_handles_multiple_configured_stacks(
     assert f"summary for {prod_stem}" in output  # nosec B101
     assert f"{test_stem}.plan" in output_values  # nosec B101
     assert f"{prod_stem}.plan" in output_values  # nosec B101
+    assert "plan_manifest=" in output_values  # nosec B101
     assert "old summary" not in output  # nosec B101
     assert not (preview_dir / "stale.json").exists()  # nosec B101
+    manifest = json.loads(
+        (repo_dir / ".artifacts/pulumi-plan/manifest.json").read_text()
+    )
+    assert manifest["schemaVersion"] == 1  # nosec B101
+    assert manifest["backendUrl"].startswith("file://")  # nosec B101
+    assert [entry["stack"] for entry in manifest["stacks"]] == [  # nosec B101
+        "test",
+        "prod/eu",
+    ]
     initialized_prod = any(
         command[3:10]
         == [
@@ -2224,6 +2436,25 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
 
     selected_plan = plan_dir / "single.plan"
     selected_plan.write_text("plan", encoding="utf-8")
+    monkeypatch.setenv("PULUMI_PLAN_NOW_EPOCH", "1000")
+    (plan_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "createdAtEpoch": 1000,
+                "commitSha": "",
+                "backendUrl": "file:///tmp/backend",
+                "stacks": [
+                    {
+                        "stack": "test",
+                        "planFile": ".artifacts/pulumi-plan/single.plan",
+                        "planSha256": hashlib.sha256(b"plan").hexdigest(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     applied: list[list[str]] = []
 
     def apply_run(command, **kwargs):
@@ -2238,7 +2469,9 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
     assert applied_selected_plan  # nosec B101
 
     single_output = repo_dir / "single-output.txt"
-    module._write_plan_outputs(str(single_output), [selected_plan], plan_dir)
+    module._write_plan_outputs(
+        str(single_output), [selected_plan], plan_dir, plan_dir / "manifest.json"
+    )
     assert f"plan_file={selected_plan}" in single_output.read_text(encoding="utf-8")  # nosec B101
 
 
@@ -2267,6 +2500,9 @@ def test_run_pulumi_command_runs_generic_and_plan_without_github_output(
             stdout = kwargs.get("stdout")
             if stdout is not None:
                 stdout.write('{"changeSummary": {}, "steps": []}')
+            if "--save-plan" in command:
+                plan_path = Path(command[command.index("--save-plan") + 1])
+                plan_path.write_text("plan", encoding="utf-8")
             return subprocess.CompletedProcess(command, 0)
         if command[:3] == ["uv", "--project", str(repo_dir)]:
             return subprocess.CompletedProcess(command, 0, stdout="summary\n")

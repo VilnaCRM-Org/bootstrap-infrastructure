@@ -100,6 +100,7 @@ jobs:
       - name: Save test update plan and preview artifact
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_COMMIT_SHA: ${{ github.sha }}
         run: make pulumi-plan
 
       - name: Upload preview artifact
@@ -240,6 +241,7 @@ jobs:
       - name: Apply saved test plan
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_EXPECTED_SHA: ${{ github.sha }}
         run: make pulumi-up-plan
 
   post_apply_drift:

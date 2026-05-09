@@ -3,7 +3,7 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T16:15:00Z",
   "questionCount": 57,
-  "unresolvedQuestionCount": 57,
+  "unresolvedQuestionCount": 56,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
   "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
@@ -33,7 +33,6 @@
     "REL1",
     "REL2",
     "REL3",
-    "REL4",
     "REL5",
     "REL6",
     "REL7",
@@ -69,7 +68,7 @@
   "pillarUnresolvedQuestionCounts": {
     "Operational Excellence": 11,
     "Security": 11,
-    "Reliability": 13,
+    "Reliability": 12,
     "Performance Efficiency": 5,
     "Cost Optimization": 11,
     "Sustainability": 6
@@ -110,7 +109,7 @@
   "questionScoreAverages": {
     "Operational Excellence": 3.91,
     "Security": 3.82,
-    "Reliability": 3.77,
+    "Reliability": 3.85,
     "Performance Efficiency": 4.0,
     "Cost Optimization": 4.0,
     "Sustainability": 4.0
@@ -141,7 +140,7 @@
     {"id": "REL1", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Catalog fanout and static quota proxy are implemented and within thresholds; live AWS Service Quotas ownership evidence is missing.", "primaryBlocker": "Live quota headroom report and approval behavior."},
     {"id": "REL2", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "The network applicability ADR now records no managed VPC and future topology gates.", "primaryBlocker": "Future VPC resources must add topology, route, endpoint, flow-log, and ingress evidence."},
     {"id": "REL3", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Repository modules, dependency areas, failure scenarios, and owners are now mapped in operating evidence.", "primaryBlocker": "A diagram or recurring dependency review artifact is still needed for sustained 5/5 evidence."},
-    {"id": "REL4", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Preview/apply separation, destructive diff, account checks, and production SHA gates exist; saved-plan integrity criteria need fuller evidence.", "primaryBlocker": "Saved-plan manifest, hash verification, stale-plan rejection, and failure handling."},
+    {"id": "REL4", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "Saved preview/apply uses a manifest with stack, backend, commit SHA, preview hash, plan hash, stale-plan rejection, and apply-time verification before Pulumi can run `up --plan`.", "primaryBlocker": ""},
     {"id": "REL5", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Cross-region replication, versioning, lifecycle, backups, and degraded-mode playbooks are now documented.", "primaryBlocker": "Replica lag metrics and degraded-mode drill evidence are still missing."},
     {"id": "REL6", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Drift, CI guardrails, and EventBridge-to-SNS alerts exist; alarm matrix, replication metrics, and downstream alert test evidence remain incomplete.", "primaryBlocker": "Alarm matrix with route, owner, runbook, and test evidence."},
     {"id": "REL7", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Catalog metadata and fanout thresholds exist; demand signal review, stale cleanup, and live quota checks remain incomplete.", "primaryBlocker": "Demand model, stale asset report, and quota review cadence."},

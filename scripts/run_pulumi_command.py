@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import sys
+import time
 from pathlib import Path
+from typing import Any
 
 from _pulumi_command_support import (
     CommandContext,
@@ -54,6 +58,9 @@ SUPPORTED_COMMANDS = {
     "drift",
     "destroy",
 }
+PLAN_MANIFEST_NAME = "manifest.json"
+PLAN_MANIFEST_SCHEMA_VERSION = 1
+DEFAULT_PLAN_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 def _resolve_path(root_dir: Path, raw_path: str) -> Path:
@@ -127,16 +134,154 @@ def _write_preview_summary(
 
 
 def _write_plan_outputs(
-    output_file: str, plan_files: list[Path], plan_dir: Path
+    output_file: str, plan_files: list[Path], plan_dir: Path, manifest_file: Path
 ) -> None:
     with Path(output_file).open("a", encoding="utf-8") as handle:
         handle.write(f"plan_dir={plan_dir}\n")
+        handle.write(f"plan_manifest={manifest_file}\n")
         if len(plan_files) == 1:
             handle.write(f"plan_file={plan_files[0]}\n")
         handle.write("plan_files<<EOF\n")
         for plan_path in plan_files:
             handle.write(f"{plan_path}\n")
         handle.write("EOF\n")
+
+
+def _plan_manifest_file(context: CommandContext) -> Path:
+    return context.plan_dir / PLAN_MANIFEST_NAME
+
+
+def _artifact_path(context: CommandContext, path: Path) -> str:
+    return str(path.relative_to(context.root_dir))
+
+
+def _manifest_path(context: CommandContext, value: str) -> Path:
+    return context.root_dir / value
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _commit_sha(context: CommandContext) -> str:
+    return (
+        context.env.get("PULUMI_COMMIT_SHA")
+        or context.env.get("PULUMI_EXPECTED_SHA")
+        or context.env.get("GITHUB_SHA")
+        or ""
+    )
+
+
+def _plan_now_epoch(context: CommandContext) -> int:
+    if value := context.env.get("PULUMI_PLAN_NOW_EPOCH"):
+        return int(value)
+    return int(time.time())
+
+
+def _plan_max_age_seconds(context: CommandContext) -> int:
+    return int(
+        context.env.get(
+            "PULUMI_PLAN_MAX_AGE_SECONDS", str(DEFAULT_PLAN_MAX_AGE_SECONDS)
+        )
+    )
+
+
+def _plan_manifest_entry(
+    context: CommandContext, stack: str, plan_file: Path, preview_file: Path
+) -> dict[str, str]:
+    return {
+        "stack": stack,
+        "planFile": _artifact_path(context, plan_file),
+        "planSha256": _file_sha256(plan_file),
+        "previewFile": _artifact_path(context, preview_file),
+        "previewSha256": _file_sha256(preview_file),
+    }
+
+
+def _write_plan_manifest(
+    context: CommandContext, stack_entries: list[dict[str, str]]
+) -> Path:
+    manifest_file = _plan_manifest_file(context)
+    manifest = {
+        "schemaVersion": PLAN_MANIFEST_SCHEMA_VERSION,
+        "createdAtEpoch": _plan_now_epoch(context),
+        "commitSha": _commit_sha(context),
+        "backendUrl": context.backend_url,
+        "pulumiDir": _artifact_path(context, context.pulumi_dir),
+        "policyPackDir": _artifact_path(context, context.policy_pack_dir),
+        "stacks": stack_entries,
+    }
+    manifest_file.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    return manifest_file
+
+
+def _load_plan_manifest(context: CommandContext) -> dict[str, Any] | None:
+    manifest_file = _plan_manifest_file(context)
+    if not manifest_file.is_file():
+        print(
+            f"error: Pulumi plan manifest not found: {manifest_file}", file=sys.stderr
+        )
+        return None
+    return json.loads(manifest_file.read_text(encoding="utf-8"))
+
+
+def _manifest_stack_entry(
+    manifest: dict[str, Any], stack: str
+) -> dict[str, Any] | None:
+    for entry in manifest.get("stacks", []):
+        if entry.get("stack") == stack:
+            return entry
+    print(
+        f"error: Pulumi plan manifest has no entry for stack {stack}", file=sys.stderr
+    )
+    return None
+
+
+def _validate_plan_manifest(
+    context: CommandContext,
+    manifest: dict[str, Any],
+    stack: str,
+    plan_file: Path,
+) -> int | None:
+    if manifest.get("schemaVersion") != PLAN_MANIFEST_SCHEMA_VERSION:
+        print("error: unsupported Pulumi plan manifest schema.", file=sys.stderr)
+        return 1
+
+    plan_age = _plan_now_epoch(context) - int(manifest.get("createdAtEpoch", 0))
+    if plan_age > _plan_max_age_seconds(context):
+        print("error: Pulumi plan manifest is stale.", file=sys.stderr)
+        return 1
+
+    expected_sha = _commit_sha(context)
+    manifest_sha = manifest.get("commitSha", "")
+    if expected_sha and manifest_sha and expected_sha != manifest_sha:
+        print("error: Pulumi plan commit SHA does not match checkout.", file=sys.stderr)
+        return 1
+
+    if manifest.get("backendUrl") != context.backend_url:
+        print(
+            "error: Pulumi plan backend URL does not match apply backend.",
+            file=sys.stderr,
+        )
+        return 1
+
+    entry = _manifest_stack_entry(manifest, stack)
+    if entry is None:
+        return 1
+
+    recorded_plan = _manifest_path(context, entry["planFile"])
+    if recorded_plan.resolve() != plan_file.resolve():
+        print("error: Pulumi plan file does not match manifest entry.", file=sys.stderr)
+        return 1
+
+    if _file_sha256(plan_file) != entry.get("planSha256"):
+        print("error: Pulumi plan file hash does not match manifest.", file=sys.stderr)
+        return 1
+    return None
 
 
 def _context_from_environment() -> CommandContext:
@@ -194,6 +339,7 @@ def _prepare_plan_artifacts(context: CommandContext) -> Path:
 def _run_plan_command(context: CommandContext, stacks: list[str]) -> int:
     summary_file = _prepare_plan_artifacts(context)
     plan_files: list[Path] = []
+    manifest_entries: list[dict[str, str]] = []
 
     for stack in stacks:
         select_failure = _select_or_init_stack(context, stack)
@@ -208,15 +354,22 @@ def _run_plan_command(context: CommandContext, stacks: list[str]) -> int:
                 context,
                 StackCommand("plan", stack, plan_path=plan_path, stdout=handle),
             )
+        if not plan_path.is_file():
+            print(f"error: Pulumi plan file not created: {plan_path}", file=sys.stderr)
+            return 1
         _write_preview_summary(
             context.root_dir,
             preview_file,
             summary_file,
             env=context.env,
         )
+        manifest_entries.append(
+            _plan_manifest_entry(context, stack, plan_path, preview_file)
+        )
 
+    manifest_file = _write_plan_manifest(context, manifest_entries)
     if output_file := context.env.get("GITHUB_OUTPUT"):
-        _write_plan_outputs(output_file, plan_files, context.plan_dir)
+        _write_plan_outputs(output_file, plan_files, context.plan_dir, manifest_file)
     print(summary_file.read_text(encoding="utf-8"), end="")
     return 0
 
@@ -238,6 +391,8 @@ def _run_up_plan_command(context: CommandContext, stacks: list[str]) -> int:
         )
         return 1
 
+    manifest: dict[str, Any] | None = None
+
     for stack in stacks:
         select_failure = _select_or_init_stack(context, stack)
         if select_failure is not None:
@@ -247,6 +402,13 @@ def _run_up_plan_command(context: CommandContext, stacks: list[str]) -> int:
         if not plan_path.is_file():
             print(f"error: Pulumi plan file not found: {plan_path}", file=sys.stderr)
             return 1
+        if manifest is None:
+            manifest = _load_plan_manifest(context)
+            if manifest is None:
+                return 1
+        manifest_failure = _validate_plan_manifest(context, manifest, stack, plan_path)
+        if manifest_failure is not None:
+            return manifest_failure
         _run_stack_command(
             context,
             StackCommand("up-plan", stack, plan_path=plan_path),
