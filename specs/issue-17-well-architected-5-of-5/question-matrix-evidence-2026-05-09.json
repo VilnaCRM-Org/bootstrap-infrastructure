@@ -1,9 +1,9 @@
 {
   "workload": "bootstrap-infrastructure",
   "owner": "platform-maintainers",
-  "reviewedAt": "2026-05-09T16:15:00Z",
+  "reviewedAt": "2026-05-09T19:04:59Z",
   "questionCount": 57,
-  "unresolvedQuestionCount": 13,
+  "unresolvedQuestionCount": 12,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
   "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
@@ -19,14 +19,13 @@
     "SEC4",
     "SEC11",
     "REL8",
-    "REL13",
-    "PERF2"
+    "REL13"
   ],
   "pillarUnresolvedQuestionCounts": {
     "Operational Excellence": 5,
     "Security": 5,
     "Reliability": 2,
-    "Performance Efficiency": 1,
+    "Performance Efficiency": 0,
     "Cost Optimization": 0,
     "Sustainability": 0
   },
@@ -67,7 +66,7 @@
     "Operational Excellence": 4.45,
     "Security": 4.55,
     "Reliability": 4.77,
-    "Performance Efficiency": 4.8,
+    "Performance Efficiency": 5.0,
     "Cost Optimization": 5.0,
     "Sustainability": 5.0
   },
@@ -108,7 +107,7 @@
     {"id": "REL12", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "Unit, policy, project structure, workflow, guardrail, quota/fanout, restore, alert-route, and metadata drill evidence exist; docs/incident-drill-evidence-2026-05-09.md records current DR and degraded-mode scenario testing.", "primaryBlocker": ""},
     {"id": "REL13", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Replication, backups, restore evidence, SRE docs, RTO/RPO expectations, and docs/incident-drill-evidence-2026-05-09.md cover current test DR scenarios and recovery order.", "primaryBlocker": "Production approval and production DR owner evidence remain missing."},
     {"id": "PERF1", "pillar": "Performance Efficiency", "score": 5, "status": "passed", "rationale": "docs/performance-operating-evidence.md records resource-selection ADRs, alternatives, fanout counts, service constraints, owners, cadence, validation sources, and no-go fallback rules for repository-owned resource choices.", "primaryBlocker": ""},
-    {"id": "PERF2", "pillar": "Performance Efficiency", "score": 4, "status": "unresolved", "rationale": "No runtime compute is provisioned and CI control-plane SLO, queue, preview, drift, and storage growth metrics are now defined.", "primaryBlocker": "Hosted runner queue health is currently blocked and needs admin or provider resolution."},
+    {"id": "PERF2", "pillar": "Performance Efficiency", "score": 5, "status": "passed", "rationale": "No runtime compute is provisioned; CI control-plane SLOs, queue/run-time review rules, preview, IAM Validation, Destructive Diff Gate, Local Battery, security scans, quality gates, optional runner-image evidence, and future image-freshness requirements are current for the repository-owned compute-adjacent surfaces.", "primaryBlocker": ""},
     {"id": "PERF3", "pillar": "Performance Efficiency", "score": 5, "status": "passed", "rationale": "docs/performance-operating-evidence.md records storage access patterns, growth assumptions, RPO and latency expectations, lifecycle and storage-class rationale, review triggers, owners, and fallback rules for current repository data paths.", "primaryBlocker": ""},
     {"id": "PERF4", "pillar": "Performance Efficiency", "score": 5, "status": "passed", "rationale": "docs/performance-operating-evidence.md records the eu-central-1 primary and eu-west-1 replica region decision, no-VPC applicability, transfer-path assumptions, public/private endpoint triggers, validation, owners, and fallback rules.", "primaryBlocker": ""},
     {"id": "PERF5", "pillar": "Performance Efficiency", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records current performance observations for local validation, hosted queue state, workflow redundancy, artifact retention, storage/fanout posture, targets, and follow-up actions.", "primaryBlocker": ""},

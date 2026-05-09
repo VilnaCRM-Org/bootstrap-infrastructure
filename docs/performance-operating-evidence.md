@@ -25,7 +25,7 @@ repository fanout.
 | --- | --- | --- | --- | --- | --- | --- |
 | Infrastructure state | S3 backend with versioning, replication, lifecycle, and AWS Backup | Pulumi Service, local file backend, single-region S3 only | S3 provides durable object access, direct AWS IAM integration, and predictable control-plane latency without running servers. | Requires bucket/KMS policy care and restore evidence. | SRE | Per backend or region change |
 | Secrets provider | AWS KMS-backed Pulumi secrets provider | Passphrase provider, plaintext config, external vault | KMS removes local passphrase coordination and gives low-latency envelope operations in the target account. | KMS key availability becomes part of recovery planning. | Security reviewer | Per secrets-provider change |
-| Deployment execution | GitHub Actions plus Dockerized Pulumi toolchain | Maintainer laptops only, self-hosted runners by default | Hosted runners provide parallel PR checks and reproducible tool versions without idle compute. | Runner queue health is external and currently blocks hosted evidence freshness. | Platform owner | Monthly and per workflow change |
+| Deployment execution | GitHub Actions plus Dockerized Pulumi toolchain | Maintainer laptops only, self-hosted runners by default | Hosted runners provide parallel PR checks and reproducible tool versions without idle compute. | Runner queue health is external, so queue and runtime observations must be retained monthly and per workflow change. | Platform owner | Monthly and per workflow change |
 | Backup and restore | AWS Backup for protected S3 resources plus restore drills | Manual object copy, S3 versioning only | Managed backup gives scheduled recovery points and metadata evidence without custom workers. | Restore freshness must be retained. | SRE | Quarterly drill |
 | Control-plane detection | EventBridge, SNS, SQS, CloudTrail, GuardDuty, Security Hub, AWS Config | Polling jobs or custom daemons | Native event routing avoids always-on compute and scales with AWS control-plane events. | Live service posture still requires post-apply metadata evidence. | SRE plus security reviewer | Monthly after apply |
 | Repository fanout | Catalog-driven resources with static fanout and quota checks | Ad hoc per-repo stacks | Catalog estimates make resource growth visible before apply and avoid hidden per-repo expansion. | Conservative static thresholds can require manual review before actual quota exhaustion. | Maintainer | Per catalog change |
@@ -63,7 +63,7 @@ repository fanout.
 | Replica region | `eu-west-1` | Regional separation for recovery without adding an active runtime path. | Replica is not part of the interactive preview/apply path; revisit if restore objectives, residency, or transfer cost changes. | RTO/RPO, residency, or cost threshold change. |
 | VPC topology | Not applicable | This repository creates no VPC, load balancer, NAT gateway, endpoint, or user traffic path. | Keep future VPC work blocked until subnet, route, endpoint, flow-log, TLS, WAF, latency, and private-access evidence exists. | Any VPC, subnet, route table, endpoint, or NAT gateway resource. |
 | Public endpoints | None | No request/response workload exists in this repository. | Public endpoints must define TLS policy, monitoring, capacity, abuse controls, and owner before merge. | Any load balancer, API, CDN, listener, or public DNS record. |
-| CI network path | GitHub-hosted runner to AWS APIs | Network performance is dominated by hosted runner queue/start time and AWS control-plane API latency. | Hosted queue health is external and keeps PERF2 below 5/5; workflow design changes must preserve cache and parallelism evidence. | Persistent queue delay or workflow runtime threshold breach. |
+| CI network path | GitHub-hosted runner to AWS APIs | Network performance is dominated by hosted runner queue/start time and AWS control-plane API latency. | Current PR checks completed on 2026-05-09, including Preview, IAM Validation, Destructive Diff Gate, Local Battery, security scans, and quality gates; workflow design changes must preserve cache and parallelism evidence. | Persistent queue delay or workflow runtime threshold breach. |
 
 ## Review Rules
 
@@ -74,5 +74,6 @@ repository fanout.
   behavior.
 - New network paths must add topology, latency, private/public access, TLS,
   monitoring, and failure-mode evidence.
-- Hosted runner queue time remains external evidence; it must not be treated as
-  a repository performance regression unless workflow design is the bottleneck.
+- Hosted runner queue time remains external evidence; retain the current PR
+  check completion record monthly and per workflow change, and treat persistent
+  queue delay as a provider or workflow-design review trigger.
