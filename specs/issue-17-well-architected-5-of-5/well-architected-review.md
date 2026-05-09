@@ -19,7 +19,7 @@ Issue #17 records the following assessment:
 | --- | ---: | ---: | --- |
 | Operational Excellence | 3.09/5 | 2.70/5 | Strong CI exists, but alerting, incident ownership, runbooks, and operational health evidence need work. |
 | Security | 3.09/5 | 3.44/5 | Policy pack, OIDC, and scans are strong; bootstrap IAM blast radius and detection evidence need work. |
-| Reliability | 2.77/5 | 3.00/5 | Replication and backups exist; restore drills, alarms, quota checks, and DR targets need proof. |
+| Reliability | 2.77/5 | 3.00/5 | Replication, backups, and a latest restore-drill evidence record exist; alarms, live quota checks, recurring drill ownership, and DR targets need proof. |
 | Performance Efficiency | 2.60/5 | 3.33/5 | Managed services are reasonable; multi-repo fanout and quota modeling need guardrails. |
 | Cost Optimization | 1.55/5 | 1.33/5 | Weakest pillar; budgets, anomaly detection, cost estimation, transfer review, and cost caps are missing. |
 | Sustainability | 2.67/5 | 2.67/5 | Lifecycle basics exist; region selection, retention rationale, and sustainability goals need evidence. |
