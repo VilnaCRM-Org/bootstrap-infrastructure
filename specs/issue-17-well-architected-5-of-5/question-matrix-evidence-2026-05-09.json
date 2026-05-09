@@ -3,7 +3,7 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T16:15:00Z",
   "questionCount": 57,
-  "unresolvedQuestionCount": 55,
+  "unresolvedQuestionCount": 54,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
   "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
@@ -60,7 +60,6 @@
     "SUS1",
     "SUS2",
     "SUS3",
-    "SUS4",
     "SUS5",
     "SUS6"
   ],
@@ -70,7 +69,7 @@
     "Reliability": 11,
     "Performance Efficiency": 5,
     "Cost Optimization": 11,
-    "Sustainability": 6
+    "Sustainability": 5
   },
   "scoreScale": {
     "1": "No meaningful repository or account evidence.",
@@ -111,7 +110,7 @@
     "Reliability": 3.92,
     "Performance Efficiency": 4.0,
     "Cost Optimization": 4.0,
-    "Sustainability": 4.0
+    "Sustainability": 4.17
   },
   "questionScores": [
     {"id": "OPS1", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "The operating evidence now records priorities, business outcomes, risks, SLO impact, tradeoffs, owner, cadence, and fallback.", "primaryBlocker": "Final 5/5 still requires a sustained owner-reviewed cadence and all external gates to clear."},
@@ -131,7 +130,7 @@
     {"id": "SEC4", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "CloudTrail, EventBridge alerts, scans, drift checks, and Pulumi-managed GuardDuty, Security Hub, and AWS Config controls now exist; post-apply account evidence is still pending.", "primaryBlocker": "Live detection service posture and investigation runbooks."},
     {"id": "SEC5", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The operating evidence now records that no VPC or public endpoint is provisioned and defines future network gates.", "primaryBlocker": "Future network resources must add flow-log, ingress, TLS, WAF, and route evidence before 5/5 stays valid."},
     {"id": "SEC6", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The compute applicability statement now records no always-on runtime compute and defines future runner and image requirements.", "primaryBlocker": "ECR scan-result review and runner hardening evidence remain incomplete."},
-    {"id": "SEC7", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Tag taxonomy and storage data classes are now recorded alongside enforced classification, criticality, and retention tags.", "primaryBlocker": "Payer-account active cost-allocation tag evidence remains missing."},
+    {"id": "SEC7", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Tag taxonomy, storage data classes, retention classes, owner, storage, and deletion rationale are now recorded alongside enforced classification, criticality, and retention tags.", "primaryBlocker": "Payer-account active cost-allocation tag evidence remains missing."},
     {"id": "SEC8", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Versioning, encryption, KMS rotation, encrypted SNS, and backups exist; Vault Lock/Object Lock and S3 SSE-KMS decisions remain unresolved.", "primaryBlocker": "At-rest protection decision matrix with Vault Lock or exemption evidence."},
     {"id": "SEC9", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The transit matrix now covers current S3 and GitHub artifact paths and defines future endpoint requirements.", "primaryBlocker": "Future public endpoints must add TLS listener and monitoring evidence."},
     {"id": "SEC10", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Security incident scenarios for OIDC, KMS, state, logs, and backups now have first checks, recovery paths, and evidence rules.", "primaryBlocker": "Quarterly security incident drill records are still missing."},
@@ -168,7 +167,7 @@
     {"id": "SUS1", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "The region decision matrix now records primary and replica region rationale plus open sustainability evidence.", "primaryBlocker": "Owner-approved compliance, latency, transfer-cost, and sustainability comparison remain incomplete."},
     {"id": "SUS2", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "Catalog metadata tracks owner, lifecycle state, review date, and expected environments; cleanup signals and stale asset report are incomplete.", "primaryBlocker": "Monthly stale asset report and demand review cadence."},
     {"id": "SUS3", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "Managed-service preference, CI efficiency targets, no-idle-compute expectations, and review cadence are now recorded.", "primaryBlocker": "Recurring CI efficiency observations are still missing."},
-    {"id": "SUS4", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "Lifecycle, backup retention, ECR cleanup, and retention/classification tags exist; replica lifecycle rationale and complete retention matrix remain incomplete.", "primaryBlocker": "Data classification and retention matrix for all artifact classes."},
+    {"id": "SUS4", "pillar": "Sustainability", "score": 5, "status": "passed", "rationale": "docs/data-classification-retention.md covers current state, logs, Config snapshots, backups, replicas, ECR, CI artifacts, saved plans, cost metadata, evidence, and local config with classification, owner, retention, storage, and deletion rules.", "primaryBlocker": ""},
     {"id": "SUS5", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "The workload uses mostly managed/serverless services and creates no always-on runtime compute; explicit no-idle-compute rule for future additions is missing.", "primaryBlocker": "Service selection criteria with utilization proof for exceptions."},
     {"id": "SUS6", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "Sustainability owner, KPIs, review cadence, and exception process are now recorded.", "primaryBlocker": "Recurring quarterly sustainability review history is still missing."}
   ]

@@ -6,6 +6,8 @@ what is already enforced in the repository and what should remain true as the
 template evolves.
 For the current Well-Architected identity, permissions, wildcard, boundary, and
 exception ledger, see [Security Operating Evidence](security-operating-evidence.md).
+For repository data classes, retention, storage, and secret-safety rules, see
+[Data Classification And Retention](data-classification-retention.md).
 
 ## Threat Model
 

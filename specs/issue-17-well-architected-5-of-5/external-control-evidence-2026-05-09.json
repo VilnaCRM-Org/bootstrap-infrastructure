@@ -70,7 +70,8 @@
       "status": "passed",
       "evidence": [
         "Lifecycle policies, backup retention, ECR cleanup, and repository fanout checks exist.",
-        "docs/well-architected-operating-evidence.md records platform-maintainers as sustainability owner, region and retention decision matrices, CI/build efficiency targets, stale-asset fallback, KPI cadence, and exception process."
+        "docs/data-classification-retention.md records classification, owner, retention, storage, and deletion rationale for current artifact classes.",
+        "docs/well-architected-operating-evidence.md records platform-maintainers as sustainability owner, region decision matrices, CI/build efficiency targets, stale-asset fallback, KPI cadence, and exception process."
       ]
     },
     {
