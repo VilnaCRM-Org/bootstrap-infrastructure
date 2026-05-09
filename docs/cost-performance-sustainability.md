@@ -28,6 +28,10 @@ owners, cadence, validation sources, and fallback rules. It must be updated
 before adding new AWS service families, storage paths, regions, VPC resources,
 or public endpoints.
 
+Use `docs/workload-applicability-evidence.md` for the current no-VPC,
+no-public-endpoint, and no-idle-compute applicability record. That file is the
+service-selection gate for future runtime compute or public ingress.
+
 ## Preview Cost Proxy
 
 `make test-cost-proxy` reads Pulumi preview JSON and counts create or replace

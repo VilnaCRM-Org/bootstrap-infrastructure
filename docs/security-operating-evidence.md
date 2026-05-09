@@ -77,6 +77,15 @@ that explains why the scoped repository controls are sufficient.
 | Missed control-plane detection | CloudTrail evidence, EventBridge rules, GuardDuty/Security Hub/AWS Config resources in Pulumi. | Monthly after apply | Keep security account controls unresolved until live service posture is proven. |
 | Vulnerable dependencies or workflow code | `pip-audit`, Bandit, CodeQL, actionlint, dependency hygiene checks. | Per PR and monthly review | Patch, pin, or record a time-bound exception with owner approval. |
 
+## Network And Transit Applicability
+
+The current workload has no VPC, public endpoint, listener, API, CDN, public
+DNS record, or application request path. `docs/workload-applicability-evidence.md`
+records the network applicability statement, current TLS paths, future VPC and
+public-ingress triggers, owners, validation sources, and fallback behavior.
+Policy-pack coverage blocks public S3 exposure and public SSH/RDP exposure for
+future resources.
+
 ## Exception Register
 
 | Exception | Status | Owner | Expiry | Required follow-up |

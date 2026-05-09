@@ -32,6 +32,7 @@ owner attestations before any final 5/5 claim.
 | Backup, restore, drift, and DR | SRE | SRE | Monthly backup review; quarterly restore or DR drill | Treat restore or DR readiness as stale after 90 days without a successful drill. |
 | Cost controls and transfer review | FinOps owner | Maintainer | Monthly and per catalog expansion | Block Cost Optimization 5/5 claims until thresholds, reports, and payer-account tag evidence are current. |
 | Performance and capacity review | Platform owner | Maintainer | Monthly and per catalog expansion | Require remediation issue for missed SLOs before adding durable fanout. |
+| Workload applicability and dependency inventory | Maintainer | SRE and security reviewer | Quarterly and per new runtime, network, or dependency path | Use `docs/workload-applicability-evidence.md`; block affected 5/5 claims until scope, owners, and future gates are refreshed. |
 | Sustainability governance | `platform-maintainers` | Platform owner | Quarterly and per region or retention change | Block sustainability score increases until owner, KPI, and exception records are refreshed. |
 
 ## Priority And Risk Register
@@ -93,6 +94,8 @@ public endpoint, or runtime network plane. Network questions are therefore
 handled as conditional controls. Any future VPC or public endpoint change must
 add subnet, route, flow-log, TLS, ingress, WAF, and private-access evidence in
 the same PR.
+The current applicability statement and dependency inventory are retained in
+`docs/workload-applicability-evidence.md`.
 
 ### Compute Applicability
 
@@ -100,6 +103,8 @@ This repository provisions no always-on runtime compute. Compute-adjacent
 surfaces are GitHub Actions runners and the optional ECR runner image. Future
 always-on compute must include a utilization target, image vulnerability SLA,
 patch cadence, autoscaling or shutdown behavior, and owner-approved exception.
+The no-idle-compute rule for future service selection is retained in
+`docs/workload-applicability-evidence.md`.
 
 ### Region And Sustainability
 

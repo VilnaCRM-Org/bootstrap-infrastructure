@@ -170,6 +170,8 @@ for repository catalog fanout, preview cost proxy evidence, and review
 expectations before durable AWS resources are applied.
 Use the [performance operating evidence](performance-operating-evidence.md) for
 resource-selection, storage, region, network, and fanout ADRs.
+Use the [workload applicability evidence](workload-applicability-evidence.md)
+for the no-VPC, no-public-endpoint, dependency, and no-idle-compute record.
 
 ## Well-Architected Evidence
 

@@ -3,7 +3,7 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T16:15:00Z",
   "questionCount": 57,
-  "unresolvedQuestionCount": 51,
+  "unresolvedQuestionCount": 46,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
   "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
@@ -23,15 +23,11 @@
     "SEC2",
     "SEC3",
     "SEC4",
-    "SEC5",
     "SEC6",
     "SEC7",
     "SEC8",
-    "SEC9",
     "SEC10",
     "SEC11",
-    "REL2",
-    "REL3",
     "REL5",
     "REL6",
     "REL7",
@@ -57,16 +53,15 @@
     "SUS1",
     "SUS2",
     "SUS3",
-    "SUS5",
     "SUS6"
   ],
   "pillarUnresolvedQuestionCounts": {
     "Operational Excellence": 11,
-    "Security": 11,
-    "Reliability": 11,
+    "Security": 9,
+    "Reliability": 9,
     "Performance Efficiency": 2,
     "Cost Optimization": 11,
-    "Sustainability": 5
+    "Sustainability": 4
   },
   "scoreScale": {
     "1": "No meaningful repository or account evidence.",
@@ -103,11 +98,11 @@
   },
   "questionScoreAverages": {
     "Operational Excellence": 3.91,
-    "Security": 4.0,
-    "Reliability": 3.92,
+    "Security": 4.18,
+    "Reliability": 4.08,
     "Performance Efficiency": 4.6,
     "Cost Optimization": 4.0,
-    "Sustainability": 4.17
+    "Sustainability": 4.33
   },
   "questionScores": [
     {"id": "OPS1", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "The operating evidence now records priorities, business outcomes, risks, SLO impact, tradeoffs, owner, cadence, and fallback.", "primaryBlocker": "Final 5/5 still requires a sustained owner-reviewed cadence and all external gates to clear."},
@@ -125,16 +120,16 @@
     {"id": "SEC2", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "GitHub OIDC trust, account checks, local credential boundaries, human-admin ownership, and static-key exception handling are documented in the security operating evidence.", "primaryBlocker": "External human MFA/SSO and static-key exception evidence."},
     {"id": "SEC3", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Automation IAM is materially narrowed; permission surfaces, wildcard justifications, policy-pack regression tests, IAM validation path, and the permissions-boundary decision are documented.", "primaryBlocker": "Administrator-owned permissions-boundary or exemption attestation and fresh hosted Access Analyzer evidence."},
     {"id": "SEC4", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "CloudTrail, EventBridge alerts, scans, drift checks, and Pulumi-managed GuardDuty, Security Hub, and AWS Config controls now exist; post-apply account evidence is still pending.", "primaryBlocker": "Live detection service posture and investigation runbooks."},
-    {"id": "SEC5", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The operating evidence now records that no VPC or public endpoint is provisioned and defines future network gates.", "primaryBlocker": "Future network resources must add flow-log, ingress, TLS, WAF, and route evidence before 5/5 stays valid."},
+    {"id": "SEC5", "pillar": "Security", "score": 5, "status": "passed", "rationale": "docs/workload-applicability-evidence.md records no current VPC or public network plane, current managed-service paths, future VPC/public-ingress triggers, owners, validation sources, fallback behavior, and mandatory policy-pack controls for public S3 and open admin ports.", "primaryBlocker": ""},
     {"id": "SEC6", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The compute applicability statement now records no always-on runtime compute and defines future runner and image requirements.", "primaryBlocker": "ECR scan-result review and runner hardening evidence remain incomplete."},
     {"id": "SEC7", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Tag taxonomy, storage data classes, retention classes, owner, storage, and deletion rationale are now recorded alongside enforced classification, criticality, and retention tags.", "primaryBlocker": "Payer-account active cost-allocation tag evidence remains missing."},
     {"id": "SEC8", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Versioning, encryption, KMS rotation, encrypted SNS, and backups exist; Vault Lock/Object Lock and S3 SSE-KMS decisions remain unresolved.", "primaryBlocker": "At-rest protection decision matrix with Vault Lock or exemption evidence."},
-    {"id": "SEC9", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "The transit matrix now covers current S3 and GitHub artifact paths and defines future endpoint requirements.", "primaryBlocker": "Future public endpoints must add TLS listener and monitoring evidence."},
+    {"id": "SEC9", "pillar": "Security", "score": 5, "status": "passed", "rationale": "docs/workload-applicability-evidence.md records current S3, GitHub Actions, AWS API, EventBridge/SNS/SQS, Backup, KMS, CloudTrail, and AWS Config transit paths, with TLS protections and future public-endpoint listener, certificate, monitoring, abuse-control, and rollback requirements.", "primaryBlocker": ""},
     {"id": "SEC10", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Security incident scenarios for OIDC, KMS, state, logs, and backups now have first checks, recovery paths, and evidence rules.", "primaryBlocker": "Quarterly security incident drill records are still missing."},
     {"id": "SEC11", "pillar": "Security", "score": 4, "status": "unresolved", "rationale": "Secure SDLC controls are backed by scans, policy tests, IAM validation paths, owner expectations, and exception fallback rules.", "primaryBlocker": "Security account services and recurring vulnerability review evidence remain incomplete."},
     {"id": "REL1", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "quota-headroom-evidence-2026-05-09.json records count-only AWS metadata, Service Quotas/default quota values, repository fanout projection, remaining headroom, owner, cadence, and no-go behavior for future expansion.", "primaryBlocker": ""},
-    {"id": "REL2", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "The network applicability ADR now records no managed VPC and future topology gates.", "primaryBlocker": "Future VPC resources must add topology, route, endpoint, flow-log, and ingress evidence."},
-    {"id": "REL3", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Repository modules, dependency areas, failure scenarios, and owners are now mapped in operating evidence.", "primaryBlocker": "A diagram or recurring dependency review artifact is still needed for sustained 5/5 evidence."},
+    {"id": "REL2", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "docs/workload-applicability-evidence.md records the no-VPC topology, current managed paths, future VPC trigger conditions, owners, validation sources, and fallback behavior; docs/performance-operating-evidence.md records region and network ADR criteria.", "primaryBlocker": ""},
+    {"id": "REL3", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "docs/workload-applicability-evidence.md records the service dependency inventory with roles, inputs, outputs, failure modes, owners, and evidence locations for GitHub, Pulumi state, KMS, logs, backup, alerting, IAM/OIDC, cost controls, and security account controls.", "primaryBlocker": ""},
     {"id": "REL4", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "Saved preview/apply uses a manifest with stack, backend, commit SHA, preview hash, plan hash, stale-plan rejection, and apply-time verification before Pulumi can run `up --plan`.", "primaryBlocker": ""},
     {"id": "REL5", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Cross-region replication, versioning, lifecycle, backups, and degraded-mode playbooks are now documented.", "primaryBlocker": "Replica lag metrics and degraded-mode drill evidence are still missing."},
     {"id": "REL6", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "Drift, CI guardrails, and EventBridge-to-SNS alerts exist; alarm matrix, replication metrics, and downstream alert test evidence remain incomplete.", "primaryBlocker": "Alarm matrix with route, owner, runbook, and test evidence."},
@@ -165,7 +160,7 @@
     {"id": "SUS2", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "Catalog metadata tracks owner, lifecycle state, review date, and expected environments; cleanup signals and stale asset report are incomplete.", "primaryBlocker": "Monthly stale asset report and demand review cadence."},
     {"id": "SUS3", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "Managed-service preference, CI efficiency targets, no-idle-compute expectations, and review cadence are now recorded.", "primaryBlocker": "Recurring CI efficiency observations are still missing."},
     {"id": "SUS4", "pillar": "Sustainability", "score": 5, "status": "passed", "rationale": "docs/data-classification-retention.md covers current state, logs, Config snapshots, backups, replicas, ECR, CI artifacts, saved plans, cost metadata, evidence, and local config with classification, owner, retention, storage, and deletion rules.", "primaryBlocker": ""},
-    {"id": "SUS5", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "The workload uses mostly managed/serverless services and creates no always-on runtime compute; explicit no-idle-compute rule for future additions is missing.", "primaryBlocker": "Service selection criteria with utilization proof for exceptions."},
+    {"id": "SUS5", "pillar": "Sustainability", "score": 5, "status": "passed", "rationale": "docs/workload-applicability-evidence.md records managed/serverless-first service selection, confirms no always-on runtime compute, and defines no-idle-compute exception evidence for utilization, scaling, ownership, patching, vulnerability response, and cross-pillar impact.", "primaryBlocker": ""},
     {"id": "SUS6", "pillar": "Sustainability", "score": 4, "status": "unresolved", "rationale": "Sustainability owner, KPIs, review cadence, and exception process are now recorded.", "primaryBlocker": "Recurring quarterly sustainability review history is still missing."}
   ]
 }
