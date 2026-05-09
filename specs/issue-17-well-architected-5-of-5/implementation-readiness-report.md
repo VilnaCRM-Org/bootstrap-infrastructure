@@ -1,12 +1,12 @@
 # Implementation Readiness: Well-Architected 5/5 Remediation Roadmap
 
 ## Readiness Summary
-Issue #17 planning is ready and the first implementation PR is now scoped to
-safe, non-secret controls that do not require irreversible account-level cost or
-retention decisions. This implementation covers the highest-priority in-repo
-slice: automation IAM blast-radius reduction, operations/security event
-monitoring, classification tags, repository metadata, static fanout checks,
-preview cost proxy evidence, and AWS Budget/Cost Anomaly Detection controls.
+Issue #17 planning is ready and the first implementation PR now covers the
+repository-owned Well-Architected remediation slice: automation IAM blast-radius
+reduction, operations/security event monitoring, classification tags,
+repository metadata, static fanout checks, preview cost proxy evidence,
+AWS Budget/Cost Anomaly Detection controls, security-account service
+definitions, operating evidence, and structured score-claim gates.
 
 This implementation does not claim final 5/5 Well-Architected scores. Several
 target controls still require external evidence or account-owner decisions,
@@ -27,7 +27,7 @@ evidence remain open.
 | Question coverage | Ready | `question-matrix.md` covers all 57 AWS Well-Architected questions with current evidence, gaps, target proof, owner role, and cadence. |
 | FR/NFR coverage | Ready | PRD and architecture cover current repo functions, non-functional constraints, evidence freshness, and score-claim gates. |
 | Secret safety | Ready | Future validation must avoid stack exports, decrypted config, cloud-secret payloads, and environment dumps. |
-| Implementation readiness | Partially implemented | P0/P1 in-repo guardrails are implemented where ownership is clear; remaining items need owners and external evidence decisions. |
+| Implementation readiness | Repository-owned slice implemented | P0/P1 in-repo guardrails, operating evidence, and AWS metadata evidence are implemented where ownership is clear; remaining blockers are external GitHub admin, security-owner, downstream alert-route, and production-approval controls. |
 
 ## Implemented In This PR
 
@@ -41,17 +41,23 @@ evidence remain open.
 | Catalog demand metadata | Repository catalogs support `owner`, `lifecycleState`, `lastReviewed`, and `expectedEnvironments`; metadata is exported and tagged where repository resources are created. |
 | Static fanout | `make test-repository-fanout` estimates resource growth before catalog expansion is merged. |
 | Preview cost proxy | `make test-cost-proxy` reads Pulumi preview JSON and blocks unusually large durable-resource fanout. |
+| Security account controls | Pulumi defines GuardDuty, Security Hub, AWS Config recorder/delivery, and a dedicated encrypted Config delivery bucket; live post-apply posture remains an external evidence requirement. |
+| Operating evidence | Current docs record RACI roles, ORR, KPI review, restore and DR drills, FinOps evidence, alert-route evidence, secure-SDLC evidence, performance/resource ADRs, sustainability governance, and question-level score rationale. |
+| GitHub admin handoff | `scripts/configure_github_repository_controls.py` emits the required branch ruleset and protected `prod` environment payloads, refuses `--apply` without repository admin rights, and documents the exact command a repository admin must run. |
 | Documentation | SRE, security, CI guardrail, testing, and cost/performance/sustainability docs describe the new evidence and remaining external-control requirements. |
 
-## Recommended Implementation Order
+## Remaining Handoff Order
 
-1. Epic 1: make same-repo AWS-backed guardrails mandatory and evidence-backed.
-2. Epic 2: fix replication-region defaulting, allowlist validation, and RTO/RPO assumptions.
-3. Epic 3: reduce bootstrap automation IAM blast radius and document remaining wildcards.
-4. Epic 4 and Epic 5: add monitoring, alerting, incident process, restore runbooks, and restore validation.
-5. Epic 6 and Epic 7: operationalize cost controls, repo-fanout preflight, quota checks, and cleanup cadence.
-6. Epic 8: add lifecycle, sustainability, and conditional future policy coverage.
-7. Run a follow-up Well-Architected review and update scores only after implementation evidence exists.
+1. Repository admin applies the documented `main` ruleset and protected `prod`
+   environment.
+2. Security owner applies or formally exempts the GuardDuty, Security Hub,
+   AWS Config, permissions-boundary, MFA/SSO, and static-key exception controls.
+3. SRE records the downstream human alert route or an accepted SQS-only
+   escalation exemption.
+4. Production owner records protected-environment approval evidence for the
+   reviewed commit, saved plan, destructive diff, and IAM validation.
+5. Maintainer reruns the collector and updates structured evidence only when
+   every question row and external control is resolved.
 
 ## External Dependencies
 
@@ -59,13 +65,13 @@ evidence remain open.
 | --- | --- | --- |
 | GitHub branch protection settings | Epic 1 | Required status checks, reviewer rules, and skip policy evidence. |
 | FinOps operating model and payer-account evidence | Epic 6 | Current for the test workload in `docs/finops-review-2026-05-09.md`; refresh before production approval, catalog growth, new replicated data classes, region changes, or service-family expansion. |
-| Alert routing destination | Epic 4 | Confirmed SNS subscription, ChatOps, ticketing, or external incident tool ownership and routing evidence. |
-| Backup Vault Lock decision | Epic 5 | In-repo implementation evidence or external-control exemption. |
-| Quota ownership | Epic 7 | Service quota thresholds, approval owner, and escalation path. |
-| Restore drill evidence | Epic 5 | `RESTORE_DRILL_EVIDENCE` record for this bootstrap workload with latest non-production restore date, operator, source backup, validation result, isolated restore location, and cleanup confirmation. |
+| Alert routing destination | Epic 4 | SNS-to-SQS routing is current in `docs/alert-routing-evidence.md`; downstream human route, ChatOps, ticketing, or incident-tool ownership evidence is still external. |
+| Backup Vault Lock decision | Epic 5 | Current test-workload exemption is recorded in `docs/data-protection-recovery-evidence.md`; revisit before production approval or expiry. |
+| Quota ownership | Epic 7 | Current headroom is recorded in `quota-headroom-evidence-2026-05-09.json`; refresh before catalog expansion or account-level service changes. |
+| Restore drill evidence | Epic 5 | Current restore evidence is `restore-drill-evidence-2026-04-27.json`; next restore drill is due before the 90-day freshness window expires. |
 | Production approval evidence | Epic 1 | Protected environment reviewer rules, approved apply evidence, reviewed SHA, and skipped-check policy. |
-| Security account controls | SEC1-SEC11 | MFA/SSO posture, CloudTrail live-apply evidence, GuardDuty/Security Hub/Config evidence, vulnerability SLA, and exception register where applicable. |
-| Sustainability goals | Epic 8 | Owner-approved goals for region selection, retention, backups, and cleanup. |
+| Security account controls | SEC1-SEC11 | MFA/SSO posture, static-key exception evidence, permissions-boundary or exemption attestation, post-apply GuardDuty/Security Hub/Config evidence, and security-owner approval. |
+| Sustainability goals | Epic 8 | Current governance is recorded in `docs/well-architected-operating-evidence.md` and `docs/operating-review-2026-05-09.md`; refresh before region, retention, compute, or catalog expansion changes. |
 | Well-Architected review owner | Epic 0 | Owner for question-matrix updates, score changes, evidence expiry, and follow-up review. |
 
 ## Remaining Blockers For Honest 5/5
@@ -73,17 +79,29 @@ evidence remain open.
 The current branch implements meaningful repo-owned controls, but a final 5/5
 claim is blocked until all of the following are current and non-secret:
 
-- Branch protection proof for exact required checks and reviewer rules.
-- Confirmed operations SNS subscription and downstream incident route.
-- Live AWS Service Quotas or account headroom evidence for catalog expansion.
-- Backup Vault Lock decision or documented exemption before production
-  approval.
-- Named RACI owners, severity escalation path, KPI observations, and runbook
-  drill records for each shared environment.
-- Security account evidence for human access posture and external detection
-  services.
-- Production apply approval evidence tied to the reviewed commit SHA.
-- Sustainability owner, KPI cadence, and exception process.
+- Repository-admin proof that the active `main` ruleset requires `Preview`,
+  `Destructive Diff Gate`, `IAM Validation`, `Secrets Scan`,
+  `Dependency Audit`, `Bandit`, `Actionlint`, `CodeQL (python)`, and
+  `CodeQL (actions)`.
+- Repository-admin proof that the protected `prod` environment exists, requires
+  reviewer approval, prevents self-review, and limits deployments to protected
+  branches.
+- Downstream human alert-route evidence for the operations queue or an accepted
+  SRE exemption explaining why durable SQS-only routing is sufficient.
+- Security-owner evidence for human MFA/SSO, static-key exceptions,
+  administrator-owned permissions boundary or exemption, and post-apply
+  GuardDuty/Security Hub/AWS Config posture.
+- Production apply approval evidence tied to the reviewed commit SHA, saved-plan
+  manifest, destructive-diff result, IAM validation result, and approver.
+
+Repository admins can apply the GitHub-owned controls with:
+
+```bash
+python3 scripts/configure_github_repository_controls.py \
+  --repo VilnaCRM-Org/bootstrap-infrastructure \
+  --prod-reviewer Kravalg \
+  --apply
+```
 
 ## Risk Controls For Future PRs
 
@@ -101,7 +119,9 @@ claim is blocked until all of the following are current and non-secret:
 
 ## Test-Account Validation Strategy
 
-The planning PR itself does not mutate Pulumi resources, but the user requested a real AWS test-account validation path before merge. The safe validation strategy is:
+This implementation PR changes Pulumi definitions but does not mutate AWS
+resources unless an approved local apply or GitHub deploy workflow runs. The
+safe validation strategy is:
 
 | Step | Method | Secret-safety rule | Expected evidence |
 | --- | --- | --- | --- |
@@ -112,16 +132,18 @@ The planning PR itself does not mutate Pulumi resources, but the user requested 
 
 Current implementation-PR readiness observations:
 
-- Local validation can prove static behavior, policy behavior, preview-artifact
-  parsing, and unprivileged guardrail behavior without reading secrets.
-- Real test-account evidence still must come from either a safe local
-  `pulumi -C pulumi ...` run with AWS KMS backend metadata already configured or
-  the existing OIDC-backed GitHub `Pulumi Test Deploy` workflow for this PR
-  branch.
-- If GitHub test deploy prerequisite metadata is absent, no Pulumi preview/apply
-  will run and no AWS resources will be changed. The missing metadata must be
-  supplied through the current GitHub environment model or replaced by a
-  follow-up Pulumi ESC integration before final merge-readiness can be claimed.
+- Local validation and hosted PR checks are current for the branch head,
+  including Preview, Destructive Diff Gate, IAM Validation, Local Battery,
+  security scans, quality gates, mutation, dependency checks, and CodeQL.
+- The collector confirms the PR head matches the local head, the PR is approved,
+  and no current review threads are unresolved.
+- Real test-account preview evidence exists for the branch, but live
+  GuardDuty/Security Hub/AWS Config posture is still pending until the account
+  controls are applied from the intended shared Pulumi backend or explicitly
+  exempted by the security owner.
+- The current GitHub token has write access but not repository admin rights, so
+  branch-protection and protected-environment repair must be performed by a
+  repository admin.
 
 ## No-Go Conditions
 
@@ -148,6 +170,9 @@ This PR should be validated by:
   `QUESTION_MATRIX_EVIDENCE` and `EXTERNAL_CONTROL_EVIDENCE` records exist.
 - Dispatching or observing the existing `Pulumi Test Deploy` workflow, or a
   safe equivalent test-account Pulumi run, before merge readiness is claimed.
+- Re-running `scripts/collect_well_architected_evidence.py` after each external
+  control change and only updating final 5/5 claims when both structured
+  evidence files report zero unresolved items.
 
 Direct local Pulumi apply is acceptable only when the active AWS identity,
 backend URL, stack names, and AWS KMS secrets provider are configured without
