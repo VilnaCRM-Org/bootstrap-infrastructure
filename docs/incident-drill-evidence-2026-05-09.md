@@ -49,5 +49,5 @@ The drill satisfies current repository-owned incident and DR exercise evidence
 for backup health, state/log replication posture, degraded-mode decision paths,
 KMS/IAM/OIDC/logging incident response, and hosted workflow failure response.
 It does not close branch protection, production approval, downstream human alert
-route, human MFA/SSO, permissions-boundary attestation, or live GuardDuty,
-Security Hub, and AWS Config posture evidence.
+route, human MFA/SSO, permissions-boundary attestation, or external
+security-owner approval.

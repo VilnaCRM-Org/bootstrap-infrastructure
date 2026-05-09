@@ -61,7 +61,7 @@ The 2026-05-09 evidence record at
 `question-matrix-evidence-2026-05-09.json` now includes a 1-5 score for each of
 the 57 AWS Well-Architected Framework questions. These scores are current
 review observations for this PR and the repository, not final 5/5 claims. As of
-the 2026-05-09 review, 13 questions remain unresolved because those rows still
+the 2026-05-09 review, 11 questions remain unresolved because those rows still
 have at least one missing owner, freshness, validation, fallback, drill,
 account, or administrator-owned evidence item.
 
@@ -69,8 +69,9 @@ Repository-owned operating evidence for owners, KPI cadence, priority/risk
 tradeoffs, runbooks, decision matrices, and sustainability governance is now
 recorded in `docs/well-architected-operating-evidence.md`. It improves the
 current question-level scores, but does not close external blockers such as
-branch protection, production environment approvals, FinOps account evidence,
-or security account services.
+branch protection, production environment approvals, downstream human alert
+routing, external security attestations, or default-branch Dependabot alert
+closure after merge.
 
 Final Well-Architected score change claimed by this PR: `0.0`. The current
 branch adds remediation evidence for some questions, but the pillar scores stay
@@ -166,17 +167,18 @@ Issue #17 can be closed only when:
 - Restore drills, alarms, cost controls, and quota controls are implemented,
   routed to named owners, reviewed on the documented cadence, and evidenced
   without secrets.
-- Remaining external blockers are closed: alert subscription, FinOps threshold
-  approval, activated tag evidence where enabled, live quota/headroom evidence,
-  production approval rules, security account controls, and sustainability owner
-  approval.
+- Remaining external blockers are closed: branch protection, production
+  approval rules, downstream human alert routing, human MFA/SSO evidence,
+  static-key exception evidence, permissions-boundary or exemption attestation,
+  external security-owner approval, and default-branch Dependabot alert closure
+  or exceptions.
 - A follow-up Well-Architected review scores every pillar 5/5.
 
 ## Planning Non-Goals
 
-- This scorecard update does not itself create, update, or destroy AWS
-  resources; the current branch's Pulumi implementation still needs safe
-  preview/apply evidence before live-resource claims are accepted.
+- This scorecard update does not bypass reviewed Pulumi workflows; live
+  test-account claims must stay tied to guarded preview/apply and no-drift
+  evidence for the reviewed PR head.
 - No branch protection setting is changed by this scorecard update.
 - No Pulumi stack is exported or decrypted by this scorecard update. Test-account proof may be gathered by dispatching the existing `Pulumi Test Deploy` workflow on the PR branch.
 - No raw secret material is read or committed by this PR.

@@ -27,7 +27,7 @@ repository fanout.
 | Secrets provider | AWS KMS-backed Pulumi secrets provider | Passphrase provider, plaintext config, external vault | KMS removes local passphrase coordination and gives low-latency envelope operations in the target account. | KMS key availability becomes part of recovery planning. | Security reviewer | Per secrets-provider change |
 | Deployment execution | GitHub Actions plus Dockerized Pulumi toolchain | Maintainer laptops only, self-hosted runners by default | Hosted runners provide parallel PR checks and reproducible tool versions without idle compute. | Runner queue health is external, so queue and runtime observations must be retained monthly and per workflow change. | Platform owner | Monthly and per workflow change |
 | Backup and restore | AWS Backup for protected S3 resources plus restore drills | Manual object copy, S3 versioning only | Managed backup gives scheduled recovery points and metadata evidence without custom workers. | Restore freshness must be retained. | SRE | Quarterly drill |
-| Control-plane detection | EventBridge, SNS, SQS, CloudTrail, GuardDuty, Security Hub, AWS Config | Polling jobs or custom daemons | Native event routing avoids always-on compute and scales with AWS control-plane events. | Live service posture still requires post-apply metadata evidence. | SRE plus security reviewer | Monthly after apply |
+| Control-plane detection | EventBridge, SNS, SQS, CloudTrail, GuardDuty, Security Hub, AWS Config | Polling jobs or custom daemons | Native event routing avoids always-on compute and scales with AWS control-plane events. | Live test posture is proven by guarded apply, metadata checks, and no-drift evidence; refresh monthly. | SRE plus security reviewer | Monthly after apply |
 | Repository fanout | Catalog-driven resources with static fanout and quota checks | Ad hoc per-repo stacks | Catalog estimates make resource growth visible before apply and avoid hidden per-repo expansion. | Conservative static thresholds can require manual review before actual quota exhaustion. | Maintainer | Per catalog change |
 
 ## Fanout And Constraint Table
@@ -41,7 +41,7 @@ repository fanout.
 | Backup selections | 2 | Backup scheduling is managed service work; restore drills validate recovery behavior. | Block 5/5 recovery claims when restore evidence is stale. | restore drill evidence |
 | CloudTrail trails | 1 projected by this repo | The account quota is tight; the latest headroom evidence leaves one remaining trail slot. | Do not add another trail without SRE approval and a quota plan. | `quota-headroom-evidence-2026-05-09.json` |
 | AWS Config recorders | 1 | Regional recorder quota is one; this repository must create or reuse the recorder rather than fan out. | Future Config changes must reuse or update the recorder. | `quota-headroom-evidence-2026-05-09.json` |
-| GuardDuty and Security Hub | 1 detector and 1 account subscription in the target region | Account-level services are not per-repository hot paths; posture evidence is the binding factor. | Keep security posture below 5/5 until post-apply metadata evidence exists. | Pulumi component tests and external-control evidence |
+| GuardDuty and Security Hub | 1 detector and 1 account subscription in the target region | Account-level services are not per-repository hot paths; posture evidence is the binding factor. | Refresh live metadata monthly and after detector, hub, standard, or region changes. | Pulumi component tests, security operating evidence, and external-control evidence |
 
 ## Storage Performance Model
 

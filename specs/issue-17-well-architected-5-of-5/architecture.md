@@ -120,9 +120,8 @@ Future implementation validation:
 
 ## Non-Goals
 
-- This architecture document does not itself add AWS resources; the current
-  branch's Pulumi resources still require safe preview/apply evidence before
-  live-resource claims are accepted.
+- This architecture document does not bypass reviewed Pulumi workflows; live
+  resource claims must stay tied to safe preview/apply and no-drift evidence.
 - This architecture document does not change branch protection.
 - This architecture document does not add committed Pulumi preview or apply behavior; external validation may dispatch the existing `Pulumi Test Deploy` workflow to prove the PR branch still deploys to the configured test account.
 - This architecture does not inspect raw secrets, stack exports, or decrypted config.

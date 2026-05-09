@@ -41,7 +41,7 @@ evidence remain open.
 | Catalog demand metadata | Repository catalogs support `owner`, `lifecycleState`, `lastReviewed`, and `expectedEnvironments`; metadata is exported and tagged where repository resources are created. |
 | Static fanout | `make test-repository-fanout` estimates resource growth before catalog expansion is merged. |
 | Preview cost proxy | `make test-cost-proxy` reads Pulumi preview JSON and blocks unusually large durable-resource fanout. |
-| Security account controls | Pulumi defines GuardDuty, Security Hub, AWS Config recorder/delivery, and a dedicated encrypted Config delivery bucket; live post-apply posture remains an external evidence requirement, and the latest managed test apply is blocked by a Pulumi stack secrets-provider/decryption mismatch. |
+| Security account controls | Pulumi defines GuardDuty, Security Hub, AWS Config recorder/delivery, and a dedicated encrypted Config delivery bucket; guarded local apply, live metadata checks, and no-drift validation prove the current test posture. |
 | Operating evidence | Current docs record RACI roles, ORR, KPI review, restore and DR drills, FinOps evidence, alert-route evidence, secure-SDLC evidence, performance/resource ADRs, sustainability governance, and question-level score rationale. |
 | GitHub admin handoff | `scripts/configure_github_repository_controls.py` emits the required branch ruleset and protected `prod` environment payloads, refuses `--apply` without repository admin rights, and documents the exact command a repository admin must run. |
 | Documentation | SRE, security, CI guardrail, testing, and cost/performance/sustainability docs describe the new evidence and remaining external-control requirements. |
@@ -50,10 +50,8 @@ evidence remain open.
 
 1. Repository admin applies the documented `main` ruleset and protected `prod`
    environment.
-2. Maintainer and security owner migrate or exempt the test stack
-   secrets-provider mismatch, then apply or formally exempt the GuardDuty,
-   Security Hub, AWS Config, permissions-boundary, MFA/SSO, and static-key
-   exception controls.
+2. Security owner records human MFA/SSO, static-key exception, external
+   security-owner approval, and permissions-boundary or exemption evidence.
 3. SRE records the downstream human alert route or an accepted SQS-only
    escalation exemption.
 4. Production owner records protected-environment approval evidence for the
@@ -72,7 +70,7 @@ evidence remain open.
 | Quota ownership | Epic 7 | Current headroom is recorded in `quota-headroom-evidence-2026-05-09.json`; refresh before catalog expansion or account-level service changes. |
 | Restore drill evidence | Epic 5 | Current restore evidence is `restore-drill-evidence-2026-04-27.json`; next restore drill is due before the 90-day freshness window expires. |
 | Production approval evidence | Epic 1 | Protected environment reviewer rules, approved apply evidence, reviewed SHA, and skipped-check policy. |
-| Security account controls | SEC1-SEC11 | Test stack secrets-provider migration or exemption, MFA/SSO posture, static-key exception evidence, permissions-boundary or exemption attestation, post-apply GuardDuty/Security Hub/Config evidence, and security-owner approval. |
+| Security account controls | SEC1-SEC11 | MFA/SSO posture, static-key exception evidence, permissions-boundary or exemption attestation, and external security-owner approval. Live GuardDuty/Security Hub/AWS Config posture is current for the test stack. |
 | Sustainability goals | Epic 8 | Current governance is recorded in `docs/well-architected-operating-evidence.md` and `docs/operating-review-2026-05-09.md`; refresh before region, retention, compute, or catalog expansion changes. |
 | Well-Architected review owner | Epic 0 | Owner for question-matrix updates, score changes, evidence expiry, and follow-up review. |
 
@@ -90,10 +88,8 @@ claim is blocked until all of the following are current and non-secret:
   branches.
 - Downstream human alert-route evidence for the operations queue or an accepted
   SRE exemption explaining why durable SQS-only routing is sufficient.
-- Security-owner evidence for test stack secrets-provider migration or
-  exemption, human MFA/SSO, static-key exceptions, administrator-owned
-  permissions boundary or exemption, and post-apply GuardDuty/Security Hub/AWS
-  Config posture.
+- Security-owner evidence for human MFA/SSO, static-key exceptions, external
+  approval, and administrator-owned permissions boundary or exemption.
 - Production apply approval evidence tied to the reviewed commit SHA, saved-plan
   manifest, destructive-diff result, IAM validation result, and approver.
 
@@ -140,12 +136,10 @@ Current implementation-PR readiness observations:
   security scans, quality gates, mutation, dependency checks, and CodeQL.
 - The collector confirms the PR head matches the local head, the PR is approved,
   and no current review threads are unresolved.
-- Real test-account preview evidence exists for the branch, but live
-  GuardDuty/Security Hub/AWS Config posture is still pending. `Pulumi Test
-  Deploy` run `25606158994` reached the managed apply step on an older branch
-  head and failed at `pulumi up --plan` with `decrypting secret value: cipher:
-  message authentication failed`, so the test stack secrets provider must be
-  migrated or exempted before a fresh managed apply can close this evidence.
+- Real test-account preview/apply evidence exists for the branch. A guarded
+  local apply on 2026-05-09 UTC created the GuardDuty, Security Hub, and AWS
+  Config resources, and a follow-up drift check from PR head `b84bb4f` reported
+  `Resources: 117 unchanged`.
 - The current GitHub token has write access but not repository admin rights, so
   branch-protection and protected-environment repair must be performed by a
   repository admin.

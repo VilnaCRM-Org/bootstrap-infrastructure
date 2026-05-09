@@ -6,8 +6,8 @@ non-secret: do not add IAM access keys, Pulumi stack exports, decrypted config,
 private incident details, or screenshots containing account-sensitive data.
 
 This file does not prove human MFA/SSO posture, organization permissions
-boundaries, live GuardDuty/Security Hub/AWS Config posture after apply, or
-external security-owner approval. Those remain external controls.
+boundaries, static-key exception evidence, or external security-owner approval.
+Those remain external controls.
 Current vulnerability-review evidence is retained in
 `docs/vulnerability-review-2026-05-09.md`.
 
@@ -76,7 +76,21 @@ that explains why the scoped repository controls are sufficient.
 | Static credential exposure | OIDC-first workflows, `.env` ignored, Gitleaks in CI. | Per workflow change and monthly vulnerability review | Revoke exposed key, rotate affected credentials, and block merge until scan passes. |
 | Over-privileged automation | Scoped IAM resources, tag conditions, wildcard justification, Access Analyzer. | Per IAM change | Keep Security score below 5/5 and require security-owner exception. |
 | Tampered or stale deployment plan | Saved-plan manifest with commit, backend, stack, preview hash, plan hash, and age checks. | Per deploy workflow change | Regenerate preview and plan from the intended commit. |
-| Missed control-plane detection | CloudTrail evidence, EventBridge rules, GuardDuty/Security Hub/AWS Config resources in Pulumi. | Monthly after apply | Keep security account controls unresolved until the managed apply path succeeds and live service posture is proven. |
+| Missed control-plane detection | CloudTrail evidence, EventBridge rules, live GuardDuty/Security Hub/AWS Config posture, and drift checks. | Monthly after apply | Re-run metadata checks after detection, logging, recorder, or alert-route changes; keep human escalation tracked under OPS8. |
+
+## Live Security Account Posture
+
+The test account posture was proven with metadata-only checks after a guarded
+local Pulumi apply using the AWS KMS secrets provider on 2026-05-09 UTC. The
+apply ran from PR head `b05d233` and completed with 30 resources created, 1
+updated, and 86 unchanged. A follow-up drift check from PR head `b84bb4f` passed
+with `Resources: 117 unchanged`.
+
+| Service | Live evidence | Follow-up |
+| --- | --- | --- |
+| GuardDuty | Detector `502efed8294c4b95a7f0778aaa4b8d62` in `eu-central-1` returned `Status=ENABLED` and bootstrap `security-detection` tags. | Refresh monthly and after detector-feature or region changes. |
+| Security Hub | `describe-hub` returned `arn:aws:securityhub:eu-central-1:891377212104:hub/default` with `AutoEnableControls=true`. | Refresh monthly and after standards/control changes. |
+| AWS Config | Recorder `bootstrap-test-configuration-recorder`, delivery channel `bootstrap-test-configuration-delivery`, bucket `bootstrap-891377212104-eu-central-1-test-aws-config`, `recording=true`, and `lastStatus=SUCCESS`. | Refresh monthly and after recorder scope, bucket, or delivery changes. |
 | Vulnerable dependencies or workflow code | `pip-audit`, Bandit, CodeQL, actionlint, dependency hygiene checks, and `docs/vulnerability-review-2026-05-09.md`. | Per PR and monthly review | Patch, pin, or record a time-bound exception with owner approval. |
 
 ## Network And Transit Applicability
@@ -101,6 +115,6 @@ with owners, expiry, rationale, and fallback behavior.
 | Exception | Status | Owner | Expiry | Required follow-up |
 | --- | --- | --- | --- | --- |
 | Human MFA/SSO evidence | Open external control | Repository admin plus security reviewer | Before final 5/5 claim | Prove organization or repository human-access policy without exposing private user data. |
-| Live GuardDuty/Security Hub/AWS Config posture | Open external control | Security reviewer plus SRE | After apply | Retain metadata-only evidence that detector, hub, recorder, and delivery channel are enabled. |
-| Test stack secrets-provider migration | Open external control | Maintainer plus security reviewer | Before managed test apply can close security-account evidence | `Pulumi Test Deploy` run `25606158994` failed at `pulumi up --plan` with `decrypting secret value: cipher: message authentication failed`; migrate the stack with `pulumi stack change-secrets-provider` under the configured AWS KMS provider or record a formal exemption. |
+| Live GuardDuty/Security Hub/AWS Config posture | Closed for current test stack | Security reviewer plus SRE | Monthly after apply | Metadata-only checks on 2026-05-09 UTC proved detector, hub, recorder, and delivery channel posture; refresh after security-account changes. |
+| Test stack secrets-provider migration | Closed for current local evidence | Maintainer plus security reviewer | Per stack backend or secrets-provider change | Guarded local plan/apply and drift used the configured AWS KMS provider; managed workflow run `25606158994` remains historical evidence of why KMS-provider validation is required. |
 | Permissions boundary or exemption attestation | Open external control | Security reviewer | Before final 5/5 claim | Record administrator-owned boundary ARN or approved exemption. |
