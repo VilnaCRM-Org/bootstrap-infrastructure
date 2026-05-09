@@ -221,6 +221,9 @@ def test_configure_github_repository_controls_api_helpers(
         '["invalid", {"name":"main","target":"branch","id":"not-int"}]',
         '{"id":9444106}',
         "{}",
+        '{"permissions":{"admin":true}}',
+        '{"permissions":{"admin":false}}',
+        '{"permissions":{}}',
     ]
 
     def fake_run(command, input=None, check=None, capture_output=None, text=None):
@@ -243,6 +246,9 @@ def test_configure_github_repository_controls_api_helpers(
     assert module._github_user_id("Kravalg") == 9444106  # nosec B101
     with pytest.raises(ValueError, match="Could not resolve"):
         module._github_user_id("missing")
+    assert module._repo_admin_allowed("example/repo") is True  # nosec B101  # noqa: SLF001
+    assert module._repo_admin_allowed("example/repo") is False  # nosec B101  # noqa: SLF001
+    assert module._repo_admin_allowed("example/repo") is False  # nosec B101  # noqa: SLF001
     assert calls[1][1] == '{"x": 1}'  # nosec B101
 
     def failing_run(command, input=None, check=None, capture_output=None, text=None):
@@ -261,6 +267,7 @@ def test_configure_github_repository_controls_apply_paths(
     calls: list[tuple[list[str], dict]] = []
     existing = {"id": 123, "rules": "invalid"}
 
+    monkeypatch.setattr(module, "_repo_admin_allowed", lambda _repo: True)
     monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: 9444106)
 
     def fake_run_gh_api(args, *, input_payload=None):
@@ -288,6 +295,28 @@ def test_configure_github_repository_controls_apply_paths(
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
     assert module.configure("example/repo", "Kravalg", apply=True) == 0  # nosec B101
     assert calls[0][0] == ["repos/example/repo/rulesets", "--method", "POST"]  # nosec B101
+
+
+def test_configure_github_repository_controls_apply_requires_admin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fail before mutating repository controls when the token is not an admin."""
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(module, "_main_ruleset", lambda _repo: {"id": 123, "rules": []})
+    monkeypatch.setattr(module, "_repo_admin_allowed", lambda _repo: False)
+    monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: 9444106)
+
+    def fake_run_gh_api(args, *, input_payload=None):
+        calls.append(list(args))
+        return {}
+
+    monkeypatch.setattr(module, "_run_gh_api", fake_run_gh_api)
+
+    with pytest.raises(RuntimeError, match="repository admin rights"):
+        module.configure("example/repo", "Kravalg", apply=True)
+    assert calls == []  # nosec B101
 
 
 def test_configure_github_repository_controls_main_reports_errors(

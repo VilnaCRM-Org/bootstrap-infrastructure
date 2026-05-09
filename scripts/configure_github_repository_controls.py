@@ -144,6 +144,15 @@ def _github_user_id(login: str) -> int:
     raise ValueError(f"Could not resolve GitHub user id for {login!r}.")
 
 
+def _repo_admin_allowed(repo: str) -> bool:
+    """Return whether the current gh token can administer the repository."""
+    payload = _run_gh_api([f"repos/{repo}"])
+    if not isinstance(payload, Mapping):
+        return False
+    permissions = payload.get("permissions")
+    return isinstance(permissions, Mapping) and permissions.get("admin") is True
+
+
 def configure(repo: str, reviewer: str, *, apply: bool) -> int:
     """Print or apply the GitHub repository controls."""
     existing = _main_ruleset(repo)
@@ -153,6 +162,11 @@ def configure(repo: str, reviewer: str, *, apply: bool) -> int:
 
     payloads: dict[str, Any] = {"ruleset": ruleset_payload(existing_rules)}
     if apply:
+        if not _repo_admin_allowed(repo):
+            raise RuntimeError(
+                "repository admin rights are required to update branch rulesets "
+                "and protected environments."
+            )
         reviewer_id = _github_user_id(reviewer)
         payloads["prodEnvironment"] = prod_environment_payload(reviewer_id)
         if existing and isinstance(existing.get("id"), int):
