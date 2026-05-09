@@ -56,6 +56,7 @@ owner attestations before any final 5/5 claim.
 | Production approval | `gh api repos/.../environments/prod` returns 404; `prod-preview` has no protection rules. | Blocked. | Create protected `prod` environment with required reviewers before production claims. |
 | Security account services | Repository code now provisions GuardDuty, Security Hub, AWS Config recorder, and the Config delivery bucket; `docs/security-operating-evidence.md` records identity, permission, wildcard, boundary, and exception evidence; live account evidence remains pending until apply. | Blocked. | Security owner must enable or formally exempt these account controls and retain post-apply evidence. |
 | Data protection and recovery | `docs/data-protection-recovery-evidence.md` records at-rest protection, Vault Lock/Object Lock posture, restore runbook, backup review cadence, and degraded-mode playbooks. | Current for repository-owned SEC8 and REL9 evidence. | Refresh before storage, backup, KMS, retention, or replica changes. |
+| Current operating review | `docs/operating-review-2026-05-09.md` records KPI observations, demand/stale asset review, service review, cost-of-effort notes, improvement actions, and sustainability governance. | Current for repository-owned review-loop evidence. | Refresh monthly for KPIs and quarterly for sustainability/service review. |
 
 ## KPI And Review Register
 
@@ -168,3 +169,4 @@ Every monthly review should record:
 Quarterly reviews must re-check the AWS Well-Architected question set, refresh
 question scores, and confirm that external controls are either proven or still
 block final 5/5 claims.
+The current dated review record is `docs/operating-review-2026-05-09.md`.

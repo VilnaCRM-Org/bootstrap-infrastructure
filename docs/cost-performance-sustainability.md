@@ -32,6 +32,11 @@ Use `docs/workload-applicability-evidence.md` for the current no-VPC,
 no-public-endpoint, and no-idle-compute applicability record. That file is the
 service-selection gate for future runtime compute or public ingress.
 
+Use `docs/operating-review-2026-05-09.md` for the current repository-owned
+demand review, stale asset review, service review, cost-of-effort notes,
+performance observations, CI efficiency review, and sustainability governance
+record.
+
 ## Preview Cost Proxy
 
 `make test-cost-proxy` reads Pulumi preview JSON and counts create or replace

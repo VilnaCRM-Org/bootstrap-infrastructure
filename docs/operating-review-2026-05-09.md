@@ -1,0 +1,112 @@
+# Operating Review 2026-05-09
+
+This is the current repository-owned operating review record for the bootstrap
+infrastructure Well-Architected evidence refresh. It is a public artifact and
+contains only non-secret status, owner roles, review decisions, and follow-up
+actions.
+
+## Review Metadata
+
+| Field | Value |
+| --- | --- |
+| Workload | `bootstrap-infrastructure` |
+| Review date | 2026-05-09 |
+| Review owner | `platform-maintainers` |
+| Participants by role | Maintainer, SRE, security reviewer, platform owner, FinOps owner placeholder |
+| Evidence scope | Repository docs, question matrix, local checks, AWS metadata collector, repository catalog, quota headroom, restore drill, and external-control records |
+| Fallback | Do not claim final 5/5 while external controls, hosted checks, or unresolved question rows remain open. |
+
+## Current No-Go Items
+
+| Item | Owner | Current state | Required action |
+| --- | --- | --- | --- |
+| GitHub required checks | Repository admin | Active ruleset reports zero required status checks. | Apply documented branch ruleset with exact required check names. |
+| Production approval | Repository admin plus SRE | `prod` environment evidence is missing. | Create protected `prod` environment with required reviewers and branch restrictions. |
+| FinOps external evidence | FinOps owner | Budget/anomaly resources exist, but threshold approval, monthly report, and active cost allocation tags are missing. | Record payer-account and monthly report evidence. |
+| Security account posture | Security reviewer plus SRE | GuardDuty, Security Hub, and AWS Config are defined in Pulumi but not proven live after apply. | Retain post-apply metadata evidence or formal exemption. |
+| Hosted runner queue | Platform owner | GitHub checks are queued or pending on the current pushed head. | Wait for hosted runner capacity or split/route workflow execution with owner approval. |
+
+## KPI Observations
+
+| KPI | Observation | Decision | Follow-up |
+| --- | --- | --- | --- |
+| Local static validation | `uv run ruff check scripts tests`, JSON consistency checks, and repository fanout checks passed during this review. Full `make ci-pr-unprivileged` passed earlier on 2026-05-09 after implementation changes; later commits are docs/evidence only. | Current local evidence is acceptable for docs-only changes. | Re-run full local CI before merging any further code changes. |
+| PR and review state | Collector reports local and PR head match, review decision approved, and zero unresolved review threads. | PR review state is acceptable, but merge state remains blocked by queued checks and admin controls. | Re-run collector after checks complete or admin settings change. |
+| Backup and restore | Restore job `d7f25510-1dfd-4f11-8953-72ed1c971c2c` completed on 2026-04-27; cleanup was confirmed on 2026-05-09. | Restore evidence is current until the 90-day freshness window expires. | Schedule next restore drill before 2026-07-26. |
+| Alert route | Operations SNS topic is encrypted and has one SQS subscription. | Repository-owned route metadata is acceptable; downstream human route remains external. | SRE records downstream route before OPS4/REL6 can pass. |
+| Catalog demand | `pulumi/repositories.bootstrap.json` has one active repository, owner `platform`, last reviewed 2026-04-27, and two expected environments. | No stale or deprecated catalog entries require cleanup in this review. | Refresh catalog ownership by 2026-05-27 or before expansion. |
+| Quota headroom | Quota evidence records projected bootstrap fanout within quota or repo thresholds, with CloudTrail and AWS Config no-go notes. | Catalog expansion is allowed only while projected counts remain within no-go rules. | Refresh quota evidence before adding repositories or account-level resources. |
+| Performance | No always-on runtime compute exists; current PR changes are docs/evidence only; hosted runner queue remains external. | Performance model and resource ADRs are current. | Recheck hosted runner duration once checks complete. |
+| Sustainability | Current workload uses managed services, lifecycle controls, data retention, no idle compute, and catalog demand metadata. | Sustainability posture is current for repository-owned controls. | Refresh quarterly or before region, retention, or compute changes. |
+
+## Priority And Tradeoff Decisions
+
+| Priority | Decision | Rationale | Owner | Next review |
+| --- | --- | --- | --- | --- |
+| P0: safe changes | Keep saved-plan manifest enforcement, destructive diff, IAM validation, and branch-protection proof as merge gates. | Prevents unreviewed apply, stale plan, and destructive-change risk. | Maintainer | Per workflow change |
+| P0: recover state and logs | Keep AWS Backup, S3 versioning, replication, restore drills, and metadata-only validation. | State/log recovery is the primary availability objective for this control-plane workload. | SRE | Monthly backup review |
+| P1: account detection | Keep CloudTrail, EventBridge, SNS/SQS, GuardDuty, Security Hub, and AWS Config evidence requirements. | Detection coverage is necessary before final security claims. | Security reviewer plus SRE | After apply |
+| P1: bound growth | Keep catalog metadata, fanout checks, cost proxy, and quota evidence as expansion gates. | New repositories multiply durable resources and quota pressure. | Maintainer plus FinOps owner | Per catalog change |
+| P2: reduce idle work | Keep managed/serverless-first and no-idle-compute rule. | The workload has no user traffic path and should not add patching or idle capacity. | Platform owner | Quarterly |
+
+## Learning And Improvement Record
+
+| Observation | Action taken | Outcome | Next action |
+| --- | --- | --- | --- |
+| Saved plans needed stronger apply integrity. | Added plan manifest hash, commit, stack, backend, preview hash, and stale-plan validation. | REL4 passed. | Preserve tests for future workflow changes. |
+| Account security services needed concrete implementation evidence. | Added GuardDuty, Security Hub, AWS Config recorder/delivery, and security evidence. | Security score improved but live posture remains external. | Retain post-apply metadata evidence. |
+| Quota and catalog growth needed current headroom evidence. | Added metadata-only quota headroom report and no-go rules. | REL1 passed. | Refresh before catalog expansion. |
+| Data classes and retention were implicit. | Added data classification and retention matrix. | SUS4 passed and SEC7 improved. | Update before new data classes. |
+| Performance, applicability, and data-protection decisions were scattered. | Added performance, workload applicability, and data-protection evidence. | PERF1, PERF3, PERF4, SEC5, SEC8, SEC9, REL2, REL3, REL9, and SUS5 passed. | Keep these docs current per service change. |
+
+## Demand, Decommission, And Stale Asset Review
+
+| Asset | State | Demand signal | Cleanup decision | Evidence |
+| --- | --- | --- | --- | --- |
+| `bootstrap-infrastructure` managed repository | Active | Two expected environments are recorded for bootstrap test/prod paths. | Retain. | `pulumi/repositories.bootstrap.json` |
+| Deprecated repositories | None in current catalog. | No stale entries found. | No cleanup issue required. | `make test-repository-fanout` |
+| Ephemeral local artifacts | `.artifacts/` ignored and regenerated by checks. | Local evidence only. | Do not commit generated artifacts. | `.gitignore`, collector output |
+| AWS durable resources | State, logs, backup, alerts, cost, security controls. | Required for bootstrap control plane. | Destroy only through reviewed Pulumi workflow with backup/restore evidence. | `docs/sre-operations.md` |
+
+Decommission rule: any future repository with `deprecated` or `archived`
+lifecycle state must have an owner decision, backup/restore impact review,
+destroy safety check, and follow-up date before new durable fanout is added.
+
+## Cost And Service Review
+
+| Service family | Current decision | Cost and effort note | Follow-up |
+| --- | --- | --- | --- |
+| S3 state/log/config buckets | Use managed object storage with lifecycle, replication, versioning, and backup. | Low operational effort and no server maintenance; cross-region replication adds transfer/storage cost accepted for recovery. | Add monthly GB trend before increasing replicated data classes. |
+| KMS | Use per-repo secrets keys and dedicated keys for alerting/CloudTrail paths. | Adds key inventory but keeps secret and audit encryption ownership explicit. | Revisit if key count approaches quota or ownership changes. |
+| AWS Backup | Use managed daily backups and quarterly restore drills. | Avoids custom backup workers; restore drill effort is planned quarterly. | Review Vault Lock exemption before production approval. |
+| EventBridge/SNS/SQS | Use managed event routing and durable queue subscription. | Avoids polling compute; downstream human route still external. | SRE records route owner. |
+| Budgets and Cost Anomaly Detection | Use account-level budget/anomaly metadata through operations topic. | Provides spend guardrails; payer-account approval and reports remain external. | FinOps records threshold approval and monthly report. |
+| GuardDuty/Security Hub/AWS Config | Use managed account security services. | Adds account-level resources but avoids custom security inventory workers. | Retain post-apply metadata evidence. |
+| GitHub Actions | Use hosted runners and Dockerized toolchain. | Avoids idle self-hosted compute; hosted queue health can delay feedback. | Review queue/run time after checks complete. |
+
+Cost-of-effort decision: this PR favors managed services and repository
+evidence over custom workers. The implementation adds durable account controls
+but reduces manual audit, restore, security, and cost-review effort. No
+additional always-on compute is accepted in this review.
+
+## Performance And CI Efficiency Review
+
+| Area | Observation | Target | Follow-up |
+| --- | --- | --- | --- |
+| Local docs/evidence validation | Ruff, JSON consistency, and repository fanout passed for docs-only evidence updates. | Keep docs-only checks fast enough to avoid bypass pressure. | Use full local CI before code changes. |
+| Hosted checks | Current pushed head has queued/pending GitHub checks. | Same-repo checks must finish and pass before merge. | Platform owner watches hosted queue or evaluates workflow split if queue remains persistent. |
+| Workflow redundancy | No new CI jobs were added by the docs/evidence slices. | Avoid duplicate scans or previews. | Review CI matrix before adding future checks. |
+| Artifact retention | Saved plans and preview artifacts are short-lived and hash-verified. | Keep enough evidence for review without retaining secret-bearing artifacts. | Preserve manifest checks for apply workflows. |
+
+## Sustainability Governance Review
+
+| Control | Current decision | Exception process |
+| --- | --- | --- |
+| Region selection | Primary `eu-central-1`, replica `eu-west-1`, with future changes requiring compliance, latency, transfer-cost, and sustainability review. | Region exceptions require SRE and sustainability owner approval. |
+| Data retention | Data classification and retention matrix is current for state, logs, Config snapshots, backups, replicas, ECR, CI artifacts, saved plans, cost metadata, evidence, and local config. | New data classes must update retention before merge. |
+| Compute | No always-on runtime compute is provisioned. | Always-on compute requires utilization, scaling/shutdown, owner, patch, cost, and sustainability evidence. |
+| CI efficiency | No redundant jobs added in this evidence pass; hosted queue remains external. | CI expansion requires target runtime and duplication review. |
+| Demand | Catalog has one active repository with owner and expected environments. | Expansion requires owner, lifecycle state, expected environments, fanout, quota, and stale-asset review. |
+
+Next quarterly sustainability review is due by 2026-08-07 or before any region,
+retention, compute, or catalog expansion change.

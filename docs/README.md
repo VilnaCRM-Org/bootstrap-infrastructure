@@ -175,6 +175,9 @@ for the no-VPC, no-public-endpoint, dependency, and no-idle-compute record.
 Use the [data protection and recovery evidence](data-protection-recovery-evidence.md)
 for at-rest protection, Vault Lock/Object Lock posture, restore runbooks, and
 backup review cadence.
+Use the [2026-05-09 operating review](operating-review-2026-05-09.md) for the
+current KPI observations, demand review, service review, cost-of-effort notes,
+and sustainability governance record.
 
 ## Well-Architected Evidence
 
