@@ -986,6 +986,88 @@ def test_github_oidc_roles_reuse_discovered_provider(  # noqa: ARG001
     assert "github-oidc-discovered-provider" not in provider_resource_names  # nosec B101
 
 
+def test_github_oidc_roles_scope_state_and_kms_per_repository():
+    secret_key_arns = {
+        "repo-one": "arn:aws:kms:us-east-1:123456789012:key/repo-one",
+        "repo-two": "arn:aws:kms:us-east-1:123456789012:key/repo-two",
+    }
+
+    repo_one_policy = json.loads(
+        github_oidc._deploy_policy(
+            "arn:aws:s3:::pulumi-repo-one-test-state",
+            "arn:aws:s3:::pulumi-repo-one-test-state/state/*",
+            secret_key_arns["repo-one"],
+        )
+    )
+    repo_two_policy = json.loads(
+        github_oidc._deploy_policy(
+            "arn:aws:s3:::pulumi-repo-two-test-state",
+            "arn:aws:s3:::pulumi-repo-two-test-state/state/*",
+            secret_key_arns["repo-two"],
+        )
+    )
+    repo_one_statements = repo_one_policy["Statement"]
+    repo_two_statements = repo_two_policy["Statement"]
+
+    assert repo_one_statements[0]["Resource"] == (  # nosec B101
+        "arn:aws:s3:::pulumi-repo-one-test-state"
+    )
+    assert repo_one_statements[1]["Resource"] == (  # nosec B101
+        "arn:aws:s3:::pulumi-repo-one-test-state/state/*"
+    )
+    assert repo_one_statements[2]["Resource"] == secret_key_arns["repo-one"]  # nosec B101
+    assert "repo-two" not in json.dumps(repo_one_statements)  # nosec B101
+
+    assert repo_two_statements[0]["Resource"] == (  # nosec B101
+        "arn:aws:s3:::pulumi-repo-two-test-state"
+    )
+    assert repo_two_statements[1]["Resource"] == (  # nosec B101
+        "arn:aws:s3:::pulumi-repo-two-test-state/state/*"
+    )
+    assert repo_two_statements[2]["Resource"] == secret_key_arns["repo-two"]  # nosec B101
+    assert "repo-one" not in json.dumps(repo_two_statements)  # nosec B101
+
+    provider_arn = (
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    )
+    repo_one_trust = json.loads(
+        github_oidc._assume_role_policy(
+            provider_arn,
+            "VilnaCRM-Org",
+            "repo-one",
+            "main",
+        )
+    )
+    repo_two_trust = json.loads(
+        github_oidc._assume_role_policy(
+            provider_arn,
+            "VilnaCRM-Org",
+            "repo-two",
+            "release",
+        )
+    )
+    assert repo_one_trust["Statement"][0]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+            "token.actions.githubusercontent.com:sub": (
+                "repo:VilnaCRM-Org/repo-one:ref:refs/heads/main"
+            )
+        },
+    }
+    assert repo_two_trust["Statement"][0]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+            "token.actions.githubusercontent.com:sub": (
+                "repo:VilnaCRM-Org/repo-two:ref:refs/heads/release"
+            )
+        },
+    }
+
+
 def test_github_oidc_existing_provider_lookup_handles_missing(monkeypatch):
     def raise_missing(**_kwargs):
         raise RuntimeError("couldn't find resource")

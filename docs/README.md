@@ -180,6 +180,8 @@ current KPI observations, demand review, service review, cost-of-effort notes,
 and sustainability governance record.
 Use the [region sustainability evidence](region-sustainability-evidence.md) for
 the primary/replica region decision matrix and exception gates.
+Use the [fault isolation evidence](fault-isolation-evidence.md) for
+per-repository state, KMS, IAM, OIDC, and environment boundary tests.
 
 ## Well-Architected Evidence
 

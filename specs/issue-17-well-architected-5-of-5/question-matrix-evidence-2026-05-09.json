@@ -3,7 +3,7 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T16:15:00Z",
   "questionCount": 57,
-  "unresolvedQuestionCount": 30,
+  "unresolvedQuestionCount": 29,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
   "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
@@ -26,7 +26,6 @@
     "REL5",
     "REL6",
     "REL8",
-    "REL10",
     "REL11",
     "REL12",
     "REL13",
@@ -42,7 +41,7 @@
   "pillarUnresolvedQuestionCounts": {
     "Operational Excellence": 7,
     "Security": 8,
-    "Reliability": 7,
+    "Reliability": 6,
     "Performance Efficiency": 1,
     "Cost Optimization": 7,
     "Sustainability": 0
@@ -83,7 +82,7 @@
   "questionScoreAverages": {
     "Operational Excellence": 4.27,
     "Security": 4.27,
-    "Reliability": 4.23,
+    "Reliability": 4.38,
     "Performance Efficiency": 4.8,
     "Cost Optimization": 4.36,
     "Sustainability": 5.0
@@ -120,7 +119,7 @@
     {"id": "REL7", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records the current catalog demand signal, stale asset review, cleanup decision, expected environment count, fanout evidence, quota headroom, and no-go rules for future expansion.", "primaryBlocker": ""},
     {"id": "REL8", "pillar": "Reliability", "score": 3, "status": "unresolved", "rationale": "PR guardrails, policy tests, and deploy workflows exist; branch protection required-check evidence is missing.", "primaryBlocker": "Required check and environment approval evidence in GitHub settings."},
     {"id": "REL9", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "docs/data-protection-recovery-evidence.md records AWS Backup coverage, restore runbook, monthly backup review, quarterly restore drill cadence, 90-day freshness rule, Vault Lock/Object Lock exemptions, fallback behavior, and the latest accepted workload-scoped restore drill evidence.", "primaryBlocker": ""},
-    {"id": "REL10", "pillar": "Reliability", "score": 3, "status": "unresolved", "rationale": "Per-repo buckets, keys, roles, and environment separation exist; explicit cross-repo and cross-env access proof is missing.", "primaryBlocker": "Fault-isolation test matrix for IAM, bucket, and KMS boundaries."},
+    {"id": "REL10", "pillar": "Reliability", "score": 5, "status": "passed", "rationale": "docs/fault-isolation-evidence.md records the isolation matrix and tests/unit/test_components.py includes test_github_oidc_roles_scope_state_and_kms_per_repository, which proves per-repository deploy roles are scoped to their own state bucket/object prefix, KMS key, and GitHub OIDC repo/branch subject.", "primaryBlocker": ""},
     {"id": "REL11", "pillar": "Reliability", "score": 3, "status": "unresolved", "rationale": "Replication, backups, versioning, and drift detection exist; component failure scenarios are not tested end to end.", "primaryBlocker": "Scenario drills for state bucket, replica lag, KMS, logging, and workflow failures."},
     {"id": "REL12", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "The reliability test plan now links unit, policy, guardrail, restore, drift, and scenario evidence expectations.", "primaryBlocker": "DR and degraded-mode exercise records are still missing."},
     {"id": "REL13", "pillar": "Reliability", "score": 4, "status": "unresolved", "rationale": "The DR appendix now records RTO/RPO targets, recovery boundaries, communication expectations, and evidence retention.", "primaryBlocker": "Quarterly DR exercise evidence and production approval remain missing."},
