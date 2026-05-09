@@ -3,7 +3,7 @@
   "owner": "platform-maintainers",
   "reviewedAt": "2026-05-09T16:15:00Z",
   "controlCount": 8,
-  "unresolvedControlCount": 4,
+  "unresolvedControlCount": 3,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores while any external control remains unresolved; keep deployment gated by PR review, local CI, AWS metadata checks, and explicit owner approval.",
   "controls": [
@@ -34,13 +34,13 @@
     },
     {
       "id": "finops",
-      "status": "unresolved",
+      "status": "passed",
       "evidence": [
         "AWS Budget and Cost Anomaly Detection subscription exist and collect_well_architected_evidence aws_cost_controls passed.",
         "Pulumi.test.yaml now enables repository-managed Cost Allocation Tag activation for the bootstrap tag set.",
-        "aws ce list-cost-allocation-tags --status Active returned no active cost allocation tags on 2026-05-09."
-      ],
-      "unresolvedReason": "Named FinOps owner, approved thresholds, monthly report location, and payer-account cost allocation tag activation evidence remain external."
+        "aws ce update-cost-allocation-tags-status activated App, CostCenter, Criticality, DataClassification, Environment, Owner, Project, Repository, RepositoryProject, and RetentionClass on 2026-05-09; list-cost-allocation-tags then returned those keys as Active.",
+        "docs/finops-review-2026-05-09.md records platform-maintainers as the accountable FinOps owner for the test review, the 100 USD monthly budget, 80% actual and 100% forecast budget alerts, the 10 USD anomaly threshold, confirmed SNS routing, month-to-date service cost, transfer review, action thresholds, and next review date."
+      ]
     },
     {
       "id": "quota_headroom",

@@ -39,7 +39,7 @@ The issue #17 baseline remains the source assessment for this planning PR, but c
 | CI guardrails | Same-repo workflows already include account checks, preview, destructive diff, IAM validation, saved-plan apply, and post-apply drift. | Add branch protection evidence, skipped-check policy, check-name contract, and test-account deployment evidence tied to the PR head SHA. |
 | Lifecycle controls | Primary logs, state versions, backups, and ECR images have lifecycle or retention rules. | Add replica lifecycle rationale, data classification, storage-class decisions, cost and sustainability review, and stale cleanup evidence. |
 | Operations evidence | The bootstrap stack exports operations alert topic/rule/key handles, and docs now define RACI, severity, KPI, and runbook expectations. | Confirm SNS subscriptions, downstream route ownership, reviewed KPI observations, incident drill evidence, and named owners per environment. |
-| Cost controls | The bootstrap stack provisions a monthly AWS Budget, 80% actual and 100% forecast notifications, a service-dimensional Cost Anomaly Detection monitor or configured existing monitor ARN, and an immediate anomaly subscription to the operations topic when Cost Explorer is enabled in the target account. | Confirm Cost Explorer enablement, FinOps owner approval, alert subscription, activated cost allocation tag evidence, monthly report location, spend policy, transfer model, and account quota headroom. |
+| Cost controls | The bootstrap stack provisions a monthly AWS Budget, 80% actual and 100% forecast notifications, a service-dimensional Cost Anomaly Detection monitor or configured existing monitor ARN, and an immediate anomaly subscription to the operations topic when Cost Explorer is enabled in the target account; `docs/finops-review-2026-05-09.md` records active allocation tags, owner, thresholds, monthly cost, and transfer evidence. | Refresh FinOps evidence before production approval, catalog growth, new replicated data classes, or service-family expansion. |
 
 ## Current Branch Documentation Score
 
@@ -61,7 +61,7 @@ The 2026-05-09 evidence record at
 `question-matrix-evidence-2026-05-09.json` now includes a 1-5 score for each of
 the 57 AWS Well-Architected Framework questions. These scores are current
 review observations for this PR and the repository, not final 5/5 claims. As of
-the 2026-05-09 review, 27 questions remain unresolved because those rows still
+the 2026-05-09 review, 19 questions remain unresolved because those rows still
 have at least one missing owner, freshness, validation, fallback, drill,
 account, or administrator-owned evidence item.
 
@@ -132,19 +132,13 @@ Future evidence must include:
 ### Cost Optimization
 
 Current repo-owned evidence includes AWS Budget and Cost Anomaly Detection
-resources routed to the operations topic, optional reuse of an existing
-service-dimensional anomaly monitor, optional Cost Explorer cost allocation tag
-activation, and preview/static cost proxy checks. Remaining evidence must include:
-- Approved FinOps ownership and thresholds for Budget and Cost Anomaly controls.
-- Cost Explorer enabled in the target account before anomaly resources are
-  applied.
-- Confirmed alert route and monthly cost review artifact.
-- Activated cost allocation tag evidence by `CostCenter`, `App`, and
-  `RepositoryProject` when payer-account ownership allows activation.
-- PR cost estimation or resource-count cost proxy.
-- Cross-region data-transfer review for replication choices.
-- Cost thresholds for repository catalog expansion.
-- Activated cost allocation tag evidence, cost ADRs, pricing model review, demand/idle cleanup signals, new-service review, and cost-of-effort notes.
+resources routed to the operations topic, reuse of the existing
+service-dimensional anomaly monitor, active Cost Explorer allocation tags,
+preview/static cost proxy checks, and `docs/finops-review-2026-05-09.md`.
+Remaining future evidence is conditional: production approval, catalog growth,
+new replicated data classes, region changes, or new service families must
+refresh FinOps ownership, thresholds, monthly cost, transfer, and pricing
+evidence before changing cost claims.
 
 ### Sustainability
 

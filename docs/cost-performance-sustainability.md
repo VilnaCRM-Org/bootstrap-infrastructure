@@ -95,10 +95,16 @@ Pulumi exports provide non-secret evidence handles for reviews:
 - `operationsAlertQueueArn`
 - `operationsAlertQueueSubscriptionArn`
 
-Do not inspect invoices, Cost Explorer report contents, or billing exports in
-routine repository evidence. For Well-Architected review, metadata such as the
-budget name, anomaly monitor ARN, threshold configuration, SNS route, owner, and
-last reviewed date is sufficient.
+Do not inspect invoices or billing exports in routine repository evidence. For
+Well-Architected review, metadata such as the budget name, anomaly monitor ARN,
+threshold configuration, SNS route, owner, last reviewed date, and summarized
+Cost Explorer cost or transfer lines is sufficient.
+
+The current review record is
+`docs/finops-review-2026-05-09.md`. It records the active cost allocation tag
+set, budget and anomaly thresholds, SNS route, month-to-date service cost
+snapshot, data-transfer review, action thresholds, and next review date for the
+test workload.
 
 ## Catalog Metadata
 
@@ -113,21 +119,24 @@ These values are non-secret and may be exported or tagged for review evidence.
 They should not contain tokens, account credentials, customer data, or private
 incident details.
 
-## Remaining 5/5 Cost Evidence
+## Current 5/5 Cost Evidence
 
-The repository now owns the Budget and Cost Anomaly Detection resources, but an
-honest 5/5 still needs account-owner evidence outside the codebase:
+The 2026-05-09 FinOps review closes the current repository-owned cost evidence
+for the test workload:
 
-- FinOps owner approval for the monthly budget limit and anomaly threshold.
-- Cost Explorer enabled in the target account before Pulumi apply.
-- Confirmed downstream incident route for the durable operations alert queue or
-  the operations SNS topic.
-- Activated cost allocation tag evidence when the payer account supports it.
-- Monthly cost report or dashboard location with reviewer and date.
-- Spend approval thresholds by account and environment.
-- Cross-region replication transfer estimate and action threshold.
-- Live AWS Service Quotas or account headroom evidence before large catalog
-  expansion.
+- `platform-maintainers` is recorded as the accountable FinOps owner for this
+  review.
+- Budget, actual threshold, forecast threshold, anomaly threshold, and SNS route
+  are recorded from AWS metadata.
+- Cost allocation tags for owner, cost center, app, project, repository,
+  environment, criticality, classification, and retention are active.
+- Month-to-date service cost and data-transfer snapshots are retained as
+  summarized Cost Explorer evidence.
+- Budget, anomaly, transfer, fanout, and catalog expansion action thresholds
+  are documented with fallback behavior.
+
+Future production approval, catalog growth, additional replicated data classes,
+or new service families must refresh this evidence before changing cost claims.
 
 ## Review Expectations
 
@@ -145,9 +154,10 @@ For every catalog expansion, reviewers should check:
 
 `make report-well-architected-evidence` records the current static fanout
 report together with metadata-only AWS Budget and Cost Anomaly Detection checks.
-It does not query invoices or spend details. A 5/5 cost or sustainability claim
-still needs owner-approved thresholds, recurring review evidence, and live
-account headroom where catalog growth can affect quotas.
+It does not query invoices or detailed billing exports. A future cost or
+sustainability claim must keep owner-approved thresholds, recurring review
+evidence, and live account headroom current where catalog growth can affect
+quotas.
 
 The current Well-Architected quota headroom record is retained at
 `specs/issue-17-well-architected-5-of-5/quota-headroom-evidence-2026-05-09.json`.

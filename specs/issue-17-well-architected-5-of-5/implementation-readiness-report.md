@@ -10,9 +10,9 @@ preview cost proxy evidence, and AWS Budget/Cost Anomaly Detection controls.
 
 This implementation does not claim final 5/5 Well-Architected scores. Several
 target controls still require external evidence or account-owner decisions,
-including branch protection proof, confirmed alert subscriptions, live AWS quota
-headroom, activated cost allocation tags, monthly FinOps review artifacts,
-restore drills, and production approval evidence.
+including branch protection proof, downstream human alert routing, security
+account posture, incident/DR exercise history, and production approval
+evidence.
 Any proxy score or guardrail pass is therefore an interim readiness signal, not
 a final 5/5 Well-Architected score, while question-matrix gaps and external
 evidence remain open.
@@ -22,7 +22,7 @@ evidence remain open.
 | Area | Status | Notes |
 | --- | --- | --- |
 | Problem definition | Ready | Issue #17 provides pillar scores, question-level gaps, priority groups, and completion criteria. |
-| Scope boundary | Ready | This implementation PR changes Pulumi code, scripts, docs, tests, and specs, but avoids secret access, stack exports, irreversible Vault Lock decisions, and organization-wide cost-policy changes. |
+| Scope boundary | Ready | This implementation PR changes Pulumi code, scripts, docs, tests, and specs, but avoids secret access, stack exports, and irreversible Vault Lock decisions; account-wide cost allocation tag activation is now recorded as metadata-only FinOps evidence. |
 | Epic decomposition | Ready | Eight epics preserve the issue priority model and cover all listed roadmap items. |
 | Evidence model | Ready | Future controls require repo, CI, AWS metadata, or external-control evidence. |
 | Question coverage | Ready | `question-matrix.md` covers all 57 AWS Well-Architected questions with current evidence, gaps, target proof, owner role, and cadence. |
@@ -59,7 +59,7 @@ evidence remain open.
 | Dependency | Needed For | Evidence Required |
 | --- | --- | --- |
 | GitHub branch protection settings | Epic 1 | Required status checks, reviewer rules, and skip policy evidence. |
-| FinOps operating model and payer-account evidence | Epic 6 | Cost Explorer enabled in the target account, approved budget/anomaly thresholds, confirmed alert route, activated tag evidence when enabled, monthly cost report location, transfer model, and spend approval policy. |
+| FinOps operating model and payer-account evidence | Epic 6 | Current for the test workload in `docs/finops-review-2026-05-09.md`; refresh before production approval, catalog growth, new replicated data classes, region changes, or service-family expansion. |
 | Alert routing destination | Epic 4 | Confirmed SNS subscription, ChatOps, ticketing, or external incident tool ownership and routing evidence. |
 | Backup Vault Lock decision | Epic 5 | In-repo implementation evidence or external-control exemption. |
 | Quota ownership | Epic 7 | Service quota thresholds, approval owner, and escalation path. |
@@ -76,9 +76,6 @@ claim is blocked until all of the following are current and non-secret:
 
 - Branch protection proof for exact required checks and reviewer rules.
 - Confirmed operations SNS subscription and downstream incident route.
-- FinOps owner approval for budget/anomaly thresholds, monthly cost report
-  location, Cost Explorer enablement, activated cost allocation tags where
-  enabled, spend policy, and transfer-cost model.
 - Live AWS Service Quotas or account headroom evidence for catalog expansion.
 - Backup Vault Lock decision or documented exemption plus quarterly restore
   drill evidence scoped to this workload and cleanup-confirmed.

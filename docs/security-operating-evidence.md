@@ -44,7 +44,7 @@ tags, deterministic names, service conditions, and tests.
 | `ce:*CostAnomaly*` create actions | Cost Explorer anomaly resources require account-level creation APIs. | Requires request tags and later resource-tag conditions where AWS supports them. |
 | `guardduty:ListDetectors` and `guardduty:CreateDetector` | Detector discovery and creation are account-level. | Detector creation requires bootstrap request tags; management is scoped to account detector ARNs. |
 | AWS Config delivery channel actions | AWS Config delivery-channel APIs are account/region-level and do not support the same recorder ARN scoping. | Recorder role, delivery bucket, and recorder management are scoped to bootstrap names. |
-| Cost allocation tag activation | Cost allocation tag activation is payer/account-level. | Disabled unless `manageCostAllocationTags` is explicitly enabled; final FinOps evidence must prove payer-account approval. |
+| Cost allocation tag activation | Cost allocation tag activation is payer/account-level. | `docs/finops-review-2026-05-09.md` records the current active tag evidence; future tag taxonomy changes must refresh FinOps approval. |
 
 ## Permissions Boundary Decision
 

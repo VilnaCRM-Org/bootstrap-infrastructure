@@ -168,6 +168,9 @@ job safely.
 Use the [cost, performance, and sustainability guide](cost-performance-sustainability.md)
 for repository catalog fanout, preview cost proxy evidence, and review
 expectations before durable AWS resources are applied.
+Use the [2026-05-09 FinOps review](finops-review-2026-05-09.md) for the current
+budget, anomaly, active cost allocation tag, monthly cost, and data transfer
+evidence.
 Use the [performance operating evidence](performance-operating-evidence.md) for
 resource-selection, storage, region, network, and fanout ADRs.
 Use the [workload applicability evidence](workload-applicability-evidence.md)

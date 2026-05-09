@@ -258,7 +258,7 @@ can support a 5/5 claim.
 | CI guardrail and branch-protection evidence | Maintainer | Platform owner | SRE, security reviewer | Repository contributors |
 | Backup health, restore drills, drift, and DR evidence | SRE | SRE | Maintainer, security reviewer | FinOps for cost impact |
 | KMS, IAM/OIDC, state access, and logging incidents | Security reviewer | SRE | Maintainer | Repository contributors |
-| Budget, anomaly, transfer-cost, and quota evidence | FinOps owner | Maintainer | SRE | Security reviewer |
+| Budget, anomaly, transfer-cost, and quota evidence | `platform-maintainers` for the test workload; FinOps owner for future shared or production workloads | Maintainer | SRE | Security reviewer |
 | Repository catalog owner and stale cleanup review | Maintainer | Repository owner | SRE, FinOps owner | Platform owner |
 
 If any role is unnamed for an environment, the related Well-Architected score
@@ -286,7 +286,7 @@ The monthly operations review should track these minimum KPIs:
 | Drift freshness | Scheduled drift evidence is no older than 24 hours for shared stacks. | GitHub workflow run or safe Pulumi refresh evidence. | SRE |
 | Guardrail health | Required same-repo safety checks are passing and not skipped outside policy. | GitHub checks and branch-protection evidence. | Maintainer |
 | Alert route freshness | Operations SNS subscription and downstream route confirmed in the last 30 days or after route changes. | SNS metadata or incident-tool evidence. | SRE |
-| Cost alert readiness | Budget and Cost Anomaly thresholds reviewed in the last 30 days. | Budget/anomaly metadata plus review record. | FinOps owner |
+| Cost alert readiness | Budget and Cost Anomaly thresholds reviewed in the last 30 days. | Budget/anomaly metadata plus `docs/finops-review-2026-05-09.md`. | `platform-maintainers` |
 | Catalog demand review | Active catalog entries have owner, lifecycle state, last-reviewed date, and expected environments. | Repository catalog and fanout output. | Maintainer |
 
 Missing or stale KPI evidence is a no-go for an honest 5/5 even when the
