@@ -8,6 +8,8 @@ private incident details, or screenshots containing account-sensitive data.
 This file does not prove human MFA/SSO posture, organization permissions
 boundaries, live GuardDuty/Security Hub/AWS Config posture after apply, or
 external security-owner approval. Those remain external controls.
+Current vulnerability-review evidence is retained in
+`docs/vulnerability-review-2026-05-09.md`.
 
 ## Authentication Matrix
 
@@ -75,7 +77,7 @@ that explains why the scoped repository controls are sufficient.
 | Over-privileged automation | Scoped IAM resources, tag conditions, wildcard justification, Access Analyzer. | Per IAM change | Keep Security score below 5/5 and require security-owner exception. |
 | Tampered or stale deployment plan | Saved-plan manifest with commit, backend, stack, preview hash, plan hash, and age checks. | Per deploy workflow change | Regenerate preview and plan from the intended commit. |
 | Missed control-plane detection | CloudTrail evidence, EventBridge rules, GuardDuty/Security Hub/AWS Config resources in Pulumi. | Monthly after apply | Keep security account controls unresolved until live service posture is proven. |
-| Vulnerable dependencies or workflow code | `pip-audit`, Bandit, CodeQL, actionlint, dependency hygiene checks. | Per PR and monthly review | Patch, pin, or record a time-bound exception with owner approval. |
+| Vulnerable dependencies or workflow code | `pip-audit`, Bandit, CodeQL, actionlint, dependency hygiene checks, and `docs/vulnerability-review-2026-05-09.md`. | Per PR and monthly review | Patch, pin, or record a time-bound exception with owner approval. |
 
 ## Network And Transit Applicability
 
