@@ -375,6 +375,90 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     }  # nosec B101
 
 
+def _split_automation_policy_documents() -> list[tuple[str, str]]:
+    return automation._automation_policy_documents(
+        "123456789012",
+        config.settings,
+        "bootstrap-infrastructure",
+    )
+
+
+def test_mutation_target_automation_policy_documents_skip_empty_groups(monkeypatch):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    empty_group = ("empty-policy", frozenset({"StatementThatDoesNotExist"}))
+    monkeypatch.setattr(
+        automation,
+        "_AUTOMATION_MANAGED_POLICY_GROUPS",
+        (empty_group, *automation._AUTOMATION_MANAGED_POLICY_GROUPS),
+    )
+
+    documents = _split_automation_policy_documents()
+
+    assert documents[0][0] == "policy"  # nosec B101
+    assert empty_group[0] not in {name for name, _document in documents}  # nosec B101
+
+
+def test_mutation_target_automation_policy_documents_require_complete_groups(
+    monkeypatch,
+):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    monkeypatch.setattr(
+        automation,
+        "_AUTOMATION_MANAGED_POLICY_GROUPS",
+        tuple(
+            (
+                name,
+                frozenset(sid for sid in policy_sids if sid != "ReadIdentity"),
+            )
+            for name, policy_sids in automation._AUTOMATION_MANAGED_POLICY_GROUPS
+        ),
+    )
+
+    with pytest.raises(ValueError, match="ReadIdentity"):
+        _split_automation_policy_documents()
+
+
+def test_mutation_target_automation_policy_documents_require_inline_policy_first(
+    monkeypatch,
+):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    groups = automation._AUTOMATION_MANAGED_POLICY_GROUPS
+    monkeypatch.setattr(
+        automation,
+        "_AUTOMATION_MANAGED_POLICY_GROUPS",
+        (("not-policy", groups[0][1]), *groups[1:]),
+    )
+
+    with pytest.raises(ValueError, match="first automation policy document"):
+        _split_automation_policy_documents()
+
+
+def test_mutation_target_automation_policy_documents_enforce_inline_size(
+    monkeypatch,
+):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    monkeypatch.setattr(automation, "IAM_ROLE_INLINE_POLICY_MAX_BYTES", 1)
+
+    with pytest.raises(ValueError, match="inline policy document exceeds"):
+        _split_automation_policy_documents()
+
+
+def test_mutation_target_automation_policy_documents_enforce_managed_size(
+    monkeypatch,
+):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    monkeypatch.setattr(automation, "IAM_ROLE_INLINE_POLICY_MAX_BYTES", 100_000)
+    monkeypatch.setattr(automation, "IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES", 1)
+
+    with pytest.raises(ValueError, match="managed policy document exceeds"):
+        _split_automation_policy_documents()
+
+
 def test_mutation_target_github_oidc_role_name_limits_length():
     repo_suffix = "a" * 70
     digest = hashlib.sha256(repo_suffix.encode("utf-8")).hexdigest()[:8]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pulumi_aws as aws
 
@@ -917,52 +918,320 @@ def _compact_policy_document(statements: list[dict[str, object]]) -> str:
     )
 
 
-def _automation_policy_documents(
-    account_id: str, settings: BootstrapSettings, repo_name: str
-) -> list[tuple[str, str]]:
-    """Split automation permissions into customer-managed policies."""
-    policy = json.loads(_automation_policy(account_id, settings, repo_name))
-    statements_by_sid = {
-        statement["Sid"]: statement for statement in policy["Statement"]
-    }
+def _automation_statement_by_sid(
+    policy: dict[str, Any],
+) -> dict[str, dict[str, object]]:
+    """Index IAM statements by Sid while preserving policy statement order."""
+    return {str(statement["Sid"]): statement for statement in policy["Statement"]}
 
-    covered_sids = set().union(
-        *(policy_sids for _name, policy_sids in _AUTOMATION_MANAGED_POLICY_GROUPS)
-    )
-    uncovered_sids = sorted(set(statements_by_sid) - covered_sids)
+
+def _automation_policy_group_sids() -> set[str]:
+    """Return all statement Sids assigned to an automation policy group."""
+    covered_sids: set[str] = set()
+    for _name, policy_sids in _AUTOMATION_MANAGED_POLICY_GROUPS:
+        covered_sids.update(policy_sids)
+    return covered_sids
+
+
+def _validate_automation_policy_coverage(
+    statements_by_sid: dict[str, dict[str, object]],
+) -> None:
+    """Require every automation statement to be assigned to a policy document."""
+    uncovered_sids = sorted(set(statements_by_sid) - _automation_policy_group_sids())
     if uncovered_sids:
         raise ValueError(
             "automation policy statements are missing a managed-policy group: "
             + ", ".join(uncovered_sids)
         )
 
+
+def _automation_policy_document_for_group(
+    statements_by_sid: dict[str, dict[str, object]],
+    policy_sids: frozenset[str],
+) -> str | None:
+    """Build a compact policy document for the statements in one group."""
+    statements = [
+        statement for sid, statement in statements_by_sid.items() if sid in policy_sids
+    ]
+    if not statements:
+        return None
+    return _compact_policy_document(statements)
+
+
+def _automation_policy_group_documents(
+    statements_by_sid: dict[str, dict[str, object]],
+) -> list[tuple[str, str]]:
+    """Build non-empty policy documents in configured group order."""
     documents: list[tuple[str, str]] = []
     for policy_suffix, policy_sids in _AUTOMATION_MANAGED_POLICY_GROUPS:
-        statements = [
-            statement
-            for statement in policy["Statement"]
-            if statement["Sid"] in policy_sids
-        ]
-        if statements:
-            documents.append((policy_suffix, _compact_policy_document(statements)))
+        document = _automation_policy_document_for_group(statements_by_sid, policy_sids)
+        if document is not None:
+            documents.append((policy_suffix, document))
+    return documents
 
-    inline_policy_name, inline_policy_document = documents[0]
-    if inline_policy_name != "policy":
+
+def _policy_document_size(document: str) -> int:
+    """Return an IAM policy document's UTF-8 size in bytes."""
+    return len(document.encode("utf-8"))
+
+
+def _validate_automation_inline_policy_document(
+    policy_name: str, document: str
+) -> None:
+    """Validate the inline policy name and size contract."""
+    if policy_name != "policy":
         raise ValueError("the first automation policy document must be policy.")
-    if len(inline_policy_document.encode("utf-8")) > IAM_ROLE_INLINE_POLICY_MAX_BYTES:
+    if _policy_document_size(document) > IAM_ROLE_INLINE_POLICY_MAX_BYTES:
         raise ValueError("automation inline policy document exceeds AWS size limit.")
 
+
+def _validate_automation_managed_policy_documents(
+    documents: list[tuple[str, str]],
+) -> None:
+    """Validate customer-managed policy size limits."""
     oversized = [
         name
-        for name, document in documents[1:]
-        if len(document.encode("utf-8")) > IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES
+        for name, document in documents
+        if _policy_document_size(document) > IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES
     ]
     if oversized:
         raise ValueError(
             "automation managed policy document exceeds AWS size limit: "
             + ", ".join(oversized)
         )
+
+
+def _validate_automation_policy_documents(documents: list[tuple[str, str]]) -> None:
+    """Validate split automation policy documents before provisioning."""
+    inline_policy_name, inline_policy_document = documents[0]
+    _validate_automation_inline_policy_document(
+        inline_policy_name, inline_policy_document
+    )
+    _validate_automation_managed_policy_documents(documents[1:])
+
+
+def _automation_policy_documents(
+    account_id: str, settings: BootstrapSettings, repo_name: str
+) -> list[tuple[str, str]]:
+    """Split automation permissions into customer-managed policies."""
+    policy = json.loads(_automation_policy(account_id, settings, repo_name))
+    statements_by_sid = _automation_statement_by_sid(policy)
+    _validate_automation_policy_coverage(statements_by_sid)
+    documents = _automation_policy_group_documents(statements_by_sid)
+    _validate_automation_policy_documents(documents)
     return documents
+
+
+def _automation_tags(
+    configured_settings: BootstrapSettings,
+    repo_name: str,
+    repo_project: str,
+    purpose: str,
+) -> dict[str, str]:
+    """Build common tags for repository-scoped automation resources."""
+    return base_tags(
+        {
+            "Purpose": purpose,
+            "Repository": repo_name,
+            "App": repo_name,
+            "RepositoryProject": repo_project,
+        },
+        settings=configured_settings,
+    )
+
+
+def _create_automation_repository(
+    parent: pulumi.Resource,
+    name: str,
+    configured_settings: BootstrapSettings,
+    repo_name: str,
+    repo_project: str,
+) -> aws.ecr.Repository:
+    """Create or adopt the automation runner ECR repository."""
+    ecr_repository_name = configured_settings.runner_ecr_repository_name(repo_name)
+    return aws.ecr.Repository(
+        f"{name}-repository",
+        name=ecr_repository_name,
+        image_tag_mutability="IMMUTABLE",
+        image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
+            scan_on_push=True
+        ),
+        tags=_automation_tags(
+            configured_settings,
+            repo_name,
+            repo_project,
+            "pulumi-automation-runner",
+        ),
+        opts=_resource_options(
+            parent,
+            import_id=ecr_repository_name
+            if _ecr_repository_exists(ecr_repository_name)
+            else None,
+        ),
+    )
+
+
+def _create_automation_lifecycle_policy(
+    name: str,
+    repository: aws.ecr.Repository,
+    opts: pulumi.ResourceOptions,
+) -> None:
+    """Attach lifecycle rules to keep runner images bounded."""
+    aws.ecr.LifecyclePolicy(
+        f"{name}-lifecycle",
+        repository=repository.name,
+        policy=json.dumps(
+            {
+                "rules": [
+                    {
+                        "rulePriority": 1,
+                        "description": "Keep the 30 newest tagged runner images.",
+                        "selection": {
+                            "tagStatus": "tagged",
+                            "tagPrefixList": ["sha-", "main"],
+                            "countType": "imageCountMoreThan",
+                            "countNumber": 30,
+                        },
+                        "action": {"type": "expire"},
+                    },
+                    {
+                        "rulePriority": 2,
+                        "description": "Expire untagged images after 7 days.",
+                        "selection": {
+                            "tagStatus": "untagged",
+                            "countType": "sinceImagePushed",
+                            "countUnit": "days",
+                            "countNumber": 7,
+                        },
+                        "action": {"type": "expire"},
+                    },
+                ]
+            }
+        ),
+        opts=opts,
+    )
+
+
+def _create_automation_role(
+    parent: pulumi.Resource,
+    name: str,
+    configured_settings: BootstrapSettings,
+    repo_name: str,
+    repo_project: str,
+    provider_arn: pulumi.Input[str],
+) -> aws.iam.Role:
+    """Create or adopt the GitHub Actions automation role."""
+    role_name = configured_settings.automation_role_name(repo_name)
+    return aws.iam.Role(
+        f"{name}-role",
+        name=role_name,
+        assume_role_policy=apply_output(
+            pulumi.Output.from_input(provider_arn),
+            lambda arn: _automation_assume_role_policy(
+                arn,
+                configured_settings.org,
+                repo_name,
+                configured_settings.environment,
+            ),
+        ),
+        tags=_automation_tags(
+            configured_settings,
+            repo_name,
+            repo_project,
+            "pulumi-automation",
+        ),
+        opts=_resource_options(
+            parent,
+            import_id=role_name if _iam_role_exists(role_name) else None,
+        ),
+    )
+
+
+def _create_automation_managed_policy(
+    policy_name: str,
+    policy_document: str,
+    configured_settings: BootstrapSettings,
+    repo_name: str,
+    repo_project: str,
+    opts: pulumi.ResourceOptions,
+) -> aws.iam.Policy:
+    """Create one customer-managed policy for automation permissions."""
+    return aws.iam.Policy(
+        policy_name,
+        name=policy_name,
+        policy=policy_document,
+        tags=_automation_tags(
+            configured_settings,
+            repo_name,
+            repo_project,
+            "pulumi-automation-policy",
+        ),
+        opts=opts,
+    )
+
+
+def _attach_automation_managed_policy(
+    parent: pulumi.Resource,
+    policy_name: str,
+    role: aws.iam.Role,
+    policy: aws.iam.Policy,
+) -> aws.iam.RolePolicyAttachment:
+    """Attach a managed automation policy to the automation role."""
+    return aws.iam.RolePolicyAttachment(
+        f"{policy_name}-attachment",
+        role=role.name,
+        policy_arn=policy.arn,
+        opts=pulumi.ResourceOptions(parent=parent, depends_on=[policy]),
+    )
+
+
+def _create_automation_role_policies(
+    parent: pulumi.Resource,
+    name: str,
+    role: aws.iam.Role,
+    configured_settings: BootstrapSettings,
+    repo_name: str,
+    repo_project: str,
+    opts: pulumi.ResourceOptions,
+) -> tuple[
+    aws.iam.RolePolicy,
+    list[aws.iam.Policy],
+    list[aws.iam.RolePolicyAttachment],
+]:
+    """Create inline and customer-managed policies for the automation role."""
+    policy_documents = _automation_policy_documents(
+        aws.get_caller_identity().account_id,
+        configured_settings,
+        repo_name,
+    )
+    inline_policy_suffix, inline_policy_document = policy_documents[0]
+    inline_policy_name = f"{name}-{inline_policy_suffix}"
+    inline_policy = aws.iam.RolePolicy(
+        inline_policy_name,
+        name=inline_policy_name,
+        role=role.id,
+        policy=inline_policy_document,
+        opts=opts,
+    )
+
+    managed_policies: list[aws.iam.Policy] = []
+    policy_attachments: list[aws.iam.RolePolicyAttachment] = []
+    for policy_suffix, policy_document in policy_documents[1:]:
+        policy_name = f"{name}-{policy_suffix}"
+        policy = _create_automation_managed_policy(
+            policy_name,
+            policy_document,
+            configured_settings,
+            repo_name,
+            repo_project,
+            opts,
+        )
+        managed_policies.append(policy)
+        policy_attachments.append(
+            _attach_automation_managed_policy(parent, policy_name, role, policy)
+        )
+
+    return inline_policy, managed_policies, policy_attachments
 
 
 class GitHubAutomation(pulumi.ComponentResource):
@@ -990,142 +1259,27 @@ class GitHubAutomation(pulumi.ComponentResource):
             )
 
         repo_name = configured_settings.repo
-        environment = configured_settings.environment
         repo_project = repository_project or repo_name
-        ecr_repository_name = configured_settings.runner_ecr_repository_name(repo_name)
-        role_name = configured_settings.automation_role_name(repo_name)
         base_opts = _resource_options(self)
 
-        repository = aws.ecr.Repository(
-            f"{name}-repository",
-            name=ecr_repository_name,
-            image_tag_mutability="IMMUTABLE",
-            image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
-                scan_on_push=True
-            ),
-            tags=base_tags(
-                {
-                    "Purpose": "pulumi-automation-runner",
-                    "Repository": repo_name,
-                    "App": repo_name,
-                    "RepositoryProject": repo_project,
-                },
-                settings=configured_settings,
-            ),
-            opts=_resource_options(
+        repository = _create_automation_repository(
+            self, name, configured_settings, repo_name, repo_project
+        )
+        _create_automation_lifecycle_policy(name, repository, base_opts)
+        role = _create_automation_role(
+            self, name, configured_settings, repo_name, repo_project, provider_arn
+        )
+        inline_policy, managed_policies, policy_attachments = (
+            _create_automation_role_policies(
                 self,
-                import_id=(
-                    ecr_repository_name
-                    if _ecr_repository_exists(ecr_repository_name)
-                    else None
-                ),
-            ),
-        )
-
-        aws.ecr.LifecyclePolicy(
-            f"{name}-lifecycle",
-            repository=repository.name,
-            policy=json.dumps(
-                {
-                    "rules": [
-                        {
-                            "rulePriority": 1,
-                            "description": "Keep the 30 newest tagged runner images.",
-                            "selection": {
-                                "tagStatus": "tagged",
-                                "tagPrefixList": ["sha-", "main"],
-                                "countType": "imageCountMoreThan",
-                                "countNumber": 30,
-                            },
-                            "action": {"type": "expire"},
-                        },
-                        {
-                            "rulePriority": 2,
-                            "description": "Expire untagged images after 7 days.",
-                            "selection": {
-                                "tagStatus": "untagged",
-                                "countType": "sinceImagePushed",
-                                "countUnit": "days",
-                                "countNumber": 7,
-                            },
-                            "action": {"type": "expire"},
-                        },
-                    ]
-                }
-            ),
-            opts=base_opts,
-        )
-
-        role = aws.iam.Role(
-            f"{name}-role",
-            name=role_name,
-            assume_role_policy=apply_output(
-                pulumi.Output.from_input(provider_arn),
-                lambda arn: _automation_assume_role_policy(
-                    arn,
-                    configured_settings.org,
-                    repo_name,
-                    environment,
-                ),
-            ),
-            tags=base_tags(
-                {
-                    "Purpose": "pulumi-automation",
-                    "Repository": repo_name,
-                    "App": repo_name,
-                    "RepositoryProject": repo_project,
-                },
-                settings=configured_settings,
-            ),
-            opts=_resource_options(
-                self,
-                import_id=role_name if _iam_role_exists(role_name) else None,
-            ),
-        )
-
-        policy_documents = _automation_policy_documents(
-            aws.get_caller_identity().account_id,
-            configured_settings,
-            repo_name,
-        )
-        inline_policy_suffix, inline_policy_document = policy_documents[0]
-        inline_policy_name = f"{name}-{inline_policy_suffix}"
-        inline_policy = aws.iam.RolePolicy(
-            inline_policy_name,
-            name=inline_policy_name,
-            role=role.id,
-            policy=inline_policy_document,
-            opts=base_opts,
-        )
-
-        managed_policies: list[aws.iam.Policy] = []
-        policy_attachments: list[aws.iam.RolePolicyAttachment] = []
-        for policy_suffix, policy_document in policy_documents[1:]:
-            policy_name = f"{name}-{policy_suffix}"
-            policy = aws.iam.Policy(
-                policy_name,
-                name=policy_name,
-                policy=policy_document,
-                tags=base_tags(
-                    {
-                        "Purpose": "pulumi-automation-policy",
-                        "Repository": repo_name,
-                        "App": repo_name,
-                        "RepositoryProject": repo_project,
-                    },
-                    settings=configured_settings,
-                ),
-                opts=base_opts,
+                name,
+                role,
+                configured_settings,
+                repo_name,
+                repo_project,
+                base_opts,
             )
-            managed_policies.append(policy)
-            policy_attachments.append(
-                aws.iam.RolePolicyAttachment(
-                    f"{policy_name}-attachment",
-                    role=role.name,
-                    policy_arn=policy.arn,
-                    opts=pulumi.ResourceOptions(parent=self, depends_on=[policy]),
-                )
-            )
+        )
 
         self.repository = repository
         self.role = role
