@@ -221,6 +221,7 @@ def test_configure_github_repository_controls_api_helpers(
         '["invalid", {"name":"main","target":"branch","id":"not-int"}]',
         '{"id":9444106}',
         "{}",
+        "[]",
         '{"permissions":{"admin":true}}',
         '{"permissions":{"admin":false}}',
         '{"permissions":{}}',
@@ -246,6 +247,7 @@ def test_configure_github_repository_controls_api_helpers(
     assert module._github_user_id("Kravalg") == 9444106  # nosec B101
     with pytest.raises(ValueError, match="Could not resolve"):
         module._github_user_id("missing")
+    assert module._repo_admin_allowed("example/repo") is False  # nosec B101  # noqa: SLF001
     assert module._repo_admin_allowed("example/repo") is True  # nosec B101  # noqa: SLF001
     assert module._repo_admin_allowed("example/repo") is False  # nosec B101  # noqa: SLF001
     assert module._repo_admin_allowed("example/repo") is False  # nosec B101  # noqa: SLF001
