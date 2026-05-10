@@ -91,6 +91,7 @@ assert_help_target() {
     test-ty
     test-unit
     test-yaml
+    verify-well-architected-questions
   )
 
   for target in "${expected_targets[@]}"; do
@@ -520,6 +521,23 @@ EOF
   [[ "$output" == *"--dependabot-exception-evidence"* ]]
   [[ "$output" != *"bootstrap-test-operations"* ]]
   [[ "$output" != *"dependabot-exception-2026-06-10"* ]]
+}
+
+@test "make verify-well-architected-questions compares against AWS docs" {
+  run env \
+    QUESTION_MATRIX_EVIDENCE=specs/question-matrix-evidence.json \
+    AWS_WA_TOC_JSON=docs/aws-wa-toc.json \
+    AWS_WA_QUESTION_VERIFY_OUTPUT=.artifacts/well-architected/question-verification.json \
+    make -n verify-well-architected-questions
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/verify_well_architected_questions.py"* ]]
+  [[ "$output" == *'QUESTION_MATRIX_EVIDENCE:-'* ]]
+  [[ "$output" == *'AWS_WA_TOC_JSON:-'* ]]
+  [[ "$output" == *'AWS_WA_QUESTION_VERIFY_OUTPUT:-'* ]]
+  [[ "$output" == *"--toc-json"* ]]
+  [[ "$output" == *"--output"* ]]
+  [[ "$output" != *"docs/aws-wa-toc.json"* ]]
+  [[ "$output" != *"question-verification.json"* ]]
 }
 
 @test "make report-alert-route-observation renders monthly alert route evidence" {

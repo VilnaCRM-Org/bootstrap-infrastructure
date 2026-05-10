@@ -81,8 +81,8 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         pulumi-up pulumi-up-plan pulumi-refresh \
         pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
         report-maintainability-trends report-dead-code report-docstrings \
-        report-sbom report-well-architected-evidence report-alert-route-observation \
-        report-security-account-attestation \
+        report-sbom report-well-architected-evidence verify-well-architected-questions \
+        report-alert-route-observation report-security-account-attestation \
         test-quality test-ruff test-ty test-maintainability \
         test-architecture test-dependency-hygiene test-lockfile test-coverage \
         test-bandit test-actionlint test-yaml test-dockerfile \
@@ -399,6 +399,19 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 			$$question_matrix_arg $$external_control_arg $$dependabot_exception_arg \
 			--output .artifacts/well-architected/evidence.json \
 			--markdown-output .artifacts/well-architected/evidence.md'
+
+verify-well-architected-questions: ## Compare question evidence with AWS public docs.
+	@bash -lc '\
+		set -euo pipefail; \
+		toc_arg=""; \
+		toc_url_arg=""; \
+		output_arg=""; \
+		if [ -n "$${AWS_WA_TOC_JSON:-}" ]; then toc_arg="--toc-json $${AWS_WA_TOC_JSON}"; fi; \
+		if [ -n "$${AWS_WA_TOC_URL:-}" ]; then toc_url_arg="--toc-url $${AWS_WA_TOC_URL}"; fi; \
+		if [ -n "$${AWS_WA_QUESTION_VERIFY_OUTPUT:-}" ]; then output_arg="--output $${AWS_WA_QUESTION_VERIFY_OUTPUT}"; fi; \
+		$(REPO_PYTHON) ./scripts/verify_well_architected_questions.py \
+			--question-matrix-evidence "$${QUESTION_MATRIX_EVIDENCE:-specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-05-09.json}" \
+			$$toc_arg $$toc_url_arg $$output_arg'
 
 report-alert-route-observation: ## Render monthly alert-route observation evidence.
 	@bash -lc '\

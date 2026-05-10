@@ -61,6 +61,7 @@ help              Print the available make targets.
 nightly-quality   Run the scheduled quality-report battery locally.
 report-quality    Generate the scheduled maintainability, dead-code, docstring, and SBOM reports.
 report-sbom       Generate a CycloneDX SBOM for the synced Python environment.
+verify-well-architected-questions  Compare question evidence with AWS public docs.
 report-alert-route-observation  Render a monthly alert-route observation from collector evidence.
 report-security-account-attestation  Render a non-secret security account attestation from collector evidence.
 start             Initialize and start the Pulumi development environment.

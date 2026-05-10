@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import io
 import json
 import os
 import subprocess
@@ -593,6 +594,253 @@ def test_record_security_account_attestation_reports_invalid_evidence(
     assert status == 1  # nosec B101
     assert not output.exists()  # nosec B101
     assert expected_error in capsys.readouterr().err  # nosec B101
+
+
+def _well_architected_question_toc() -> dict[str, object]:
+    """Return a compact AWS Well-Architected TOC fixture with all question IDs."""
+    counts = {
+        "OPS": 11,
+        "SEC": 11,
+        "REL": 13,
+        "PERF": 5,
+        "COST": 11,
+        "SUS": 6,
+    }
+    nodes = []
+    for prefix, count in counts.items():
+        for number in range(1, count + 1):
+            separator = "." if prefix != "SUS" else ""
+            nodes.append(
+                {
+                    "title": f"{prefix} {number}{separator} Question {number}?",
+                    "href": f"{prefix.lower()}-{number:02d}.html",
+                }
+            )
+    return {
+        "contents": [
+            {
+                "title": "Appendix",
+                "contents": [
+                    "ignored non-object node",
+                    {"title": "Ignored branch", "contents": "not a list"},
+                    *nodes,
+                ],
+            }
+        ]
+    }
+
+
+def _well_architected_question_evidence() -> dict[str, object]:
+    """Return structured question evidence aligned with the TOC fixture."""
+    pillar_by_prefix = {
+        "OPS": "Operational Excellence",
+        "SEC": "Security",
+        "REL": "Reliability",
+        "PERF": "Performance Efficiency",
+        "COST": "Cost Optimization",
+        "SUS": "Sustainability",
+    }
+    counts = {
+        "OPS": 11,
+        "SEC": 11,
+        "REL": 13,
+        "PERF": 5,
+        "COST": 11,
+        "SUS": 6,
+    }
+    scores = [
+        {
+            "id": f"{prefix}{number}",
+            "pillar": pillar,
+            "score": 5,
+            "status": "passed",
+            "rationale": "Fixture evidence.",
+            "primaryBlocker": "",
+        }
+        for prefix, pillar in pillar_by_prefix.items()
+        for number in range(1, counts[prefix] + 1)
+    ]
+    return {
+        "workload": "bootstrap-infrastructure",
+        "owner": "platform-maintainers",
+        "reviewedAt": "2026-05-10T08:23:23Z",
+        "questionCount": len(scores),
+        "unresolvedQuestionCount": 0,
+        "evidenceLocation": "specs/question-matrix.md",
+        "frameworkSourceVerification": {
+            "checkedAt": "2026-05-10T08:00:00Z",
+            "source": "AWS Well-Architected Framework latest public documentation",
+            "questionCounts": {
+                "Operational Excellence": 11,
+                "Security": 11,
+                "Reliability": 13,
+                "Performance Efficiency": 5,
+                "Cost Optimization": 11,
+                "Sustainability": 6,
+            },
+            "sourceUrls": [
+                "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html"
+            ],
+        },
+        "questionScores": scores,
+    }
+
+
+def test_verify_well_architected_questions_accepts_matching_toc(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Compare local question evidence with an AWS TOC-shaped fixture."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    evidence = tmp_path / "question-matrix-evidence.json"
+    toc = tmp_path / "toc.json"
+    output = tmp_path / "question-verification.json"
+    evidence.write_text(
+        json.dumps(_well_architected_question_evidence()), encoding="utf-8"
+    )
+    toc.write_text(json.dumps(_well_architected_question_toc()), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--question-matrix-evidence",
+            str(evidence),
+            "--toc-json",
+            str(toc),
+            "--output",
+            str(output),
+        ]
+    )
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert status == 0  # nosec B101
+    assert report["status"] == "passed"  # nosec B101
+    assert report["awsQuestionCount"] == 57  # nosec B101
+    assert report["awsPillarQuestionCounts"]["Sustainability"] == 6  # nosec B101
+    assert report["blockers"] == []  # nosec B101
+
+
+def test_verify_well_architected_questions_rejects_gaps_and_bad_scores(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Surface matrix coverage and score problems as non-zero verification."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    evidence_payload = _well_architected_question_evidence()
+    scores = evidence_payload["questionScores"]
+    assert isinstance(scores, list)  # nosec B101
+    scores.pop()
+    scores[0]["score"] = 6
+    evidence = tmp_path / "question-matrix-evidence.json"
+    toc = tmp_path / "toc.json"
+    evidence.write_text(json.dumps(evidence_payload), encoding="utf-8")
+    toc.write_text(json.dumps(_well_architected_question_toc()), encoding="utf-8")
+
+    status = module.main(
+        ["--question-matrix-evidence", str(evidence), "--toc-json", str(toc)]
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    assert status == 1  # nosec B101
+    assert report["status"] == "failed"  # nosec B101
+    assert report["missingQuestionIds"] == ["SUS6"]  # nosec B101
+    assert report["invalidScoreQuestionIds"] == ["OPS1"]  # nosec B101
+    assert "SUS6" in " ".join(report["blockers"])  # nosec B101
+
+
+def test_verify_well_architected_questions_reports_duplicates_and_extra_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catch duplicated AWS/source IDs, extra evidence IDs, and bad metadata."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    evidence = _well_architected_question_evidence()
+    scores = evidence["questionScores"]
+    assert isinstance(scores, list)  # nosec B101
+    duplicate = dict(scores[0])
+    extra = dict(scores[1])
+    extra["id"] = "OPS99"
+    extra["score"] = True
+    scores.extend([duplicate, extra])
+    evidence["questionCount"] = 999
+    evidence["frameworkSourceVerification"] = "missing"
+    toc = _well_architected_question_toc()
+    contents = toc["contents"]
+    assert isinstance(contents, list)  # nosec B101
+    appendix = contents[0]
+    assert isinstance(appendix, dict)  # nosec B101
+    nodes = appendix["contents"]
+    assert isinstance(nodes, list)  # nosec B101
+    nodes.append({"title": "OPS 1. Duplicate question?", "href": "ops-01.html"})
+
+    report = module.verify_question_matrix(
+        evidence=evidence,
+        toc=toc,
+        toc_source="fixture",
+    )
+
+    blockers = " ".join(report["blockers"])
+    assert report["status"] == "failed"  # nosec B101
+    assert report["duplicateAwsQuestionIds"] == ["OPS1"]  # nosec B101
+    assert report["duplicateEvidenceQuestionIds"] == ["OPS1"]  # nosec B101
+    assert report["extraQuestionIds"] == ["OPS99"]  # nosec B101
+    assert report["invalidScoreQuestionIds"] == ["OPS99"]  # nosec B101
+    assert "questionCount" in blockers  # nosec B101
+    assert "questionCounts" in blockers  # nosec B101
+
+    no_scores_report = module.verify_question_matrix(
+        evidence={
+            "questionCount": 57,
+            "frameworkSourceVerification": {
+                "questionCounts": {
+                    "Operational Excellence": 11,
+                    "Security": 11,
+                    "Reliability": 13,
+                    "Performance Efficiency": 5,
+                    "Cost Optimization": 11,
+                    "Sustainability": 6,
+                }
+            },
+            "questionScores": "not a list",
+        },
+        toc=_well_architected_question_toc(),
+        toc_source="fixture",
+    )
+    assert no_scores_report["status"] == "failed"  # nosec B101
+    assert len(no_scores_report["missingQuestionIds"]) == 57  # nosec B101
+
+
+def test_verify_well_architected_questions_fetches_toc_and_reports_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Cover live-fetch plumbing with a fake response and error rendering."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    evidence = tmp_path / "question-matrix-evidence.json"
+    evidence.write_text(
+        json.dumps(_well_architected_question_evidence()), encoding="utf-8"
+    )
+
+    class FakeResponse(io.StringIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            self.close()
+
+    monkeypatch.setattr(
+        module,
+        "urlopen",
+        lambda url, timeout: FakeResponse(json.dumps(_well_architected_question_toc())),
+    )
+    assert module.main(["--question-matrix-evidence", str(evidence)]) == 0
+    assert '"status": "passed"' in capsys.readouterr().out
+
+    monkeypatch.setattr(module, "urlopen", lambda url, timeout: FakeResponse("[]"))
+    assert module.main(["--question-matrix-evidence", str(evidence)]) == 2
+    assert "AWS Well-Architected TOC must be a JSON object" in capsys.readouterr().err
+
+    invalid_evidence = tmp_path / "invalid-question-matrix-evidence.json"
+    invalid_evidence.write_text("[]", encoding="utf-8")
+    assert module.main(["--question-matrix-evidence", str(invalid_evidence)]) == 2
+    assert "must contain a JSON object" in capsys.readouterr().err
 
 
 def test_doctor_main_reports_missing_and_ready_states(

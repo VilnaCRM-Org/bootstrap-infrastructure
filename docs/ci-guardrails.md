@@ -275,6 +275,9 @@ fresh `checkedAt`, source label, non-empty source URL list, and pillar question
 counts matching the current AWS Well-Architected Framework question set:
 Operational Excellence `11`, Security `11`, Reliability `13`, Performance
 Efficiency `5`, Cost Optimization `11`, and Sustainability `6`.
+Run `make verify-well-architected-questions` when refreshing the matrix to
+compare the local `questionScores` IDs, `questionCount`, pillar counts, and
+1-5 score values against the AWS public Framework TOC.
 External-control records are checked per control as well as at the file level:
 
 - `controlCount` must match the number of objects in `controls`
