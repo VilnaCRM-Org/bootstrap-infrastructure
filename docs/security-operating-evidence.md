@@ -93,6 +93,23 @@ with `Resources: 117 unchanged`.
 | AWS Config | Recorder `bootstrap-test-configuration-recorder`, delivery channel `bootstrap-test-configuration-delivery`, bucket `bootstrap-891377212104-eu-central-1-test-aws-config`, `recording=true`, and `lastStatus=SUCCESS`. | Refresh monthly and after recorder scope, bucket, or delivery changes. |
 | Vulnerable dependencies or workflow code | `pip-audit`, Bandit, CodeQL, actionlint, dependency hygiene checks, and `docs/vulnerability-review-2026-05-09.md`. | Per PR and monthly review | Patch, pin, or record a time-bound exception with owner approval. |
 
+## Human And Static-Credential Metadata
+
+A non-secret IAM metadata refresh on 2026-05-10 UTC confirmed that the
+security-account external control is still open:
+
+| Check | Result | Follow-up |
+| --- | --- | --- |
+| Caller identity | `arn:aws:iam::891377212104:user/codex_cli`. | Treat local static credentials as an owner-approved exception until remediated. |
+| IAM account summary | `Users=4`, `MFADevices=1`, `MFADevicesInUse=1`, `AccountMFAEnabled=1`, `AccountPasswordPresent=1`, and `AccountAccessKeysPresent=0`. | Security owner must attest human MFA/SSO posture without exposing private user data. |
+| IAM user inventory | Four IAM users exist in the account; password last-used values were not present in the metadata returned. | Security owner decides which users are required, retired, or covered by an exception. |
+| Access-key status by user | One IAM user has an active access key; the other three users returned no access-key status rows. Access key IDs were not printed or retained. | Record static-key exception, rotation plan, or remediation before SEC2 can pass at 5/5. |
+
+This metadata does not prove human MFA/SSO coverage, does not replace an
+administrator-owned permissions boundary, and does not constitute external
+security-owner approval. Keep SEC1, SEC2, and SEC3 capped until those
+attestations or remediations are recorded.
+
 ## Network And Transit Applicability
 
 The current workload has no VPC, public endpoint, listener, API, CDN, public

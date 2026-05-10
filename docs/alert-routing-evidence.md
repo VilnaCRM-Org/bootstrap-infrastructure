@@ -64,6 +64,26 @@ with `NotAuthorizedForSourceException`, so EventBridge-to-SNS coverage remains
 validated by live rule/target metadata and Pulumi component tests rather than
 service-event injection.
 
+## Queue Consumption Metadata
+
+A non-secret route metadata refresh on 2026-05-10 UTC confirmed that the
+repository-owned durable queue exists, but it also confirmed that human
+consumption is still not proven:
+
+| Check | Result |
+| --- | --- |
+| SNS topic | `arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations` reports one confirmed subscription and a KMS key. |
+| Subscription | The confirmed subscriber protocol is `sqs`, endpoint `arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts`. |
+| Queue | `bootstrap-test-operations-alerts` resolved to an SQS queue URL in `eu-central-1`. |
+| Queue depth | `ApproximateNumberOfMessages=2`, `ApproximateNumberOfMessagesNotVisible=0`, and `ApproximateNumberOfMessagesDelayed=0`. |
+| Queue retention | `MessageRetentionPeriod=345600` and `VisibilityTimeout=30`. |
+
+The visible queue depth is useful operating evidence because it shows why a
+queue-owner process is required. It is not sufficient OPS8 evidence by itself:
+SRE still needs to record a downstream human route, ticket/paging/ChatOps
+subscriber, or explicitly approved queue-owner consumption process plus
+monthly observation history.
+
 ## Fallbacks
 
 - Keep OPS8 and human-escalation claims below 5/5 until the downstream human
