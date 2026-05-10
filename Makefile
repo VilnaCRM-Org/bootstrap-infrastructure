@@ -385,6 +385,7 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		restore_arg=""; \
 		question_matrix_arg=""; \
 		external_control_arg=""; \
+		dependabot_exception_arg=""; \
 		if [ -n "$${PR_NUMBER:-}" ]; then pr_arg="--pr $${PR_NUMBER}"; fi; \
 		if [ -n "$${AWS_ACCOUNT_ID:-}" ]; then account_arg="--aws-account-id $${AWS_ACCOUNT_ID}"; fi; \
 		if [ -n "$${OPERATIONS_TOPIC_ARN:-}" ]; then topic_arg="--operations-topic-arn $${OPERATIONS_TOPIC_ARN}"; fi; \
@@ -392,9 +393,10 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		if [ -n "$${RESTORE_DRILL_EVIDENCE:-}" ]; then restore_arg="--restore-drill-evidence $${RESTORE_DRILL_EVIDENCE}"; fi; \
 		if [ -n "$${QUESTION_MATRIX_EVIDENCE:-}" ]; then question_matrix_arg="--question-matrix-evidence $${QUESTION_MATRIX_EVIDENCE}"; fi; \
 		if [ -n "$${EXTERNAL_CONTROL_EVIDENCE:-}" ]; then external_control_arg="--external-control-evidence $${EXTERNAL_CONTROL_EVIDENCE}"; fi; \
+		if [ -n "$${DEPENDABOT_EXCEPTION_EVIDENCE:-}" ]; then dependabot_exception_arg="--dependabot-exception-evidence $${DEPENDABOT_EXCEPTION_EVIDENCE}"; fi; \
 		$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
 			$$pr_arg $$account_arg $$topic_arg $$cloudtrail_arg $$restore_arg \
-			$$question_matrix_arg $$external_control_arg \
+			$$question_matrix_arg $$external_control_arg $$dependabot_exception_arg \
 			--output .artifacts/well-architected/evidence.json \
 			--markdown-output .artifacts/well-architected/evidence.md'
 

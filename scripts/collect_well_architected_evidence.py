@@ -46,6 +46,19 @@ DEFAULT_PRODUCTION_REVIEWER = "Kravalg"
 DEFAULT_DEPENDABOT_DEPENDENCY = "GitPython"
 DEFAULT_DEPENDABOT_MANIFEST = "uv.lock"
 BLOCKING_DEPENDABOT_SEVERITIES = frozenset({"critical", "high"})
+DEPENDABOT_EXCEPTION_REQUIRED_FIELDS = (
+    "workload",
+    "owner",
+    "approvedBy",
+    "reviewedAt",
+    "expiresAt",
+    "dependencyName",
+    "manifestPath",
+    "alertNumbers",
+    "approval",
+    "reason",
+    "remediationPlan",
+)
 RESTORE_DRILL_REQUIRED_FIELDS = (
     "workload",
     "environment",
@@ -727,6 +740,7 @@ def github_dependabot_alerts(
     dependency: str = DEFAULT_DEPENDABOT_DEPENDENCY,
     manifest_path: str = DEFAULT_DEPENDABOT_MANIFEST,
     blocking_severities: frozenset[str] = BLOCKING_DEPENDABOT_SEVERITIES,
+    exception_evidence: Path | None = None,
     *,
     runner: Runner = run,
 ) -> dict[str, object]:
@@ -752,25 +766,47 @@ def github_dependabot_alerts(
         matching_alerts,
         blocking_severities,
     )
-    open_alert_numbers = _dependabot_alert_numbers(blocking_alerts)
-    blockers = _dependabot_alert_blockers(
-        dependency=dependency,
-        manifest_path=manifest_path,
-        open_alert_numbers=open_alert_numbers,
-        open_alert_count=len(blocking_alerts),
+    exception_summary, excepted_alert_numbers, exception_blockers = (
+        _dependabot_exception_coverage(
+            exception_evidence,
+            dependency=dependency,
+            manifest_path=manifest_path,
+            blocking_alerts=blocking_alerts,
+        )
     )
+    unexcepted_alerts = _unexcepted_dependabot_alerts(
+        blocking_alerts,
+        excepted_alert_numbers,
+    )
+    unexcepted_alert_numbers = _dependabot_alert_numbers(unexcepted_alerts)
+    open_alert_numbers = _dependabot_alert_numbers(blocking_alerts)
+    blockers = [
+        *exception_blockers,
+        *_dependabot_alert_blockers(
+            dependency=dependency,
+            manifest_path=manifest_path,
+            open_alert_numbers=unexcepted_alert_numbers,
+            open_alert_count=len(unexcepted_alerts),
+        ),
+    ]
+    evidence: dict[str, object] = {
+        "dependencyName": dependency,
+        "manifestPath": manifest_path,
+        "blockingSeverities": sorted(blocking_severities),
+        "matchingOpenAlertCount": len(matching_alerts),
+        "openAlertCount": len(blocking_alerts),
+        "openAlertNumbers": open_alert_numbers,
+        "unexceptedOpenAlertCount": len(unexcepted_alerts),
+        "unexceptedOpenAlertNumbers": unexcepted_alert_numbers,
+        "exceptedOpenAlertNumbers": sorted(excepted_alert_numbers),
+        "alerts": blocking_alerts,
+    }
+    if exception_summary:
+        evidence["exceptionEvidence"] = exception_summary
     return _check(
         "github_dependabot_alerts",
         status="passed" if not blockers else "failed",
-        evidence={
-            "dependencyName": dependency,
-            "manifestPath": manifest_path,
-            "blockingSeverities": sorted(blocking_severities),
-            "matchingOpenAlertCount": len(matching_alerts),
-            "openAlertCount": len(blocking_alerts),
-            "openAlertNumbers": open_alert_numbers,
-            "alerts": blocking_alerts,
-        },
+        evidence=evidence,
         blockers=blockers,
     )
 
@@ -836,6 +872,18 @@ def _blocking_dependabot_alerts(
         alert
         for alert in alerts
         if str(alert.get("severity", "")).lower() in blocking_severities
+    ]
+
+
+def _unexcepted_dependabot_alerts(
+    alerts: Sequence[dict[str, object]],
+    excepted_alert_numbers: set[int],
+) -> list[dict[str, object]]:
+    """Return blocking alerts not covered by approved exception evidence."""
+    return [
+        alert
+        for alert in alerts
+        if _dependabot_alert_number(alert) not in excepted_alert_numbers
     ]
 
 
@@ -908,6 +956,158 @@ def _dependabot_alert_blockers(
         "Open default-branch Dependabot alerts remain for "
         f"{dependency} in {manifest_path}: {alert_text}."
     ]
+
+
+def _dependabot_exception_coverage(
+    evidence_path: Path | None,
+    *,
+    dependency: str,
+    manifest_path: str,
+    blocking_alerts: Sequence[dict[str, object]],
+) -> tuple[dict[str, object], set[int], list[str]]:
+    """Return approved Dependabot exception coverage for open alerts."""
+    if evidence_path is None:
+        return {}, set(), []
+
+    label = "Dependabot exception evidence"
+    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
+    blockers.extend(
+        _structured_evidence_payload_blockers(
+            payload,
+            DEPENDABOT_EXCEPTION_REQUIRED_FIELDS,
+        )
+    )
+    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
+    blockers.extend(
+        _dependabot_exception_payload_blockers(
+            payload,
+            dependency=dependency,
+            manifest_path=manifest_path,
+            blocking_alerts=blocking_alerts,
+        )
+    )
+    alert_numbers = _dependabot_exception_alert_numbers(payload)
+    covered_numbers = set(alert_numbers) if not blockers else set()
+    summary = _dependabot_exception_summary(evidence_path, payload, alert_numbers)
+    return summary, covered_numbers, blockers
+
+
+def _dependabot_exception_payload_blockers(
+    payload: dict[str, Any],
+    *,
+    dependency: str,
+    manifest_path: str,
+    blocking_alerts: Sequence[dict[str, object]],
+) -> list[str]:
+    """Return blockers for a Dependabot exception evidence payload."""
+    blockers: list[str] = []
+    if payload.get("dependencyName") != dependency:
+        blockers.append(
+            f"Dependabot exception evidence dependencyName must be {dependency}."
+        )
+    if payload.get("manifestPath") != manifest_path:
+        blockers.append(
+            f"Dependabot exception evidence manifestPath must be {manifest_path}."
+        )
+    approval = str(payload.get("approval") or "").strip().lower()
+    if approval not in {"approved", "approved_exception", "accepted_risk"}:
+        blockers.append(
+            "Dependabot exception evidence approval must be approved, "
+            "approved_exception, or accepted_risk."
+        )
+
+    evidence = payload.get("evidence")
+    if not isinstance(evidence, list) or not any(
+        isinstance(item, str) and item.strip() for item in evidence
+    ):
+        blockers.append(
+            "Dependabot exception evidence must include non-empty evidence strings."
+        )
+
+    blockers.extend(_dependabot_exception_expiry_blockers(payload.get("expiresAt")))
+    blockers.extend(
+        _dependabot_exception_alert_number_blockers(payload, blocking_alerts)
+    )
+    return blockers
+
+
+def _dependabot_exception_expiry_blockers(expires_at_value: object) -> list[str]:
+    """Return blockers for Dependabot exception expiry."""
+    expires_at = _parse_reviewed_at(expires_at_value)
+    if expires_at is None:
+        return ["Dependabot exception evidence expiresAt must be ISO-8601."]
+    now = dt.datetime.now(dt.timezone.utc)
+    if expires_at <= now:
+        return ["Dependabot exception evidence is expired."]
+    return []
+
+
+def _dependabot_exception_alert_number_blockers(
+    payload: dict[str, Any],
+    blocking_alerts: Sequence[dict[str, object]],
+) -> list[str]:
+    """Return blockers for Dependabot exception alert-number coverage."""
+    blockers: list[str] = []
+    expected_numbers = set(_dependabot_alert_numbers(blocking_alerts))
+    actual_numbers = set(_dependabot_exception_alert_numbers(payload))
+    if expected_numbers:
+        missing_numbers = sorted(expected_numbers - actual_numbers)
+        if missing_numbers:
+            blockers.append(
+                "Dependabot exception evidence does not cover open alert numbers: "
+                f"{_alert_number_text(missing_numbers)}."
+            )
+    elif blocking_alerts:
+        blockers.append(
+            "Dependabot exception evidence cannot cover alerts without GitHub "
+            "alert numbers."
+        )
+    extra_numbers = sorted(actual_numbers - expected_numbers)
+    if extra_numbers:
+        blockers.append(
+            "Dependabot exception evidence includes alert numbers that are not "
+            f"currently open blockers: {_alert_number_text(extra_numbers)}."
+        )
+    return blockers
+
+
+def _dependabot_exception_alert_numbers(payload: dict[str, Any]) -> list[int]:
+    """Return exception alert numbers when they are a valid integer list."""
+    alert_numbers = payload.get("alertNumbers")
+    if not isinstance(alert_numbers, list):
+        return []
+    numbers: list[int] = []
+    for item in alert_numbers:
+        if isinstance(item, bool) or not isinstance(item, int):
+            return []
+        numbers.append(item)
+    return sorted(numbers)
+
+
+def _dependabot_exception_summary(
+    evidence_path: Path,
+    payload: dict[str, Any],
+    alert_numbers: Sequence[int],
+) -> dict[str, object]:
+    """Return non-secret Dependabot exception metadata for the report."""
+    return {
+        "path": str(evidence_path),
+        "owner": str(payload.get("owner") or ""),
+        "approvedBy": str(payload.get("approvedBy") or ""),
+        "reviewedAt": str(payload.get("reviewedAt") or ""),
+        "expiresAt": str(payload.get("expiresAt") or ""),
+        "dependencyName": str(payload.get("dependencyName") or ""),
+        "manifestPath": str(payload.get("manifestPath") or ""),
+        "approval": str(payload.get("approval") or ""),
+        "alertNumbers": list(alert_numbers),
+        "reason": str(payload.get("reason") or ""),
+        "remediationPlan": str(payload.get("remediationPlan") or ""),
+    }
+
+
+def _alert_number_text(numbers: Sequence[int]) -> str:
+    """Return a human-readable alert-number list."""
+    return ", ".join(f"#{number}" for number in numbers)
 
 
 def github_production_environment(
@@ -2371,6 +2571,7 @@ def collect_evidence(
             args.repo,
             args.dependabot_dependency,
             args.dependabot_manifest,
+            exception_evidence=args.dependabot_exception_evidence,
             runner=runner,
         ),
         github_production_environment(
@@ -2566,6 +2767,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--dependabot-manifest",
         default=DEFAULT_DEPENDABOT_MANIFEST,
         help="Manifest path whose open Dependabot alerts block SEC11.",
+    )
+    parser.add_argument(
+        "--dependabot-exception-evidence",
+        type=Path,
+        help=(
+            "Optional non-secret owner-approved exception evidence covering the "
+            "current open Dependabot alert numbers."
+        ),
     )
     parser.add_argument("--restore-drill-evidence", type=Path)
     parser.add_argument("--question-matrix-evidence", type=Path)

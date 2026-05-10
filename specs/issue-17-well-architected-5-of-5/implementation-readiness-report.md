@@ -71,6 +71,7 @@ evidence remain open.
 | Restore drill evidence | Epic 5 | Current restore evidence is `restore-drill-evidence-2026-04-27.json`; next restore drill is due before the 90-day freshness window expires. |
 | Production approval evidence | Epic 1 | Protected environment reviewer rules, approved apply evidence, reviewed SHA, and skipped-check policy. |
 | Security account controls | SEC1-SEC11 | MFA/SSO posture, static-key exception or remediation evidence, permissions-boundary or exemption attestation, and external security-owner approval. Live GuardDuty/Security Hub/AWS Config posture is current for the test stack, and `make report-security-account-attestation` now provides the non-secret record path once the owner decision exists. |
+| Dependabot alert closure or exception | SEC11 | Default-branch `GitPython` alerts must close after the patched lockfile lands on `main`, or a current `DEPENDABOT_EXCEPTION_EVIDENCE` record must cover the exact remaining alert numbers with owner approval and a remediation plan. |
 | Sustainability goals | Epic 8 | Current governance is recorded in `docs/well-architected-operating-evidence.md` and `docs/operating-review-2026-05-09.md`; refresh before region, retention, compute, or catalog expansion changes. |
 | Well-Architected review owner | Epic 0 | Owner for question-matrix updates, score changes, evidence expiry, and follow-up review. |
 

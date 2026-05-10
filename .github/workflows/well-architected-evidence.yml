@@ -65,6 +65,7 @@ jobs:
       RESTORE_DRILL_EVIDENCE: specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-04-27.json
       QUESTION_MATRIX_EVIDENCE: specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-05-09.json
       EXTERNAL_CONTROL_EVIDENCE: specs/issue-17-well-architected-5-of-5/external-control-evidence-2026-05-09.json
+      DEPENDABOT_EXCEPTION_EVIDENCE: ${{ vars.DEPENDABOT_EXCEPTION_EVIDENCE }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}

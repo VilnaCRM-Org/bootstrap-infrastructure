@@ -2844,6 +2844,199 @@ def test_collect_well_architected_evidence_reports_dependabot_alerts(
     ]
 
 
+def test_collect_well_architected_evidence_accepts_dependabot_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Owner-approved exception evidence can cover exact open alert numbers."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    exception_path = tmp_path / "dependabot-exception.json"
+    exception_path.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "owner": "security-reviewer",
+                "approvedBy": "Kravalg",
+                "reviewedAt": module.dt.datetime.now(
+                    module.dt.timezone.utc
+                ).isoformat(),
+                "expiresAt": (
+                    module.dt.datetime.now(module.dt.timezone.utc)
+                    + module.dt.timedelta(days=7)
+                ).isoformat(),
+                "dependencyName": "GitPython",
+                "manifestPath": "uv.lock",
+                "alertNumbers": [8, 4],
+                "approval": "approved",
+                "reason": "Patched lockfile is staged; alerts close after merge.",
+                "remediationPlan": "Merge patched lockfile or revisit exception.",
+                "evidence": ["Security owner approved a short exception window."],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def runner(command, **_kwargs):
+        assert command[:2] == ["gh", "api"]  # nosec B101
+        payload = [
+            {
+                "number": 8,
+                "state": "open",
+                "dependency": {
+                    "package": {"name": "GitPython"},
+                    "manifest_path": "uv.lock",
+                },
+                "security_advisory": {"severity": "high"},
+                "security_vulnerability": {
+                    "first_patched_version": {"identifier": "3.1.50"}
+                },
+            },
+            {
+                "number": 4,
+                "state": "open",
+                "dependency": {
+                    "package": {"name": "GitPython"},
+                    "manifest_path": "uv.lock",
+                },
+                "security_advisory": {"severity": "critical"},
+                "security_vulnerability": {
+                    "first_patched_version": {"identifier": "3.1.47"}
+                },
+            },
+        ]
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    evidence = module.github_dependabot_alerts(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        exception_evidence=exception_path,
+        runner=runner,
+    )
+
+    assert evidence["status"] == "passed"  # nosec B101
+    assert evidence["blockers"] == []  # nosec B101
+    assert evidence["evidence"]["openAlertNumbers"] == [4, 8]  # nosec B101
+    assert evidence["evidence"]["unexceptedOpenAlertCount"] == 0  # nosec B101
+    assert evidence["evidence"]["exceptedOpenAlertNumbers"] == [4, 8]  # nosec B101
+    assert (  # nosec B101
+        evidence["evidence"]["exceptionEvidence"]["approvedBy"] == "Kravalg"
+    )
+
+
+def test_collect_well_architected_evidence_rejects_bad_dependabot_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Exception evidence should be strict and scoped to live alert metadata."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    exception_path = tmp_path / "bad-dependabot-exception.json"
+    exception_path.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "owner": "security-reviewer",
+                "approvedBy": "Kravalg",
+                "reviewedAt": module.dt.datetime.now(
+                    module.dt.timezone.utc
+                ).isoformat(),
+                "expiresAt": "not-a-date",
+                "dependencyName": "OtherPackage",
+                "manifestPath": "pyproject.toml",
+                "alertNumbers": [7, 9],
+                "approval": "denied",
+                "reason": "Not approved.",
+                "remediationPlan": "None.",
+                "evidence": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def runner(command, **_kwargs):
+        payload = [
+            {
+                "number": 8,
+                "state": "open",
+                "dependency": {
+                    "package": {"name": "GitPython"},
+                    "manifest_path": "uv.lock",
+                },
+                "security_advisory": {"severity": "high"},
+                "security_vulnerability": {
+                    "first_patched_version": {"identifier": "3.1.50"}
+                },
+            }
+        ]
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    evidence = module.github_dependabot_alerts(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        exception_evidence=exception_path,
+        runner=runner,
+    )
+
+    blocker_text = " ".join(evidence["blockers"])
+    assert evidence["status"] == "failed"  # nosec B101
+    assert "dependencyName" in blocker_text  # nosec B101
+    assert "manifestPath" in blocker_text  # nosec B101
+    assert "approval" in blocker_text  # nosec B101
+    assert "non-empty evidence" in blocker_text  # nosec B101
+    assert "expiresAt" in blocker_text  # nosec B101
+    assert "#8" in blocker_text  # nosec B101
+    assert "#7" in blocker_text  # nosec B101
+    assert "GitPython in uv.lock: #8" in blocker_text  # nosec B101
+
+    expired_blockers = module._dependabot_exception_payload_blockers(  # noqa: SLF001
+        {
+            "dependencyName": "GitPython",
+            "manifestPath": "uv.lock",
+            "approval": "approved",
+            "evidence": ["Owner approved."],
+            "expiresAt": (
+                module.dt.datetime.now(module.dt.timezone.utc)
+                - module.dt.timedelta(days=1)
+            ).isoformat(),
+            "alertNumbers": [8],
+        },
+        dependency="GitPython",
+        manifest_path="uv.lock",
+        blocking_alerts=[{"number": 8}],
+    )
+    assert "expired" in " ".join(expired_blockers)  # nosec B101
+
+    unnumbered_blockers = module._dependabot_exception_payload_blockers(  # noqa: SLF001
+        {
+            "dependencyName": "GitPython",
+            "manifestPath": "uv.lock",
+            "approval": "accepted_risk",
+            "evidence": ["Owner approved."],
+            "expiresAt": (
+                module.dt.datetime.now(module.dt.timezone.utc)
+                + module.dt.timedelta(days=1)
+            ).isoformat(),
+            "alertNumbers": [],
+        },
+        dependency="GitPython",
+        manifest_path="uv.lock",
+        blocking_alerts=[{"number": "unknown"}],
+    )
+    assert "without GitHub alert numbers" in " ".join(  # nosec B101
+        unnumbered_blockers
+    )
+    assert (  # noqa: SLF001  # nosec B101
+        module._dependabot_exception_alert_number_blockers(
+            {"alertNumbers": []},
+            [],
+        )
+        == []
+    )
+    assert (  # noqa: SLF001  # nosec B101
+        module._dependabot_exception_alert_numbers({"alertNumbers": "all"}) == []
+    )
+    assert (  # noqa: SLF001  # nosec B101
+        module._dependabot_exception_alert_numbers({"alertNumbers": [1, False]}) == []
+    )
+
+
 def test_collect_well_architected_evidence_reads_ruleset_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

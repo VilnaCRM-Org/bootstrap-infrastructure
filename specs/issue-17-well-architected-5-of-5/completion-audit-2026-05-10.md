@@ -39,6 +39,7 @@ and by rerunning the collector before any final score claim.
 | Produce auditable machine and human evidence artifacts. | `make report-well-architected-evidence` writes `.artifacts/well-architected/evidence.json` and `.artifacts/well-architected/evidence.md`; the latest run produced both artifacts and returned the expected blocker exit. | The artifacts summarize the current scores, checks, and blockers without secret material; they do not override failed readiness gates. | Done |
 | Produce repeatable OPS8 monthly observation evidence. | `make report-alert-route-observation`, `scripts/record_alert_route_observation.py`, `docs/alert-routing-evidence.md`, and the advisory evidence workflow monthly schedule. | Repository-owned record generation exists and is tested, but it does not prove downstream human consumption or recurring history by itself. | Done for recording path; OPS8 still blocked |
 | Produce repeatable security account-control attestation evidence. | `make report-security-account-attestation`, `scripts/record_security_account_attestation.py`, `docs/security-operating-evidence.md`, and focused unit/Bats tests. | Repository-owned record generation exists and is tested, but it does not prove human MFA/SSO posture, active-key exception/remediation, permissions-boundary or exemption decision, or security-owner approval by itself. | Done for recording path; SEC1/SEC2/SEC3 still blocked |
+| Support owner-approved SEC11 Dependabot exception evidence. | `DEPENDABOT_EXCEPTION_EVIDENCE`, `scripts/collect_well_architected_evidence.py`, `.github/workflows/well-architected-evidence.yml`, `docs/ci-guardrails.md`, and focused unit/Bats tests. | The collector can now validate current, exact-alert, owner-approved exception evidence. No real exception file is supplied, so live default-branch `GitPython` alerts still block SEC11. | Done for validation path; SEC11 still blocked |
 | Reach 5/5 for every Well-Architected question and condition. | Fresh collector output fails `github_branch_protection`, `github_dependabot_alerts`, `github_production_environment`, `aws_iam_account_access`, `question_matrix_evidence`, and `external_control_evidence`. | Final 5/5 is blocked by live external/admin evidence, not by an untracked repository implementation gap found in this audit. | Blocked |
 
 ## Current Scores
@@ -76,7 +77,9 @@ Live blockers:
 - The `prod` GitHub environment is not configured or readable; live query
   returns HTTP 404.
 - Five high-severity default-branch Dependabot alerts remain open for
-  `GitPython` in `uv.lock`: #4, #5, #6, #7, and #8.
+  `GitPython` in `uv.lock`: #4, #5, #6, #7, and #8. The collector now supports
+  `DEPENDABOT_EXCEPTION_EVIDENCE`, but no real owner-approved exception is
+  supplied.
 - Aggregate IAM account-access evidence still needs security-owner attestation:
   IAM user count exceeds MFA devices in use, and one active IAM user access key
   needs an approved exception or rotation/removal. PR #22 now includes a

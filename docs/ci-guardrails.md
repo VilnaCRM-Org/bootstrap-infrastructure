@@ -262,6 +262,11 @@ workload and include cleanup confirmation for any isolated restore location.
 The collector also reads non-secret Dependabot alert metadata for the configured
 dependency and manifest path; unresolved high or critical default-branch alerts
 remain SEC11 blockers until closed or covered by an owner-approved exception.
+If `DEPENDABOT_EXCEPTION_EVIDENCE` is set, the collector reads a non-secret
+JSON exception record and only treats it as coverage when it is current,
+matches the dependency and manifest, covers the exact open alert numbers, and
+records owner approval plus a remediation plan. Invalid or expired exception
+records do not suppress live alert blockers.
 Question-matrix and external-control records must include owner, freshness,
 coverage, unresolved-count, evidence-location, and fallback fields; boolean
 confirmation flags do not unlock final 5/5 scores.
@@ -300,6 +305,27 @@ For unresolved controls, keep the evidence non-secret and explain the blocker:
     "Aggregate IAM collector reports root/account MFA enabled and no root access keys."
   ],
   "unresolvedReason": "Security-owner attestation for human MFA/SSO and the active IAM user access-key exception is still pending."
+}
+```
+
+The accepted Dependabot exception shape is also non-secret:
+
+```json
+{
+  "workload": "bootstrap-infrastructure",
+  "owner": "security-reviewer",
+  "approvedBy": "Kravalg",
+  "reviewedAt": "2026-06-10T09:00:00Z",
+  "expiresAt": "2026-06-17T09:00:00Z",
+  "dependencyName": "GitPython",
+  "manifestPath": "uv.lock",
+  "alertNumbers": [4, 5, 6, 7, 8],
+  "approval": "approved",
+  "reason": "Patched lockfile is staged and default-branch alert closure is pending merge.",
+  "remediationPlan": "Merge the patched lockfile or revisit the exception before expiry.",
+  "evidence": [
+    "Security owner approved this short exception window."
+  ]
 }
 ```
 

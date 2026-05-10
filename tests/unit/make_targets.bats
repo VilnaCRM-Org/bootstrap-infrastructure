@@ -508,6 +508,7 @@ EOF
     PR_NUMBER=22 \
     AWS_ACCOUNT_ID=123456789012 \
     OPERATIONS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations \
+    DEPENDABOT_EXCEPTION_EVIDENCE=docs/dependabot-exception-2026-06-10.json \
     make -n report-well-architected-evidence
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/collect_well_architected_evidence.py"* ]]
@@ -515,7 +516,10 @@ EOF
   [[ "$output" == *".artifacts/well-architected/evidence.md"* ]]
   [[ "$output" == *'PR_NUMBER:-'* ]]
   [[ "$output" == *'OPERATIONS_TOPIC_ARN:-'* ]]
+  [[ "$output" == *'DEPENDABOT_EXCEPTION_EVIDENCE:-'* ]]
+  [[ "$output" == *"--dependabot-exception-evidence"* ]]
   [[ "$output" != *"bootstrap-test-operations"* ]]
+  [[ "$output" != *"dependabot-exception-2026-06-10"* ]]
 }
 
 @test "make report-alert-route-observation renders monthly alert route evidence" {
