@@ -44,7 +44,7 @@ required metadata or owner attestation for each control.
 
 | Control | Tracking issue | Assigned owners | Required closeout evidence |
 | --- | --- | --- | --- |
-| Branch protection required checks | #26 | `Kravalg`, `pixelTM`, `vilnacrm` | Active `main` ruleset requires Preview, Destructive Diff Gate, IAM Validation, Secrets Scan, Dependency Audit, Bandit, Actionlint, CodeQL (python), and CodeQL (actions). |
+| Branch protection required checks | #26 | `Kravalg`, `pixelTM`, `vilnacrm` | Active `main` ruleset requires Ruff, Ty, Maintainability, Architecture, Dependency Hygiene, Coverage, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions). |
 | Production approval | #27 | `Kravalg`, `pixelTM`, `vilnacrm` | `prod` GitHub environment exists, blocks self-review, restricts deployment branches, and records required reviewer settings. |
 | Security account attestations | #28 | `Kravalg`, `pixelTM`, `vilnacrm` | Non-secret security-owner attestation records human MFA/SSO posture, static-key exception or remediation, and permissions-boundary or exemption approval. |
 | Default-branch vulnerability closeout | #29 | `Kravalg`, `pixelTM`, `vilnacrm` | Default-branch GitPython Dependabot alerts close after merge or receive owner-approved time-bound exceptions. |

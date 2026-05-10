@@ -11,13 +11,23 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 REQUIRED_STATUS_CHECKS = (
-    "Preview",
-    "Destructive Diff Gate",
-    "IAM Validation",
+    "Ruff",
+    "Ty",
+    "Maintainability",
+    "Architecture",
+    "Dependency Hygiene",
+    "Coverage",
     "Secrets Scan",
     "Dependency Audit",
     "Bandit",
+    "Dependency Review",
     "Actionlint",
+    "Yamllint",
+    "Hadolint",
+    "Preview",
+    "Destructive Diff Gate",
+    "IAM Validation",
+    "Policy",
     "CodeQL (python)",
     "CodeQL (actions)",
 )

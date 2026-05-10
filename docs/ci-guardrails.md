@@ -5,7 +5,8 @@ guardrail layer below is designed to catch the common failure modes of
 AI-generated Pulumi and AWS code before anyone merges or applies it.
 
 For the broader Python, dependency, workflow, Dockerfile, and scheduled
-maintainability checks, use [CI quality gates](ci-quality-gates.md).
+maintainability details behind these checks, use
+[CI quality gates](ci-quality-gates.md).
 
 ## Required PR checks
 
@@ -13,13 +14,23 @@ These checks are intended to be marked as required in branch protection:
 
 | Check | Local command | Purpose |
 | --- | --- | --- |
-| `Preview` | `make test-preview` | Produces a non-destructive Pulumi preview artifact for every configured stack |
-| `Destructive Diff Gate` | `make test-destructive-diff` | Blocks deletes and replacements of critical infrastructure unless explicitly approved |
-| `IAM Validation` | `make test-iam-validation` | Validates previewed IAM policies with AWS IAM Access Analyzer |
+| `Ruff` | `make test-ruff` | Lint, import-order, formatting drift, and McCabe complexity |
+| `Ty` | `make test-ty` | Fast static typing diagnostics |
+| `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
+| `Architecture` | `make test-architecture` | Import Linter contracts for package isolation and dependency direction |
+| `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
+| `Coverage` | `make test-coverage` | Combined branch-coverage gate after unit, policy, and integration suites |
 | `Secrets Scan` | `make test-secrets` | Runs Gitleaks against tracked Git content |
 | `Dependency Audit` | `make test-deps-security` | Audits Python dependencies with `pip-audit --strict` |
 | `Bandit` | `make test-bandit` | Lints repository Python code for common security hazards |
+| `Dependency Review` | GitHub-native | Reviews pull-request dependency risk against GitHub advisories |
 | `Actionlint` | `make test-actionlint` | Lints GitHub Actions workflow syntax and common security issues |
+| `Yamllint` | `make test-yaml` | Lints GitHub workflow, Pulumi stack, and operational YAML |
+| `Hadolint` | `make test-dockerfile` | Lints Dockerfile quality and safety rules |
+| `Preview` | `make test-preview` | Produces a non-destructive Pulumi preview artifact for every configured stack |
+| `Destructive Diff Gate` | `make test-destructive-diff` | Blocks deletes and replacements of critical infrastructure unless explicitly approved |
+| `IAM Validation` | `make test-iam-validation` | Validates previewed IAM policies with AWS IAM Access Analyzer |
+| `Policy` | `make test-policy` | Enforces the custom Pulumi CrossGuard policy pack |
 | `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
 | `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |
 
@@ -309,7 +320,7 @@ The accepted shape is intentionally non-secret:
   "id": "branch_protection",
   "status": "passed",
   "evidence": [
-    "GitHub ruleset 13906584 requires Preview, Destructive Diff Gate, IAM Validation, Secrets Scan, Dependency Audit, Bandit, Actionlint, CodeQL (python), and CodeQL (actions)."
+    "GitHub ruleset 13906584 requires Ruff, Ty, Maintainability, Architecture, Dependency Hygiene, Coverage, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
   ]
 }
 ```

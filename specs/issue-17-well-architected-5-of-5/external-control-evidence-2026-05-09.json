@@ -20,7 +20,7 @@
         "Current GitHub token reports viewerPermission=WRITE and viewerCanAdminister=false, so ruleset repair requires a repository administrator.",
         "scripts/configure_github_repository_controls.py dry-run and --apply were retested at 2026-05-10T09:54:00Z; dry-run still renders the required-status-check payload and apply still stops at the repository-admin preflight before any write."
       ],
-      "unresolvedReason": "Admin-owned ruleset must require the documented status checks: Preview, Destructive Diff Gate, IAM Validation, Secrets Scan, Dependency Audit, Bandit, Actionlint, CodeQL (python), and CodeQL (actions)."
+      "unresolvedReason": "Admin-owned ruleset must require the documented status checks: Ruff, Ty, Maintainability, Architecture, Dependency Hygiene, Coverage, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
     },
     {
       "id": "alert_route",

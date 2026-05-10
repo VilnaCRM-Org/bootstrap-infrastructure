@@ -1122,6 +1122,9 @@ def test_required_status_check_contract_matches_collector_and_docs(
     guardrails_doc = (PROJECT_ROOT / "docs/ci-guardrails.md").read_text(
         encoding="utf-8"
     )
+    quality_gates_doc = (PROJECT_ROOT / "docs/ci-quality-gates.md").read_text(
+        encoding="utf-8"
+    )
     required_checks_section = guardrails_doc.split("## Required PR checks", 1)[1].split(
         "### Same-repo privileged check contract", 1
     )[0]
@@ -1130,11 +1133,22 @@ def test_required_status_check_contract_matches_collector_and_docs(
         for line in required_checks_section.splitlines()
         if line.startswith("| `")
     ]
+    quality_required_checks_section = quality_gates_doc.split(
+        "## PR-blocking checks", 1
+    )[1].split("## Scheduled quality monitoring", 1)[0]
+    quality_documented_checks = [
+        line.split("`", 2)[1]
+        for line in quality_required_checks_section.splitlines()
+        if line.startswith("| `")
+    ]
 
     assert controls_module.REQUIRED_STATUS_CHECKS == (  # nosec B101
         collector_module.DEFAULT_REQUIRED_STATUS_CHECKS
     )
     assert documented_checks == list(  # nosec B101
+        collector_module.DEFAULT_REQUIRED_STATUS_CHECKS
+    )
+    assert quality_documented_checks == list(  # nosec B101
         collector_module.DEFAULT_REQUIRED_STATUS_CHECKS
     )
 
