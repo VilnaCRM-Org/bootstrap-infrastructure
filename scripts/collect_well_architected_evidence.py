@@ -115,6 +115,7 @@ EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS = {
 }
 STRUCTURED_EVIDENCE_MAX_AGE_DAYS = 30
 EXAMPLE_CATALOG_NAMES = frozenset({"repositories.example.json"})
+IAM_ACCESS_KEY_STALE_DAYS = 90
 
 
 def _check(
@@ -1364,16 +1365,23 @@ def _iam_user_names(*, runner: Runner = run) -> tuple[list[str], list[str]]:
 def _iam_access_key_counts(
     users: Sequence[str], *, runner: Runner = run
 ) -> dict[str, int]:
-    """Return aggregate access-key status counts without retaining key ids."""
+    """Return aggregate access-key metadata counts without retaining key ids."""
     counts = {
         "active": 0,
         "inactive": 0,
         "other": 0,
         "usersWithActive": 0,
         "unreadableUsers": 0,
+        "activeOlderThan90Days": 0,
+        "activeCreateDateUnknown": 0,
+        "activeNeverUsed": 0,
+        "activeLastUsedWithin90Days": 0,
+        "activeLastUsedOlderThan90Days": 0,
+        "activeLastUsedUnknown": 0,
+        "unreadableAccessKeyLastUsed": 0,
     }
     for user in users:
-        ok, statuses, _error = _run_json(
+        ok, key_metadata, _error = _run_json(
             [
                 "aws",
                 "iam",
@@ -1381,34 +1389,104 @@ def _iam_access_key_counts(
                 "--user-name",
                 user,
                 "--query",
-                "AccessKeyMetadata[].Status",
+                "AccessKeyMetadata[].{Status:Status,AccessKeyId:AccessKeyId,"
+                "CreateDate:CreateDate}",
                 "--output",
                 "json",
             ],
             runner=runner,
         )
-        if not ok or not isinstance(statuses, list):
+        if not ok or not isinstance(key_metadata, list):
             counts["unreadableUsers"] += 1
             continue
-        _record_access_key_statuses(statuses, counts)
+        _record_access_key_metadata(key_metadata, counts, runner=runner)
     return counts
 
 
-def _record_access_key_statuses(
-    statuses: Sequence[object], counts: dict[str, int]
+def _record_access_key_metadata(
+    key_metadata: Sequence[object], counts: dict[str, int], *, runner: Runner = run
 ) -> None:
-    """Accumulate access-key status metadata for one IAM user."""
+    """Accumulate access-key metadata for one IAM user."""
     user_has_active_key = False
-    for status in statuses:
+    for item in key_metadata:
+        status, access_key_id, create_date = _access_key_metadata_fields(item)
         if status == "Active":
             counts["active"] += 1
             user_has_active_key = True
+            _record_active_access_key_age(create_date, counts)
+            _record_active_access_key_last_used(access_key_id, counts, runner=runner)
         elif status == "Inactive":
             counts["inactive"] += 1
         else:
             counts["other"] += 1
     if user_has_active_key:
         counts["usersWithActive"] += 1
+
+
+def _access_key_metadata_fields(item: object) -> tuple[object, object, object]:
+    """Return status, id, and create date from one access-key metadata item."""
+    if isinstance(item, dict):
+        return item.get("Status"), item.get("AccessKeyId"), item.get("CreateDate")
+    return item, None, None
+
+
+def _record_active_access_key_age(create_date: object, counts: dict[str, int]) -> None:
+    """Accumulate aggregate active-key age metadata."""
+    created_at = _parse_aws_timestamp(create_date)
+    if created_at is None:
+        counts["activeCreateDateUnknown"] += 1
+        return
+    stale_after = dt.timedelta(days=IAM_ACCESS_KEY_STALE_DAYS)
+    if dt.datetime.now(dt.timezone.utc) - created_at > stale_after:
+        counts["activeOlderThan90Days"] += 1
+
+
+def _record_active_access_key_last_used(
+    access_key_id: object, counts: dict[str, int], *, runner: Runner = run
+) -> None:
+    """Accumulate aggregate active-key last-used metadata without emitting key ids."""
+    if not isinstance(access_key_id, str) or not access_key_id:
+        counts["activeLastUsedUnknown"] += 1
+        return
+    ok, payload, _error = _run_json(
+        [
+            "aws",
+            "iam",
+            "get-access-key-last-used",
+            "--access-key-id",
+            access_key_id,
+            "--query",
+            "AccessKeyLastUsed",
+            "--output",
+            "json",
+        ],
+        runner=runner,
+    )
+    if not ok or not isinstance(payload, dict):
+        counts["unreadableAccessKeyLastUsed"] += 1
+        return
+    last_used_at = _parse_aws_timestamp(payload.get("LastUsedDate"))
+    if last_used_at is None:
+        counts["activeNeverUsed"] += 1
+        return
+    stale_after = dt.timedelta(days=IAM_ACCESS_KEY_STALE_DAYS)
+    if dt.datetime.now(dt.timezone.utc) - last_used_at > stale_after:
+        counts["activeLastUsedOlderThan90Days"] += 1
+    else:
+        counts["activeLastUsedWithin90Days"] += 1
+
+
+def _parse_aws_timestamp(value: object) -> dt.datetime | None:
+    """Parse an AWS CLI timestamp into an aware UTC datetime."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.timezone.utc)
+    return parsed.astimezone(dt.timezone.utc)
 
 
 def _iam_account_access_evidence(
@@ -1429,6 +1507,19 @@ def _iam_account_access_evidence(
         "otherUserAccessKeyStatusCount": key_counts["other"],
         "usersWithActiveAccessKeys": key_counts["usersWithActive"],
         "unreadableAccessKeyUserCount": key_counts["unreadableUsers"],
+        "activeUserAccessKeyOlderThan90DaysCount": key_counts["activeOlderThan90Days"],
+        "activeUserAccessKeyCreateDateUnknownCount": key_counts[
+            "activeCreateDateUnknown"
+        ],
+        "activeUserAccessKeyNeverUsedCount": key_counts["activeNeverUsed"],
+        "activeUserAccessKeyLastUsedWithin90DaysCount": key_counts[
+            "activeLastUsedWithin90Days"
+        ],
+        "activeUserAccessKeyLastUsedOlderThan90DaysCount": key_counts[
+            "activeLastUsedOlderThan90Days"
+        ],
+        "activeUserAccessKeyLastUsedUnknownCount": key_counts["activeLastUsedUnknown"],
+        "unreadableAccessKeyLastUsedCount": key_counts["unreadableAccessKeyLastUsed"],
     }
 
 

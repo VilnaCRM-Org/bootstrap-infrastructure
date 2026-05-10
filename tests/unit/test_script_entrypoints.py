@@ -2066,13 +2066,20 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
     assert checks["aws_iam_account_access"]["evidence"] == {  # nosec B101
         "accountAccessKeysPresent": 0,
         "accountMfaEnabled": 1,
+        "activeUserAccessKeyCreateDateUnknownCount": 0,
         "activeUserAccessKeyCount": 0,
+        "activeUserAccessKeyLastUsedOlderThan90DaysCount": 0,
+        "activeUserAccessKeyLastUsedUnknownCount": 0,
+        "activeUserAccessKeyLastUsedWithin90DaysCount": 0,
+        "activeUserAccessKeyNeverUsedCount": 0,
+        "activeUserAccessKeyOlderThan90DaysCount": 0,
         "discoveredUserCount": 1,
         "inactiveUserAccessKeyCount": 0,
         "mfaDeviceCount": 1,
         "mfaDevicesInUse": 1,
         "otherUserAccessKeyStatusCount": 0,
         "summaryUserCount": 1,
+        "unreadableAccessKeyLastUsedCount": 0,
         "unreadableAccessKeyUserCount": 0,
         "usersWithActiveAccessKeys": 0,
     }
@@ -3344,6 +3351,12 @@ def test_collect_well_architected_evidence_reads_iam_access_metadata(
 ) -> None:
     """IAM access evidence should stay aggregate and avoid key or user output."""
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    old_timestamp = (
+        module.dt.datetime.now(module.dt.timezone.utc) - module.dt.timedelta(days=120)
+    ).isoformat()
+    recent_timestamp = (
+        module.dt.datetime.now(module.dt.timezone.utc) - module.dt.timedelta(days=1)
+    ).isoformat()
 
     def runner(command, **_kwargs):
         if command[:3] == ["aws", "iam", "get-account-summary"]:
@@ -3364,9 +3377,44 @@ def test_collect_well_architected_evidence_reads_iam_access_metadata(
         ):
             return subprocess.CompletedProcess(command, 1, "", "denied")
         if command[:3] == ["aws", "iam", "list-access-keys"]:
+            user_name = command[command.index("--user-name") + 1]
+            active_key_id = f"{user_name}-active-key"
             return subprocess.CompletedProcess(
-                command, 0, json.dumps(["Active", "Inactive", "Other"]), ""
+                command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "AccessKeyId": active_key_id,
+                            "CreateDate": (
+                                old_timestamp
+                                if user_name == "automation"
+                                else recent_timestamp
+                            ),
+                            "Status": "Active",
+                        },
+                        {
+                            "AccessKeyId": f"{user_name}-inactive-key",
+                            "CreateDate": old_timestamp,
+                            "Status": "Inactive",
+                        },
+                        {
+                            "AccessKeyId": f"{user_name}-unknown-key",
+                            "CreateDate": old_timestamp,
+                            "Status": "Other",
+                        },
+                    ]
+                ),
+                "",
             )
+        if command[:3] == ["aws", "iam", "get-access-key-last-used"]:
+            key_id = command[command.index("--access-key-id") + 1]
+            payload = (
+                {"LastUsedDate": old_timestamp}
+                if key_id == "automation-active-key"
+                else {"LastUsedDate": recent_timestamp}
+            )
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
         raise AssertionError(command)  # pragma: no cover
 
     evidence = module.aws_iam_account_access(runner=runner)
@@ -3375,13 +3423,20 @@ def test_collect_well_architected_evidence_reads_iam_access_metadata(
     assert evidence["evidence"] == {  # nosec B101
         "accountAccessKeysPresent": 1,
         "accountMfaEnabled": 0,
+        "activeUserAccessKeyCreateDateUnknownCount": 0,
         "activeUserAccessKeyCount": 2,
+        "activeUserAccessKeyLastUsedOlderThan90DaysCount": 1,
+        "activeUserAccessKeyLastUsedUnknownCount": 0,
+        "activeUserAccessKeyLastUsedWithin90DaysCount": 1,
+        "activeUserAccessKeyNeverUsedCount": 0,
+        "activeUserAccessKeyOlderThan90DaysCount": 1,
         "discoveredUserCount": 3,
         "inactiveUserAccessKeyCount": 2,
         "mfaDeviceCount": 1,
         "mfaDevicesInUse": 1,
         "otherUserAccessKeyStatusCount": 2,
         "summaryUserCount": 3,
+        "unreadableAccessKeyLastUsedCount": 0,
         "unreadableAccessKeyUserCount": 1,
         "usersWithActiveAccessKeys": 2,
     }
@@ -3392,6 +3447,49 @@ def test_collect_well_architected_evidence_reads_iam_access_metadata(
     assert "one or more IAM users" in blockers  # nosec B101
     assert "automation" not in blockers  # nosec B101
     assert "maintainer" not in blockers  # nosec B101
+
+
+def test_collect_well_architected_evidence_handles_iam_key_metadata_gaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """IAM key edge cases should be counted without exposing identifiers."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    counts = {
+        "active": 0,
+        "inactive": 0,
+        "other": 0,
+        "usersWithActive": 0,
+        "unreadableUsers": 0,
+        "activeOlderThan90Days": 0,
+        "activeCreateDateUnknown": 0,
+        "activeNeverUsed": 0,
+        "activeLastUsedWithin90Days": 0,
+        "activeLastUsedOlderThan90Days": 0,
+        "activeLastUsedUnknown": 0,
+        "unreadableAccessKeyLastUsed": 0,
+    }
+
+    def denied_runner(command, **_kwargs):
+        assert command[:3] == ["aws", "iam", "get-access-key-last-used"]  # nosec B101
+        return subprocess.CompletedProcess(command, 1, "", "denied")
+
+    def never_used_runner(command, **_kwargs):
+        assert command[:3] == ["aws", "iam", "get-access-key-last-used"]  # nosec B101
+        return subprocess.CompletedProcess(command, 0, json.dumps({}), "")
+
+    module._record_active_access_key_last_used(  # noqa: SLF001
+        "denied-key", counts, runner=denied_runner
+    )
+    module._record_active_access_key_last_used(  # noqa: SLF001
+        "never-used-key", counts, runner=never_used_runner
+    )
+    module._record_active_access_key_age("not-a-timestamp", counts)  # noqa: SLF001
+
+    assert counts["unreadableAccessKeyLastUsed"] == 1  # nosec B101
+    assert counts["activeNeverUsed"] == 1  # nosec B101
+    assert counts["activeCreateDateUnknown"] == 1  # nosec B101
+    assert module._parse_aws_timestamp("2026-05-10T10:00:00") is not None  # noqa: SLF001
+    assert module._parse_aws_timestamp("not-a-timestamp") is None  # noqa: SLF001
 
 
 def test_collect_well_architected_evidence_reports_iam_user_query_gaps(
