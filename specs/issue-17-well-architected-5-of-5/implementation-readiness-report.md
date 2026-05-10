@@ -70,7 +70,7 @@ evidence remain open.
 | Quota ownership | Epic 7 | Current headroom is recorded in `quota-headroom-evidence-2026-05-09.json`; refresh before catalog expansion or account-level service changes. |
 | Restore drill evidence | Epic 5 | Current restore evidence is `restore-drill-evidence-2026-04-27.json`; next restore drill is due before the 90-day freshness window expires. |
 | Production approval evidence | Epic 1 | Protected environment reviewer rules, approved apply evidence, reviewed SHA, and skipped-check policy. |
-| Security account controls | SEC1-SEC11 | MFA/SSO posture, static-key exception evidence, permissions-boundary or exemption attestation, and external security-owner approval. Live GuardDuty/Security Hub/AWS Config posture is current for the test stack. |
+| Security account controls | SEC1-SEC11 | MFA/SSO posture, static-key exception or remediation evidence, permissions-boundary or exemption attestation, and external security-owner approval. Live GuardDuty/Security Hub/AWS Config posture is current for the test stack, and `make report-security-account-attestation` now provides the non-secret record path once the owner decision exists. |
 | Sustainability goals | Epic 8 | Current governance is recorded in `docs/well-architected-operating-evidence.md` and `docs/operating-review-2026-05-09.md`; refresh before region, retention, compute, or catalog expansion changes. |
 | Well-Architected review owner | Epic 0 | Owner for question-matrix updates, score changes, evidence expiry, and follow-up review. |
 
