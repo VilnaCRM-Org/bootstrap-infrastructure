@@ -285,7 +285,7 @@ def verify_question_matrix(
     question_matrix_markdown: str | None = None,
 ) -> dict[str, Any]:
     """Compare question evidence with the live AWS Well-Architected TOC."""
-    checked_at = dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
+    checked_at = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
     aws_questions = extract_questions(toc)
     aws_ids = [question["id"] for question in aws_questions]
     aws_pillar_by_id = {
