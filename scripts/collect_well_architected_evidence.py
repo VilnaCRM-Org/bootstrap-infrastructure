@@ -25,6 +25,7 @@ PASSING_CHECK_CONCLUSIONS = {"SUCCESS"}
 PASSING_STATUS_STATES = {"SUCCESS"}
 ALLOWED_SKIPPED_CHECKS = frozenset(
     {
+        "Evidence (Unprivileged)",
         "Preview (Unprivileged)",
         "IAM Validation (Unprivileged)",
     }

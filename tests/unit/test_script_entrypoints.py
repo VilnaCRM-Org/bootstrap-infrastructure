@@ -1397,6 +1397,12 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                         "conclusion": "SKIPPED",
                     },
                     {
+                        "__typename": "CheckRun",
+                        "name": "Evidence (Unprivileged)",
+                        "status": "COMPLETED",
+                        "conclusion": "SKIPPED",
+                    },
+                    {
                         "__typename": "StatusContext",
                         "context": "qlty check",
                         "state": "SUCCESS",
