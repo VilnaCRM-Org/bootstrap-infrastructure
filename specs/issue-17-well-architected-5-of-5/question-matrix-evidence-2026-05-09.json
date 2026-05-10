@@ -1,7 +1,7 @@
 {
   "workload": "bootstrap-infrastructure",
   "owner": "platform-maintainers",
-  "reviewedAt": "2026-05-10T08:23:23Z",
+  "reviewedAt": "2026-05-10T23:31:56Z",
   "questionCount": 57,
   "unresolvedQuestionCount": 10,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
@@ -35,7 +35,7 @@
     "5": "All target evidence, ownership, freshness, validation, and fallback requirements are current."
   },
   "frameworkSourceVerification": {
-    "checkedAt": "2026-05-10T21:01:44.940212Z",
+    "checkedAt": "2026-05-10T23:23:49.490999Z",
     "source": "AWS Well-Architected Framework latest public documentation",
     "questionCounts": {
       "Operational Excellence": 11,
