@@ -23,6 +23,7 @@ Runner = Callable[..., Any]
 
 PASSING_CHECK_CONCLUSIONS = {"SUCCESS"}
 PASSING_STATUS_STATES = {"SUCCESS"}
+COVERED_AGGREGATE_ALLOWED_CONCLUSIONS = {"NEUTRAL", "SKIPPED"}
 ALLOWED_SKIPPED_CHECKS = frozenset(
     {
         "Evidence (Unprivileged)",
@@ -30,6 +31,9 @@ ALLOWED_SKIPPED_CHECKS = frozenset(
         "IAM Validation (Unprivileged)",
     }
 )
+COVERED_AGGREGATE_CHECKS = {
+    "CodeQL": frozenset({"CodeQL (actions)", "CodeQL (python)"}),
+}
 DEFAULT_REQUIRED_STATUS_CHECKS = (
     "Preview",
     "Destructive Diff Gate",
@@ -159,6 +163,34 @@ def _rollup_entry_passed(entry: dict[str, Any]) -> bool:
     return False
 
 
+def _rollup_check_run_succeeded(entry: dict[str, Any]) -> bool:
+    """Return whether one check run completed successfully."""
+    return (
+        entry.get("__typename") == "CheckRun"
+        and str(entry.get("status", "")).upper() == "COMPLETED"
+        and str(entry.get("conclusion", "")).upper() in PASSING_CHECK_CONCLUSIONS
+    )
+
+
+def _rollup_entry_allowed_covered_aggregate(
+    entry: dict[str, Any],
+    passed_check_names: set[str],
+) -> bool:
+    """Return whether an aggregate check is covered by concrete checks."""
+    if entry.get("__typename") != "CheckRun":
+        return False
+    name = str(entry.get("name") or "")
+    required_checks = COVERED_AGGREGATE_CHECKS.get(name)
+    if not required_checks:
+        return False
+    return (
+        str(entry.get("status", "")).upper() == "COMPLETED"
+        and str(entry.get("conclusion", "")).upper()
+        in COVERED_AGGREGATE_ALLOWED_CONCLUSIONS
+        and required_checks.issubset(passed_check_names)
+    )
+
+
 def _rollup_entry_label(entry: dict[str, Any]) -> str:
     """Return the human-readable name for a GitHub rollup entry."""
     return str(entry.get("name") or entry.get("context") or "unknown")
@@ -166,10 +198,18 @@ def _rollup_entry_label(entry: dict[str, Any]) -> str:
 
 def _non_passing_rollup_labels(entries: Sequence[dict[str, Any]]) -> list[str]:
     """Return non-passing GitHub status/check names."""
+    passed_check_names = {
+        _rollup_entry_label(entry)
+        for entry in entries
+        if _rollup_check_run_succeeded(entry)
+    }
     return [
         _rollup_entry_label(entry)
         for entry in entries
-        if not _rollup_entry_passed(entry)
+        if not (
+            _rollup_entry_passed(entry)
+            or _rollup_entry_allowed_covered_aggregate(entry, passed_check_names)
+        )
     ]
 
 
@@ -178,7 +218,11 @@ def _github_pr_check_blockers(
 ) -> list[str]:
     """Return blockers from PR merge, review, and check metadata."""
     blockers = []
-    if payload.get("mergeStateStatus") != "CLEAN":
+    merge_state = payload.get("mergeStateStatus")
+    mergeable = payload.get("mergeable")
+    if merge_state != "CLEAN" and not (
+        merge_state == "BLOCKED" and mergeable == "MERGEABLE" and not failing
+    ):
         blockers.append("PR merge state is not CLEAN.")
     if payload.get("reviewDecision") != "APPROVED":
         blockers.append("PR is not approved.")
@@ -209,7 +253,7 @@ def github_pr_checks(
             "--repo",
             repo,
             "--json",
-            "mergeStateStatus,reviewDecision,headRefOid,statusCheckRollup",
+            "mergeStateStatus,mergeable,reviewDecision,headRefOid,statusCheckRollup",
         ],
         runner=runner,
     )
@@ -226,6 +270,7 @@ def github_pr_checks(
         evidence={
             "headRefOid": payload.get("headRefOid"),
             "mergeStateStatus": payload.get("mergeStateStatus"),
+            "mergeable": payload.get("mergeable"),
             "reviewDecision": payload.get("reviewDecision"),
             "checkCount": len(entries),
             "nonPassingCheckCount": len(failing),

@@ -2224,6 +2224,88 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
     assert report["blockers"]  # nosec B101
 
 
+def test_github_pr_checks_accepts_covered_codeql_aggregate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aggregate CodeQL is okay when concrete CodeQL checks pass."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        assert command[:3] == ["gh", "pr", "view"]  # nosec B101
+        payload = {
+            "mergeStateStatus": "BLOCKED",
+            "mergeable": "MERGEABLE",
+            "reviewDecision": "APPROVED",
+            "headRefOid": "abc123",
+            "statusCheckRollup": [
+                {
+                    "__typename": "CheckRun",
+                    "name": "CodeQL",
+                    "status": "COMPLETED",
+                    "conclusion": "NEUTRAL",
+                },
+                {
+                    "__typename": "CheckRun",
+                    "name": "CodeQL (actions)",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                },
+                {
+                    "__typename": "CheckRun",
+                    "name": "CodeQL (python)",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                },
+            ],
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    check = module.github_pr_checks("org/repo", 1, runner=runner)
+
+    assert check["status"] == "passed"  # nosec B101
+    assert check["evidence"]["nonPassingCheckCount"] == 0  # nosec B101
+    assert check["evidence"]["mergeStateStatus"] == "BLOCKED"  # nosec B101
+    assert check["evidence"]["mergeable"] == "MERGEABLE"  # nosec B101
+
+
+def test_github_pr_checks_requires_concrete_codeql_checks_for_aggregate_allowance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aggregate CodeQL still fails without all concrete CodeQL checks."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        assert command[:3] == ["gh", "pr", "view"]  # nosec B101
+        payload = {
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": "APPROVED",
+            "headRefOid": "abc123",
+            "statusCheckRollup": [
+                {
+                    "__typename": "CheckRun",
+                    "name": "CodeQL",
+                    "status": "COMPLETED",
+                    "conclusion": "NEUTRAL",
+                },
+                {
+                    "__typename": "CheckRun",
+                    "name": "CodeQL (actions)",
+                    "status": "COMPLETED",
+                    "conclusion": "SUCCESS",
+                },
+            ],
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    check = module.github_pr_checks("org/repo", 1, runner=runner)
+
+    assert check["status"] == "failed"  # nosec B101
+    assert check["evidence"]["nonPassingCheckCount"] == 1  # nosec B101
+    assert check["blockers"] == [  # nosec B101
+        "Non-passing check contexts: CodeQL."
+    ]
+
+
 def test_score_blockers_distinguish_failed_and_missing_gates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
