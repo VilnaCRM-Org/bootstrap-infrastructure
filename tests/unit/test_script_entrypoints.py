@@ -2050,6 +2050,10 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                     "Operational Excellence": 0,
                     "Security": 0,
                 },
+                "questionScores": [
+                    {"id": f"Q{number}", "score": 5, "status": "passed"}
+                    for number in range(1, 58)
+                ],
                 "frameworkSourceVerification": {
                     "checkedAt": reviewed_at,
                     "source": (
@@ -2308,6 +2312,8 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
     assert (  # nosec B101
         question_evidence["pillarUnresolvedQuestionCounts"]["Security"] == 0
     )
+    assert question_evidence["unresolvedQuestionEvidenceRefCount"] == 0  # nosec B101
+    assert question_evidence["unresolvedQuestionEvidenceRefIds"] == []  # nosec B101
     assert (  # nosec B101
         question_evidence["frameworkSourceVerification"]["questionCounts"]
         == module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
@@ -2744,6 +2750,54 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
         ["--question-matrix-evidence", str(malformed_structured)]
     )
     assert module.question_matrix_evidence(malformed_args)["status"] == "failed"
+    invalid_question_matrix = tmp_path / "invalid-question-matrix.json"
+    invalid_question_matrix.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "owner": "platform",
+                "reviewedAt": module.dt.datetime.now(
+                    module.dt.timezone.utc
+                ).isoformat(),
+                "questionCount": 2,
+                "unresolvedQuestionCount": 2,
+                "questionScores": [
+                    {
+                        "id": "OPS1",
+                        "status": "unresolved",
+                        "score": 6,
+                        "evidenceRefs": [],
+                    },
+                    "not-an-object",
+                ],
+                "frameworkSourceVerification": {
+                    "checkedAt": module.dt.datetime.now(
+                        module.dt.timezone.utc
+                    ).isoformat(),
+                    "source": (
+                        "AWS Well-Architected Framework latest public documentation"
+                    ),
+                    "questionCounts": module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS,
+                    "sourceUrls": [
+                        "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html"
+                    ],
+                },
+                "evidenceLocation": "ledger",
+            }
+        ),
+        encoding="utf-8",
+    )
+    invalid_question_args = module.build_parser().parse_args(
+        ["--question-matrix-evidence", str(invalid_question_matrix)]
+    )
+    invalid_question_check = module.question_matrix_evidence(invalid_question_args)
+    invalid_question_text = " ".join(invalid_question_check["blockers"])
+    assert invalid_question_check["status"] == "failed"  # nosec B101
+    assert "entries must be objects" in invalid_question_text  # nosec B101
+    assert "questionCount" in invalid_question_text  # nosec B101
+    assert "unresolvedQuestionCount" in invalid_question_text  # nosec B101
+    assert "integers from 1 to 5" in invalid_question_text  # nosec B101
+    assert "evidenceRefs" in invalid_question_text  # nosec B101
     missing_structured_args = module.build_parser().parse_args(
         ["--external-control-evidence", str(tmp_path / "missing-structured.json")]
     )
@@ -2874,6 +2928,14 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
                 "reviewedAt": "2025-01-01",
                 "questionCount": 1,
                 "unresolvedQuestionCount": 2,
+                "questionScores": [
+                    {
+                        "id": "OPS1",
+                        "status": "unresolved",
+                        "score": 3,
+                        "evidenceRefs": ["issue:#26"],
+                    }
+                ],
                 "evidenceLocation": "spec",
             }
         ),
@@ -2926,6 +2988,17 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert module._string_key_number_map({"Security": "5"}) is None  # noqa: SLF001  # nosec B101
     assert module._string_key_int_map({"Security": False}) is None  # noqa: SLF001  # nosec B101
     assert module._string_key_int_map({"Security": 5.0}) is None  # noqa: SLF001  # nosec B101
+    assert module._unresolved_question_evidence_ref_ids({}) is None  # noqa: SLF001  # nosec B101
+    assert module._question_matrix_score_blockers(  # noqa: SLF001  # nosec B101
+        {"questionScores": "missing"}
+    ) == ["Question-matrix evidence questionScores must be a list."]
+    assert (  # noqa: SLF001  # nosec B101
+        module._question_matrix_score_count_blockers(
+            {"questionCount": "1", "unresolvedQuestionCount": "0"},
+            [],
+        )
+        == []
+    )
     assert module._parse_reviewed_at("not-a-date") is None  # noqa: SLF001
     assert (  # nosec B101
         module._parse_reviewed_at("2026-04-27T10:00:00").tzinfo  # noqa: SLF001

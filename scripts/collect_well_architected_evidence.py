@@ -2304,6 +2304,7 @@ def _structured_evidence_check(
     )
     if name == "question_matrix_evidence":
         blockers.extend(_question_matrix_source_verification_blockers(payload))
+        blockers.extend(_question_matrix_score_blockers(payload))
     return _check(
         name,
         status="passed" if not blockers else "failed",
@@ -2473,6 +2474,91 @@ def _question_matrix_source_verification_blockers(
     return blockers
 
 
+def _question_matrix_score_blockers(payload: dict[str, Any]) -> list[str]:
+    """Return blockers when question score entries are not auditable."""
+    scores = payload.get("questionScores")
+    if not isinstance(scores, list):
+        return ["Question-matrix evidence questionScores must be a list."]
+    score_items = [score for score in scores if isinstance(score, dict)]
+    blockers: list[str] = []
+    if len(score_items) != len(scores):
+        blockers.append(
+            "Question-matrix evidence questionScores entries must be objects."
+        )
+    blockers.extend(_question_matrix_score_count_blockers(payload, score_items))
+    blockers.extend(_question_matrix_invalid_score_blockers(score_items))
+    blockers.extend(_question_matrix_evidence_ref_blockers(score_items))
+    return blockers
+
+
+def _question_matrix_score_count_blockers(
+    payload: dict[str, Any],
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers when declared question counts disagree with score entries."""
+    blockers: list[str] = []
+    question_count = payload.get("questionCount")
+    if isinstance(question_count, int) and not isinstance(question_count, bool):
+        if question_count != len(scores):
+            blockers.append(
+                "Question-matrix evidence questionCount must match "
+                "valid questionScores entries."
+            )
+    unresolved_count = payload.get("unresolvedQuestionCount")
+    if isinstance(unresolved_count, int) and not isinstance(unresolved_count, bool):
+        non_passed_count = sum(1 for score in scores if score.get("status") != "passed")
+        if unresolved_count != non_passed_count:
+            blockers.append(
+                "Question-matrix evidence unresolvedQuestionCount must match "
+                "the number of non-passed questionScores entries."
+            )
+    return blockers
+
+
+def _question_matrix_invalid_score_blockers(
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers for question scores outside the accepted 1-5 range."""
+    invalid_ids = [
+        str(score.get("id", "<missing>"))
+        for score in scores
+        if _invalid_question_score(score.get("score"))
+    ]
+    return (
+        [
+            "Question-matrix evidence scores must be integers from 1 to 5 for: "
+            f"{', '.join(invalid_ids)}."
+        ]
+        if invalid_ids
+        else []
+    )
+
+
+def _invalid_question_score(score: object) -> bool:
+    """Return whether a score is not an integer in the 1-5 range."""
+    return isinstance(score, bool) or not isinstance(score, int) or not 1 <= score <= 5
+
+
+def _question_matrix_evidence_ref_blockers(
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers when unresolved question entries lack evidenceRefs."""
+    missing_ids = [
+        str(score.get("id", "<missing>"))
+        for score in scores
+        if score.get("status") != "passed"
+        and not _non_empty_string_list(score.get("evidenceRefs"))
+    ]
+    return (
+        [
+            "Question-matrix non-passed entries must include evidenceRefs for: "
+            f"{', '.join(missing_ids)}."
+        ]
+        if missing_ids
+        else []
+    )
+
+
 def _missing_external_control_blockers(
     controls: Sequence[dict[str, Any]],
     required_control_ids: Sequence[str],
@@ -2571,16 +2657,6 @@ def _structured_evidence_payload(
     unresolved_field: str,
 ) -> dict[str, object]:
     """Return non-secret structured evidence fields."""
-    controls = payload.get("controls")
-    control_ids = (
-        sorted(
-            str(control.get("id"))
-            for control in controls
-            if isinstance(control, dict) and control.get("id")
-        )
-        if isinstance(controls, list)
-        else []
-    )
     evidence: dict[str, object] = {
         "workload": payload.get("workload"),
         "owner": payload.get("owner"),
@@ -2588,28 +2664,81 @@ def _structured_evidence_payload(
         "evidenceLocation": payload.get("evidenceLocation"),
         count_field: payload.get(count_field),
         unresolved_field: payload.get(unresolved_field),
-        "controlIds": control_ids,
+        "controlIds": _control_ids(payload),
     }
+    evidence.update(_question_matrix_payload_fields(payload))
+    evidence.update(_external_control_payload_fields(payload))
+    return evidence
+
+
+def _control_ids(payload: dict[str, Any]) -> list[str]:
+    """Return sorted control IDs from structured evidence."""
+    controls = payload.get("controls")
+    if not isinstance(controls, list):
+        return []
+    return sorted(
+        str(control.get("id"))
+        for control in controls
+        if isinstance(control, dict) and control.get("id")
+    )
+
+
+def _question_matrix_payload_fields(payload: dict[str, Any]) -> dict[str, object]:
+    """Return optional question-matrix summary fields."""
+    fields: dict[str, object] = {}
     unresolved_question_ids = _string_list(payload.get("unresolvedQuestionIds"))
     if unresolved_question_ids is not None:
-        evidence["unresolvedQuestionIds"] = unresolved_question_ids
+        fields["unresolvedQuestionIds"] = unresolved_question_ids
+    unresolved_question_evidence_ref_ids = _unresolved_question_evidence_ref_ids(
+        payload
+    )
+    if unresolved_question_evidence_ref_ids is not None:
+        fields["unresolvedQuestionEvidenceRefCount"] = len(
+            unresolved_question_evidence_ref_ids
+        )
+        fields["unresolvedQuestionEvidenceRefIds"] = (
+            unresolved_question_evidence_ref_ids
+        )
     question_score_averages = _string_key_number_map(
         payload.get("questionScoreAverages")
     )
     if question_score_averages is not None:
-        evidence["questionScoreAverages"] = question_score_averages
+        fields["questionScoreAverages"] = question_score_averages
     pillar_unresolved_counts = _string_key_int_map(
         payload.get("pillarUnresolvedQuestionCounts")
     )
     if pillar_unresolved_counts is not None:
-        evidence["pillarUnresolvedQuestionCounts"] = pillar_unresolved_counts
+        fields["pillarUnresolvedQuestionCounts"] = pillar_unresolved_counts
     framework_source_verification = _framework_source_verification_summary(payload)
     if framework_source_verification:
-        evidence["frameworkSourceVerification"] = framework_source_verification
+        fields["frameworkSourceVerification"] = framework_source_verification
+    return fields
+
+
+def _external_control_payload_fields(payload: dict[str, Any]) -> dict[str, object]:
+    """Return optional external-control summary fields."""
     unresolved_control_ids = _unresolved_control_ids(payload)
     if unresolved_control_ids:
-        evidence["unresolvedControlIds"] = unresolved_control_ids
-    return evidence
+        return {"unresolvedControlIds": unresolved_control_ids}
+    return {}
+
+
+def _unresolved_question_evidence_ref_ids(
+    payload: dict[str, Any],
+) -> list[str] | None:
+    """Return question IDs whose non-passed entries include evidenceRefs."""
+    scores = payload.get("questionScores")
+    if not isinstance(scores, list):
+        return None
+    ids = [
+        str(score.get("id"))
+        for score in scores
+        if isinstance(score, dict)
+        and score.get("status") != "passed"
+        and isinstance(score.get("id"), str)
+        and _non_empty_string_list(score.get("evidenceRefs"))
+    ]
+    return sorted(ids)
 
 
 def _framework_source_verification_summary(
