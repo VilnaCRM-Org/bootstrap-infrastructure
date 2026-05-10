@@ -248,6 +248,13 @@ repository fanout. The report is written to
 `.artifacts/well-architected/evidence.md`; missing external evidence is reported
 as a blocker rather than treated as success. IAM account-access evidence is
 aggregate only: do not emit user names or access key IDs.
+The `Well-Architected Evidence` workflow runs the same collector against the
+real test-account OIDC role for trusted PRs and pushes, uploads the JSON and
+Markdown artifacts, and appends the Markdown summary to the GitHub job summary.
+It is advisory while the external controls tracked in #26-#30 remain open; set
+`WELL_ARCHITECTED_EVIDENCE_ENFORCE=true` only after those blockers are closed
+and the collector exits cleanly. Fork PRs do not receive AWS credentials and
+record an unprivileged skip summary instead.
 When set, `OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
 `QUESTION_MATRIX_EVIDENCE`, and `EXTERNAL_CONTROL_EVIDENCE` are standard
 evidence inputs, not secrets. Restore evidence must be scoped to this bootstrap

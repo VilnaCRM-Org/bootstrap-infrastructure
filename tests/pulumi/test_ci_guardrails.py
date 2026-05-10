@@ -378,6 +378,82 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
     assert any("upload-sarif@" in uses for uses in scorecard_uses)  # nosec B101
 
 
+def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
+    """Keep the Well-Architected evidence workflow safe while blockers remain."""
+    workflow = _workflow("well-architected-evidence.yml")
+    jobs = workflow["jobs"]
+    triggers = _triggers(workflow)
+    evidence_steps = jobs["test_account_evidence"]["steps"]
+    mode_step = next(
+        step
+        for step in jobs["evidence_mode"]["steps"]
+        if step.get("name") == "Select evidence mode"
+    )
+    preflight_step = next(
+        step
+        for step in evidence_steps
+        if step.get("name") == "Validate evidence prerequisites"
+    )
+    oidc_step = next(
+        step
+        for step in evidence_steps
+        if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+    )
+    collector_step = next(
+        step
+        for step in evidence_steps
+        if step.get("name") == "Collect Well-Architected evidence"
+    )
+    upload_step = next(
+        step
+        for step in evidence_steps
+        if step.get("uses", "").startswith("actions/upload-artifact@")
+    )
+    enforce_step = next(
+        step
+        for step in evidence_steps
+        if step.get("name") == "Enforce Well-Architected evidence when enabled"
+    )
+    unprivileged_run = next(
+        step.get("run", "")
+        for step in jobs["unprivileged_evidence"]["steps"]
+        if step.get("name") == "Record skipped AWS evidence"
+    )
+
+    assert "pull_request" in triggers  # nosec B101
+    assert triggers["push"]["branches"] == ["main"]  # nosec B101
+    assert "workflow_dispatch" in triggers  # nosec B101
+    assert workflow["permissions"] == {"contents": "read"}  # nosec B101
+    assert workflow["concurrency"]["cancel-in-progress"] is True  # nosec B101
+    assert jobs["evidence_mode"]["outputs"] == {  # nosec B101
+        "privileged": "${{ steps.evidence_mode.outputs.privileged }}"
+    }
+    assert "Fork pull request detected" in mode_step["run"]  # nosec B101
+    assert jobs["test_account_evidence"]["environment"] == "test"  # nosec B101
+    assert jobs["test_account_evidence"]["permissions"] == {  # nosec B101
+        "contents": "read",
+        "id-token": "write",
+        "pull-requests": "read",
+    }
+    assert "OPERATIONS_TOPIC_ARN" in preflight_step["run"]  # nosec B101
+    assert "12-digit AWS account ID" in preflight_step["run"]  # nosec B101
+    assert "SNS topic ARN" in preflight_step["run"]  # nosec B101
+    assert oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"  # nosec B101
+    assert oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+    assert "uv==0.9.21" in " ".join(  # nosec B101
+        step.get("run", "") for step in evidence_steps
+    )
+    assert "make report-well-architected-evidence" in collector_step["run"]  # nosec B101
+    assert "GITHUB_STEP_SUMMARY" in collector_step["run"]  # nosec B101
+    assert "exit 1" not in collector_step["run"]  # nosec B101
+    assert upload_step["with"]["name"] == "well-architected-evidence"  # nosec B101
+    assert upload_step["with"]["path"] == ".artifacts/well-architected"  # nosec B101
+    assert upload_step["with"]["retention-days"] == 7  # nosec B101
+    assert "WELL_ARCHITECTED_EVIDENCE_ENFORCE" in enforce_step["if"]  # nosec B101
+    assert "exit 1" in enforce_step["run"]  # nosec B101
+    assert "credentials are unavailable to untrusted forks" in unprivileged_run  # nosec B101
+
+
 def test_new_guardrail_scripts_and_configs_are_present() -> None:
     """Keep the repo-local building blocks for CI guardrails discoverable."""
     preview_text = PREVIEW_SCRIPT.read_text(encoding="utf-8")
@@ -432,6 +508,7 @@ def test_new_workflows_keep_actions_pinned_to_full_shas() -> None:
         "security-scans.yml",
         "codeql.yml",
         "nightly-guardrails.yml",
+        "well-architected-evidence.yml",
         "pulumi-prod.yml",
         "pulumi-test-deploy.yml",
     ):
