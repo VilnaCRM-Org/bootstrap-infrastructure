@@ -123,6 +123,21 @@ def _invalid_score_ids(items: Sequence[dict[str, Any]]) -> list[str]:
     return invalid
 
 
+def _missing_evidence_ref_ids(items: Sequence[dict[str, Any]]) -> list[str]:
+    missing = []
+    for item in items:
+        if item.get("status") == "passed":
+            continue
+        refs = item.get("evidenceRefs")
+        if not (
+            isinstance(refs, list)
+            and refs
+            and all(isinstance(ref, str) and ref.strip() for ref in refs)
+        ):
+            missing.append(str(item.get("id", "<missing>")))
+    return missing
+
+
 def _verification_blockers(
     *,
     duplicate_aws_ids: Sequence[str],
@@ -130,6 +145,7 @@ def _verification_blockers(
     missing_ids: Sequence[str],
     extra_ids: Sequence[str],
     invalid_score_ids: Sequence[str],
+    missing_evidence_ref_ids: Sequence[str],
     evidence_question_count: object,
     aws_question_count: int,
     declared_counts: object,
@@ -161,6 +177,11 @@ def _verification_blockers(
             bool(invalid_score_ids),
             "Question-matrix evidence scores must be integers from 1 to 5 for: "
             f"{', '.join(invalid_score_ids)}.",
+        ),
+        (
+            bool(missing_evidence_ref_ids),
+            "Question-matrix non-passed entries must include evidenceRefs for: "
+            f"{', '.join(missing_evidence_ref_ids)}.",
         ),
         (
             evidence_question_count != aws_question_count,
@@ -204,12 +225,14 @@ def verify_question_matrix(
     duplicate_aws_ids = _duplicate_ids(aws_ids)
     duplicate_evidence_ids = _duplicate_ids(evidence_ids)
     invalid_score_ids = _invalid_score_ids(score_items)
+    missing_evidence_ref_ids = _missing_evidence_ref_ids(score_items)
     blockers = _verification_blockers(
         duplicate_aws_ids=duplicate_aws_ids,
         duplicate_evidence_ids=duplicate_evidence_ids,
         missing_ids=missing_ids,
         extra_ids=extra_ids,
         invalid_score_ids=invalid_score_ids,
+        missing_evidence_ref_ids=missing_evidence_ref_ids,
         evidence_question_count=evidence.get("questionCount"),
         aws_question_count=len(aws_ids),
         declared_counts=declared_counts,
@@ -229,6 +252,7 @@ def verify_question_matrix(
         "duplicateAwsQuestionIds": duplicate_aws_ids,
         "duplicateEvidenceQuestionIds": duplicate_evidence_ids,
         "invalidScoreQuestionIds": invalid_score_ids,
+        "missingEvidenceRefQuestionIds": missing_evidence_ref_ids,
         "blockers": blockers,
     }
 

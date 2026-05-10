@@ -34,7 +34,7 @@ claim.
 | Objective requirement | Evidence inspected | Coverage result | Status |
 | --- | --- | --- | --- |
 | Check all AWS Well-Architected Framework questions. | `question-matrix-evidence-2026-05-09.json` reports `questionCount=57`; `frameworkSourceVerification.questionCounts` records Operational Excellence `11`, Security `11`, Reliability `13`, Performance Efficiency `5`, Cost Optimization `11`, and Sustainability `6`; `make verify-well-architected-questions` compares the matrix with the AWS public TOC at `https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json`. | The collector validates the expected pillar counts and source metadata before accepting the structured evidence, and the verifier confirms the matrix has no missing, extra, or duplicate AWS question IDs. | Done |
-| Put scores from 1 to 5 for every question. | `question-matrix-evidence-2026-05-09.json` contains `questionScores` with score, status, rationale, and primary blocker for each question. | Scores exist for every question; 47 are passed and 10 remain unresolved. | Done |
+| Put scores from 1 to 5 for every question. | `question-matrix-evidence-2026-05-09.json` contains `questionScores` with score, status, rationale, primary blocker, and `evidenceRefs` for every non-passed question. | Scores exist for every question; 47 are passed and 10 remain unresolved. The verifier fails if a non-passed entry loses its evidence references. | Done |
 | Check PR #22 code and state. | `gh pr view 22`, hosted checks, standing PR audit comment, and collector `github_pr_checks` / `github_pr_local_state`. | Latest recorded PR state is approved, not draft, `mergeStateStatus=CLEAN`, `mergeable=MERGEABLE`, with 35 checks and 0 non-passing checks. PR control-plane evidence must still be rechecked on the current head before a final claim. | Done for latest recorded run |
 | Check whole project code. | Local validation commands and hosted checks: targeted ruff, format check, focused evidence tests, `make verify-well-architected-questions`, `make test-unit`, hosted quality/security/policy/mutation/local-battery checks, and `git diff --check`. | Repository-owned code validation was green on the latest recorded head; latest local unit run reported `283 passed` and 100% reported coverage. | Done for latest recorded run |
 | Verify evidence gates cover the objective instead of relying on proxy scores. | `scripts/collect_well_architected_evidence.py` emits both `proxyPillarScores` and capped final `pillarScores`; `scoreBlockers` now distinguishes missing readiness evidence from failing readiness evidence. | Proxy scores are not treated as final while question-matrix or external-control gates fail. | Done |
@@ -76,6 +76,7 @@ Well-Architected TOC:
 - Extra evidence question IDs: none.
 - Duplicate AWS or evidence question IDs: none.
 - Invalid score values: none.
+- Missing evidence references for non-passed questions: none.
 
 ## Remaining Blockers
 

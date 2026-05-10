@@ -660,6 +660,8 @@ def _well_architected_question_evidence() -> dict[str, object]:
         for prefix, pillar in pillar_by_prefix.items()
         for number in range(1, counts[prefix] + 1)
     ]
+    scores[0]["status"] = "unresolved"
+    scores[0]["evidenceRefs"] = ["issue:#26"]
     return {
         "workload": "bootstrap-infrastructure",
         "owner": "platform-maintainers",
@@ -728,6 +730,8 @@ def test_verify_well_architected_questions_rejects_gaps_and_bad_scores(
     assert isinstance(scores, list)  # nosec B101
     scores.pop()
     scores[0]["score"] = 6
+    scores[0]["status"] = "unresolved"
+    scores[0]["evidenceRefs"] = []
     evidence = tmp_path / "question-matrix-evidence.json"
     toc = tmp_path / "toc.json"
     evidence.write_text(json.dumps(evidence_payload), encoding="utf-8")
@@ -742,7 +746,9 @@ def test_verify_well_architected_questions_rejects_gaps_and_bad_scores(
     assert report["status"] == "failed"  # nosec B101
     assert report["missingQuestionIds"] == ["SUS6"]  # nosec B101
     assert report["invalidScoreQuestionIds"] == ["OPS1"]  # nosec B101
+    assert report["missingEvidenceRefQuestionIds"] == ["OPS1"]  # nosec B101
     assert "SUS6" in " ".join(report["blockers"])  # nosec B101
+    assert "evidenceRefs" in " ".join(report["blockers"])  # nosec B101
 
 
 def test_verify_well_architected_questions_reports_duplicates_and_extra_ids(
