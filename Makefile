@@ -394,7 +394,8 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
 			$$pr_arg $$account_arg $$topic_arg $$cloudtrail_arg $$restore_arg \
 			$$question_matrix_arg $$external_control_arg \
-			--output .artifacts/well-architected/evidence.json'
+			--output .artifacts/well-architected/evidence.json \
+			--markdown-output .artifacts/well-architected/evidence.md'
 
 report-quality: ## Run scheduled quality reports and generate fresh artifacts.
 	$(MAKE) report-maintainability-trends

@@ -2840,19 +2840,69 @@ def test_collect_well_architected_evidence_main_writes_report(
     """CLI wrapper should write evidence reports and signal blockers."""
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
     output_path = tmp_path / "evidence.json"
+    markdown_path = tmp_path / "evidence.md"
 
     monkeypatch.setattr(
         module,
         "collect_evidence",
         lambda _args: {
-            "checks": [],
-            "pillarScores": {},
+            "generatedAt": "2026-05-10T06:31:06Z",
+            "repo": "VilnaCRM-Org/bootstrap-infrastructure",
+            "pr": 22,
+            "branch": "main",
+            "checks": [
+                {
+                    "name": "github_pr_checks",
+                    "status": "passed",
+                    "blockers": [],
+                },
+            ],
+            "pillarScores": {"Security": 5.0},
+            "proxyPillarScores": {"Security": 5.0},
+            "scoreBlockers": [],
             "blockers": [],
         },
     )
-    assert module.main(["--output", str(output_path)]) == 0
+    assert (
+        module.main(
+            ["--output", str(output_path), "--markdown-output", str(markdown_path)]
+        )
+        == 0
+    )
     assert json.loads(output_path.read_text(encoding="utf-8"))["blockers"] == []
+    markdown = markdown_path.read_text(encoding="utf-8")
+    assert "# Well-Architected Evidence Report" in markdown  # nosec B101
+    assert "| Security | 5.0 |" in markdown  # nosec B101
+    assert "| github_pr_checks | passed | None |" in markdown  # nosec B101
     assert '"blockers": []' in capsys.readouterr().out
+    blocked_markdown = module.render_markdown_report(
+        {
+            "generatedAt": "2026-05-10T06:31:06Z",
+            "repo": "org/repo",
+            "pr": None,
+            "branch": "main",
+            "checks": [
+                "ignored",
+                {
+                    "name": None,
+                    "status": "failed",
+                    "blockers": ["blocked | escaped"],
+                },
+            ],
+            "pillarScores": {},
+            "proxyPillarScores": {"Custom | Pillar": 3},
+            "scoreBlockers": ["score | blocker"],
+            "blockers": ["plain | blocker"],
+        }
+    )
+    assert "## Score Blockers" in blocked_markdown  # nosec B101
+    assert "- score \\| blocker" in blocked_markdown  # nosec B101
+    assert "- plain \\| blocker" in blocked_markdown  # nosec B101
+    assert "| None reported | - |" in blocked_markdown  # nosec B101
+    assert "| Custom \\| Pillar | 3 |" in blocked_markdown  # nosec B101
+    assert "| - | failed | blocked \\| escaped |" in blocked_markdown  # nosec B101
+    assert module._markdown_checks("invalid") == []  # noqa: SLF001  # nosec B101
+    assert module._markdown_string_entries("invalid") == []  # noqa: SLF001  # nosec B101
 
     monkeypatch.setattr(
         module,

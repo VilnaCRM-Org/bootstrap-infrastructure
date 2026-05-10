@@ -2405,6 +2405,123 @@ def collect_evidence(
     }
 
 
+def render_markdown_report(report: dict[str, Any]) -> str:
+    """Render a sanitized Markdown summary for CI artifacts and step summaries."""
+    lines = [
+        "# Well-Architected Evidence Report",
+        "",
+        f"- Generated: `{_markdown_value(report.get('generatedAt'))}`",
+        f"- Repository: `{_markdown_value(report.get('repo'))}`",
+        f"- Pull request: `{_markdown_value(report.get('pr'))}`",
+        f"- Branch: `{_markdown_value(report.get('branch'))}`",
+        "",
+        "## Final Pillar Scores",
+        "",
+        "| Pillar | Score |",
+        "| --- | ---: |",
+    ]
+    lines.extend(_score_table_rows(report.get("pillarScores")))
+    lines.extend(
+        [
+            "",
+            "## Proxy Readiness Scores",
+            "",
+            "| Pillar | Score |",
+            "| --- | ---: |",
+        ]
+    )
+    lines.extend(_score_table_rows(report.get("proxyPillarScores")))
+    lines.extend(
+        [
+            "",
+            "## Check Results",
+            "",
+            "| Check | Status | Blockers |",
+            "| --- | --- | --- |",
+        ]
+    )
+    for check in _markdown_checks(report.get("checks")):
+        lines.append(
+            "| "
+            f"{_markdown_cell(check['name'])} | "
+            f"{_markdown_cell(check['status'])} | "
+            f"{_markdown_cell(check['blockers'])} |"
+        )
+
+    score_blockers = _markdown_string_entries(report.get("scoreBlockers"))
+    if score_blockers:
+        lines.extend(["", "## Score Blockers", ""])
+        lines.extend(f"- {_markdown_text(blocker)}" for blocker in score_blockers)
+
+    blockers = _markdown_string_entries(report.get("blockers"))
+    if blockers:
+        lines.extend(["", "## Blockers", ""])
+        lines.extend(f"- {_markdown_text(blocker)}" for blocker in blockers)
+    else:
+        lines.extend(["", "## Blockers", "", "No blockers reported."])
+
+    return "\n".join(lines) + "\n"
+
+
+def _score_table_rows(value: object) -> list[str]:
+    """Return Markdown table rows for a pillar score mapping."""
+    if not isinstance(value, dict) or not value:
+        return ["| None reported | - |"]
+    rows = []
+    for pillar in EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS:
+        if pillar in value:
+            rows.append(
+                f"| {_markdown_cell(pillar)} | {_markdown_cell(value[pillar])} |"
+            )
+    for pillar, score in value.items():
+        if pillar not in EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS:
+            rows.append(f"| {_markdown_cell(pillar)} | {_markdown_cell(score)} |")
+    return rows
+
+
+def _markdown_checks(value: object) -> list[dict[str, str]]:
+    """Return check rows safe for Markdown rendering."""
+    if not isinstance(value, list):
+        return []
+    rows = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        blockers = _markdown_string_entries(item.get("blockers"))
+        rows.append(
+            {
+                "name": _markdown_value(item.get("name")),
+                "status": _markdown_value(item.get("status")),
+                "blockers": "<br>".join(blockers) if blockers else "None",
+            }
+        )
+    return rows
+
+
+def _markdown_string_entries(value: object) -> list[str]:
+    """Return string entries from a JSON-like list."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _markdown_value(value: object) -> str:
+    """Return a compact string value for Markdown reports."""
+    if value is None:
+        return "-"
+    return str(value)
+
+
+def _markdown_cell(value: object) -> str:
+    """Escape a value for use in a Markdown table cell."""
+    return _markdown_text(_markdown_value(value)).replace("\n", " ")
+
+
+def _markdown_text(value: str) -> str:
+    """Escape Markdown table separators without hiding evidence text."""
+    return value.replace("|", "\\|")
+
+
 def _all_blockers(checks: Sequence[dict[str, object]]) -> list[str]:
     """Return every string blocker from normalized checks."""
     blockers: list[str] = []
@@ -2473,6 +2590,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--root-dir", type=Path, default=ROOT_DIR)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--markdown-output", type=Path)
     parser.add_argument("--max-s3-buckets", type=int, default=200)
     parser.add_argument("--max-kms-keys", type=int, default=100)
     parser.add_argument("--max-iam-roles", type=int, default=300)
@@ -2493,13 +2611,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run evidence collection and optionally persist the JSON report."""
+    """Run evidence collection and optionally persist report artifacts."""
     args = build_parser().parse_args(argv)
     report = collect_evidence(args)
     payload = json.dumps(report, indent=2, sort_keys=True)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(f"{payload}\n", encoding="utf-8")
+    if args.markdown_output:
+        args.markdown_output.parent.mkdir(parents=True, exist_ok=True)
+        args.markdown_output.write_text(
+            render_markdown_report(report), encoding="utf-8"
+        )
     print(payload)
     return 0 if not report["blockers"] else 1
 

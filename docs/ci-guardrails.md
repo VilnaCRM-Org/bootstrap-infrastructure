@@ -244,9 +244,10 @@ bundle for PR readiness, branch protection, protected production-environment
 approval, AWS identity, aggregate IAM account-access posture, account cost
 controls, optional operations topic routing, restore-job freshness, and
 repository fanout. The report is written to
-`.artifacts/well-architected/evidence.json`; missing external evidence is
-reported as a blocker rather than treated as success. IAM account-access
-evidence is aggregate only: do not emit user names or access key IDs.
+`.artifacts/well-architected/evidence.json` with a sanitized Markdown summary at
+`.artifacts/well-architected/evidence.md`; missing external evidence is reported
+as a blocker rather than treated as success. IAM account-access evidence is
+aggregate only: do not emit user names or access key IDs.
 When set, `OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
 `QUESTION_MATRIX_EVIDENCE`, and `EXTERNAL_CONTROL_EVIDENCE` are standard
 evidence inputs, not secrets. Restore evidence must be scoped to this bootstrap

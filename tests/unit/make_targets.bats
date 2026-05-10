@@ -510,6 +510,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/collect_well_architected_evidence.py"* ]]
   [[ "$output" == *".artifacts/well-architected/evidence.json"* ]]
+  [[ "$output" == *".artifacts/well-architected/evidence.md"* ]]
   [[ "$output" == *'PR_NUMBER:-'* ]]
   [[ "$output" == *'OPERATIONS_TOPIC_ARN:-'* ]]
   [[ "$output" != *"bootstrap-test-operations"* ]]
