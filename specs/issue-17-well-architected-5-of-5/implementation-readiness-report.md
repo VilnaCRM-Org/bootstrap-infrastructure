@@ -43,7 +43,7 @@ evidence remain open.
 | Preview cost proxy | `make test-cost-proxy` reads Pulumi preview JSON and blocks unusually large durable-resource fanout. |
 | Security account controls | Pulumi defines GuardDuty, Security Hub, AWS Config recorder/delivery, and a dedicated encrypted Config delivery bucket; guarded local apply, live metadata checks, and no-drift validation prove the current test posture. |
 | Operating evidence | Current docs record RACI roles, ORR, KPI review, restore and DR drills, FinOps evidence, alert-route evidence, secure-SDLC evidence, performance/resource ADRs, sustainability governance, and question-level score rationale. |
-| GitHub admin handoff | `scripts/configure_github_repository_controls.py` emits the required branch ruleset and protected `prod` environment payloads, refuses `--apply` without repository admin rights, and documents the exact command a repository admin must run. |
+| GitHub admin handoff | `scripts/configure_github_repository_controls.py` emits the required branch ruleset and protected `prod` environment payloads, refuses `--apply` without repository admin rights, and verifies the applied `main` ruleset plus `prod` environment metadata before reporting admin success. |
 | Documentation | SRE, security, CI guardrail, testing, and cost/performance/sustainability docs describe the new evidence and remaining external-control requirements. |
 
 ## Remaining Handoff Order
@@ -103,6 +103,10 @@ python3 scripts/configure_github_repository_controls.py \
   --prod-reviewer Kravalg \
   --apply
 ```
+
+The command exits non-zero if the post-apply metadata does not show the full
+required-check set, pull-request review/thread-resolution rules, protected-branch
+deployment policy, self-review prevention, and configured production reviewer.
 
 ## Risk Controls For Future PRs
 

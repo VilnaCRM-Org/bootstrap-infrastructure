@@ -1490,6 +1490,133 @@ def test_configure_github_repository_controls_payloads(
     assert rendered["prodEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
 
 
+def test_configure_github_repository_controls_verification_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify applied GitHub controls before reporting admin success."""
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    ruleset = module.ruleset_payload()
+    environment = {
+        "prevent_self_review": True,
+        "deployment_branch_policy": {
+            "protected_branches": True,
+            "custom_branch_policies": False,
+        },
+        "protection_rules": [
+            {
+                "type": "required_reviewers",
+                "reviewers": [
+                    {
+                        "type": "User",
+                        "reviewer": {"id": 9444106, "login": "Kravalg"},
+                    }
+                ],
+            }
+        ],
+    }
+
+    assert module._ruleset_verification_blockers(ruleset) == []  # noqa: SLF001  # nosec B101
+    assert (
+        module._prod_environment_verification_blockers(  # noqa: SLF001  # nosec B101
+            environment, 9444106
+        )
+        == []
+    )
+    assert module._environment_reviewer_ids(  # noqa: SLF001  # nosec B101
+        {"reviewers": [{"type": "User", "id": 9444106}]}
+    ) == {9444106}
+    assert (
+        module._environment_reviewer_ids(  # noqa: SLF001  # nosec B101
+            {
+                "reviewers": ["invalid", {"type": "Team", "id": 1}],
+                "protection_rules": [
+                    "invalid",
+                    {"reviewers": "invalid"},
+                    {"reviewers": [{"type": "User", "reviewer": {"login": "missing"}}]},
+                ],
+            }
+        )
+        == set()
+    )
+    assert module._required_status_contexts({"rules": "invalid"}) == set()  # noqa: SLF001  # nosec B101
+    assert module._required_status_contexts(  # noqa: SLF001  # nosec B101
+        {
+            "rules": [
+                "invalid",
+                {"type": "required_status_checks", "parameters": "invalid"},
+                {
+                    "type": "required_status_checks",
+                    "parameters": {"required_status_checks": "invalid"},
+                },
+                {
+                    "type": "required_status_checks",
+                    "parameters": {"required_status_checks": [{"name": "Unit"}]},
+                },
+            ]
+        }
+    ) == {"Unit"}
+    assert not module._ruleset_has_pull_request_reviews(  # noqa: SLF001  # nosec B101
+        {"rules": "invalid"}
+    )
+    assert not module._ruleset_has_pull_request_reviews(  # noqa: SLF001  # nosec B101
+        {"rules": [{"type": "pull_request", "parameters": "invalid"}]}
+    )
+
+    bad_ruleset = {"rules": [{"type": "deletion"}]}
+    ruleset_blockers = module._ruleset_verification_blockers(  # noqa: SLF001
+        bad_ruleset
+    )
+    assert "missing required status checks" in ruleset_blockers[0]  # nosec B101
+    assert "pull request reviews" in ruleset_blockers[1]  # nosec B101
+    environment_blockers = module._prod_environment_verification_blockers(  # noqa: SLF001
+        {
+            "prevent_self_review": False,
+            "deployment_branch_policy": {
+                "protected_branches": False,
+                "custom_branch_policies": True,
+            },
+            "protection_rules": [],
+        },
+        9444106,
+    )
+    assert "prevent self-review" in environment_blockers[0]  # nosec B101
+    assert "protected branches" in environment_blockers[1]  # nosec B101
+    assert "configured reviewer" in environment_blockers[2]  # nosec B101
+    missing_policy_blockers = module._prod_environment_verification_blockers(  # noqa: SLF001
+        {"prevent_self_review": True, "protection_rules": []},
+        9444106,
+    )
+    assert "branch policy" in missing_policy_blockers[0]  # nosec B101
+    assert module._ruleset_verification_blockers(None) == [  # noqa: SLF001  # nosec B101
+        "Active main branch ruleset was not found after apply."
+    ]
+    assert module._prod_environment_verification_blockers(  # noqa: SLF001  # nosec B101
+        None, 9444106
+    ) == ["Production environment was not readable after apply."]
+
+    monkeypatch.setattr(module, "_main_ruleset", lambda _repo: ruleset)
+    monkeypatch.setattr(
+        module,
+        "_run_gh_api",
+        lambda _args, **_kwargs: environment,
+    )
+    assert module._verify_applied_controls(  # noqa: SLF001  # nosec B101
+        "example/repo", 9444106
+    ) == {
+        "requiredStatusChecks": sorted(module.REQUIRED_STATUS_CHECKS),
+        "prodReviewerId": 9444106,
+        "prodEnvironment": "prod",
+    }
+
+    monkeypatch.setattr(module, "_main_ruleset", lambda _repo: bad_ruleset)
+    with pytest.raises(RuntimeError, match="missing required status checks"):
+        module._verify_applied_controls("example/repo", 9444106)  # noqa: SLF001
+    monkeypatch.setattr(module, "_main_ruleset", lambda _repo: ruleset)
+    monkeypatch.setattr(module, "_run_gh_api", lambda _args, **_kwargs: [])
+    with pytest.raises(RuntimeError, match="not readable"):
+        module._verify_applied_controls("example/repo", 9444106)  # noqa: SLF001
+
+
 def test_required_status_check_contract_matches_collector_and_docs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1692,10 +1819,18 @@ def test_configure_github_repository_controls_apply_paths(
     """Apply existing and new ruleset paths through gh api wrappers."""
     module = load_script_module(monkeypatch, "configure_github_repository_controls")
     calls: list[tuple[list[str], dict]] = []
+    verifications: list[tuple[str, int]] = []
     existing = {"id": 123, "rules": "invalid"}
 
     monkeypatch.setattr(module, "_repo_admin_allowed", lambda _repo: True)
     monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: 9444106)
+    monkeypatch.setattr(
+        module,
+        "_verify_applied_controls",
+        lambda repo, reviewer_id: (
+            verifications.append((repo, reviewer_id)) or {"verified": True}
+        ),
+    )
 
     def fake_run_gh_api(args, *, input_payload=None):
         calls.append((list(args), dict(input_payload or {})))
@@ -1717,11 +1852,15 @@ def test_configure_github_repository_controls_apply_paths(
     ]
     rendered = json.loads(capsys.readouterr().out)
     assert rendered["prodEnvironment"]["reviewers"][0]["id"] == 9444106  # nosec B101
+    assert rendered["verification"] == {"verified": True}  # nosec B101
+    assert verifications == [("example/repo", 9444106)]  # nosec B101
 
     calls.clear()
+    verifications.clear()
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
     assert module.configure("example/repo", "Kravalg", apply=True) == 0  # nosec B101
     assert calls[0][0] == ["repos/example/repo/rulesets", "--method", "POST"]  # nosec B101
+    assert verifications == [("example/repo", 9444106)]  # nosec B101
 
 
 def test_configure_github_repository_controls_apply_requires_admin(

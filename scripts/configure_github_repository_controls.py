@@ -163,6 +163,154 @@ def _repo_admin_allowed(repo: str) -> bool:
     return isinstance(permissions, Mapping) and permissions.get("admin") is True
 
 
+def _required_status_contexts(ruleset: Mapping[str, Any]) -> set[str]:
+    """Return required status contexts from a ruleset payload."""
+    contexts: set[str] = set()
+    rules = ruleset.get("rules")
+    if not isinstance(rules, list):
+        return contexts
+    for rule in rules:
+        if not isinstance(rule, Mapping) or rule.get("type") != (
+            "required_status_checks"
+        ):
+            continue
+        parameters = rule.get("parameters")
+        if not isinstance(parameters, Mapping):
+            continue
+        checks = parameters.get("required_status_checks")
+        if not isinstance(checks, list):
+            continue
+        contexts.update(
+            str(check.get("context") or check.get("name"))
+            for check in checks
+            if isinstance(check, Mapping)
+            and (check.get("context") or check.get("name"))
+        )
+    return contexts
+
+
+def _ruleset_has_pull_request_reviews(ruleset: Mapping[str, Any]) -> bool:
+    """Return whether the ruleset requires PR reviews and thread resolution."""
+    rules = ruleset.get("rules")
+    if not isinstance(rules, list):
+        return False
+    for rule in rules:
+        if not isinstance(rule, Mapping) or rule.get("type") != "pull_request":
+            continue
+        parameters = rule.get("parameters")
+        if not isinstance(parameters, Mapping):
+            continue
+        review_count = parameters.get("required_approving_review_count")
+        return (
+            isinstance(review_count, int)
+            and review_count >= 1
+            and parameters.get("required_review_thread_resolution") is True
+        )
+    return False
+
+
+def _ruleset_verification_blockers(ruleset: Mapping[str, Any] | None) -> list[str]:
+    """Return blockers when the active main ruleset does not match expectations."""
+    if ruleset is None:
+        return ["Active main branch ruleset was not found after apply."]
+    contexts = _required_status_contexts(ruleset)
+    missing_contexts = sorted(set(REQUIRED_STATUS_CHECKS) - contexts)
+    blockers: list[str] = []
+    if missing_contexts:
+        blockers.append(
+            "Active main branch ruleset is missing required status checks: "
+            f"{', '.join(missing_contexts)}."
+        )
+    if not _ruleset_has_pull_request_reviews(ruleset):
+        blockers.append(
+            "Active main branch ruleset does not require pull request reviews "
+            "and thread resolution."
+        )
+    return blockers
+
+
+def _environment_reviewer_ids(environment: Mapping[str, Any]) -> set[int]:
+    """Return required reviewer user IDs from a GitHub environment payload."""
+    reviewer_ids: set[int] = set()
+    top_level_reviewers = environment.get("reviewers")
+    if isinstance(top_level_reviewers, list):
+        reviewer_ids.update(_reviewer_ids_from_items(top_level_reviewers))
+
+    protection_rules = environment.get("protection_rules")
+    if isinstance(protection_rules, list):
+        for rule in protection_rules:
+            if not isinstance(rule, Mapping):
+                continue
+            reviewers = rule.get("reviewers")
+            if isinstance(reviewers, list):
+                reviewer_ids.update(_reviewer_ids_from_items(reviewers))
+    return reviewer_ids
+
+
+def _reviewer_ids_from_items(items: Sequence[object]) -> set[int]:
+    """Return user IDs from reviewer objects in environment metadata."""
+    reviewer_ids: set[int] = set()
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
+        reviewer_type = item.get("type")
+        reviewer_id = item.get("id")
+        if reviewer_type == "User" and isinstance(reviewer_id, int):
+            reviewer_ids.add(reviewer_id)
+            continue
+        nested_user = item.get("reviewer")
+        if isinstance(nested_user, Mapping) and isinstance(nested_user.get("id"), int):
+            reviewer_ids.add(nested_user["id"])
+    return reviewer_ids
+
+
+def _prod_environment_verification_blockers(
+    environment: Mapping[str, Any] | None, reviewer_id: int
+) -> list[str]:
+    """Return blockers when the prod environment does not match expectations."""
+    if environment is None:
+        return ["Production environment was not readable after apply."]
+    blockers: list[str] = []
+    if environment.get("prevent_self_review") is not True:
+        blockers.append("Production environment does not prevent self-review.")
+    branch_policy = environment.get("deployment_branch_policy")
+    if not isinstance(branch_policy, Mapping):
+        blockers.append("Production environment does not report a branch policy.")
+    elif (
+        branch_policy.get("protected_branches") is not True
+        or branch_policy.get("custom_branch_policies") is not False
+    ):
+        blockers.append(
+            "Production environment does not restrict deployments to protected "
+            "branches."
+        )
+    if reviewer_id not in _environment_reviewer_ids(environment):
+        blockers.append(
+            "Production environment does not require the configured reviewer."
+        )
+    return blockers
+
+
+def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
+    """Fetch and verify repository controls after an admin apply."""
+    ruleset = _main_ruleset(repo)
+    environment_payload = _run_gh_api([f"repos/{repo}/environments/prod"])
+    environment = (
+        environment_payload if isinstance(environment_payload, Mapping) else None
+    )
+    blockers = [
+        *_ruleset_verification_blockers(ruleset),
+        *_prod_environment_verification_blockers(environment, reviewer_id),
+    ]
+    if blockers:
+        raise RuntimeError(" ".join(blockers))
+    return {
+        "requiredStatusChecks": sorted(_required_status_contexts(ruleset or {})),
+        "prodReviewerId": reviewer_id,
+        "prodEnvironment": "prod",
+    }
+
+
 def configure(repo: str, reviewer: str, *, apply: bool) -> int:
     """Print or apply the GitHub repository controls."""
     existing = _main_ruleset(repo)
@@ -193,6 +341,7 @@ def configure(repo: str, reviewer: str, *, apply: bool) -> int:
             [f"repos/{repo}/environments/prod", "--method", "PUT"],
             input_payload=payloads["prodEnvironment"],
         )
+        payloads["verification"] = _verify_applied_controls(repo, reviewer_id)
     else:
         payloads["prodEnvironment"] = prod_environment_payload(0)
         payloads["prodEnvironmentReviewerLogin"] = reviewer
