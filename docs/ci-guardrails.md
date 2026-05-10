@@ -312,8 +312,8 @@ External-control records are checked per control as well as at the file level:
 - `controlCount` must match the number of objects in `controls`
 - `unresolvedControlCount` must match controls whose `status` is not `passed`
 - every required control ID must be present
-- every `passed` control must include a non-empty `evidence` string list
-- every non-passed control must include a non-empty `unresolvedReason`
+- every control, passed or unresolved, must include a non-empty `evidence` string list
+- every non-passed control must also include a non-empty `unresolvedReason`
 
 The accepted shape is intentionally non-secret:
 

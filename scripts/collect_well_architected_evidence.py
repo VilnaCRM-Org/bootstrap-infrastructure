@@ -3403,18 +3403,18 @@ def _allowed_status_text() -> str:
 def _external_control_proof_blockers(
     controls: Sequence[dict[str, Any]],
 ) -> list[str]:
-    """Return blockers for missing passed evidence or unresolved reasons."""
+    """Return blockers for missing evidence or unresolved reasons."""
     blockers: list[str] = []
     for index, control in enumerate(controls, start=1):
         control_id = control.get("id")
         label = str(control_id) if control_id else f"entry {index}"
+        evidence = control.get("evidence")
+        if not _non_empty_string_list(evidence):
+            blockers.append(
+                "External-control evidence control "
+                f"{label} must include non-empty evidence."
+            )
         if control.get("status") == "passed":
-            evidence = control.get("evidence")
-            if not _non_empty_string_list(evidence):
-                blockers.append(
-                    "External-control evidence passed control "
-                    f"{label} must include non-empty evidence."
-                )
             continue
         unresolved_reason = control.get("unresolvedReason")
         if not isinstance(unresolved_reason, str) or not unresolved_reason.strip():

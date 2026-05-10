@@ -3183,14 +3183,19 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     )
     strict_external_blockers = module._structured_evidence_control_blockers(  # noqa: SLF001
         {
-            "controlCount": 3,
+            "controlCount": 2,
             "unresolvedControlCount": 0,
             "controls": [
                 {"id": "branch_protection", "status": "passed", "evidence": []},
                 {"id": "alert_route", "status": "blocked"},
+                {
+                    "id": "backup_restore",
+                    "status": "unresolved",
+                    "unresolvedReason": "Restore owner evidence is pending.",
+                },
             ],
         },
-        ("branch_protection", "alert_route"),
+        ("branch_protection", "alert_route", "backup_restore"),
     )
     strict_external_text = " ".join(strict_external_blockers)
     assert "controlCount" in strict_external_text  # nosec B101
@@ -3245,6 +3250,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
                 {
                     "id": "alert_route",
                     "status": "unresolved",
+                    "evidence": ["Monthly observation owner is assigned."],
                     "unresolvedReason": "Monthly observation history is pending.",
                 },
             ],
@@ -3266,6 +3272,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
                 {
                     "id": "alert_route",
                     "status": "unresolved",
+                    "evidence": ["Monthly observation owner is assigned."],
                     "unresolvedReason": "Monthly observation history is pending.",
                 },
             ],
