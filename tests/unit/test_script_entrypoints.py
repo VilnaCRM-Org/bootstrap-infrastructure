@@ -1324,6 +1324,39 @@ def test_required_status_check_contract_matches_collector_and_docs(
     )
 
 
+def test_well_architected_question_source_contract_matches_docs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the official AWS TOC source contract visible in audit docs."""
+    collector_module = load_script_module(
+        monkeypatch, "collect_well_architected_evidence"
+    )
+    toc_url = collector_module.AWS_WELL_ARCHITECTED_TOC_URL
+    issue_dir = PROJECT_ROOT / "specs" / "issue-17-well-architected-5-of-5"
+    question_evidence = json.loads(
+        (issue_dir / "question-matrix-evidence-2026-05-09.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    source_verification = question_evidence["frameworkSourceVerification"]
+
+    assert toc_url in source_verification["sourceUrls"]  # nosec B101
+    assert (  # noqa: SLF001  # nosec B101
+        collector_module._question_matrix_source_verification_blockers(
+            question_evidence
+        )
+        == []
+    )
+    for relative_path in (
+        "completion-audit-2026-05-10.md",
+        "implementation-readiness-report.md",
+        "well-architected-review.md",
+    ):
+        assert toc_url in (issue_dir / relative_path).read_text(  # nosec B101
+            encoding="utf-8"
+        )
+
+
 def test_configure_github_repository_controls_api_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

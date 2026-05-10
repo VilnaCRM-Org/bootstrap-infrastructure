@@ -24,7 +24,7 @@ evidence remain open.
 | Scope boundary | Ready | This implementation PR changes Pulumi code, scripts, docs, tests, and specs, but avoids secret access, stack exports, and irreversible Vault Lock decisions; account-wide cost allocation tag activation is now recorded as metadata-only FinOps evidence. |
 | Epic decomposition | Ready | Eight epics preserve the issue priority model and cover all listed roadmap items. |
 | Evidence model | Ready | Future controls require repo, CI, AWS metadata, or external-control evidence. |
-| Question coverage | Ready | `question-matrix.md` covers all 57 AWS Well-Architected questions with current evidence, gaps, target proof, owner role, and cadence. |
+| Question coverage | Ready | `question-matrix.md` covers all 57 AWS Well-Architected questions with current evidence, gaps, target proof, owner role, and cadence; structured evidence also carries the official AWS Well-Architected TOC URL (`https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json`) for source verification. |
 | FR/NFR coverage | Ready | PRD and architecture cover current repo functions, non-functional constraints, evidence freshness, and score-claim gates. |
 | Secret safety | Ready | Future validation must avoid stack exports, decrypted config, cloud-secret payloads, and environment dumps. |
 | Implementation readiness | Repository-owned slice implemented | P0/P1 in-repo guardrails, operating evidence, and AWS metadata evidence are implemented where ownership is clear; remaining blockers are external GitHub admin, security-owner, downstream alert-route, and production-approval controls. |
@@ -170,8 +170,10 @@ This PR should be validated by:
   `make test-repository-fanout` to prove the new guardrails work without AWS
   credentials.
 - Confirming the question matrix still contains all 57 AWS Well-Architected
-  questions and does not claim final 5/5 scores before structured
-  `QUESTION_MATRIX_EVIDENCE` and `EXTERNAL_CONTROL_EVIDENCE` records exist.
+  questions, includes the official AWS Well-Architected TOC source URL in
+  `frameworkSourceVerification`, and does not claim final 5/5 scores before
+  structured `QUESTION_MATRIX_EVIDENCE` and `EXTERNAL_CONTROL_EVIDENCE` records
+  exist.
 - Dispatching or observing the existing `Pulumi Test Deploy` workflow, or a
   safe equivalent test-account Pulumi run, before merge readiness is claimed.
 - Re-running `scripts/collect_well_architected_evidence.py` after each external

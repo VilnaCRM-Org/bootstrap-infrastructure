@@ -9,7 +9,13 @@ target state, and the remaining blockers. Current repo-owned controls may reduce
 specific gaps, but final 5/5 scores are not claimed until owner, freshness,
 validation, and external-control evidence are complete.
 
-The full question-level ledger is `question-matrix.md`. It covers all 57 current AWS Well-Architected questions and is the controlling artifact for future score changes.
+The full question-level ledger is `question-matrix.md`. It covers all 57 current
+AWS Well-Architected questions and is the controlling artifact for future score
+changes. The structured question evidence must retain
+`frameworkSourceVerification` with the official AWS Well-Architected TOC URL
+(`https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json`),
+matching pillar counts, and a fresh `checkedAt`; the collector rejects records
+that omit the TOC source.
 
 ## Source Baseline
 
@@ -59,11 +65,12 @@ Documentation and evidence-contract score: `4.8/5`.
 
 The 2026-05-09 evidence record at
 `question-matrix-evidence-2026-05-09.json` now includes a 1-5 score for each of
-the 57 AWS Well-Architected Framework questions. These scores are current
-review observations for this PR and the repository, not final 5/5 claims. As of
-the 2026-05-09 review, 10 questions remain unresolved because those rows still
-have at least one missing owner, freshness, validation, fallback, drill,
-account, or administrator-owned evidence item.
+the 57 AWS Well-Architected Framework questions plus a source-verification
+record that includes the official AWS TOC URL. These scores are current review
+observations for this PR and the repository, not final 5/5 claims. As of the
+2026-05-09 review, 10 questions remain unresolved because those rows still have
+at least one missing owner, freshness, validation, fallback, drill, account, or
+administrator-owned evidence item.
 
 Repository-owned operating evidence for owners, KPI cadence, priority/risk
 tradeoffs, runbooks, decision matrices, and sustainability governance is now
