@@ -19,8 +19,12 @@ These checks should be required in branch protection:
 | `Ty` | `make test-ty` | Fast static typing diagnostics |
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
 | `Architecture` | `make test-architecture` | Import Linter contracts for package isolation and dependency direction |
+| `Structural` | `make test-pulumi && make test-repository-catalogs && make test-repository-fanout` | Pulumi project, workflow, catalog, and static fanout checks |
 | `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
 | `Coverage` | `make test-coverage` after unit, policy, and integration suites | Combined branch-coverage gate; uses `make test-integration-unprivileged` when AWS-backed automation tests are not enabled |
+| `Local Battery` | `make ci-pr` or `make ci-pr-unprivileged` | Dockerized PR battery including image build and local gate composition |
+| `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
+| `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
 | `Secrets Scan` | `make test-secrets` | Gitleaks against tracked Git content |
 | `Dependency Audit` | `make test-deps-security` | `pip-audit --strict` for known Python vulnerabilities |
 | `Bandit` | `make test-bandit` | Python security linting for runtime and helper code |
@@ -36,13 +40,13 @@ These checks should be required in branch protection:
 | `CodeQL (actions)` | GitHub-native | Static security/code scanning for workflows |
 
 `make ci-pr` is the canonical local equivalent of the real non-mutation
-pull-request battery. Repositories without live AWS credentials or AWS-backed
-Pulumi variables can run `make ci-pr-unprivileged`, which swaps in
+pull-request battery and backs the required `Local Battery` check.
+Repositories without live AWS credentials or AWS-backed Pulumi variables can
+run `make ci-pr-unprivileged`, which swaps in
 `make test-integration-unprivileged`, `make test-preview-unprivileged`, and
-`make test-iam-validation-unprivileged`.
-`make test-iam-validation` remains a separate privileged step and is
-intentionally excluded from `make ci-pr`; `make ci` adds the slower mutation
-layer on top.
+`make test-iam-validation-unprivileged`. `make test-iam-validation` remains a
+separate privileged step and is intentionally excluded from `make ci-pr`;
+`make ci` adds the slower required mutation layer on top.
 
 ## Scheduled quality monitoring
 

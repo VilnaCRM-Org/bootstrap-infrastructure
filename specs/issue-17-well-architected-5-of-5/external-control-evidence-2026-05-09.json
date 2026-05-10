@@ -1,7 +1,7 @@
 {
   "workload": "bootstrap-infrastructure",
   "owner": "platform-maintainers",
-  "reviewedAt": "2026-05-10T23:22:20Z",
+  "reviewedAt": "2026-05-10T23:55:21Z",
   "controlCount": 8,
   "unresolvedControlCount": 3,
   "unresolvedControlIds": [
@@ -22,7 +22,7 @@
         "scripts/configure_github_repository_controls.py --verify-only was retested at 2026-05-10T23:20:08Z; it fails read-only because the active main ruleset is missing required status checks and prod is unreadable.",
         "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T23:22:20Z; it still stops at the repository-admin preflight before any write."
       ],
-      "unresolvedReason": "Admin-owned ruleset must require the documented status checks: Ruff, Ty, Maintainability, Architecture, Dependency Hygiene, Coverage, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
+      "unresolvedReason": "Admin-owned ruleset must require the documented status checks: Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
     },
     {
       "id": "alert_route",

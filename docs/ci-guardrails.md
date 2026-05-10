@@ -18,8 +18,12 @@ These checks are intended to be marked as required in branch protection:
 | `Ty` | `make test-ty` | Fast static typing diagnostics |
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
 | `Architecture` | `make test-architecture` | Import Linter contracts for package isolation and dependency direction |
+| `Structural` | `make test-pulumi && make test-repository-catalogs && make test-repository-fanout` | Pulumi project, workflow, catalog, and static fanout checks |
 | `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
 | `Coverage` | `make test-coverage` | Combined branch-coverage gate after unit, policy, and integration suites |
+| `Local Battery` | `make ci-pr` or `make ci-pr-unprivileged` | Dockerized PR battery including image build and local gate composition |
+| `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
+| `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
 | `Secrets Scan` | `make test-secrets` | Runs Gitleaks against tracked Git content |
 | `Dependency Audit` | `make test-deps-security` | Audits Python dependencies with `pip-audit --strict` |
 | `Bandit` | `make test-bandit` | Lints repository Python code for common security hazards |
