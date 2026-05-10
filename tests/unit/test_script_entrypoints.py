@@ -1125,6 +1125,18 @@ def test_required_status_check_contract_matches_collector_and_docs(
     quality_gates_doc = (PROJECT_ROOT / "docs/ci-quality-gates.md").read_text(
         encoding="utf-8"
     )
+    operating_evidence_doc = (
+        PROJECT_ROOT / "docs/well-architected-operating-evidence.md"
+    ).read_text(encoding="utf-8")
+    external_control_path = (
+        PROJECT_ROOT
+        / "specs"
+        / "issue-17-well-architected-5-of-5"
+        / "external-control-evidence-2026-05-09.json"
+    )
+    external_control_evidence = json.loads(
+        external_control_path.read_text(encoding="utf-8")
+    )
     required_checks_section = guardrails_doc.split("## Required PR checks", 1)[1].split(
         "### Same-repo privileged check contract", 1
     )[0]
@@ -1150,6 +1162,26 @@ def test_required_status_check_contract_matches_collector_and_docs(
     )
     assert quality_documented_checks == list(  # nosec B101
         collector_module.DEFAULT_REQUIRED_STATUS_CHECKS
+    )
+    required_check_text = (
+        ", ".join(collector_module.DEFAULT_REQUIRED_STATUS_CHECKS[:-1])
+        + f", and {collector_module.DEFAULT_REQUIRED_STATUS_CHECKS[-1]}"
+    )
+    branch_protection_control = next(
+        control
+        for control in external_control_evidence["controls"]
+        if control["id"] == "branch_protection"
+    )
+    assert branch_protection_control["unresolvedReason"] == (  # nosec B101
+        "Admin-owned ruleset must require the documented status checks: "
+        f"{required_check_text}."
+    )
+    assert (  # nosec B101
+        f"GitHub ruleset 13906584 requires {required_check_text}." in guardrails_doc
+    )
+    assert (  # nosec B101
+        f"Active `main` ruleset requires {required_check_text}."
+        in operating_evidence_doc
     )
 
 
