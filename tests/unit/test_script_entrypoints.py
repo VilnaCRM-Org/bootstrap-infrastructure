@@ -1109,6 +1109,36 @@ def test_configure_github_repository_controls_payloads(
     assert rendered["prodEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
 
 
+def test_required_status_check_contract_matches_collector_and_docs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the branch-protection helper, collector, and docs in sync."""
+    controls_module = load_script_module(
+        monkeypatch, "configure_github_repository_controls"
+    )
+    collector_module = load_script_module(
+        monkeypatch, "collect_well_architected_evidence"
+    )
+    guardrails_doc = (PROJECT_ROOT / "docs/ci-guardrails.md").read_text(
+        encoding="utf-8"
+    )
+    required_checks_section = guardrails_doc.split("## Required PR checks", 1)[1].split(
+        "### Same-repo privileged check contract", 1
+    )[0]
+    documented_checks = [
+        line.split("`", 2)[1]
+        for line in required_checks_section.splitlines()
+        if line.startswith("| `")
+    ]
+
+    assert controls_module.REQUIRED_STATUS_CHECKS == (  # nosec B101
+        collector_module.DEFAULT_REQUIRED_STATUS_CHECKS
+    )
+    assert documented_checks == list(  # nosec B101
+        collector_module.DEFAULT_REQUIRED_STATUS_CHECKS
+    )
+
+
 def test_configure_github_repository_controls_api_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
