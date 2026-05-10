@@ -251,6 +251,9 @@ When set, `OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
 `QUESTION_MATRIX_EVIDENCE`, and `EXTERNAL_CONTROL_EVIDENCE` are standard
 evidence inputs, not secrets. Restore evidence must be scoped to this bootstrap
 workload and include cleanup confirmation for any isolated restore location.
+The collector also reads non-secret Dependabot alert metadata for the configured
+dependency and manifest path; unresolved high or critical default-branch alerts
+remain SEC11 blockers until closed or covered by an owner-approved exception.
 Question-matrix and external-control records must include owner, freshness,
 coverage, unresolved-count, evidence-location, and fallback fields; boolean
 confirmation flags do not unlock final 5/5 scores.

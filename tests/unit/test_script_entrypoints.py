@@ -1401,6 +1401,8 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                     }
                 }
             }
+        elif command[:2] == ["gh", "api"] and "/dependabot/alerts?" in command[-1]:
+            payload = []
         elif command[:2] == ["gh", "api"] and command[-1].endswith(
             "/environments/prod"
         ):
@@ -1580,6 +1582,21 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
                     }
                 }
             }
+        elif command[:2] == ["gh", "api"] and "/dependabot/alerts?" in command[-1]:
+            payload = [
+                {
+                    "number": 8,
+                    "state": "open",
+                    "dependency": {
+                        "package": {"name": "GitPython"},
+                        "manifest_path": "uv.lock",
+                    },
+                    "security_advisory": {"severity": "high"},
+                    "security_vulnerability": {
+                        "first_patched_version": {"identifier": "3.1.50"}
+                    },
+                }
+            ]
         elif command[:2] == ["gh", "api"] and command[-1].endswith(
             "/environments/prod"
         ):
@@ -1654,6 +1671,7 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
     assert statuses["github_pr_local_state"] == "failed"  # nosec B101
     assert statuses["github_review_threads"] == "failed"  # nosec B101
     assert statuses["github_branch_protection"] == "failed"  # nosec B101
+    assert statuses["github_dependabot_alerts"] == "failed"  # nosec B101
     assert statuses["github_production_environment"] == "failed"  # nosec B101
     assert statuses["aws_iam_account_access"] == "failed"  # nosec B101
     assert statuses["aws_cost_controls"] == "failed"  # nosec B101
@@ -1719,6 +1737,10 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
         module.github_branch_protection("org/repo", "main", runner=failing_runner)[
             "status"
         ]
+        == "unknown"
+    )
+    assert (
+        module.github_dependabot_alerts("org/repo", runner=failing_runner)["status"]
         == "unknown"
     )
     assert module.aws_identity(runner=failing_runner)["status"] == "unknown"
@@ -2010,6 +2032,86 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     )
     assert invalid_fanout["status"] == "failed"  # nosec B101
     assert invalid_fanout["evidence"]["reports"][0]["error"] == "invalid catalog"  # nosec B101
+
+
+def test_collect_well_architected_evidence_reports_dependabot_alerts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dependabot evidence should fail on open high-impact default-branch alerts."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        assert command[:2] == ["gh", "api"]  # nosec B101
+        assert "/dependabot/alerts?" in command[-1]  # nosec B101
+        payload = [
+            {
+                "number": 8,
+                "state": "open",
+                "dependency": {
+                    "package": {"name": "GitPython"},
+                    "manifest_path": "uv.lock",
+                },
+                "security_advisory": {"severity": "high"},
+                "security_vulnerability": {
+                    "first_patched_version": {"identifier": "3.1.50"}
+                },
+            },
+            {
+                "number": 4,
+                "state": "open",
+                "dependency": {
+                    "package": {"name": "GitPython"},
+                    "manifest_path": "uv.lock",
+                },
+                "security_advisory": {"severity": "critical"},
+                "security_vulnerability": {
+                    "first_patched_version": {"identifier": "3.1.47"}
+                },
+            },
+            {
+                "number": 9,
+                "state": "open",
+                "dependency": {
+                    "package": {"name": "GitPython"},
+                    "manifest_path": "uv.lock",
+                },
+                "security_advisory": {"severity": "low"},
+                "security_vulnerability": {},
+            },
+            {
+                "number": 10,
+                "state": "open",
+                "dependency": {
+                    "package": {"name": "GitPython"},
+                    "manifest_path": "pyproject.toml",
+                },
+                "security_advisory": {"severity": "high"},
+                "security_vulnerability": {},
+            },
+            {
+                "number": 11,
+                "state": "fixed",
+                "dependency": {
+                    "package": {"name": "GitPython"},
+                    "manifest_path": "uv.lock",
+                },
+                "security_advisory": {"severity": "high"},
+                "security_vulnerability": {},
+            },
+        ]
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    evidence = module.github_dependabot_alerts(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        runner=runner,
+    )
+
+    assert evidence["status"] == "failed"  # nosec B101
+    assert evidence["evidence"]["matchingOpenAlertCount"] == 3  # nosec B101
+    assert evidence["evidence"]["openAlertCount"] == 2  # nosec B101
+    assert evidence["evidence"]["openAlertNumbers"] == [4, 8]  # nosec B101
+    assert evidence["evidence"]["alerts"][0]["firstPatchedVersion"] == "3.1.47"  # nosec B101
+    assert "GitPython in uv.lock: #4, #8" in evidence["blockers"][0]  # nosec B101
 
 
 def test_collect_well_architected_evidence_reads_ruleset_fallback(

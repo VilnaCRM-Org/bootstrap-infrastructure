@@ -7,6 +7,7 @@ import json
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import quote
 
 from _script_support import repo_root, run
 from validate_repository_catalogs import (
@@ -41,6 +42,9 @@ DEFAULT_REQUIRED_STATUS_CHECKS = (
 )
 DEFAULT_PRODUCTION_ENVIRONMENT = "prod"
 DEFAULT_PRODUCTION_REVIEWER = "Kravalg"
+DEFAULT_DEPENDABOT_DEPENDENCY = "GitPython"
+DEFAULT_DEPENDABOT_MANIFEST = "uv.lock"
+BLOCKING_DEPENDABOT_SEVERITIES = frozenset({"critical", "high"})
 RESTORE_DRILL_REQUIRED_FIELDS = (
     "workload",
     "environment",
@@ -715,6 +719,148 @@ def _branch_protection_blockers(
 def _active_branch_ruleset_count(rulesets: Sequence[dict]) -> int:
     """Return active branch ruleset count."""
     return sum(1 for ruleset in rulesets if _is_active_branch_ruleset(ruleset))
+
+
+def github_dependabot_alerts(
+    repo: str,
+    dependency: str = DEFAULT_DEPENDABOT_DEPENDENCY,
+    manifest_path: str = DEFAULT_DEPENDABOT_MANIFEST,
+    blocking_severities: frozenset[str] = BLOCKING_DEPENDABOT_SEVERITIES,
+    *,
+    runner: Runner = run,
+) -> dict[str, object]:
+    """Collect open Dependabot alert evidence for one dependency manifest."""
+    ok, payload, error = _run_json(
+        [
+            "gh",
+            "api",
+            "repos/"
+            f"{repo}/dependabot/alerts?state=open&dependency_name="
+            f"{quote(dependency, safe='')}&per_page=100",
+        ],
+        runner=runner,
+    )
+    if not ok or not isinstance(payload, list):
+        return _check(
+            "github_dependabot_alerts",
+            status="unknown",
+            evidence={
+                "dependencyName": dependency,
+                "manifestPath": manifest_path,
+                "blockingSeverities": sorted(blocking_severities),
+            },
+            blockers=[
+                "Unable to read GitHub Dependabot alerts for "
+                f"{dependency} in {manifest_path}: {error}."
+            ],
+        )
+
+    matching_alerts = sorted(
+        (
+            summary
+            for item in payload
+            if isinstance(item, dict)
+            for summary in [_dependabot_alert_summary(item)]
+            if _dependabot_alert_matches(
+                summary,
+                dependency=dependency,
+                manifest_path=manifest_path,
+            )
+        ),
+        key=lambda alert: _dependabot_alert_number(alert) or 0,
+    )
+    blocking_alerts = [
+        alert
+        for alert in matching_alerts
+        if str(alert.get("severity", "")).lower() in blocking_severities
+    ]
+    open_alert_numbers = [
+        number
+        for alert in blocking_alerts
+        if (number := _dependabot_alert_number(alert)) is not None
+    ]
+    blockers = _dependabot_alert_blockers(
+        dependency=dependency,
+        manifest_path=manifest_path,
+        open_alert_numbers=open_alert_numbers,
+        open_alert_count=len(blocking_alerts),
+    )
+    return _check(
+        "github_dependabot_alerts",
+        status="passed" if not blockers else "failed",
+        evidence={
+            "dependencyName": dependency,
+            "manifestPath": manifest_path,
+            "blockingSeverities": sorted(blocking_severities),
+            "matchingOpenAlertCount": len(matching_alerts),
+            "openAlertCount": len(blocking_alerts),
+            "openAlertNumbers": open_alert_numbers,
+            "alerts": blocking_alerts,
+        },
+        blockers=blockers,
+    )
+
+
+def _dependabot_alert_summary(alert: dict[str, Any]) -> dict[str, object]:
+    """Return non-secret metadata from one Dependabot alert."""
+    dependency = _mapping(alert.get("dependency"))
+    package = _mapping(dependency.get("package"))
+    advisory = _mapping(alert.get("security_advisory"))
+    vulnerability = _mapping(alert.get("security_vulnerability"))
+    first_patched_version = _mapping(vulnerability.get("first_patched_version"))
+    return {
+        "number": alert.get("number"),
+        "state": str(alert.get("state") or ""),
+        "dependencyName": str(package.get("name") or ""),
+        "manifestPath": str(dependency.get("manifest_path") or ""),
+        "severity": str(advisory.get("severity") or "").lower(),
+        "firstPatchedVersion": str(first_patched_version.get("identifier") or ""),
+    }
+
+
+def _mapping(value: object) -> dict[str, Any]:
+    """Return a dict payload when an API field is an object."""
+    return value if isinstance(value, dict) else {}
+
+
+def _dependabot_alert_matches(
+    alert: dict[str, object],
+    *,
+    dependency: str,
+    manifest_path: str,
+) -> bool:
+    """Return whether a Dependabot alert targets the dependency manifest."""
+    return (
+        str(alert.get("state", "")).lower() == "open"
+        and str(alert.get("dependencyName", "")).lower() == dependency.lower()
+        and alert.get("manifestPath") == manifest_path
+    )
+
+
+def _dependabot_alert_number(alert: dict[str, object]) -> int | None:
+    """Return the alert number if GitHub supplied one."""
+    number = alert.get("number")
+    return number if isinstance(number, int) else None
+
+
+def _dependabot_alert_blockers(
+    *,
+    dependency: str,
+    manifest_path: str,
+    open_alert_numbers: Sequence[int],
+    open_alert_count: int,
+) -> list[str]:
+    """Return blockers for unresolved high-impact Dependabot alerts."""
+    if open_alert_count == 0:
+        return []
+    if open_alert_numbers:
+        alert_text = ", ".join(f"#{number}" for number in open_alert_numbers)
+    else:
+        alert_text = f"{open_alert_count} alert(s)"
+    return [
+        "Open default-branch Dependabot alerts remain for "
+        f"{dependency} in {manifest_path}: {alert_text}."
+    ]
 
 
 def github_production_environment(
@@ -1503,6 +1649,7 @@ PILLAR_CHECKS = {
         "github_pr_local_state",
         "github_review_threads",
         "github_branch_protection",
+        "github_dependabot_alerts",
         "aws_identity",
         "aws_iam_account_access",
         "aws_cloudtrail_management_events",
@@ -2034,6 +2181,12 @@ def collect_evidence(
             ),
             runner=runner,
         ),
+        github_dependabot_alerts(
+            args.repo,
+            args.dependabot_dependency,
+            args.dependabot_manifest,
+            runner=runner,
+        ),
         github_production_environment(
             args.repo,
             args.production_environment,
@@ -2100,6 +2253,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--production-reviewer",
         default=DEFAULT_PRODUCTION_REVIEWER,
         help="GitHub login expected to approve production deployments.",
+    )
+    parser.add_argument(
+        "--dependabot-dependency",
+        default=DEFAULT_DEPENDABOT_DEPENDENCY,
+        help="Dependency name whose open Dependabot alerts block SEC11.",
+    )
+    parser.add_argument(
+        "--dependabot-manifest",
+        default=DEFAULT_DEPENDABOT_MANIFEST,
+        help="Manifest path whose open Dependabot alerts block SEC11.",
     )
     parser.add_argument("--restore-drill-evidence", type=Path)
     parser.add_argument("--question-matrix-evidence", type=Path)
