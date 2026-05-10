@@ -853,6 +853,7 @@ def test_verify_well_architected_questions_accepts_matching_toc(
     report = json.loads(output.read_text(encoding="utf-8"))
     assert status == 0  # nosec B101
     assert report["status"] == "passed"  # nosec B101
+    assert report["checkedAt"].endswith("Z")  # nosec B101
     assert report["awsQuestionCount"] == 57  # nosec B101
     assert report["markdownQuestionCount"] == 57  # nosec B101
     assert report["awsPillarQuestionCounts"]["Sustainability"] == 6  # nosec B101

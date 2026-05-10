@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import re
 import sys
@@ -284,6 +285,7 @@ def verify_question_matrix(
     question_matrix_markdown: str | None = None,
 ) -> dict[str, Any]:
     """Compare question evidence with the live AWS Well-Architected TOC."""
+    checked_at = dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z")
     aws_questions = extract_questions(toc)
     aws_ids = [question["id"] for question in aws_questions]
     aws_pillar_by_id = {
@@ -343,6 +345,7 @@ def verify_question_matrix(
 
     return {
         "status": "passed" if not blockers else "failed",
+        "checkedAt": checked_at,
         "tocSource": toc_source,
         "awsQuestionCount": len(aws_ids),
         "awsPillarQuestionCounts": aws_counts,
