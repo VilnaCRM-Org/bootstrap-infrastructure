@@ -1,7 +1,7 @@
 {
   "workload": "bootstrap-infrastructure",
   "owner": "platform-maintainers",
-  "reviewedAt": "2026-05-10T20:31:26Z",
+  "reviewedAt": "2026-05-10T20:46:37Z",
   "controlCount": 8,
   "unresolvedControlCount": 3,
   "unresolvedControlIds": [
@@ -94,7 +94,7 @@
       "evidence": [
         "Production workflow has preview/apply split and commit SHA gates.",
         "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod returned 404 in the 2026-05-10T20:35:14 collector run.",
-        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod-preview showed no protection rules on 2026-05-09.",
+        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod-preview showed no protection rules on 2026-05-10T20:46:37Z.",
         "scripts/configure_github_repository_controls.py --dry-run was retested at 2026-05-10T20:31:26Z; it resolves reviewer Kravalg to GitHub user ID 9444106 and renders the protected prod environment payload.",
         "scripts/configure_github_repository_controls.py --verify-only was retested at 2026-05-10T20:31:26Z; it fails read-only because prod is unreadable and the active main ruleset is missing required status checks.",
         "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T20:31:26Z; it still stops at the repository-admin preflight before it can create or protect prod."
