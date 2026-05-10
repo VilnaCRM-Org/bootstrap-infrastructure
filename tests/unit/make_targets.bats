@@ -51,6 +51,7 @@ assert_help_target() {
     report-quality
     report-sbom
     report-alert-route-observation
+    report-security-account-attestation
     report-well-architected-evidence
     sh
     start
@@ -534,6 +535,25 @@ EOF
   [[ "$output" == *"ALERT_ROUTE_DOWNSTREAM"* ]]
   [[ "$output" != *"incident-route"* ]]
   [[ "$output" != *"sre-reviewer"* ]]
+}
+
+@test "make report-security-account-attestation renders security evidence" {
+  run env \
+    SECURITY_ACCOUNT_ATTESTATION_OUTPUT=docs/security-account-attestation-2026-06-10.md \
+    SECURITY_ACCOUNT_REVIEWER=security-reviewer \
+    SECURITY_ACCOUNT_OWNER=security-owner \
+    SECURITY_ACCOUNT_HUMAN_ACCESS=accepted \
+    SECURITY_ACCOUNT_ACTIVE_KEY_DECISION=exception \
+    SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY=exemption \
+    SECURITY_ACCOUNT_APPROVAL=approved \
+    make -n report-security-account-attestation
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/record_security_account_attestation.py"* ]]
+  [[ "$output" == *'SECURITY_ACCOUNT_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"--human-access-posture"* ]]
+  [[ "$output" == *"SECURITY_ACCOUNT_HUMAN_ACCESS"* ]]
+  [[ "$output" != *"security-reviewer"* ]]
+  [[ "$output" != *"approved"* ]]
 }
 
 @test "make test-quality delegates to the Rust-based quality suite" {

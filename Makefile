@@ -82,6 +82,7 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
         report-maintainability-trends report-dead-code report-docstrings \
         report-sbom report-well-architected-evidence report-alert-route-observation \
+        report-security-account-attestation \
         test-quality test-ruff test-ty test-maintainability \
         test-architecture test-dependency-hygiene test-lockfile test-coverage \
         test-bandit test-actionlint test-yaml test-dockerfile \
@@ -427,6 +428,38 @@ report-alert-route-observation: ## Render monthly alert-route observation eviden
 			--severity-expectations "$${ALERT_ROUTE_SEVERITY}" \
 			--fallback "$${ALERT_ROUTE_FALLBACK}" \
 			--decision "$${ALERT_ROUTE_DECISION}"'
+
+report-security-account-attestation: ## Render security account attestation evidence.
+	@bash -lc '\
+		set -euo pipefail; \
+		output="$${SECURITY_ACCOUNT_ATTESTATION_OUTPUT:-}"; \
+		if [ -z "$${output}" ]; then \
+			echo "error: SECURITY_ACCOUNT_ATTESTATION_OUTPUT is required." >&2; \
+			exit 2; \
+		fi; \
+		for name in \
+			SECURITY_ACCOUNT_REVIEWER \
+			SECURITY_ACCOUNT_OWNER \
+			SECURITY_ACCOUNT_HUMAN_ACCESS \
+			SECURITY_ACCOUNT_ACTIVE_KEY_DECISION \
+			SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY \
+			SECURITY_ACCOUNT_APPROVAL; do \
+			if [ -z "$${!name:-}" ]; then \
+				printf "error: %s is required.\\n" "$${name}" >&2; \
+				exit 2; \
+			fi; \
+		done; \
+		$(REPO_PYTHON) ./scripts/record_security_account_attestation.py \
+			--evidence "$${SECURITY_ACCOUNT_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+			--output "$${output}" \
+			$${SECURITY_ACCOUNT_REVIEW_DATE:+--review-date "$${SECURITY_ACCOUNT_REVIEW_DATE}"} \
+			$${SECURITY_ACCOUNT_EXPIRY_DATE:+--expiry-date "$${SECURITY_ACCOUNT_EXPIRY_DATE}"} \
+			--reviewer "$${SECURITY_ACCOUNT_REVIEWER}" \
+			--security-owner "$${SECURITY_ACCOUNT_OWNER}" \
+			--human-access-posture "$${SECURITY_ACCOUNT_HUMAN_ACCESS}" \
+			--active-key-decision "$${SECURITY_ACCOUNT_ACTIVE_KEY_DECISION}" \
+			--permissions-boundary-decision "$${SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY}" \
+			--approval-decision "$${SECURITY_ACCOUNT_APPROVAL}"'
 
 report-quality: ## Run scheduled quality reports and generate fresh artifacts.
 	$(MAKE) report-maintainability-trends

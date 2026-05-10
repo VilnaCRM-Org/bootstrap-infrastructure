@@ -129,6 +129,15 @@ with owners, expiry, rationale, and fallback behavior.
 
 ## Exception Register
 
+Use `make report-security-account-attestation` to render a non-secret
+security-owner review record from `.artifacts/well-architected/evidence.json`.
+The command requires explicit human MFA/SSO, active IAM user access-key,
+permissions-boundary or exemption, and approval decisions. The generated record
+must not include IAM user names, access key IDs, screenshots with private
+identities, credentials, tokens, or raw account exports. This record path helps
+close issue #28, but SEC1, SEC2, and SEC3 stay below 5/5 until a real security
+owner approves current evidence or records remediation.
+
 | Exception | Status | Owner | Expiry | Required follow-up |
 | --- | --- | --- | --- | --- |
 | Human MFA/SSO evidence | Open external control | Repository admin plus security reviewer | Before final 5/5 claim | Prove organization or repository human-access policy without exposing private user data. |

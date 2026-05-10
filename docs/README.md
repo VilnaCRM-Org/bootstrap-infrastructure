@@ -62,6 +62,7 @@ nightly-quality   Run the scheduled quality-report battery locally.
 report-quality    Generate the scheduled maintainability, dead-code, docstring, and SBOM reports.
 report-sbom       Generate a CycloneDX SBOM for the synced Python environment.
 report-alert-route-observation  Render a monthly alert-route observation from collector evidence.
+report-security-account-attestation  Render a non-secret security account attestation from collector evidence.
 start             Initialize and start the Pulumi development environment.
 pulumi-preview    Preview infrastructure changes with the policy pack enforced.
 pulumi-up         Apply the current infrastructure plan with the policy pack enforced.

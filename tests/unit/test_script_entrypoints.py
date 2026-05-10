@@ -141,6 +141,56 @@ def _alert_route_evidence_report(
     }
 
 
+def _security_account_evidence_report(
+    *,
+    status: str = "failed",
+    evidence: object | None = None,
+    blockers: list[str] | None = None,
+    identity_evidence: object | None = None,
+    include_identity: bool = True,
+) -> dict[str, object]:
+    checks: list[dict[str, object]] = []
+    if include_identity:
+        checks.append(
+            {
+                "name": "aws_identity",
+                "status": "passed",
+                "evidence": (
+                    {"account": "123456789012"}
+                    if identity_evidence is None
+                    else identity_evidence
+                ),
+                "blockers": [],
+            }
+        )
+    checks.append(
+        {
+            "name": "aws_iam_account_access",
+            "status": status,
+            "evidence": evidence
+            if evidence is not None
+            else {
+                "accountMfaEnabled": 1,
+                "accountAccessKeysPresent": 0,
+                "discoveredUserCount": 4,
+                "summaryUserCount": 4,
+                "mfaDevicesInUse": 1,
+                "mfaDeviceCount": 1,
+                "activeUserAccessKeyCount": 1,
+                "inactiveUserAccessKeyCount": 0,
+                "unreadableAccessKeyUserCount": 0,
+            },
+            "blockers": blockers
+            if blockers is not None
+            else [
+                "IAM user count exceeds MFA devices in use.",
+                "IAM access-key metadata reports active user access keys.",
+            ],
+        }
+    )
+    return {"generatedAt": "2026-05-10T07:52:18.485352+00:00", "checks": checks}
+
+
 def test_record_alert_route_observation_writes_monthly_review(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -307,6 +357,226 @@ def test_record_alert_route_observation_reports_invalid_evidence(
             "Escalate.",
             "--decision",
             "Accepted.",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert expected_error in capsys.readouterr().err  # nosec B101
+
+
+def test_record_security_account_attestation_writes_owner_review(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Render aggregate IAM account facts into a security-owner record."""
+    module = load_script_module(monkeypatch, "record_security_account_attestation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "security-account-attestation.md"
+    evidence.write_text(
+        json.dumps(_security_account_evidence_report()), encoding="utf-8"
+    )
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--review-date",
+            "2026-06-10",
+            "--reviewer",
+            "security-reviewer",
+            "--security-owner",
+            "security-owner",
+            "--human-access-posture",
+            "Org owner reviewed SSO and MFA posture.",
+            "--active-key-decision",
+            "Exception accepted pending rotation ticket.",
+            "--permissions-boundary-decision",
+            "Approved exemption for bootstrap role.",
+            "--approval-decision",
+            "Conditionally approved for issue #28 evidence.",
+            "--expiry-date",
+            "2026-07-10",
+            "--action",
+            "Rotate the remaining static key before expiry.",
+        ]
+    )
+
+    text = output.read_text(encoding="utf-8")
+    assert status == 0  # nosec B101
+    assert "# Security Account Attestation 2026-06-10" in text  # nosec B101
+    assert "123456789012" in text  # nosec B101
+    assert "Active IAM user access keys" in text  # nosec B101
+    assert "Conditionally approved for issue #28 evidence." in text  # nosec B101
+    assert "IAM user names" in text  # nosec B101
+    assert "AKIA" not in text  # nosec B101
+    assert "SecretAccessKey" not in text  # nosec B101
+
+
+def test_record_security_account_attestation_force_overwrites_without_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Force mode supports rerendering and blank account metadata."""
+    module = load_script_module(monkeypatch, "record_security_account_attestation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "security-account-attestation.md"
+    evidence.write_text(
+        json.dumps(
+            _security_account_evidence_report(
+                status="passed", blockers=[], include_identity=False
+            )
+        ),
+        encoding="utf-8",
+    )
+    output.write_text("existing\n", encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "security-reviewer",
+            "--security-owner",
+            "security-owner",
+            "--human-access-posture",
+            "MFA posture accepted.",
+            "--active-key-decision",
+            "No active-key exception needed.",
+            "--permissions-boundary-decision",
+            "Boundary exemption accepted.",
+            "--approval-decision",
+            "Approved.",
+            "--force",
+        ]
+    )
+
+    text = output.read_text(encoding="utf-8")
+    assert status == 0  # nosec B101
+    assert "No follow-up actions recorded." in text  # nosec B101
+    assert "None reported by the collector." in text  # nosec B101
+
+
+def test_record_security_account_attestation_handles_unstructured_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unstructured identity metadata should not block the attestation shell."""
+    module = load_script_module(monkeypatch, "record_security_account_attestation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "security-account-attestation.md"
+    evidence.write_text(
+        json.dumps(_security_account_evidence_report(identity_evidence="unstructured")),
+        encoding="utf-8",
+    )
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "security-reviewer",
+            "--security-owner",
+            "security-owner",
+            "--human-access-posture",
+            "MFA posture accepted.",
+            "--active-key-decision",
+            "Exception accepted.",
+            "--permissions-boundary-decision",
+            "Boundary exemption accepted.",
+            "--approval-decision",
+            "Approved.",
+        ]
+    )
+
+    assert status == 0  # nosec B101
+    assert "| AWS account |  |" in output.read_text(encoding="utf-8")  # nosec B101
+
+
+def test_record_security_account_attestation_refuses_overwrite_without_force(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Security attestations should not be overwritten accidentally."""
+    module = load_script_module(monkeypatch, "record_security_account_attestation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "security-account-attestation.md"
+    evidence.write_text(
+        json.dumps(_security_account_evidence_report()), encoding="utf-8"
+    )
+    output.write_text("existing\n", encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "security-reviewer",
+            "--security-owner",
+            "security-owner",
+            "--human-access-posture",
+            "MFA posture accepted.",
+            "--active-key-decision",
+            "Exception accepted.",
+            "--permissions-boundary-decision",
+            "Boundary exemption accepted.",
+            "--approval-decision",
+            "Approved.",
+        ]
+    )
+
+    assert status == 2  # nosec B101
+    assert output.read_text(encoding="utf-8") == "existing\n"
+    assert "output already exists" in capsys.readouterr().err  # nosec B101
+
+
+@pytest.mark.parametrize(
+    ("raw_payload", "expected_error"),
+    [
+        ("[]", "evidence report must be a JSON object"),
+        (json.dumps({"checks": []}), "does not contain check"),
+        (
+            json.dumps(_security_account_evidence_report(evidence="not structured")),
+            "aws_iam_account_access evidence must be a JSON object",
+        ),
+        ("{", "Expecting property name enclosed in double quotes"),
+    ],
+)
+def test_record_security_account_attestation_reports_invalid_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    raw_payload: str,
+    expected_error: str,
+) -> None:
+    """Invalid collector evidence should block security attestation records."""
+    module = load_script_module(monkeypatch, "record_security_account_attestation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "security-account-attestation.md"
+    evidence.write_text(raw_payload, encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "security-reviewer",
+            "--security-owner",
+            "security-owner",
+            "--human-access-posture",
+            "MFA posture accepted.",
+            "--active-key-decision",
+            "Exception accepted.",
+            "--permissions-boundary-decision",
+            "Boundary exemption accepted.",
+            "--approval-decision",
+            "Approved.",
         ]
     )
 
