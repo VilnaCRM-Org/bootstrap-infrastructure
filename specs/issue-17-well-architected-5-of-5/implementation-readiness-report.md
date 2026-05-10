@@ -98,11 +98,21 @@ claim is blocked until all of the following are current and non-secret:
 Repository admins can apply the GitHub-owned controls with:
 
 ```bash
+gh api graphql \
+  -f query='query { repository(owner:"VilnaCRM-Org", name:"bootstrap-infrastructure") { viewerPermission viewerCanAdminister } }' \
+  --jq '.data.repository'
+
 uv run python scripts/configure_github_repository_controls.py \
   --repo VilnaCRM-Org/bootstrap-infrastructure \
   --prod-reviewer Kravalg \
   --apply
 ```
+
+The permission preflight must show an admin-capable identity before the helper
+can write repository rulesets or protected environments. Current PR #22
+operator evidence is `viewerPermission=WRITE` and `viewerCanAdminister=false`,
+so the helper correctly fails before any write until a repository administrator
+reruns it.
 
 The command exits non-zero if the post-apply metadata does not show the full
 required-check set, pull-request review/thread-resolution rules, protected-branch

@@ -457,11 +457,21 @@ The workflows are committed in this repository, but maintainers still need to:
 Repository administrators can make steps 4 and 5 reproducible with:
 
 ```bash
+gh api graphql \
+  -f query='query { repository(owner:"VilnaCRM-Org", name:"bootstrap-infrastructure") { viewerPermission viewerCanAdminister } }' \
+  --jq '.data.repository'
+
 uv run python scripts/configure_github_repository_controls.py \
   --repo VilnaCRM-Org/bootstrap-infrastructure \
   --prod-reviewer Kravalg \
   --apply
 ```
+
+The GraphQL preflight must report an admin-capable identity before `--apply`
+can update repository-owned rulesets or protected environments. The current
+non-admin evidence for PR #22 is `viewerPermission=WRITE` and
+`viewerCanAdminister=false`, so this command is intentionally expected to stop
+at the admin-rights preflight until a repository administrator runs it.
 
 Run the same command with `--dry-run`, or with neither `--dry-run` nor
 `--apply`, to inspect the ruleset and protected environment payloads. Dry runs
