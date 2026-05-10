@@ -49,9 +49,10 @@ Live AWS metadata checked on 2026-05-09:
 
 ## Route Test
 
-The collector already verifies that the operations SNS topic is KMS-encrypted
-and has an SQS subscription. A direct SNS-to-SQS probe also passed on
-2026-05-09:
+The collector verifies that the operations SNS topic is KMS-encrypted, has an
+SQS subscription, and can read non-secret queue metadata such as queue name,
+visible and not-visible message counts, retention, and visibility timeout. A
+direct SNS-to-SQS probe also passed on 2026-05-09:
 
 | Step | Result |
 | --- | --- |

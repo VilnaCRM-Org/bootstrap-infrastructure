@@ -1452,7 +1452,28 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
         elif command[:3] == ["aws", "sns", "get-topic-attributes"]:
             payload = "arn:aws:kms:us-east-1:123456789012:key/topic"
         elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
-            payload = ["sqs"]
+            payload = [
+                {
+                    "Protocol": "sqs",
+                    "Endpoint": (
+                        "arn:aws:sqs:us-east-1:123456789012:"
+                        "bootstrap-test-operations-alerts"
+                    ),
+                }
+            ]
+        elif command[:3] == ["aws", "sqs", "get-queue-url"]:
+            payload = (
+                "https://sqs.us-east-1.amazonaws.com/123456789012/"
+                "bootstrap-test-operations-alerts"
+            )
+        elif command[:3] == ["aws", "sqs", "get-queue-attributes"]:
+            payload = {
+                "ApproximateNumberOfMessages": "0",
+                "ApproximateNumberOfMessagesNotVisible": "0",
+                "ApproximateNumberOfMessagesDelayed": "0",
+                "MessageRetentionPeriod": "345600",
+                "VisibilityTimeout": "30",
+            }
         elif command[:3] == ["aws", "cloudtrail", "get-trail"]:
             payload = {
                 "Name": "bootstrap-test-management-events",
@@ -1522,6 +1543,14 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
     assert (  # nosec B101
         checks["external_control_evidence"]["evidence"].get("unresolvedControlIds")
         is None
+    )
+    assert (  # nosec B101
+        checks["aws_sns_alert_route"]["evidence"]["sqsQueue"]["queueName"]
+        == "bootstrap-test-operations-alerts"
+    )
+    assert (  # nosec B101
+        checks["aws_sns_alert_route"]["evidence"]["sqsQueue"]["messageRetentionSeconds"]
+        == 345600
     )
     assert checks["aws_iam_account_access"]["evidence"] == {  # nosec B101
         "accountAccessKeysPresent": 0,
@@ -1724,14 +1753,6 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
             command, 0, "not-json", ""
         ),
     )
-    missing_fanout_args = module.build_parser().parse_args(
-        ["--root-dir", str(tmp_path)]
-    )
-    (tmp_path / "pulumi").mkdir()
-    low_threshold_args = module.build_parser().parse_args(
-        ["--root-dir", str(PROJECT_ROOT), "--max-s3-buckets", "0"]
-    )
-
     assert invalid_ok is False  # nosec B101
     assert invalid_payload is None  # nosec B101
     assert "invalid JSON output" in invalid_error  # nosec B101
@@ -1793,6 +1814,23 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     )
     assert null_subscription_result["status"] == "failed"  # nosec B101
     assert null_subscription_result["evidence"]["subscriptionProtocols"] == []  # nosec B101
+    legacy_subscription_result = module.aws_sns_alert_route(
+        "arn:topic",
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(
+                "alias/bootstrap"
+                if command[:3] == ["aws", "sns", "get-topic-attributes"]
+                else ["sqs"]
+            ),
+            "",
+        ),
+    )
+    assert legacy_subscription_result["status"] == "failed"  # nosec B101
+    assert "derive SQS queue name" in " ".join(  # nosec B101
+        legacy_subscription_result["blockers"]
+    )
     assert (
         module.aws_cloudtrail_management_events(
             "bootstrap-test-management-events", runner=failing_runner
@@ -1803,6 +1841,13 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert module.restore_drill_evidence(None)["status"] == "missing"
     assert module.restore_drill_evidence(tmp_path / "missing.json")["status"] == (
         "failed"
+    )
+    missing_fanout_args = module.build_parser().parse_args(
+        ["--root-dir", str(tmp_path)]
+    )
+    (tmp_path / "pulumi").mkdir()
+    low_threshold_args = module.build_parser().parse_args(
+        ["--root-dir", str(PROJECT_ROOT), "--max-s3-buckets", "0"]
     )
     malformed_restore_evidence = tmp_path / "malformed-restore.json"
     malformed_restore_evidence.write_text("{", encoding="utf-8")
@@ -2057,6 +2102,145 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     )
     assert invalid_fanout["status"] == "failed"  # nosec B101
     assert invalid_fanout["evidence"]["reports"][0]["error"] == "invalid catalog"  # nosec B101
+
+
+def test_sns_alert_route_records_sqs_queue_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SNS route evidence should include non-secret SQS queue attributes."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        if command[:3] == ["aws", "sns", "get-topic-attributes"]:
+            payload: object = "alias/bootstrap"
+        elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
+            payload = [
+                "email",
+                {"Protocol": "lambda", "Endpoint": 123},
+                {"Protocol": "sqs"},
+                1,
+                {},
+                "malformed",
+                {
+                    "Protocol": "sqs",
+                    "Endpoint": (
+                        "arn:aws:sqs:eu-central-1:123456789012:"
+                        "bootstrap-test-operations-alerts"
+                    ),
+                },
+            ]
+        elif command[:3] == ["aws", "sqs", "get-queue-url"]:
+            payload = (
+                "https://sqs.eu-central-1.amazonaws.com/123456789012/"
+                "bootstrap-test-operations-alerts"
+            )
+        elif command[:3] == ["aws", "sqs", "get-queue-attributes"]:
+            payload = {
+                "ApproximateNumberOfMessages": 2,
+                "ApproximateNumberOfMessagesNotVisible": "0",
+                "ApproximateNumberOfMessagesDelayed": "bad",
+                "MessageRetentionPeriod": "345600",
+                "VisibilityTimeout": "30",
+            }
+        else:  # pragma: no cover - fail fast if the command contract changes.
+            raise AssertionError(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    evidence = module.aws_sns_alert_route("arn:topic", runner=runner)
+
+    assert evidence["status"] == "passed"  # nosec B101
+    assert evidence["evidence"]["subscriptionCount"] == 5  # nosec B101
+    assert evidence["evidence"]["subscriptionProtocols"] == [  # nosec B101
+        "email",
+        "lambda",
+        "malformed",
+        "sqs",
+    ]
+    queue = evidence["evidence"]["sqsQueue"]
+    assert queue["queueName"] == "bootstrap-test-operations-alerts"  # nosec B101
+    assert queue["visibleMessages"] == 2  # nosec B101
+    assert queue["delayedMessages"] is None  # nosec B101
+    assert queue["messageRetentionSeconds"] == 345600  # nosec B101
+
+
+def test_sns_alert_route_reports_sqs_metadata_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SNS route evidence should fail when SQS queue metadata is unreadable."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def queue_url_runner(command, **_kwargs):
+        if command[:3] == ["aws", "sns", "get-topic-attributes"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps("alias/key"), "")
+        if command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    [
+                        {
+                            "Protocol": "sqs",
+                            "Endpoint": (
+                                "arn:aws:sqs:eu-central-1:123456789012:"
+                                "bootstrap-test-operations-alerts"
+                            ),
+                        }
+                    ]
+                ),
+                "",
+            )
+        return subprocess.CompletedProcess(command, 1, "", "denied")
+
+    queue_url_evidence = module.aws_sns_alert_route(
+        "arn:topic",
+        runner=queue_url_runner,
+    )
+
+    assert queue_url_evidence["status"] == "failed"  # nosec B101
+    assert "SQS queue URL" in " ".join(queue_url_evidence["blockers"])  # nosec B101
+
+    def attributes_runner(command, **_kwargs):
+        if command[:3] == ["aws", "sns", "get-topic-attributes"]:
+            payload: object = "alias/key"
+        elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
+            payload = [
+                {
+                    "Protocol": "sqs",
+                    "Endpoint": (
+                        "arn:aws:sqs:eu-central-1:123456789012:"
+                        "bootstrap-test-operations-alerts"
+                    ),
+                }
+            ]
+        elif command[:3] == ["aws", "sqs", "get-queue-url"]:
+            payload = "https://sqs.eu-central-1.amazonaws.com/123456789012/queue"
+        else:
+            return subprocess.CompletedProcess(command, 1, "", "denied")
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    attributes_evidence = module.aws_sns_alert_route(
+        "arn:topic",
+        runner=attributes_runner,
+    )
+
+    assert attributes_evidence["status"] == "failed"  # nosec B101
+    assert "SQS queue attributes" in " ".join(  # nosec B101
+        attributes_evidence["blockers"]
+    )
+    assert module._sns_subscription_items(None) == []  # noqa: SLF001  # nosec B101
+    assert (  # noqa: SLF001  # nosec B101
+        module._queue_name_from_sqs_arn("arn:aws:sns:bad") == ""
+    )
+    assert (  # noqa: SLF001  # nosec B101
+        module._queue_name_from_sqs_arn("arn:aws:sns:eu:1:name") == ""
+    )
+    assert (  # noqa: SLF001  # nosec B101
+        module._queue_name_from_sqs_arn("arn:aws:sqs:eu:1:") == ""
+    )
+    assert module._metadata_int(True) is None  # noqa: SLF001  # nosec B101
+    assert module._metadata_int(None) is None  # noqa: SLF001  # nosec B101
+    assert module._metadata_int("not-an-int") is None  # noqa: SLF001  # nosec B101
+    assert module._metadata_int(["1"]) is None  # noqa: SLF001  # nosec B101
 
 
 def test_collect_well_architected_evidence_reports_dependabot_alerts(
