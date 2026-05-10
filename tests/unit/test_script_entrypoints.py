@@ -1285,6 +1285,26 @@ def test_required_status_check_contract_matches_collector_and_docs(
         for control in external_control_evidence["controls"]
         if control["id"] == "branch_protection"
     )
+    unresolved_controls = [
+        control
+        for control in external_control_evidence["controls"]
+        if control.get("status") != "passed"
+    ]
+    assert (  # noqa: SLF001  # nosec B101
+        collector_module._unresolved_control_ids_from_controls(
+            external_control_evidence["controls"]
+        )
+        == external_control_evidence["unresolvedControlIds"]
+    )
+    assert all(  # nosec B101
+        collector_module._non_empty_string_list(control.get("evidence"))  # noqa: SLF001
+        for control in external_control_evidence["controls"]
+    )
+    assert all(  # nosec B101
+        isinstance(control.get("unresolvedReason"), str)
+        and control["unresolvedReason"].strip()
+        for control in unresolved_controls
+    )
     assert branch_protection_control["unresolvedReason"] == (  # nosec B101
         "Admin-owned ruleset must require the documented status checks: "
         f"{required_check_text}."
