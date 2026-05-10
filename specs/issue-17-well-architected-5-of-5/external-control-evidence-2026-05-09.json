@@ -4,6 +4,11 @@
   "reviewedAt": "2026-05-10T09:54:00Z",
   "controlCount": 8,
   "unresolvedControlCount": 3,
+  "unresolvedControlIds": [
+    "branch_protection",
+    "production_approval",
+    "security_account_controls"
+  ],
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/",
   "fallbackPlan": "Do not claim final 5/5 Well-Architected scores while any external control remains unresolved; keep deployment gated by PR review, local CI, AWS metadata checks, and explicit owner approval.",
   "controls": [

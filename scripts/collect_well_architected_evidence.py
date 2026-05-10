@@ -2858,6 +2858,7 @@ def _structured_evidence_control_blockers(
         *_external_control_status_blockers(control_items),
         *_external_control_count_blockers(payload, control_items),
         *_external_control_unresolved_count_blockers(payload, control_items),
+        *_external_control_unresolved_id_blockers(payload, control_items),
         *_external_control_proof_blockers(control_items),
     ]
 
@@ -3332,6 +3333,28 @@ def _external_control_unresolved_count_blockers(
     ]
 
 
+def _external_control_unresolved_id_blockers(
+    payload: dict[str, Any],
+    controls: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers for stale or inconsistent unresolved external control IDs."""
+    if "unresolvedControlIds" not in payload:
+        return []
+    declared_ids = _string_list(payload.get("unresolvedControlIds"))
+    if declared_ids is None:
+        return [
+            "External-control evidence unresolvedControlIds must be a list of strings."
+        ]
+    expected_ids = _unresolved_control_ids_from_controls(controls)
+    if declared_ids == expected_ids:
+        return []
+    expected_text = ", ".join(expected_ids) or "none"
+    return [
+        "External-control evidence unresolvedControlIds must match non-passed "
+        f"controls: {expected_text}."
+    ]
+
+
 def _valid_structured_status(value: object) -> bool:
     """Return whether an evidence row status is an allowed exact value."""
     return isinstance(value, str) and value in STRUCTURED_EVIDENCE_ALLOWED_STATUSES
@@ -3529,14 +3552,18 @@ def _unresolved_control_ids(payload: dict[str, Any]) -> list[str]:
     controls = payload.get("controls")
     if not isinstance(controls, list):
         return []
+    control_items = [control for control in controls if isinstance(control, dict)]
+    return _unresolved_control_ids_from_controls(control_items)
+
+
+def _unresolved_control_ids_from_controls(
+    controls: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return non-passed external control IDs from control rows."""
     ids = [
         str(control.get("id"))
         for control in controls
-        if (
-            isinstance(control, dict)
-            and control.get("id")
-            and control.get("status") != "passed"
-        )
+        if (control.get("id") and control.get("status") != "passed")
     ]
     return sorted(ids)
 

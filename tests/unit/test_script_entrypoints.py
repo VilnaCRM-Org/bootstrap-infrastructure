@@ -2188,6 +2188,7 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                 "reviewedAt": reviewed_at,
                 "controlCount": 8,
                 "unresolvedControlCount": 0,
+                "unresolvedControlIds": [],
                 "controls": [
                     {
                         "id": "alert_route",
@@ -3021,6 +3022,42 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
         ("branch_protection", "alert_route"),
     )
     assert non_count_external_blockers == []  # nosec B101
+    external_summary_blockers = module._structured_evidence_control_blockers(  # noqa: SLF001
+        {
+            "controlCount": 2,
+            "unresolvedControlCount": 1,
+            "unresolvedControlIds": ["branch_protection"],
+            "controls": [
+                {
+                    "id": "branch_protection",
+                    "status": "passed",
+                    "evidence": ["Ruleset verified."],
+                },
+                {
+                    "id": "alert_route",
+                    "status": "unresolved",
+                    "unresolvedReason": "Monthly observation history is pending.",
+                },
+            ],
+        },
+        ("branch_protection", "alert_route"),
+    )
+    external_summary_text = " ".join(external_summary_blockers)
+    assert "unresolvedControlIds" in external_summary_text  # nosec B101
+    assert "alert_route" in external_summary_text  # nosec B101
+    assert "list of strings" in " ".join(  # noqa: SLF001  # nosec B101
+        module._external_control_unresolved_id_blockers(
+            {"unresolvedControlIds": [1]},
+            [],
+        )
+    )
+    assert (  # noqa: SLF001  # nosec B101
+        module._external_control_unresolved_id_blockers(
+            {"unresolvedControlIds": []},
+            [],
+        )
+        == []
+    )
     valid_source_blockers = module._question_matrix_source_verification_blockers(  # noqa: SLF001
         {
             "frameworkSourceVerification": {
