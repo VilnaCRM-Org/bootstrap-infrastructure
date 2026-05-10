@@ -254,6 +254,38 @@ workload and include cleanup confirmation for any isolated restore location.
 Question-matrix and external-control records must include owner, freshness,
 coverage, unresolved-count, evidence-location, and fallback fields; boolean
 confirmation flags do not unlock final 5/5 scores.
+External-control records are checked per control as well as at the file level:
+
+- `controlCount` must match the number of objects in `controls`
+- `unresolvedControlCount` must match controls whose `status` is not `passed`
+- every required control ID must be present
+- every `passed` control must include a non-empty `evidence` string list
+- every non-passed control must include a non-empty `unresolvedReason`
+
+The accepted shape is intentionally non-secret:
+
+```json
+{
+  "id": "branch_protection",
+  "status": "passed",
+  "evidence": [
+    "GitHub ruleset 13906584 requires Preview, Destructive Diff Gate, IAM Validation, Secrets Scan, Dependency Audit, Bandit, Actionlint, CodeQL (python), and CodeQL (actions)."
+  ]
+}
+```
+
+For unresolved controls, keep the evidence non-secret and explain the blocker:
+
+```json
+{
+  "id": "security_account_controls",
+  "status": "unresolved",
+  "evidence": [
+    "Aggregate IAM collector reports root/account MFA enabled and no root access keys."
+  ],
+  "unresolvedReason": "Security-owner attestation for human MFA/SSO and the active IAM user access-key exception is still pending."
+}
+```
 
 ### Example IAM trust policy
 

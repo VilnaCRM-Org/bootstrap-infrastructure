@@ -247,6 +247,12 @@ missing values as blockers so operators can close them without fabricating 5/5
 evidence. External-control evidence must name the required control IDs for
 branch protection, alert route, backup/restore, FinOps, quota headroom,
 security account controls, sustainability governance, and production approval.
+The collector also validates the per-control proof shape: passed controls need
+a non-empty `evidence` list, unresolved controls need an `unresolvedReason`, and
+the top-level control counts must match the `controls` array. Owner comments,
+private screenshots, or admin-only views can be referenced by non-secret issue
+URLs or metadata summaries, but do not include private user lists, access key
+IDs, secret values, or stack exports.
 
 ## Ownership And RACI
 
