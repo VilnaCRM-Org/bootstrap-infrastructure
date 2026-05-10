@@ -1684,6 +1684,31 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
     assert report["blockers"]  # nosec B101
 
 
+def test_score_blockers_distinguish_failed_and_missing_gates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Score blockers should say if readiness evidence is absent or failing."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    blockers = module.score_blockers(
+        [
+            {"name": "question_matrix_evidence", "status": "failed"},
+            {"name": "external_control_evidence", "status": "missing"},
+        ]
+    )
+
+    assert blockers == [  # nosec B101
+        (
+            "question_matrix_evidence must pass before proxy readiness scores "
+            "can be treated as final Well-Architected scores."
+        ),
+        (
+            "external_control_evidence is required before proxy readiness scores "
+            "can be treated as final Well-Architected scores."
+        ),
+    ]
+
+
 def test_collect_well_architected_evidence_unknown_and_missing_paths(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

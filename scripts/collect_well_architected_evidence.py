@@ -1751,11 +1751,19 @@ def score_blockers(checks: Sequence[dict[str, object]]) -> list[str]:
     by_name = {str(check["name"]): check for check in checks}
     blockers: list[str] = []
     for gate in READINESS_GATES:
-        if by_name.get(gate, {}).get("status") != "passed":
+        status = by_name.get(gate, {}).get("status")
+        if status == "passed":
+            continue
+        if status == "missing" or gate not in by_name:
             blockers.append(
                 f"{gate} is required before proxy readiness scores can be treated "
                 "as final Well-Architected scores."
             )
+            continue
+        blockers.append(
+            f"{gate} must pass before proxy readiness scores can be treated "
+            "as final Well-Architected scores."
+        )
     return blockers
 
 
