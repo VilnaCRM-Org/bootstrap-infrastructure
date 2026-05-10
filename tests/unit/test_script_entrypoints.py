@@ -3070,6 +3070,52 @@ def test_report_maintainability_trends_main_handles_git_and_wily_paths(
     assert not symlink_cache_dir.exists()
 
 
+def test_report_maintainability_trends_snapshot_fallback_records_radon_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Keep fallback maintainability evidence useful when radon cannot run."""
+    module = load_script_module(monkeypatch, "report_maintainability_trends")
+    report_path = tmp_path / "wily-rank.txt"
+
+    def fake_run(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="partial output\n",
+            stderr="radon failed\n",
+        )
+
+    monkeypatch.setattr(module, "run", fake_run)
+    module._write_current_snapshot_report(
+        root_dir=tmp_path,
+        wily_report=report_path,
+        wily_targets=["pulumi"],
+        reason="history unavailable",
+    )
+
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "Radon current snapshot unavailable" in report_text
+    assert "partial output" in report_text
+    assert "radon failed" in report_text
+
+    def fake_empty_failure(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="")
+
+    empty_report_path = tmp_path / "empty-wily-rank.txt"
+    monkeypatch.setattr(module, "run", fake_empty_failure)
+    module._write_current_snapshot_report(
+        root_dir=tmp_path,
+        wily_report=empty_report_path,
+        wily_targets=["pulumi"],
+        reason="history unavailable",
+    )
+
+    empty_report_text = empty_report_path.read_text(encoding="utf-8")
+    assert "Radon current snapshot unavailable" in empty_report_text
+    assert "stdout:" not in empty_report_text
+    assert "stderr:" not in empty_report_text
+
+
 def test_run_mutation_tests_main_uses_configurable_paths_and_runner(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
