@@ -301,13 +301,21 @@ def _prod_environment_verification_blockers(
 def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
     """Fetch and verify repository controls after an admin apply."""
     ruleset = _main_ruleset(repo)
-    environment_payload = _run_gh_api([f"repos/{repo}/environments/prod"])
-    environment = (
-        environment_payload if isinstance(environment_payload, Mapping) else None
-    )
+    try:
+        environment_payload = _run_gh_api([f"repos/{repo}/environments/prod"])
+    except RuntimeError as exc:
+        environment = None
+        environment_blockers = [f"Production environment was not readable: {exc}."]
+    else:
+        environment = (
+            environment_payload if isinstance(environment_payload, Mapping) else None
+        )
+        environment_blockers = _prod_environment_verification_blockers(
+            environment, reviewer_id
+        )
     blockers = [
         *_ruleset_verification_blockers(ruleset),
-        *_prod_environment_verification_blockers(environment, reviewer_id),
+        *environment_blockers,
     ]
     if blockers:
         raise RuntimeError(" ".join(blockers))
@@ -318,8 +326,27 @@ def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
     }
 
 
-def configure(repo: str, reviewer: str, *, apply: bool) -> int:
+def configure(
+    repo: str, reviewer: str, *, apply: bool, verify_only: bool = False
+) -> int:
     """Print or apply the GitHub repository controls."""
+    if apply and not _repo_admin_allowed(repo):
+        raise RuntimeError(
+            "repository admin rights are required to update branch rulesets "
+            "and protected environments."
+        )
+
+    reviewer_id = _github_user_id(reviewer)
+    if verify_only:
+        print(
+            json.dumps(
+                {"verification": _verify_applied_controls(repo, reviewer_id)},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+
     existing = _main_ruleset(repo)
     existing_rules = existing.get("rules", []) if existing else []
     if not isinstance(existing_rules, list):
@@ -327,12 +354,6 @@ def configure(repo: str, reviewer: str, *, apply: bool) -> int:
 
     payloads: dict[str, Any] = {"ruleset": ruleset_payload(existing_rules)}
     if apply:
-        if not _repo_admin_allowed(repo):
-            raise RuntimeError(
-                "repository admin rights are required to update branch rulesets "
-                "and protected environments."
-            )
-        reviewer_id = _github_user_id(reviewer)
         payloads["prodEnvironment"] = prod_environment_payload(reviewer_id)
         if existing and isinstance(existing.get("id"), int):
             _run_gh_api(
@@ -350,7 +371,6 @@ def configure(repo: str, reviewer: str, *, apply: bool) -> int:
         )
         payloads["verification"] = _verify_applied_controls(repo, reviewer_id)
     else:
-        reviewer_id = _github_user_id(reviewer)
         payloads["prodEnvironment"] = prod_environment_payload(reviewer_id)
         payloads["prodEnvironmentReviewerLogin"] = reviewer
 
@@ -380,6 +400,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the ruleset and prod environment payloads without applying.",
     )
+    mode.add_argument(
+        "--verify-only",
+        action="store_true",
+        help="Verify existing ruleset and prod environment controls without applying.",
+    )
     return parser
 
 
@@ -387,7 +412,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line interface."""
     args = build_parser().parse_args(argv)
     try:
-        return configure(args.repo, args.prod_reviewer, apply=args.apply)
+        return configure(
+            args.repo,
+            args.prod_reviewer,
+            apply=args.apply,
+            verify_only=args.verify_only,
+        )
     except (ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

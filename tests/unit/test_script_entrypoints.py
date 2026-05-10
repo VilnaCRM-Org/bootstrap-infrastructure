@@ -2035,6 +2035,10 @@ def test_configure_github_repository_controls_payloads(
 
     with pytest.raises(SystemExit):
         module.main(["--repo", "example/repo", "--apply", "--dry-run"])
+    with pytest.raises(SystemExit):
+        module.main(["--repo", "example/repo", "--apply", "--verify-only"])
+    with pytest.raises(SystemExit):
+        module.main(["--repo", "example/repo", "--dry-run", "--verify-only"])
 
 
 def test_configure_github_repository_controls_verification_helpers(
@@ -2160,10 +2164,67 @@ def test_configure_github_repository_controls_verification_helpers(
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: bad_ruleset)
     with pytest.raises(RuntimeError, match="missing required status checks"):
         module._verify_applied_controls("example/repo", 9444106)  # noqa: SLF001
+
+    def fail_environment_read(_args, **_kwargs):
+        raise RuntimeError("gh: Not Found")
+
+    monkeypatch.setattr(module, "_run_gh_api", fail_environment_read)
+    with pytest.raises(RuntimeError) as exc_info:
+        module._verify_applied_controls("example/repo", 9444106)  # noqa: SLF001
+    combined_error = str(exc_info.value)
+    assert "missing required status checks" in combined_error  # nosec B101
+    assert "gh: Not Found" in combined_error  # nosec B101
+
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: ruleset)
     monkeypatch.setattr(module, "_run_gh_api", lambda _args, **_kwargs: [])
     with pytest.raises(RuntimeError, match="not readable"):
         module._verify_applied_controls("example/repo", 9444106)  # noqa: SLF001
+
+
+def test_configure_github_repository_controls_verify_only(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Verify existing GitHub controls without applying writes or requiring admin."""
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    verifications: list[tuple[str, int]] = []
+
+    monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: 9444106)
+    monkeypatch.setattr(
+        module,
+        "_repo_admin_allowed",
+        lambda _repo: (_ for _ in ()).throw(AssertionError("admin checked")),
+    )
+    monkeypatch.setattr(
+        module,
+        "_main_ruleset",
+        lambda _repo: (_ for _ in ()).throw(AssertionError("ruleset read")),
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_applied_controls",
+        lambda repo, reviewer_id: (
+            verifications.append((repo, reviewer_id))
+            or {"prodEnvironment": "prod", "prodReviewerId": reviewer_id}
+        ),
+    )
+
+    assert (  # nosec B101
+        module.configure("example/repo", "Kravalg", apply=False, verify_only=True) == 0
+    )
+    rendered = json.loads(capsys.readouterr().out)
+    assert rendered == {  # nosec B101
+        "verification": {"prodEnvironment": "prod", "prodReviewerId": 9444106}
+    }
+
+    assert (  # nosec B101
+        module.main(["--repo", "example/repo", "--verify-only"]) == 0
+    )
+    rendered = json.loads(capsys.readouterr().out)
+    assert rendered["verification"]["prodReviewerId"] == 9444106  # nosec B101
+    assert verifications == [  # nosec B101
+        ("example/repo", 9444106),
+        ("example/repo", 9444106),
+    ]
 
 
 def test_required_status_check_contract_matches_collector_and_docs(
@@ -2419,9 +2480,17 @@ def test_configure_github_repository_controls_apply_requires_admin(
     module = load_script_module(monkeypatch, "configure_github_repository_controls")
     calls: list[list[str]] = []
 
-    monkeypatch.setattr(module, "_main_ruleset", lambda _repo: {"id": 123, "rules": []})
     monkeypatch.setattr(module, "_repo_admin_allowed", lambda _repo: False)
-    monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: 9444106)
+    monkeypatch.setattr(
+        module,
+        "_main_ruleset",
+        lambda _repo: (_ for _ in ()).throw(AssertionError("ruleset read")),
+    )
+    monkeypatch.setattr(
+        module,
+        "_github_user_id",
+        lambda _reviewer: (_ for _ in ()).throw(AssertionError("reviewer read")),
+    )
 
     def fake_run_gh_api(args, *, input_payload=None):
         calls.append(list(args))
