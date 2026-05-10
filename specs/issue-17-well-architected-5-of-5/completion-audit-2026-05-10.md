@@ -15,8 +15,8 @@ key IDs.
 | --- | --- |
 | PR | https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/22 |
 | Branch | `codex/wa-5of5-implementation` |
-| Latest clean collector head before this audit edit | `639b5fe827055de6e3fa52c626fabc0f8cf61dfd` |
-| Latest clean collector timestamp before this audit edit | `2026-05-10T09:57:07.727910+00:00` |
+| Latest clean collector head before this audit edit | `64d935dfb12d9052f69f510af54f19b51d8fee43` |
+| Latest clean collector timestamp before this audit edit | `2026-05-10T10:21:41.531458+00:00` |
 | Collector artifact | `.artifacts/well-architected/evidence.json` |
 | Collector Markdown report | `.artifacts/well-architected/evidence.md` |
 | Live status surfaces | PR body, issue #17 status block, standing PR audit comment, and blocker comments for issues #26-#30 |
@@ -34,7 +34,7 @@ and by rerunning the collector before any final score claim.
 | Check all AWS Well-Architected Framework questions. | `question-matrix-evidence-2026-05-09.json` reports `questionCount=57`; `frameworkSourceVerification.questionCounts` records Operational Excellence `11`, Security `11`, Reliability `13`, Performance Efficiency `5`, Cost Optimization `11`, and Sustainability `6`. | The collector validates the expected pillar counts and source metadata before accepting the structured evidence. | Done |
 | Put scores from 1 to 5 for every question. | `question-matrix-evidence-2026-05-09.json` contains `questionScores` with score, status, rationale, and primary blocker for each question. | Scores exist for every question; 47 are passed and 10 remain unresolved. | Done |
 | Check PR #22 code and state. | `gh pr view 22`, hosted checks, standing PR audit comment, and collector `github_pr_checks` / `github_pr_local_state`. | Latest recorded PR state is approved, not draft, `mergeStateStatus=CLEAN`, `mergeable=MERGEABLE`, with 35 checks and 0 non-passing checks. PR control-plane evidence must still be rechecked on the current head before a final claim. | Done for latest recorded run |
-| Check whole project code. | Local validation commands and hosted checks: targeted ruff, format check, focused evidence tests, `make test-unit`, hosted quality/security/policy/mutation/local-battery checks, and `git diff --check`. | Repository-owned code validation was green on the latest recorded head; latest local unit run reported `278 passed` and 100% reported coverage. | Done for latest recorded run |
+| Check whole project code. | Local validation commands and hosted checks: targeted ruff, format check, focused evidence tests, `make test-unit`, hosted quality/security/policy/mutation/local-battery checks, and `git diff --check`. | Repository-owned code validation was green on the latest recorded head; latest local unit run reported `279 passed` and 100% reported coverage. | Done for latest recorded run |
 | Verify evidence gates cover the objective instead of relying on proxy scores. | `scripts/collect_well_architected_evidence.py` emits both `proxyPillarScores` and capped final `pillarScores`; `scoreBlockers` now distinguishes missing readiness evidence from failing readiness evidence. | Proxy scores are not treated as final while question-matrix or external-control gates fail. | Done |
 | Produce auditable machine and human evidence artifacts. | `make report-well-architected-evidence` writes `.artifacts/well-architected/evidence.json` and `.artifacts/well-architected/evidence.md`; the latest run produced both artifacts and returned the expected blocker exit. | The artifacts summarize the current scores, checks, and blockers without secret material; they do not override failed readiness gates. | Done |
 | Produce repeatable OPS8 monthly observation evidence. | `make report-alert-route-observation`, `scripts/record_alert_route_observation.py`, `docs/alert-routing-evidence.md`, the advisory evidence workflow monthly schedule, and issue #30 owner command template. | Repository-owned record generation exists and is tested, and issue #30 now includes the exact non-secret command template. It does not prove downstream human consumption or recurring history by itself. | Done for recording path; OPS8 still blocked |
@@ -83,10 +83,12 @@ Live blockers:
   owner can use if closure cannot happen immediately.
 - Aggregate IAM account-access evidence still needs security-owner attestation:
   IAM user count exceeds MFA devices in use, and one active IAM user access key
-  needs an approved exception or rotation/removal. PR #22 now includes a
-  non-secret `make report-security-account-attestation` path for recording that
-  owner decision once supplied, and issue #28 includes the exact command
-  template.
+  needs an approved exception or rotation/removal. The latest collector keeps
+  the key evidence aggregate and reports that the active key was created more
+  than 90 days ago, was last used within 90 days, and had readable last-used
+  metadata. PR #22 now includes a non-secret
+  `make report-security-account-attestation` path for recording that owner
+  decision once supplied, and issue #28 includes the exact command template.
 - OPS8 now has a repeatable monthly observation record path, but still lacks an
   approved downstream human alert route and real recurring observation history.
   Issue #30 includes the exact command template for the SRE-owned observation
