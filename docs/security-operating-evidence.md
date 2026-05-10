@@ -133,6 +133,7 @@ Use `make report-security-account-attestation` to render a non-secret
 security-owner review record from `.artifacts/well-architected/evidence.json`.
 The command requires explicit human MFA/SSO, active IAM user access-key,
 permissions-boundary or exemption, and approval decisions. The generated record
+includes aggregate active-key age and last-used counts from the collector, but
 must not include IAM user names, access key IDs, screenshots with private
 identities, credentials, tokens, or raw account exports. This record path helps
 close issue #28, but SEC1, SEC2, and SEC3 stay below 5/5 until a real security

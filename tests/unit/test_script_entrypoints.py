@@ -177,8 +177,15 @@ def _security_account_evidence_report(
                 "mfaDevicesInUse": 1,
                 "mfaDeviceCount": 1,
                 "activeUserAccessKeyCount": 1,
+                "activeUserAccessKeyOlderThan90DaysCount": 1,
+                "activeUserAccessKeyCreateDateUnknownCount": 0,
+                "activeUserAccessKeyNeverUsedCount": 0,
+                "activeUserAccessKeyLastUsedWithin90DaysCount": 1,
+                "activeUserAccessKeyLastUsedOlderThan90DaysCount": 0,
+                "activeUserAccessKeyLastUsedUnknownCount": 0,
                 "inactiveUserAccessKeyCount": 0,
                 "unreadableAccessKeyUserCount": 0,
+                "unreadableAccessKeyLastUsedCount": 0,
             },
             "blockers": blockers
             if blockers is not None
@@ -408,6 +415,9 @@ def test_record_security_account_attestation_writes_owner_review(
     assert "# Security Account Attestation 2026-06-10" in text  # nosec B101
     assert "123456789012" in text  # nosec B101
     assert "Active IAM user access keys" in text  # nosec B101
+    assert "Active keys older than 90 days" in text  # nosec B101
+    assert "Active keys last used within 90 days" in text  # nosec B101
+    assert "Unreadable access-key last-used metadata" in text  # nosec B101
     assert "Conditionally approved for issue #28 evidence." in text  # nosec B101
     assert "IAM user names" in text  # nosec B101
     assert "AKIA" not in text  # nosec B101

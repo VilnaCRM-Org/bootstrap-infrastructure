@@ -119,12 +119,44 @@ def render_attestation(report: dict[str, Any], args: argparse.Namespace) -> str:
                         evidence.get("activeUserAccessKeyCount", ""),
                     ),
                     (
+                        "Active keys older than 90 days",
+                        evidence.get("activeUserAccessKeyOlderThan90DaysCount", ""),
+                    ),
+                    (
+                        "Active keys with unknown create date",
+                        evidence.get("activeUserAccessKeyCreateDateUnknownCount", ""),
+                    ),
+                    (
+                        "Active keys never used",
+                        evidence.get("activeUserAccessKeyNeverUsedCount", ""),
+                    ),
+                    (
+                        "Active keys last used within 90 days",
+                        evidence.get(
+                            "activeUserAccessKeyLastUsedWithin90DaysCount", ""
+                        ),
+                    ),
+                    (
+                        "Active keys last used older than 90 days",
+                        evidence.get(
+                            "activeUserAccessKeyLastUsedOlderThan90DaysCount", ""
+                        ),
+                    ),
+                    (
+                        "Active keys with unknown last-used metadata",
+                        evidence.get("activeUserAccessKeyLastUsedUnknownCount", ""),
+                    ),
+                    (
                         "Inactive IAM user access keys",
                         evidence.get("inactiveUserAccessKeyCount", ""),
                     ),
                     (
                         "Unreadable access-key user metadata",
                         evidence.get("unreadableAccessKeyUserCount", ""),
+                    ),
+                    (
+                        "Unreadable access-key last-used metadata",
+                        evidence.get("unreadableAccessKeyLastUsedCount", ""),
                     ),
                 ]
             ),
