@@ -1623,7 +1623,7 @@ def _structured_evidence_check(
         )
     )
     blockers.extend(
-        _structured_evidence_control_id_blockers(payload, required_control_ids)
+        _structured_evidence_control_blockers(payload, required_control_ids)
     )
     return _check(
         name,
@@ -1738,28 +1738,115 @@ def _structured_evidence_count_blockers(
     return blockers
 
 
-def _structured_evidence_control_id_blockers(
+def _structured_evidence_control_blockers(
     payload: dict[str, Any],
     required_control_ids: Sequence[str],
 ) -> list[str]:
-    """Return blockers when external-control evidence omits required controls."""
+    """Return blockers for external-control evidence coverage and proof shape."""
     if not required_control_ids:
         return []
     controls = payload.get("controls")
     if not isinstance(controls, list):
         return ["External-control evidence controls must be a list."]
+    control_items = [control for control in controls if isinstance(control, dict)]
+    return [
+        *_missing_external_control_blockers(control_items, required_control_ids),
+        *_external_control_count_blockers(payload, control_items),
+        *_external_control_unresolved_count_blockers(payload, control_items),
+        *_external_control_proof_blockers(control_items),
+    ]
+
+
+def _missing_external_control_blockers(
+    controls: Sequence[dict[str, Any]],
+    required_control_ids: Sequence[str],
+) -> list[str]:
+    """Return blockers for omitted required external controls."""
     observed = {
         str(control.get("id"))
         for control in controls
-        if isinstance(control, dict) and control.get("id")
+        if isinstance(control.get("id"), str) and control.get("id")
     }
     missing = sorted(set(required_control_ids) - observed)
-    if missing:
-        return [
+    return (
+        [
             "External-control evidence is missing required controls: "
             f"{', '.join(missing)}."
         ]
-    return []
+        if missing
+        else []
+    )
+
+
+def _external_control_count_blockers(
+    payload: dict[str, Any],
+    controls: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers when controlCount disagrees with control entries."""
+    control_count = payload.get("controlCount")
+    if not isinstance(control_count, int) or isinstance(control_count, bool):
+        return []
+    if control_count == len(controls):
+        return []
+    return [
+        "External-control evidence controlCount must match the number "
+        "of control entries."
+    ]
+
+
+def _external_control_unresolved_count_blockers(
+    payload: dict[str, Any],
+    controls: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers when unresolvedControlCount disagrees with entries."""
+    unresolved_count = payload.get("unresolvedControlCount")
+    if not isinstance(unresolved_count, int) or isinstance(unresolved_count, bool):
+        return []
+    unresolved_ids = [
+        str(control.get("id"))
+        for control in controls
+        if control.get("id") and control.get("status") != "passed"
+    ]
+    if unresolved_count == len(unresolved_ids):
+        return []
+    return [
+        "External-control evidence unresolvedControlCount must match "
+        "the number of non-passed control entries."
+    ]
+
+
+def _external_control_proof_blockers(
+    controls: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers for missing passed evidence or unresolved reasons."""
+    blockers: list[str] = []
+    for index, control in enumerate(controls, start=1):
+        control_id = control.get("id")
+        label = str(control_id) if control_id else f"entry {index}"
+        if control.get("status") == "passed":
+            evidence = control.get("evidence")
+            if not _non_empty_string_list(evidence):
+                blockers.append(
+                    "External-control evidence passed control "
+                    f"{label} must include non-empty evidence."
+                )
+            continue
+        unresolved_reason = control.get("unresolvedReason")
+        if not isinstance(unresolved_reason, str) or not unresolved_reason.strip():
+            blockers.append(
+                "External-control evidence non-passed control "
+                f"{label} must include an unresolvedReason."
+            )
+    return blockers
+
+
+def _non_empty_string_list(value: object) -> bool:
+    """Return whether a value is a non-empty list of non-empty strings."""
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(isinstance(item, str) and item.strip() for item in value)
+    )
 
 
 def _structured_evidence_payload(

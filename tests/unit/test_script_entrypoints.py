@@ -1298,14 +1298,46 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                 "controlCount": 8,
                 "unresolvedControlCount": 0,
                 "controls": [
-                    {"id": "alert_route", "status": "passed"},
-                    {"id": "backup_restore", "status": "passed"},
-                    {"id": "branch_protection", "status": "passed"},
-                    {"id": "finops", "status": "passed"},
-                    {"id": "production_approval", "status": "passed"},
-                    {"id": "quota_headroom", "status": "passed"},
-                    {"id": "security_account_controls", "status": "passed"},
-                    {"id": "sustainability_governance", "status": "passed"},
+                    {
+                        "id": "alert_route",
+                        "status": "passed",
+                        "evidence": ["SNS route verified."],
+                    },
+                    {
+                        "id": "backup_restore",
+                        "status": "passed",
+                        "evidence": ["Restore drill verified."],
+                    },
+                    {
+                        "id": "branch_protection",
+                        "status": "passed",
+                        "evidence": ["Required checks verified."],
+                    },
+                    {
+                        "id": "finops",
+                        "status": "passed",
+                        "evidence": ["Budget and anomaly route verified."],
+                    },
+                    {
+                        "id": "production_approval",
+                        "status": "passed",
+                        "evidence": ["Protected prod environment verified."],
+                    },
+                    {
+                        "id": "quota_headroom",
+                        "status": "passed",
+                        "evidence": ["Quota headroom verified."],
+                    },
+                    {
+                        "id": "security_account_controls",
+                        "status": "passed",
+                        "evidence": ["Security-owner attestation verified."],
+                    },
+                    {
+                        "id": "sustainability_governance",
+                        "status": "passed",
+                        "evidence": ["Sustainability review verified."],
+                    },
                 ],
                 "evidenceLocation": "internal-control-ledger",
                 "fallbackPlan": "Block final score claims until evidence is refreshed.",
@@ -1779,6 +1811,45 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert "branch_protection" in " ".join(  # nosec B101
         incomplete_external_check["blockers"]
     )
+    assert "non-empty evidence" in " ".join(  # nosec B101
+        incomplete_external_check["blockers"]
+    )
+    strict_external_blockers = module._structured_evidence_control_blockers(  # noqa: SLF001
+        {
+            "controlCount": 3,
+            "unresolvedControlCount": 0,
+            "controls": [
+                {"id": "branch_protection", "status": "passed", "evidence": []},
+                {"id": "alert_route", "status": "unresolved"},
+            ],
+        },
+        ("branch_protection", "alert_route"),
+    )
+    strict_external_text = " ".join(strict_external_blockers)
+    assert "controlCount" in strict_external_text  # nosec B101
+    assert "unresolvedControlCount" in strict_external_text  # nosec B101
+    assert "non-empty evidence" in strict_external_text  # nosec B101
+    assert "unresolvedReason" in strict_external_text  # nosec B101
+    non_count_external_blockers = module._structured_evidence_control_blockers(  # noqa: SLF001
+        {
+            "controlCount": "2",
+            "unresolvedControlCount": "1",
+            "controls": [
+                {
+                    "id": "branch_protection",
+                    "status": "passed",
+                    "evidence": ["Ruleset verified."],
+                },
+                {
+                    "id": "alert_route",
+                    "status": "unresolved",
+                    "unresolvedReason": "Monthly observation history is pending.",
+                },
+            ],
+        },
+        ("branch_protection", "alert_route"),
+    )
+    assert non_count_external_blockers == []  # nosec B101
     stale_structured = tmp_path / "stale-structured.json"
     stale_structured.write_text(
         json.dumps(
