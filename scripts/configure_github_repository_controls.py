@@ -163,29 +163,36 @@ def _repo_admin_allowed(repo: str) -> bool:
     return isinstance(permissions, Mapping) and permissions.get("admin") is True
 
 
+def _required_status_check_items(rule: object) -> Sequence[object]:
+    """Return required status check items from one ruleset rule."""
+    if not isinstance(rule, Mapping) or rule.get("type") != "required_status_checks":
+        return ()
+    parameters = rule.get("parameters")
+    if not isinstance(parameters, Mapping):
+        return ()
+    checks = parameters.get("required_status_checks")
+    return checks if isinstance(checks, list) else ()
+
+
+def _status_check_context(check: object) -> str | None:
+    """Return the status-check context from GitHub ruleset metadata."""
+    if not isinstance(check, Mapping):
+        return None
+    context = check.get("context") or check.get("name")
+    return str(context) if context else None
+
+
 def _required_status_contexts(ruleset: Mapping[str, Any]) -> set[str]:
     """Return required status contexts from a ruleset payload."""
-    contexts: set[str] = set()
     rules = ruleset.get("rules")
     if not isinstance(rules, list):
-        return contexts
+        return set()
+    contexts: set[str] = set()
     for rule in rules:
-        if not isinstance(rule, Mapping) or rule.get("type") != (
-            "required_status_checks"
-        ):
-            continue
-        parameters = rule.get("parameters")
-        if not isinstance(parameters, Mapping):
-            continue
-        checks = parameters.get("required_status_checks")
-        if not isinstance(checks, list):
-            continue
-        contexts.update(
-            str(check.get("context") or check.get("name"))
-            for check in checks
-            if isinstance(check, Mapping)
-            and (check.get("context") or check.get("name"))
-        )
+        for check in _required_status_check_items(rule):
+            context = _status_check_context(check)
+            if context:
+                contexts.add(context)
     return contexts
 
 

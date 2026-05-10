@@ -1550,7 +1550,9 @@ def test_configure_github_repository_controls_verification_helpers(
                 },
                 {
                     "type": "required_status_checks",
-                    "parameters": {"required_status_checks": [{"name": "Unit"}]},
+                    "parameters": {
+                        "required_status_checks": ["invalid", {}, {"name": "Unit"}]
+                    },
                 },
             ]
         }
