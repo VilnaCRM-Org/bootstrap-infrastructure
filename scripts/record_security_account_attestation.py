@@ -29,6 +29,18 @@ SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS = (
     "activeUserAccessKeyLastUsedUnknownCount",
     "unreadableAccessKeyLastUsedCount",
 )
+SECURITY_ACCOUNT_ALLOWED_APPROVALS = frozenset(
+    {"approved", "approved_exception", "accepted_risk"}
+)
+SECURITY_ACCOUNT_ALLOWED_HUMAN_ACCESS = frozenset(
+    {"mfa_sso_verified", "approved", "approved_exception", "accepted_risk"}
+)
+SECURITY_ACCOUNT_ALLOWED_ACTIVE_KEY = frozenset(
+    {"no_active_keys", "rotated", "approved_exception", "accepted_risk"}
+)
+SECURITY_ACCOUNT_ALLOWED_BOUNDARY = frozenset(
+    {"boundary_verified", "approved_exemption", "accepted_risk", "not_required"}
+)
 
 
 def _load_report(path: Path) -> dict[str, Any]:
@@ -203,6 +215,7 @@ def structured_attestation(
         raise ValueError(
             "structured security account attestation requires at least one --action"
         )
+    _validate_attestation_choices(args)
     actions = args.action
     return {
         "workload": args.workload,
@@ -222,6 +235,52 @@ def structured_attestation(
             for field in SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
         },
     }
+
+
+def _validate_attestation_choices(args: argparse.Namespace) -> None:
+    """Reject structured evidence choices the collector would later reject."""
+    blockers: list[str] = []
+    blockers.extend(
+        _choice_blockers(
+            "Security account attestation approval-decision",
+            args.approval_decision,
+            SECURITY_ACCOUNT_ALLOWED_APPROVALS,
+        )
+    )
+    blockers.extend(
+        _choice_blockers(
+            "Security account attestation human-access-posture",
+            args.human_access_posture,
+            SECURITY_ACCOUNT_ALLOWED_HUMAN_ACCESS,
+        )
+    )
+    blockers.extend(
+        _choice_blockers(
+            "Security account attestation active-key-decision",
+            args.active_key_decision,
+            SECURITY_ACCOUNT_ALLOWED_ACTIVE_KEY,
+        )
+    )
+    blockers.extend(
+        _choice_blockers(
+            "Security account attestation permissions-boundary-decision",
+            args.permissions_boundary_decision,
+            SECURITY_ACCOUNT_ALLOWED_BOUNDARY,
+        )
+    )
+    if blockers:
+        raise ValueError(" ".join(blockers))
+
+
+def _choice_blockers(
+    field: str, value: str, allowed_values: frozenset[str]
+) -> list[str]:
+    """Return a blocker when a structured evidence choice is not accepted."""
+    normalized = value.strip().lower()
+    if normalized in allowed_values:
+        return []
+    allowed = ", ".join(sorted(allowed_values))
+    return [f"{field} must be one of: {allowed}."]
 
 
 def build_parser() -> argparse.ArgumentParser:

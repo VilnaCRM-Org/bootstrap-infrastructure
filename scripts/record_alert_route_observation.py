@@ -26,6 +26,9 @@ ALERT_ROUTE_OBSERVATION_QUEUE_OBSERVATION_FIELDS = (
     "notVisibleMessages",
     "delayedMessages",
 )
+ALERT_ROUTE_ALLOWED_DECISIONS = frozenset(
+    {"accepted", "approved", "approved_exception", "accepted_risk"}
+)
 
 
 def _load_report(path: Path) -> dict[str, Any]:
@@ -145,6 +148,11 @@ def structured_observation(
         raise ValueError(
             "structured alert-route observation requires at least one --action"
         )
+    _validate_choice(
+        "Alert-route observation decision",
+        args.decision,
+        ALERT_ROUTE_ALLOWED_DECISIONS,
+    )
     actions = args.action
     return {
         "workload": args.workload,
@@ -182,6 +190,15 @@ def _queue_observation(route: dict[str, Any]) -> dict[str, object]:
         field: queue.get(field)
         for field in ALERT_ROUTE_OBSERVATION_QUEUE_OBSERVATION_FIELDS
     }
+
+
+def _validate_choice(field: str, value: str, allowed_values: frozenset[str]) -> None:
+    """Reject structured evidence choices the collector would later reject."""
+    normalized = value.strip().lower()
+    if normalized in allowed_values:
+        return
+    allowed = ", ".join(sorted(allowed_values))
+    raise ValueError(f"{field} must be one of: {allowed}.")
 
 
 def build_parser() -> argparse.ArgumentParser:

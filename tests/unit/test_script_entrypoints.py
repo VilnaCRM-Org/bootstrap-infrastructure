@@ -299,6 +299,49 @@ def test_record_alert_route_observation_json_requires_action(
     assert not json_output.exists()  # nosec B101
 
 
+def test_record_alert_route_observation_json_rejects_invalid_decision(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Generated JSON should fail fast on collector-invalid decisions."""
+    module = load_script_module(monkeypatch, "record_alert_route_observation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "alert-route-observation.md"
+    json_output = tmp_path / "alert-route-observation.json"
+    evidence.write_text(json.dumps(_alert_route_evidence_report()), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "sre-reviewer",
+            "--route-owner",
+            "SRE",
+            "--downstream-route",
+            "approved queue-owner process",
+            "--severity-expectations",
+            "SEV2 during business hours",
+            "--fallback",
+            "Escalate to platform maintainers if queue depth grows.",
+            "--decision",
+            "not approved",
+            "--expiry-date",
+            "2026-07-09",
+            "--action",
+            "Owner rejected this observation.",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert "decision must be one of" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
+
+
 def test_record_alert_route_observation_refuses_overwrite_without_force(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -531,6 +574,82 @@ def test_record_security_account_attestation_json_requires_action(
     assert "requires at least one --action" in capsys.readouterr().err  # nosec B101
     assert not output.exists()  # nosec B101
     assert not json_output.exists()  # nosec B101
+
+
+def test_record_security_account_attestation_json_rejects_invalid_choices(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Generated JSON should fail fast on collector-invalid owner choices."""
+    module = load_script_module(monkeypatch, "record_security_account_attestation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "security-account-attestation.md"
+    json_output = tmp_path / "security-account-attestation.json"
+    evidence.write_text(
+        json.dumps(_security_account_evidence_report()), encoding="utf-8"
+    )
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "security-reviewer",
+            "--security-owner",
+            "security-owner",
+            "--human-access-posture",
+            "pending review",
+            "--active-key-decision",
+            "approved_exception",
+            "--permissions-boundary-decision",
+            "approved_exemption",
+            "--approval-decision",
+            "not approved",
+            "--expiry-date",
+            "2026-07-10",
+            "--action",
+            "Owner rejected this attestation.",
+        ]
+    )
+
+    stderr = capsys.readouterr().err
+    assert status == 1  # nosec B101
+    assert "approval-decision must be one of" in stderr  # nosec B101
+    assert "human-access-posture must be one of" in stderr  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
+
+
+def test_owner_evidence_generator_choices_match_collector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Owner evidence generators should reject the same choices as the collector."""
+    alert_module = load_script_module(monkeypatch, "record_alert_route_observation")
+    security_module = load_script_module(
+        monkeypatch, "record_security_account_attestation"
+    )
+    collector_module = load_script_module(
+        monkeypatch, "collect_well_architected_evidence"
+    )
+
+    assert alert_module.ALERT_ROUTE_ALLOWED_DECISIONS == (  # nosec B101
+        collector_module.ALERT_ROUTE_ALLOWED_DECISIONS
+    )
+    assert security_module.SECURITY_ACCOUNT_ALLOWED_APPROVALS == (  # nosec B101
+        collector_module.SECURITY_ACCOUNT_ALLOWED_APPROVALS
+    )
+    assert security_module.SECURITY_ACCOUNT_ALLOWED_HUMAN_ACCESS == (  # nosec B101
+        collector_module.SECURITY_ACCOUNT_ALLOWED_HUMAN_ACCESS
+    )
+    assert security_module.SECURITY_ACCOUNT_ALLOWED_ACTIVE_KEY == (  # nosec B101
+        collector_module.SECURITY_ACCOUNT_ALLOWED_ACTIVE_KEY
+    )
+    assert security_module.SECURITY_ACCOUNT_ALLOWED_BOUNDARY == (  # nosec B101
+        collector_module.SECURITY_ACCOUNT_ALLOWED_BOUNDARY
+    )
 
 
 def test_record_security_account_attestation_force_overwrites_without_identity(
