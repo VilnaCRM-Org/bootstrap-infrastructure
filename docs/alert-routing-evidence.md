@@ -76,14 +76,14 @@ consumption is still not proven:
 | SNS topic | `arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations` reports one confirmed subscription and a KMS key. |
 | Subscription | The confirmed subscriber protocol is `sqs`, endpoint `arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts`. |
 | Queue | `bootstrap-test-operations-alerts` resolved to an SQS queue URL in `eu-central-1`. |
-| Queue depth | `ApproximateNumberOfMessages=2`, `ApproximateNumberOfMessagesNotVisible=0`, and `ApproximateNumberOfMessagesDelayed=0`. |
+| Queue depth | Current visible, not-visible, and delayed counts are captured by the collector and generated observation records as observation-only metadata. Read the latest counts from `.artifacts/well-architected/evidence.json` instead of hard-coding them in retained review docs. |
 | Queue retention | `MessageRetentionPeriod=345600` and `VisibilityTimeout=30`. |
 
-The visible queue depth is useful operating evidence because it shows why a
-queue-owner process is required. It is not sufficient OPS8 evidence by itself:
-SRE still needs to record a downstream human route, ticket/paging/ChatOps
-subscriber, or explicitly approved queue-owner consumption process plus
-monthly observation history.
+The visible queue depth is useful operating evidence when it shows why a
+queue-owner process is required, but it is volatile. It is not sufficient OPS8
+evidence by itself: SRE still needs to record a downstream human route,
+ticket/paging/ChatOps subscriber, or explicitly approved queue-owner consumption
+process plus monthly observation history.
 
 ## Monthly Observation Record
 

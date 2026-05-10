@@ -294,6 +294,18 @@ def test_docs_cover_current_testing_and_guardrail_guidance() -> None:
         assert phrase in testing_doc  # nosec B101
 
 
+def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
+    """Avoid baking volatile SQS queue depth into retained review evidence."""
+    alert_doc = (ROOT / "docs" / "alert-routing-evidence.md").read_text()
+    operating_doc = (ROOT / "docs" / "operating-review-2026-05-09.md").read_text()
+    docs = f"{alert_doc}\n{operating_doc}"
+
+    assert "observation-only metadata" in alert_doc  # nosec B101
+    assert "stable SNS/SQS route metadata" in operating_doc  # nosec B101
+    assert "ApproximateNumberOfMessages=" not in docs  # nosec B101
+    assert "two visible messages" not in docs  # nosec B101
+
+
 def test_repository_tracks_current_policy_and_guardrail_support_files() -> None:
     policy_dir = ROOT / "policy"
     scripts_dir = ROOT / "scripts"
