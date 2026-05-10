@@ -1,4 +1,5 @@
 import ast
+import re
 from pathlib import Path
 
 import yaml
@@ -304,6 +305,21 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     assert "stable SNS/SQS route metadata" in operating_doc  # nosec B101
     assert "ApproximateNumberOfMessages=" not in docs  # nosec B101
     assert "two visible messages" not in docs  # nosec B101
+
+
+def test_completion_audit_avoids_self_stale_exact_head_metadata() -> None:
+    """Keep the tracked audit from invalidating itself on every commit."""
+    audit_doc = (
+        ROOT
+        / "specs"
+        / "issue-17-well-architected-5-of-5"
+        / "completion-audit-2026-05-10.md"
+    ).read_text()
+
+    assert "Current collector state" in audit_doc  # nosec B101
+    assert "Latest audited collector head" not in audit_doc  # nosec B101
+    assert "Latest audited collector timestamp" not in audit_doc  # nosec B101
+    assert re.search(r"\b[0-9a-f]{40}\b", audit_doc) is None  # nosec B101
 
 
 def test_repository_tracks_current_policy_and_guardrail_support_files() -> None:
