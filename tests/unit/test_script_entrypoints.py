@@ -2296,6 +2296,11 @@ def test_required_status_check_contract_matches_collector_and_docs(
         for control in external_control_evidence["controls"]
         if control["id"] == "branch_protection"
     )
+    production_approval_control = next(
+        control
+        for control in external_control_evidence["controls"]
+        if control["id"] == "production_approval"
+    )
     unresolved_controls = [
         control
         for control in external_control_evidence["controls"]
@@ -2320,6 +2325,11 @@ def test_required_status_check_contract_matches_collector_and_docs(
         "Admin-owned ruleset must require the documented status checks: "
         f"{required_check_text}."
     )
+    for control in (branch_protection_control, production_approval_control):
+        evidence_text = " ".join(control["evidence"])
+        assert "--dry-run" in evidence_text  # nosec B101
+        assert "--verify-only" in evidence_text  # nosec B101
+        assert "--apply" in evidence_text  # nosec B101
     assert (  # nosec B101
         f"GitHub ruleset 13906584 requires {required_check_text}." in guardrails_doc
     )
