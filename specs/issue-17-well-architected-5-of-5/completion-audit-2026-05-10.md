@@ -15,10 +15,11 @@ key IDs.
 | --- | --- |
 | PR | https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/22 |
 | Branch | `codex/wa-5of5-implementation` |
-| Latest clean collector head before this audit edit | `64d935dfb12d9052f69f510af54f19b51d8fee43` |
-| Latest clean collector timestamp before this audit edit | `2026-05-10T10:21:41.531458+00:00` |
+| Latest clean collector head before this audit edit | `6746a743b36f9370572ed8c1155d1ca1264acc38` |
+| Latest clean collector timestamp before this audit edit | `2026-05-10T11:06:48.330902+00:00` |
 | Collector artifact | `.artifacts/well-architected/evidence.json` |
 | Collector Markdown report | `.artifacts/well-architected/evidence.md` |
+| AWS question verifier artifact | `.artifacts/well-architected/question-verification.json` |
 | Live status surfaces | PR body, issue #17 status block, standing PR audit comment, and blocker comments for issues #26-#30 |
 | Result | Not complete; external/admin blockers remain. |
 
@@ -31,10 +32,10 @@ and by rerunning the collector before any final score claim.
 
 | Objective requirement | Evidence inspected | Coverage result | Status |
 | --- | --- | --- | --- |
-| Check all AWS Well-Architected Framework questions. | `question-matrix-evidence-2026-05-09.json` reports `questionCount=57`; `frameworkSourceVerification.questionCounts` records Operational Excellence `11`, Security `11`, Reliability `13`, Performance Efficiency `5`, Cost Optimization `11`, and Sustainability `6`. | The collector validates the expected pillar counts and source metadata before accepting the structured evidence. | Done |
+| Check all AWS Well-Architected Framework questions. | `question-matrix-evidence-2026-05-09.json` reports `questionCount=57`; `frameworkSourceVerification.questionCounts` records Operational Excellence `11`, Security `11`, Reliability `13`, Performance Efficiency `5`, Cost Optimization `11`, and Sustainability `6`; `make verify-well-architected-questions` compares the matrix with the AWS public TOC at `https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json`. | The collector validates the expected pillar counts and source metadata before accepting the structured evidence, and the verifier confirms the matrix has no missing, extra, or duplicate AWS question IDs. | Done |
 | Put scores from 1 to 5 for every question. | `question-matrix-evidence-2026-05-09.json` contains `questionScores` with score, status, rationale, and primary blocker for each question. | Scores exist for every question; 47 are passed and 10 remain unresolved. | Done |
 | Check PR #22 code and state. | `gh pr view 22`, hosted checks, standing PR audit comment, and collector `github_pr_checks` / `github_pr_local_state`. | Latest recorded PR state is approved, not draft, `mergeStateStatus=CLEAN`, `mergeable=MERGEABLE`, with 35 checks and 0 non-passing checks. PR control-plane evidence must still be rechecked on the current head before a final claim. | Done for latest recorded run |
-| Check whole project code. | Local validation commands and hosted checks: targeted ruff, format check, focused evidence tests, `make test-unit`, hosted quality/security/policy/mutation/local-battery checks, and `git diff --check`. | Repository-owned code validation was green on the latest recorded head; latest local unit run reported `279 passed` and 100% reported coverage. | Done for latest recorded run |
+| Check whole project code. | Local validation commands and hosted checks: targeted ruff, format check, focused evidence tests, `make verify-well-architected-questions`, `make test-unit`, hosted quality/security/policy/mutation/local-battery checks, and `git diff --check`. | Repository-owned code validation was green on the latest recorded head; latest local unit run reported `283 passed` and 100% reported coverage. | Done for latest recorded run |
 | Verify evidence gates cover the objective instead of relying on proxy scores. | `scripts/collect_well_architected_evidence.py` emits both `proxyPillarScores` and capped final `pillarScores`; `scoreBlockers` now distinguishes missing readiness evidence from failing readiness evidence. | Proxy scores are not treated as final while question-matrix or external-control gates fail. | Done |
 | Produce auditable machine and human evidence artifacts. | `make report-well-architected-evidence` writes `.artifacts/well-architected/evidence.json` and `.artifacts/well-architected/evidence.md`; the latest run produced both artifacts and returned the expected blocker exit. | The artifacts summarize the current scores, checks, and blockers without secret material; they do not override failed readiness gates. | Done |
 | Produce repeatable OPS8 monthly observation evidence. | `make report-alert-route-observation`, `scripts/record_alert_route_observation.py`, `docs/alert-routing-evidence.md`, the advisory evidence workflow monthly schedule, and issue #30 owner command template. | Repository-owned record generation exists and is tested, and issue #30 now includes the exact non-secret command template. It does not prove downstream human consumption or recurring history by itself. | Done for recording path; OPS8 still blocked |
@@ -59,6 +60,21 @@ Proxy readiness scores are Cost Optimization `5.0`, Performance Efficiency
 `5.0`, Sustainability `5.0`, Reliability `4.17`, Operational Excellence
 `3.57`, and Security `3.12`. These are not final Well-Architected scores while
 readiness gates fail.
+
+## AWS Question Verifier Result
+
+`make verify-well-architected-questions` passed against the AWS public
+Well-Architected TOC:
+
+- AWS question count: `57`.
+- Evidence question count: `57`.
+- Pillar counts match exactly: Operational Excellence `11`, Security `11`,
+  Reliability `13`, Performance Efficiency `5`, Cost Optimization `11`, and
+  Sustainability `6`.
+- Missing AWS question IDs: none.
+- Extra evidence question IDs: none.
+- Duplicate AWS or evidence question IDs: none.
+- Invalid score values: none.
 
 ## Remaining Blockers
 
