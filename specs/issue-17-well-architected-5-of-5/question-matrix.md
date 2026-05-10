@@ -29,6 +29,14 @@ protection, alert route, backup/restore, FinOps, quota headroom, security
 account controls, sustainability governance, and production approval.
 Boolean confirmation flags are not sufficient for a final 5/5 claim.
 
+Structured evidence must pass the repository validators before it can support a
+score claim. The question matrix is rejected for missing, duplicate, or unknown
+AWS question IDs; question IDs mapped to the wrong pillar; invalid score or
+status values; missing `evidenceRefs` on non-passed questions; stale unresolved
+question summaries; and stale per-pillar or score-average summaries. External
+control evidence is rejected for duplicate or unknown control IDs, stale
+unresolved-control summaries, and unsupported status values.
+
 Repository-owned operating evidence that supports the current 2026-05-09
 question scores is retained in `docs/well-architected-operating-evidence.md`.
 That artifact supplies owners, cadence, fallback actions, runbooks, decision
@@ -132,4 +140,5 @@ A future implementation PR may raise a question score only when all of the follo
 - The relevant tests, policy checks, workflow checks, AWS metadata checks, or external-control attestations are linked.
 - The owner and cadence are still valid.
 - The implementation is compared with `main` so the review can identify whether the score improved, regressed, or stayed the same.
+- `make verify-well-architected-questions` and `make report-well-architected-evidence` accept the structured evidence without stale IDs, pillar mappings, status values, or summary fields.
 - Proxy scores are labeled as readiness indicators and are not presented as final 5/5 Well-Architected scores.
