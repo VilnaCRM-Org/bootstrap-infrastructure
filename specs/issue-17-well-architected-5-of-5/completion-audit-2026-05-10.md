@@ -15,18 +15,19 @@ key IDs.
 | --- | --- |
 | PR | https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/22 |
 | Branch | `codex/wa-5of5-implementation` |
-| Latest clean collector head before this audit edit | `6746a743b36f9370572ed8c1155d1ca1264acc38` |
-| Latest clean collector timestamp before this audit edit | `2026-05-10T11:06:48.330902+00:00` |
+| Collector head source | `.artifacts/well-architected/evidence.json` field `checks[].evidence.headRefOid` for `github_pr_checks` |
+| Collector timestamp source | `.artifacts/well-architected/evidence.json` field `generatedAt` |
 | Collector artifact | `.artifacts/well-architected/evidence.json` |
 | Collector Markdown report | `.artifacts/well-architected/evidence.md` |
 | AWS question verifier artifact | `.artifacts/well-architected/question-verification.json` |
 | Live status surfaces | PR body, issue #17 status block, standing PR audit comment, and blocker comments for issues #26-#30 |
 | Result | Not complete; external/admin blockers remain. |
 
-This tracked audit pins the latest completed evidence run for traceability. The
-branch head changes whenever this file is committed, so the current head and
-collector timestamp must still be read from the public PR/issue status surfaces
-and by rerunning the collector before any final score claim.
+This tracked audit records the prompt-to-artifact mapping and evidence sources.
+The branch head changes whenever this file is committed, so the current head and
+collector timestamp must be read from the generated collector artifact, the
+public PR/issue status surfaces, or a fresh collector run before any final score
+claim.
 
 ## Prompt-To-Artifact Checklist
 
