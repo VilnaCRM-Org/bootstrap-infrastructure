@@ -1,7 +1,7 @@
 {
   "workload": "bootstrap-infrastructure",
   "owner": "platform-maintainers",
-  "reviewedAt": "2026-05-10T08:53:03Z",
+  "reviewedAt": "2026-05-10T09:54:00Z",
   "controlCount": 8,
   "unresolvedControlCount": 3,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/",
@@ -13,7 +13,7 @@
       "evidence": [
         "collect_well_architected_evidence reports zero required status checks in branch protection/ruleset metadata.",
         "Current GitHub token reports viewerPermission=WRITE and viewerCanAdminister=false, so ruleset repair requires a repository administrator.",
-        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T08:53:03Z and still stops at the repository-admin preflight before any write."
+        "scripts/configure_github_repository_controls.py dry-run and --apply were retested at 2026-05-10T09:54:00Z; dry-run still renders the required-status-check payload and apply still stops at the repository-admin preflight before any write."
       ],
       "unresolvedReason": "Admin-owned ruleset must require the documented status checks: Preview, Destructive Diff Gate, IAM Validation, Secrets Scan, Dependency Audit, Bandit, Actionlint, CodeQL (python), and CodeQL (actions)."
     },
@@ -88,7 +88,7 @@
         "Production workflow has preview/apply split and commit SHA gates.",
         "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod returned 404 in the 2026-05-10 collector run.",
         "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod-preview showed no protection rules on 2026-05-09.",
-        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T08:53:03Z and still stops at the repository-admin preflight before it can create or protect prod."
+        "scripts/configure_github_repository_controls.py dry-run and --apply were retested at 2026-05-10T09:54:00Z; dry-run still renders the protected prod environment payload and apply still stops at the repository-admin preflight before it can create or protect prod."
       ],
       "unresolvedReason": "GitHub environment approval evidence, required reviewer settings, and production no-go evidence are external and not yet confirmed."
     }

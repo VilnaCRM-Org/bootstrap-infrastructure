@@ -15,8 +15,8 @@ key IDs.
 | --- | --- |
 | PR | https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/22 |
 | Branch | `codex/wa-5of5-implementation` |
-| Latest completed collector head at audit edit time | `87dd3ee59ef662a939273f495ad142eac319615b` |
-| Latest completed collector timestamp at audit edit time | `2026-05-10T09:25:25.767258+00:00` |
+| Latest clean collector head before this audit edit | `639b5fe827055de6e3fa52c626fabc0f8cf61dfd` |
+| Latest clean collector timestamp before this audit edit | `2026-05-10T09:57:07.727910+00:00` |
 | Collector artifact | `.artifacts/well-architected/evidence.json` |
 | Collector Markdown report | `.artifacts/well-architected/evidence.md` |
 | Live status surfaces | PR body, issue #17 status block, standing PR audit comment, and blocker comments for issues #26-#30 |
