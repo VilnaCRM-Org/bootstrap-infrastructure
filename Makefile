@@ -478,7 +478,8 @@ report-security-account-attestation: ## Render security account attestation evid
 			--human-access-posture "$${SECURITY_ACCOUNT_HUMAN_ACCESS}" \
 			--active-key-decision "$${SECURITY_ACCOUNT_ACTIVE_KEY_DECISION}" \
 			--permissions-boundary-decision "$${SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY}" \
-			--approval-decision "$${SECURITY_ACCOUNT_APPROVAL}"'
+			--approval-decision "$${SECURITY_ACCOUNT_APPROVAL}" \
+			$${SECURITY_ACCOUNT_ACTION:+--action "$${SECURITY_ACCOUNT_ACTION}"}'
 
 report-quality: ## Run scheduled quality reports and generate fresh artifacts.
 	$(MAKE) report-maintainability-trends

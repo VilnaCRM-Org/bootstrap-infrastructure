@@ -573,6 +573,7 @@ EOF
     SECURITY_ACCOUNT_ACTIVE_KEY_DECISION=exception \
     SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY=exemption \
     SECURITY_ACCOUNT_APPROVAL=approved \
+    SECURITY_ACCOUNT_ACTION='Rotate active key before exception expiry.' \
     make -n report-security-account-attestation
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/record_security_account_attestation.py"* ]]
@@ -581,8 +582,10 @@ EOF
   [[ "$output" == *"--json-output"* ]]
   [[ "$output" == *"--human-access-posture"* ]]
   [[ "$output" == *"SECURITY_ACCOUNT_HUMAN_ACCESS"* ]]
+  [[ "$output" == *"--action"* ]]
   [[ "$output" != *"security-reviewer"* ]]
   [[ "$output" != *"approved"* ]]
+  [[ "$output" != *"Rotate active key"* ]]
 }
 
 @test "make test-quality delegates to the Rust-based quality suite" {

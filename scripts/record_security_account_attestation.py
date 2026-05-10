@@ -199,7 +199,11 @@ def structured_attestation(
 ) -> dict[str, object]:
     """Return machine-readable, non-secret security-owner attestation evidence."""
     _check, evidence = _iam_access_check(report)
-    actions = args.action or ["No follow-up actions recorded."]
+    if not args.action:
+        raise ValueError(
+            "structured security account attestation requires at least one --action"
+        )
+    actions = args.action
     return {
         "workload": args.workload,
         "environment": args.environment,

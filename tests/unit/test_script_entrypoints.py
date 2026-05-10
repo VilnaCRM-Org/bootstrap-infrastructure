@@ -436,6 +436,49 @@ def test_record_security_account_attestation_writes_owner_review(
     assert structured["accountEvidence"]["activeUserAccessKeyCount"] == 1  # nosec B101
 
 
+def test_record_security_account_attestation_json_requires_action(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Machine-readable attestations must carry owner evidence or remediation."""
+    module = load_script_module(monkeypatch, "record_security_account_attestation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "security-account-attestation.md"
+    json_output = tmp_path / "security-account-attestation.json"
+    evidence.write_text(
+        json.dumps(_security_account_evidence_report()), encoding="utf-8"
+    )
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "security-reviewer",
+            "--security-owner",
+            "security-owner",
+            "--human-access-posture",
+            "mfa_sso_verified",
+            "--active-key-decision",
+            "approved_exception",
+            "--permissions-boundary-decision",
+            "approved_exemption",
+            "--approval-decision",
+            "approved",
+            "--expiry-date",
+            "2026-07-10",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert "requires at least one --action" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
+
+
 def test_record_security_account_attestation_force_overwrites_without_identity(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -142,7 +142,9 @@ Set `SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT` when rendering the owner record
 to also produce the machine-readable JSON form. A later collector run can take
 that file through `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE`; the collector only
 accepts it when the attested aggregate counts match the live IAM evidence and
-the owner decisions are current, unexpired, and approved.
+the owner decisions are current, unexpired, and approved. JSON output requires
+`SECURITY_ACCOUNT_ACTION` so the structured evidence carries a non-secret
+owner evidence or remediation note instead of an empty approval shell.
 
 | Exception | Status | Owner | Expiry | Required follow-up |
 | --- | --- | --- | --- | --- |
