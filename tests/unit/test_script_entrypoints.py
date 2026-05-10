@@ -1870,9 +1870,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     valid_source_blockers = module._question_matrix_source_verification_blockers(  # noqa: SLF001
         {
             "frameworkSourceVerification": {
-                "checkedAt": module.dt.datetime.now(
-                    module.dt.timezone.utc
-                ).isoformat(),
+                "checkedAt": module.dt.datetime.now(module.dt.timezone.utc).isoformat(),
                 "source": "AWS Well-Architected Framework latest public documentation",
                 "questionCounts": module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS,
                 "sourceUrls": [
