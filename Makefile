@@ -81,7 +81,7 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         pulumi-up pulumi-up-plan pulumi-refresh \
         pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
         report-maintainability-trends report-dead-code report-docstrings \
-        report-sbom report-well-architected-evidence \
+        report-sbom report-well-architected-evidence report-alert-route-observation \
         test-quality test-ruff test-ty test-maintainability \
         test-architecture test-dependency-hygiene test-lockfile test-coverage \
         test-bandit test-actionlint test-yaml test-dockerfile \
@@ -396,6 +396,37 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 			$$question_matrix_arg $$external_control_arg \
 			--output .artifacts/well-architected/evidence.json \
 			--markdown-output .artifacts/well-architected/evidence.md'
+
+report-alert-route-observation: ## Render monthly alert-route observation evidence.
+	@bash -lc '\
+		set -euo pipefail; \
+		output="$${ALERT_ROUTE_OBSERVATION_OUTPUT:-}"; \
+		if [ -z "$${output}" ]; then \
+			echo "error: ALERT_ROUTE_OBSERVATION_OUTPUT is required." >&2; \
+			exit 2; \
+		fi; \
+		for name in \
+			ALERT_ROUTE_REVIEWER \
+			ALERT_ROUTE_OWNER \
+			ALERT_ROUTE_DOWNSTREAM \
+			ALERT_ROUTE_SEVERITY \
+			ALERT_ROUTE_FALLBACK \
+			ALERT_ROUTE_DECISION; do \
+			if [ -z "$${!name:-}" ]; then \
+				printf "error: %s is required.\\n" "$${name}" >&2; \
+				exit 2; \
+			fi; \
+		done; \
+		$(REPO_PYTHON) ./scripts/record_alert_route_observation.py \
+			--evidence "$${ALERT_ROUTE_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+			--output "$${output}" \
+			$${ALERT_ROUTE_REVIEW_DATE:+--review-date "$${ALERT_ROUTE_REVIEW_DATE}"} \
+			--reviewer "$${ALERT_ROUTE_REVIEWER}" \
+			--route-owner "$${ALERT_ROUTE_OWNER}" \
+			--downstream-route "$${ALERT_ROUTE_DOWNSTREAM}" \
+			--severity-expectations "$${ALERT_ROUTE_SEVERITY}" \
+			--fallback "$${ALERT_ROUTE_FALLBACK}" \
+			--decision "$${ALERT_ROUTE_DECISION}"'
 
 report-quality: ## Run scheduled quality reports and generate fresh artifacts.
 	$(MAKE) report-maintainability-trends

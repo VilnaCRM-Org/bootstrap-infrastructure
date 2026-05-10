@@ -85,6 +85,37 @@ SRE still needs to record a downstream human route, ticket/paging/ChatOps
 subscriber, or explicitly approved queue-owner consumption process plus
 monthly observation history.
 
+## Monthly Observation Record
+
+The `Well-Architected Evidence` workflow now runs on pull requests, pushes to
+`main`, manual dispatch, and a monthly schedule on the ninth day of the month.
+Scheduled runs remain advisory even if evidence enforcement is enabled, upload
+the metadata-only evidence bundle, and retain the artifact for 90 days. This
+creates a recurring source of non-secret alert-route metadata, but it still
+does not replace the human route owner decision required for OPS8.
+
+After a scheduled or manual collector run, SRE can render a dated observation
+record from `.artifacts/well-architected/evidence.json`:
+
+```bash
+ALERT_ROUTE_OBSERVATION_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.md \
+ALERT_ROUTE_REVIEWER='<reviewer or team>' \
+ALERT_ROUTE_OWNER='SRE' \
+ALERT_ROUTE_DOWNSTREAM='<ChatOps, ticketing, paging, or approved queue-owner process>' \
+ALERT_ROUTE_SEVERITY='<severity and response expectation>' \
+ALERT_ROUTE_FALLBACK='<fallback when the downstream route is unavailable>' \
+ALERT_ROUTE_DECISION='<accepted, action required, or exception decision>' \
+make report-alert-route-observation
+```
+
+The generated record includes SNS/SQS route metadata, queue depth, retention,
+visibility timeout, downstream route, severity expectations, fallback behavior,
+review decision, and follow-up actions. It intentionally omits message
+payloads, private incident notes, stack exports, credentials, tokens, and
+access-key material. OPS8 should stay below 5/5 until a real observation file
+exists with an approved downstream route or accepted queue-owner process and
+the monthly history is current.
+
 ## Fallbacks
 
 - Keep OPS8 and human-escalation claims below 5/5 until the downstream human

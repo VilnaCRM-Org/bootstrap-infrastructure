@@ -210,6 +210,27 @@ Do not treat human escalation as complete until the target account also has a
 confirmed owner and incident route for processing that queue or forwarding the
 SNS topic into ChatOps, ticketing, or paging.
 
+For monthly OPS8 evidence, run the Well-Architected collector first, then
+render a reviewed alert-route observation from the collector output:
+
+```bash
+make report-well-architected-evidence
+
+ALERT_ROUTE_OBSERVATION_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.md \
+ALERT_ROUTE_REVIEWER='<reviewer or team>' \
+ALERT_ROUTE_OWNER='SRE' \
+ALERT_ROUTE_DOWNSTREAM='<ChatOps, ticketing, paging, or approved queue-owner process>' \
+ALERT_ROUTE_SEVERITY='<severity and response expectation>' \
+ALERT_ROUTE_FALLBACK='<fallback when the downstream route is unavailable>' \
+ALERT_ROUTE_DECISION='<accepted, action required, or exception decision>' \
+make report-alert-route-observation
+```
+
+The generated observation is only acceptable evidence after the reviewer
+records a real downstream route or explicitly approved queue-owner process. The
+target file should be committed or otherwise retained as the monthly
+observation history for the workload.
+
 ## Operations Evidence Contract
 
 Well-Architected evidence should use metadata and durable review artifacts, not

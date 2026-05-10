@@ -61,6 +61,7 @@ help              Print the available make targets.
 nightly-quality   Run the scheduled quality-report battery locally.
 report-quality    Generate the scheduled maintainability, dead-code, docstring, and SBOM reports.
 report-sbom       Generate a CycloneDX SBOM for the synced Python environment.
+report-alert-route-observation  Render a monthly alert-route observation from collector evidence.
 start             Initialize and start the Pulumi development environment.
 pulumi-preview    Preview infrastructure changes with the policy pack enforced.
 pulumi-up         Apply the current infrastructure plan with the policy pack enforced.
@@ -189,7 +190,8 @@ the primary/replica region decision matrix and exception gates.
 Use the [fault isolation evidence](fault-isolation-evidence.md) for
 per-repository state, KMS, IAM, OIDC, and environment boundary tests.
 Use the [alert routing evidence](alert-routing-evidence.md) for the current
-EventBridge/SNS/SQS inventory, route-test evidence, and alert fallback rules.
+EventBridge/SNS/SQS inventory, route-test evidence, monthly observation
+command, and alert fallback rules.
 Use the [compute runner evidence](compute-runner-evidence.md) for the optional
 ECR runner repository posture and future-image SEC6 gate.
 

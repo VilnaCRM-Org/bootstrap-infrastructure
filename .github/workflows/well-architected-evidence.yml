@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: '17 6 9 * *'
   workflow_dispatch:
 
 concurrency:
@@ -151,10 +153,10 @@ jobs:
         with:
           name: well-architected-evidence
           path: .artifacts/well-architected
-          retention-days: 7
+          retention-days: 90
 
       - name: Enforce Well-Architected evidence when enabled
-        if: ${{ vars.WELL_ARCHITECTED_EVIDENCE_ENFORCE == 'true' && steps.collector.outputs.exit_code != '0' }}
+        if: ${{ github.event_name != 'schedule' && vars.WELL_ARCHITECTED_EVIDENCE_ENFORCE == 'true' && steps.collector.outputs.exit_code != '0' }}
         run: |
           echo "error: Well-Architected evidence enforcement is enabled and blockers remain." >&2
           exit 1

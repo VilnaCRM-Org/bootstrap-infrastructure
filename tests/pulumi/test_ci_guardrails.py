@@ -422,6 +422,7 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
 
     assert "pull_request" in triggers  # nosec B101
     assert triggers["push"]["branches"] == ["main"]  # nosec B101
+    assert triggers["schedule"] == [{"cron": "17 6 9 * *"}]  # nosec B101
     assert "workflow_dispatch" in triggers  # nosec B101
     assert workflow["permissions"] == {"contents": "read"}  # nosec B101
     assert workflow["concurrency"]["cancel-in-progress"] is True  # nosec B101
@@ -448,7 +449,8 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
     assert "exit 1" not in collector_step["run"]  # nosec B101
     assert upload_step["with"]["name"] == "well-architected-evidence"  # nosec B101
     assert upload_step["with"]["path"] == ".artifacts/well-architected"  # nosec B101
-    assert upload_step["with"]["retention-days"] == 7  # nosec B101
+    assert upload_step["with"]["retention-days"] == 90  # nosec B101
+    assert "github.event_name != 'schedule'" in enforce_step["if"]  # nosec B101
     assert "WELL_ARCHITECTED_EVIDENCE_ENFORCE" in enforce_step["if"]  # nosec B101
     assert "exit 1" in enforce_step["run"]  # nosec B101
     assert "credentials are unavailable to untrusted forks" in unprivileged_run  # nosec B101

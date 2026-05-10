@@ -94,6 +94,227 @@ def test_find_uv_binary_prefers_env_and_supports_fallbacks(
     assert "uv executable not found" in capsys.readouterr().err
 
 
+def _alert_route_evidence_report(
+    *,
+    status: str = "passed",
+    evidence: object | None = None,
+    blockers: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "generatedAt": "2026-05-10T07:20:53.572650+00:00",
+        "checks": [
+            {
+                "name": "aws_identity",
+                "status": "passed",
+                "evidence": {"account": "123456789012"},
+                "blockers": [],
+            },
+            {
+                "name": "aws_sns_alert_route",
+                "status": status,
+                "evidence": evidence
+                if evidence is not None
+                else {
+                    "topicArn": (
+                        "arn:aws:sns:eu-central-1:123456789012:"
+                        "bootstrap-test-operations"
+                    ),
+                    "encrypted": True,
+                    "subscriptionCount": 1,
+                    "subscriptionProtocols": ["sqs"],
+                    "sqsQueue": {
+                        "queueArn": (
+                            "arn:aws:sqs:eu-central-1:123456789012:"
+                            "bootstrap-test-operations-alerts"
+                        ),
+                        "queueName": "bootstrap-test-operations-alerts",
+                        "visibleMessages": 3,
+                        "notVisibleMessages": 0,
+                        "delayedMessages": 0,
+                        "messageRetentionSeconds": 345600,
+                        "visibilityTimeoutSeconds": 30,
+                    },
+                },
+                "blockers": blockers or [],
+            },
+        ],
+    }
+
+
+def test_record_alert_route_observation_writes_monthly_review(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Render non-secret SQS route metadata into a human review artifact."""
+    module = load_script_module(monkeypatch, "record_alert_route_observation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "alert-route-observation.md"
+    evidence.write_text(json.dumps(_alert_route_evidence_report()), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--review-date",
+            "2026-06-09",
+            "--reviewer",
+            "sre-reviewer",
+            "--route-owner",
+            "SRE",
+            "--downstream-route",
+            "approved queue-owner process",
+            "--severity-expectations",
+            "SEV2 during business hours",
+            "--fallback",
+            "Escalate to platform maintainers if queue depth grows.",
+            "--decision",
+            "Accepted for monthly OPS8 evidence.",
+            "--action",
+            "Open a follow-up if visible messages exceed 10.",
+        ]
+    )
+
+    text = output.read_text(encoding="utf-8")
+    assert status == 0  # nosec B101
+    assert "# Alert Route Observation 2026-06-09" in text  # nosec B101
+    assert "bootstrap-test-operations-alerts" in text  # nosec B101
+    assert "approved queue-owner process" in text  # nosec B101
+    assert "Open a follow-up if visible messages exceed 10." in text  # nosec B101
+    assert "credentials" in text  # nosec B101
+    assert "SecretString" not in text  # nosec B101
+
+
+def test_record_alert_route_observation_refuses_overwrite_without_force(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Existing monthly evidence should not be overwritten accidentally."""
+    module = load_script_module(monkeypatch, "record_alert_route_observation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "alert-route-observation.md"
+    evidence.write_text(json.dumps(_alert_route_evidence_report()), encoding="utf-8")
+    output.write_text("existing\n", encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "sre-reviewer",
+            "--route-owner",
+            "SRE",
+            "--downstream-route",
+            "queue owner",
+            "--severity-expectations",
+            "SEV2",
+            "--fallback",
+            "Escalate.",
+            "--decision",
+            "Accepted.",
+        ]
+    )
+
+    assert status == 2  # nosec B101
+    assert output.read_text(encoding="utf-8") == "existing\n"
+    assert "output already exists" in capsys.readouterr().err  # nosec B101
+
+
+def test_record_alert_route_observation_force_overwrites_with_default_actions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Force mode supports intentional rerendering and default action text."""
+    module = load_script_module(monkeypatch, "record_alert_route_observation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "alert-route-observation.md"
+    evidence.write_text(json.dumps(_alert_route_evidence_report()), encoding="utf-8")
+    output.write_text("existing\n", encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "sre-reviewer",
+            "--route-owner",
+            "SRE",
+            "--downstream-route",
+            "queue owner",
+            "--severity-expectations",
+            "SEV2",
+            "--fallback",
+            "Escalate.",
+            "--decision",
+            "Accepted.",
+            "--force",
+        ]
+    )
+
+    text = output.read_text(encoding="utf-8")
+    assert status == 0  # nosec B101
+    assert "No follow-up actions recorded." in text  # nosec B101
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_error"),
+    [
+        ([], "evidence report must be a JSON object"),
+        ({"checks": []}, "does not contain check"),
+        (
+            _alert_route_evidence_report(
+                status="failed",
+                blockers=["Operations SNS topic does not have an SQS subscription."],
+            ),
+            "aws_sns_alert_route must pass",
+        ),
+        (
+            _alert_route_evidence_report(evidence="not structured"),
+            "aws_sns_alert_route evidence must be a JSON object",
+        ),
+    ],
+)
+def test_record_alert_route_observation_reports_invalid_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    payload: object,
+    expected_error: str,
+) -> None:
+    """Invalid or failing collector evidence should block observation records."""
+    module = load_script_module(monkeypatch, "record_alert_route_observation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "alert-route-observation.md"
+    evidence.write_text(json.dumps(payload), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "sre-reviewer",
+            "--route-owner",
+            "SRE",
+            "--downstream-route",
+            "queue owner",
+            "--severity-expectations",
+            "SEV2",
+            "--fallback",
+            "Escalate.",
+            "--decision",
+            "Accepted.",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert expected_error in capsys.readouterr().err  # nosec B101
+
+
 def test_doctor_main_reports_missing_and_ready_states(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

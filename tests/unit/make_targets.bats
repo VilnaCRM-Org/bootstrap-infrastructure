@@ -50,6 +50,7 @@ assert_help_target() {
     report-maintainability-trends
     report-quality
     report-sbom
+    report-alert-route-observation
     report-well-architected-evidence
     sh
     start
@@ -514,6 +515,25 @@ EOF
   [[ "$output" == *'PR_NUMBER:-'* ]]
   [[ "$output" == *'OPERATIONS_TOPIC_ARN:-'* ]]
   [[ "$output" != *"bootstrap-test-operations"* ]]
+}
+
+@test "make report-alert-route-observation renders monthly alert route evidence" {
+  run env \
+    ALERT_ROUTE_OBSERVATION_OUTPUT=docs/alert-route-observation-2026-06-09.md \
+    ALERT_ROUTE_REVIEWER=sre-reviewer \
+    ALERT_ROUTE_OWNER=sre \
+    ALERT_ROUTE_DOWNSTREAM=incident-route \
+    ALERT_ROUTE_SEVERITY=sev2 \
+    ALERT_ROUTE_FALLBACK=queue-owner-review \
+    ALERT_ROUTE_DECISION=accepted \
+    make -n report-alert-route-observation
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/record_alert_route_observation.py"* ]]
+  [[ "$output" == *'ALERT_ROUTE_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"--downstream-route"* ]]
+  [[ "$output" == *"ALERT_ROUTE_DOWNSTREAM"* ]]
+  [[ "$output" != *"incident-route"* ]]
+  [[ "$output" != *"sre-reviewer"* ]]
 }
 
 @test "make test-quality delegates to the Rust-based quality suite" {
