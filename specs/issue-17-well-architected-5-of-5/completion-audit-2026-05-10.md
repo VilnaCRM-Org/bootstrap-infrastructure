@@ -15,16 +15,17 @@ key IDs.
 | --- | --- |
 | PR | https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/22 |
 | Branch | `codex/wa-5of5-implementation` |
-| Audited PR head | `7c3e922ca1b0f4f9685b2372719ea223caf0e522` |
-| Latest collector timestamp | `2026-05-10T06:42:13.412247+00:00` |
+| Current PR head | Read from the PR body and live collector output before any final score claim |
+| Latest collector timestamp | Read from the PR body and live collector output before any final score claim |
 | Collector artifact | `.artifacts/well-architected/evidence.json` |
 | Collector Markdown report | `.artifacts/well-architected/evidence.md` |
 | Live status surfaces | PR body, issue #17 status block, standing PR audit comment, and blocker comments for issues #26-#30 |
 | Result | Not complete; external/admin blockers remain. |
 
-This tracked audit records the latest inspected head. The branch head changes
-when this file is committed, so a future final score claim must rerun the
-collector and refresh this table before completion can be asserted.
+This tracked audit deliberately avoids pinning a mutable PR head SHA. The branch
+head changes whenever this file is committed, so the current head and collector
+timestamp must be read from the public PR/issue status surfaces and by rerunning
+the collector before any final score claim.
 
 ## Prompt-To-Artifact Checklist
 
