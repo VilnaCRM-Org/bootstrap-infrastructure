@@ -3006,18 +3006,26 @@ def test_report_maintainability_trends_main_handles_git_and_wily_paths(
     monkeypatch.setenv("QUALITY_ARTIFACT_DIR", "reports")
     monkeypatch.setenv("WILY_TARGETS", "pulumi,policy")
 
-    skip_results = iter(
-        [
-            subprocess.CompletedProcess(["git"], 1),
-            subprocess.CompletedProcess(["git"], 1),
-        ]
-    )
-    monkeypatch.setattr(module, "run", lambda *args, **kwargs: next(skip_results))
+    skip_calls: list[list[str]] = []
+
+    def fake_skip_run(command, **kwargs):
+        skip_calls.append(command)
+        if command[:2] == ["git", "rev-parse"]:
+            return subprocess.CompletedProcess(command, 1)
+        if command[:4] == ["uv", "run", "radon", "mi"]:
+            return subprocess.CompletedProcess(
+                command, 0, stdout="pulumi/app.py - A (100.00)\n"
+            )
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(module, "run", fake_skip_run)
     assert module.main() == 0
     skip_report = repo_dir / "reports" / "wily-rank.txt"
-    assert "Wily maintainability report skipped" in skip_report.read_text(
-        encoding="utf-8"
-    )
+    skip_report_text = skip_report.read_text(encoding="utf-8")
+    assert "Wily maintainability report skipped" in skip_report_text
+    assert "Current maintainability snapshot from radon" in skip_report_text
+    assert "pulumi/app.py - A (100.00)" in skip_report_text
+    assert any(command[:4] == ["uv", "run", "radon", "mi"] for command in skip_calls)
 
     calls: list[list[str]] = []
     rank_stdout = "ranked output\n"

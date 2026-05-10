@@ -8,6 +8,38 @@ from pathlib import Path
 from _script_support import repo_root, run, split_values
 
 
+def _write_current_snapshot_report(
+    *,
+    root_dir: Path,
+    wily_report: Path,
+    wily_targets: list[str],
+    reason: str,
+) -> None:
+    """Write current-tree maintainability evidence when Wily history is unavailable."""
+    result = run(
+        ["uv", "run", "radon", "mi", "-s", *wily_targets],
+        cwd=root_dir,
+        capture_output=True,
+        check=False,
+    )
+    lines = [
+        "Wily maintainability report skipped: this workspace does not "
+        "expose a resolvable git HEAD.",
+        reason,
+        "",
+        "Current maintainability snapshot from radon:",
+    ]
+    if result.returncode == 0 and result.stdout.strip():
+        lines.append(result.stdout.rstrip())
+    else:
+        lines.append("Radon current snapshot unavailable.")
+        if result.stdout:
+            lines.extend(["", "stdout:", result.stdout.rstrip()])
+        if result.stderr:
+            lines.extend(["", "stderr:", result.stderr.rstrip()])
+    wily_report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     root_dir = Path(os.environ.get("ROOT_DIR", repo_root(__file__))).resolve()
     quality_artifact_dir = Path(
@@ -26,20 +58,26 @@ def main() -> int:
     quality_artifact_dir.mkdir(parents=True, exist_ok=True)
 
     git_ready = run(
-        ["git", "rev-parse", "--is-inside-work-tree"], cwd=root_dir, check=False
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=root_dir,
+        check=False,
+        capture_output=True,
     )
     head_ready = run(
-        ["git", "rev-parse", "--verify", "HEAD"], cwd=root_dir, check=False
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=root_dir,
+        check=False,
+        capture_output=True,
     )
     if git_ready.returncode != 0 or head_ready.returncode != 0:
-        wily_report.write_text(
-            (
-                "Wily maintainability report skipped: this workspace does not "
-                "expose a resolvable git HEAD.\n"
+        _write_current_snapshot_report(
+            root_dir=root_dir,
+            wily_report=wily_report,
+            wily_targets=wily_targets,
+            reason=(
                 "Run the report from a normal repository checkout to build "
-                "maintainability trends.\n"
+                "history trends."
             ),
-            encoding="utf-8",
         )
         return 0
 

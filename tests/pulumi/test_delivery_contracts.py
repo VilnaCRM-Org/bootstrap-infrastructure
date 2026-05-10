@@ -419,6 +419,7 @@ def test_new_helper_scripts_keep_local_ci_behaviour_explicit() -> None:
     assert "if not quality_artifact_dir.is_absolute()" in wily_script
     assert '"git", "rev-parse", "--verify", "HEAD"' in wily_script
     assert "Wily maintainability report skipped" in wily_script
+    assert "Current maintainability snapshot from radon" in wily_script
     assert "PULUMI_REQUIRE_SHARED_BACKEND" in preview_summary_script
     assert '"make", "test-preview"' in preview_summary_script
     assert "GITHUB_STEP_SUMMARY" in preview_summary_script

@@ -63,6 +63,11 @@ These checks are intentionally visible but do not block pull requests:
 `make test-drift`; drift detection stays in the separate infra-oriented nightly
 workflow and local `make test-drift` path.
 
+When `make report-maintainability-trends` runs from a Docker-mounted git
+worktree where Wily cannot resolve history, it still writes a current radon
+maintainability snapshot to `.artifacts/quality/wily-rank.txt`. Normal
+repository checkouts continue to produce the Wily history-based ranking.
+
 ## Thresholds
 
 The current gates are intentionally strict:
