@@ -450,7 +450,8 @@ report-dependabot-exception: ## Render Dependabot exception evidence.
 			--approval "$${DEPENDABOT_EXCEPTION_APPROVAL}" \
 			--reason "$${DEPENDABOT_EXCEPTION_REASON}" \
 			--remediation-plan "$${DEPENDABOT_EXCEPTION_REMEDIATION}" \
-			$${DEPENDABOT_EXCEPTION_EVIDENCE_NOTE:+--evidence-note "$${DEPENDABOT_EXCEPTION_EVIDENCE_NOTE}"}'
+			$${DEPENDABOT_EXCEPTION_EVIDENCE_NOTE:+--evidence-note "$${DEPENDABOT_EXCEPTION_EVIDENCE_NOTE}"} \
+			$${DEPENDABOT_EXCEPTION_FORCE:+--force}'
 
 report-alert-route-observation: ## Render monthly alert-route observation evidence.
 	@bash -lc '\
@@ -484,7 +485,8 @@ report-alert-route-observation: ## Render monthly alert-route observation eviden
 			--severity-expectations "$${ALERT_ROUTE_SEVERITY}" \
 			--fallback "$${ALERT_ROUTE_FALLBACK}" \
 			--decision "$${ALERT_ROUTE_DECISION}" \
-			$${ALERT_ROUTE_ACTION:+--action "$${ALERT_ROUTE_ACTION}"}'
+			$${ALERT_ROUTE_ACTION:+--action "$${ALERT_ROUTE_ACTION}"} \
+			$${ALERT_ROUTE_OBSERVATION_FORCE:+--force}'
 
 report-security-account-attestation: ## Render security account attestation evidence.
 	@bash -lc '\
@@ -518,7 +520,8 @@ report-security-account-attestation: ## Render security account attestation evid
 			--active-key-decision "$${SECURITY_ACCOUNT_ACTIVE_KEY_DECISION}" \
 			--permissions-boundary-decision "$${SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY}" \
 			--approval-decision "$${SECURITY_ACCOUNT_APPROVAL}" \
-			$${SECURITY_ACCOUNT_ACTION:+--action "$${SECURITY_ACCOUNT_ACTION}"}'
+			$${SECURITY_ACCOUNT_ACTION:+--action "$${SECURITY_ACCOUNT_ACTION}"} \
+			$${SECURITY_ACCOUNT_ATTESTATION_FORCE:+--force}'
 
 report-quality: ## Run scheduled quality reports and generate fresh artifacts.
 	$(MAKE) report-maintainability-trends

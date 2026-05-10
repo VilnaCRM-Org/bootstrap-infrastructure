@@ -361,6 +361,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.output.exists() and not args.force:
         print(f"error: output already exists: {args.output}", file=sys.stderr)
         return 2
+    if args.json_output and args.json_output.exists() and not args.force:
+        print(f"error: JSON output already exists: {args.json_output}", file=sys.stderr)
+        return 2
 
     try:
         report = _load_report(args.evidence)

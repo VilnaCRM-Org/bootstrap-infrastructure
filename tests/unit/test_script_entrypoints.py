@@ -860,6 +860,50 @@ def test_record_alert_route_observation_refuses_overwrite_without_force(
     assert "output already exists" in capsys.readouterr().err  # nosec B101
 
 
+def test_record_alert_route_observation_refuses_json_overwrite_without_force(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Structured monthly evidence should not be overwritten accidentally."""
+    module = load_script_module(monkeypatch, "record_alert_route_observation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "alert-route-observation.md"
+    json_output = tmp_path / "alert-route-observation.json"
+    evidence.write_text(json.dumps(_alert_route_evidence_report()), encoding="utf-8")
+    json_output.write_text('{"existing": true}\n', encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "sre-reviewer",
+            "--route-owner",
+            "SRE",
+            "--downstream-route",
+            "queue owner",
+            "--severity-expectations",
+            "SEV2",
+            "--fallback",
+            "Escalate.",
+            "--decision",
+            "accepted",
+            "--expiry-date",
+            "2026-07-10",
+            "--action",
+            "Owner approved.",
+        ]
+    )
+
+    assert status == 2  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert json_output.read_text(encoding="utf-8") == '{"existing": true}\n'
+    assert "JSON output already exists" in capsys.readouterr().err  # nosec B101
+
+
 def test_record_alert_route_observation_force_overwrites_with_default_actions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1367,6 +1411,52 @@ def test_record_security_account_attestation_refuses_overwrite_without_force(
     assert status == 2  # nosec B101
     assert output.read_text(encoding="utf-8") == "existing\n"
     assert "output already exists" in capsys.readouterr().err  # nosec B101
+
+
+def test_record_security_account_attestation_refuses_json_overwrite_without_force(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Structured security attestations should not be overwritten accidentally."""
+    module = load_script_module(monkeypatch, "record_security_account_attestation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "security-account-attestation.md"
+    json_output = tmp_path / "security-account-attestation.json"
+    evidence.write_text(
+        json.dumps(_security_account_evidence_report()), encoding="utf-8"
+    )
+    json_output.write_text('{"existing": true}\n', encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "security-reviewer",
+            "--security-owner",
+            "security-owner",
+            "--human-access-posture",
+            "mfa_sso_verified",
+            "--active-key-decision",
+            "approved_exception",
+            "--permissions-boundary-decision",
+            "approved_exemption",
+            "--approval-decision",
+            "approved",
+            "--expiry-date",
+            "2026-07-10",
+            "--action",
+            "Owner approved.",
+        ]
+    )
+
+    assert status == 2  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert json_output.read_text(encoding="utf-8") == '{"existing": true}\n'
+    assert "JSON output already exists" in capsys.readouterr().err  # nosec B101
 
 
 @pytest.mark.parametrize(

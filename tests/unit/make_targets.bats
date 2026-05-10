@@ -563,6 +563,7 @@ EOF
     DEPENDABOT_EXCEPTION_REMEDIATION='Merge patched lockfile before expiry.' \
     DEPENDABOT_EXCEPTION_EXPIRY_DATE=2026-06-17T00:00:00Z \
     DEPENDABOT_EXCEPTION_EVIDENCE_NOTE='Security owner approved exception.' \
+    DEPENDABOT_EXCEPTION_FORCE=1 \
     make -n report-dependabot-exception
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/record_dependabot_exception.py"* ]]
@@ -570,6 +571,8 @@ EOF
   [[ "$output" == *"DEPENDABOT_EXCEPTION_JSON_OUTPUT"* ]]
   [[ "$output" == *"--json-output"* ]]
   [[ "$output" == *"--evidence-note"* ]]
+  [[ "$output" == *"DEPENDABOT_EXCEPTION_FORCE"* ]]
+  [[ "$output" == *"--force"* ]]
   [[ "$output" != *"security-reviewer"* ]]
   [[ "$output" != *"Patched lockfile"* ]]
   [[ "$output" != *"Security owner approved"* ]]
@@ -587,6 +590,7 @@ EOF
     ALERT_ROUTE_DECISION=accepted \
     ALERT_ROUTE_EXPIRY_DATE=2026-07-09T00:00:00Z \
     ALERT_ROUTE_ACTION='Review queue consumption monthly.' \
+    ALERT_ROUTE_OBSERVATION_FORCE=1 \
     make -n report-alert-route-observation
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/record_alert_route_observation.py"* ]]
@@ -596,6 +600,8 @@ EOF
   [[ "$output" == *"--downstream-route"* ]]
   [[ "$output" == *"ALERT_ROUTE_DOWNSTREAM"* ]]
   [[ "$output" == *"--action"* ]]
+  [[ "$output" == *"ALERT_ROUTE_OBSERVATION_FORCE"* ]]
+  [[ "$output" == *"--force"* ]]
   [[ "$output" != *"incident-route"* ]]
   [[ "$output" != *"sre-reviewer"* ]]
   [[ "$output" != *"Review queue"* ]]
@@ -612,6 +618,7 @@ EOF
     SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY=exemption \
     SECURITY_ACCOUNT_APPROVAL=approved \
     SECURITY_ACCOUNT_ACTION='Rotate active key before exception expiry.' \
+    SECURITY_ACCOUNT_ATTESTATION_FORCE=1 \
     make -n report-security-account-attestation
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/record_security_account_attestation.py"* ]]
@@ -621,6 +628,8 @@ EOF
   [[ "$output" == *"--human-access-posture"* ]]
   [[ "$output" == *"SECURITY_ACCOUNT_HUMAN_ACCESS"* ]]
   [[ "$output" == *"--action"* ]]
+  [[ "$output" == *"SECURITY_ACCOUNT_ATTESTATION_FORCE"* ]]
+  [[ "$output" == *"--force"* ]]
   [[ "$output" != *"security-reviewer"* ]]
   [[ "$output" != *"approved"* ]]
   [[ "$output" != *"Rotate active key"* ]]
