@@ -6,6 +6,7 @@ import datetime as dt
 import json
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote
@@ -184,19 +185,28 @@ REQUIRED_EXTERNAL_CONTROL_IDS = (
     "sustainability_governance",
     "production_approval",
 )
-EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_COUNTS = (
-    ("OPS", 11),
-    ("SEC", 11),
-    ("REL", 13),
-    ("PERF", 5),
-    ("COST", 11),
-    ("SUS", 6),
+EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_PILLARS = (
+    ("OPS", "Operational Excellence", 11),
+    ("SEC", "Security", 11),
+    ("REL", "Reliability", 13),
+    ("PERF", "Performance Efficiency", 5),
+    ("COST", "Cost Optimization", 11),
+    ("SUS", "Sustainability", 6),
+)
+EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_COUNTS = tuple(
+    (prefix, count)
+    for prefix, _pillar, count in EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_PILLARS
 )
 EXPECTED_WELL_ARCHITECTED_QUESTION_IDS = tuple(
     f"{prefix}{number}"
     for prefix, count in EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_COUNTS
     for number in range(1, count + 1)
 )
+EXPECTED_WELL_ARCHITECTED_QUESTION_PILLAR_BY_ID = {
+    f"{prefix}{number}": pillar
+    for prefix, pillar, count in EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_PILLARS
+    for number in range(1, count + 1)
+}
 EXPECTED_WELL_ARCHITECTED_QUESTION_COUNT = len(EXPECTED_WELL_ARCHITECTED_QUESTION_IDS)
 EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS = {
     "Operational Excellence": 11,
@@ -2899,6 +2909,7 @@ def _question_matrix_score_blockers(payload: dict[str, Any]) -> list[str]:
     blockers.extend(_question_matrix_score_count_blockers(payload, score_items))
     blockers.extend(_question_matrix_invalid_score_blockers(score_items))
     blockers.extend(_question_matrix_evidence_ref_blockers(score_items))
+    blockers.extend(_question_matrix_summary_blockers(payload, score_items))
     return blockers
 
 
@@ -3043,6 +3054,144 @@ def _question_matrix_evidence_ref_blockers(
         if missing_ids
         else []
     )
+
+
+def _question_matrix_summary_blockers(
+    payload: dict[str, Any],
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers when summary fields disagree with question score rows."""
+    return [
+        *_question_matrix_unresolved_id_blockers(payload, scores),
+        *_question_matrix_pillar_unresolved_blockers(payload, scores),
+        *_question_matrix_average_blockers(payload, scores),
+    ]
+
+
+def _question_matrix_unresolved_id_blockers(
+    payload: dict[str, Any],
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers for stale or inconsistent unresolved question IDs."""
+    if "unresolvedQuestionIds" not in payload:
+        return []
+    declared_ids = _string_list(payload.get("unresolvedQuestionIds"))
+    if declared_ids is None:
+        return [
+            "Question-matrix evidence unresolvedQuestionIds must be a list of strings."
+        ]
+    expected_ids = _expected_question_id_order(set(_non_passed_question_ids(scores)))
+    if declared_ids == expected_ids:
+        return []
+    return [
+        "Question-matrix evidence unresolvedQuestionIds must match non-passed "
+        f"questionScores entries: {_question_id_list_text(expected_ids)}."
+    ]
+
+
+def _question_matrix_pillar_unresolved_blockers(
+    payload: dict[str, Any],
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers for stale or inconsistent per-pillar unresolved counts."""
+    if "pillarUnresolvedQuestionCounts" not in payload:
+        return []
+    declared_counts = _string_key_int_map(payload.get("pillarUnresolvedQuestionCounts"))
+    if declared_counts is None:
+        return [
+            "Question-matrix evidence pillarUnresolvedQuestionCounts must be a "
+            "string-keyed integer map."
+        ]
+    expected_counts = _expected_pillar_unresolved_question_counts(scores)
+    if declared_counts == expected_counts:
+        return []
+    return [
+        "Question-matrix evidence pillarUnresolvedQuestionCounts must match "
+        "non-passed questionScores entries by pillar."
+    ]
+
+
+def _question_matrix_average_blockers(
+    payload: dict[str, Any],
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers for stale or inconsistent per-pillar score averages."""
+    if "questionScoreAverages" not in payload:
+        return []
+    declared_averages = _string_key_number_map(payload.get("questionScoreAverages"))
+    if declared_averages is None:
+        return [
+            "Question-matrix evidence questionScoreAverages must be a "
+            "string-keyed numeric map."
+        ]
+    expected_averages = _expected_pillar_question_score_averages(scores)
+    if not expected_averages or declared_averages == expected_averages:
+        return []
+    return [
+        "Question-matrix evidence questionScoreAverages must match score averages "
+        "computed from questionScores entries."
+    ]
+
+
+def _non_passed_question_ids(scores: Sequence[dict[str, Any]]) -> list[str]:
+    """Return populated question IDs for non-passed score rows."""
+    return [
+        question_id.strip()
+        for score in scores
+        if score.get("status") != "passed"
+        and isinstance(question_id := score.get("id"), str)
+        and question_id.strip()
+    ]
+
+
+def _expected_pillar_unresolved_question_counts(
+    scores: Sequence[dict[str, Any]],
+) -> dict[str, int]:
+    """Return unresolved question counts by expected AWS pillar."""
+    counts = {pillar: 0 for pillar in EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS}
+    for question_id in _non_passed_question_ids(scores):
+        pillar = EXPECTED_WELL_ARCHITECTED_QUESTION_PILLAR_BY_ID.get(question_id)
+        if pillar is not None:
+            counts[pillar] += 1
+    return counts
+
+
+def _expected_pillar_question_score_averages(
+    scores: Sequence[dict[str, Any]],
+) -> dict[str, float]:
+    """Return rounded score averages by expected AWS pillar."""
+    scores_by_pillar: dict[str, list[int]] = {
+        pillar: [] for pillar in EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
+    }
+    for score in scores:
+        question_id = score.get("id")
+        pillar = (
+            EXPECTED_WELL_ARCHITECTED_QUESTION_PILLAR_BY_ID.get(question_id)
+            if isinstance(question_id, str)
+            else None
+        )
+        value = score.get("score")
+        if pillar is None or _invalid_question_score(value):
+            continue
+        scores_by_pillar[pillar].append(cast("int", value))
+    if any(not pillar_scores for pillar_scores in scores_by_pillar.values()):
+        return {}
+    return {
+        pillar: _rounded_average(pillar_scores)
+        for pillar, pillar_scores in scores_by_pillar.items()
+    }
+
+
+def _rounded_average(values: Sequence[int]) -> float:
+    """Return a stable two-decimal average for evidence summaries."""
+    total = sum(Decimal(value) for value in values)
+    average = total / Decimal(len(values))
+    return float(average.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _question_id_list_text(question_ids: Sequence[str]) -> str:
+    """Return a compact human-readable question ID list for blockers."""
+    return ", ".join(question_ids) if question_ids else "none"
 
 
 def _missing_external_control_blockers(

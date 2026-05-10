@@ -2151,12 +2151,12 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                 "unresolvedQuestionCount": 0,
                 "unresolvedQuestionIds": [],
                 "questionScoreAverages": {
-                    "Operational Excellence": 5.0,
-                    "Security": 5.0,
+                    pillar: 5.0
+                    for pillar in module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
                 },
                 "pillarUnresolvedQuestionCounts": {
-                    "Operational Excellence": 0,
-                    "Security": 0,
+                    pillar: 0
+                    for pillar in module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
                 },
                 "questionScores": [
                     {"id": question_id, "score": 5, "status": "passed"}
@@ -3186,6 +3186,78 @@ def test_collect_well_architected_evidence_rejects_question_id_gaps(
     assert "duplicate question IDs: OPS1" in blockers  # nosec B101
     assert "missing question IDs: SUS6" in blockers  # nosec B101
     assert "unknown question IDs: WA99" in blockers  # nosec B101
+
+
+def test_collect_well_architected_evidence_rejects_score_summary_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Question score summaries must agree with the individual score rows."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    evidence_payload = _well_architected_question_evidence()
+    now = module.dt.datetime.now(module.dt.timezone.utc).isoformat()
+    evidence_payload["reviewedAt"] = now
+    evidence_payload["unresolvedQuestionCount"] = 1
+    evidence_payload["unresolvedQuestionIds"] = ["SEC1"]
+    evidence_payload["pillarUnresolvedQuestionCounts"] = {
+        pillar: 0 for pillar in module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
+    }
+    evidence_payload["questionScoreAverages"] = {
+        pillar: 5.0 for pillar in module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
+    }
+    source_verification = evidence_payload["frameworkSourceVerification"]
+    assert isinstance(source_verification, dict)  # nosec B101
+    source_verification["checkedAt"] = now
+    scores = evidence_payload["questionScores"]
+    assert isinstance(scores, list)  # nosec B101
+    assert isinstance(scores[0], dict)  # nosec B101
+    scores[0]["score"] = 3
+    evidence = tmp_path / "question-matrix-evidence.json"
+    evidence.write_text(json.dumps(evidence_payload), encoding="utf-8")
+
+    args = module.build_parser().parse_args(
+        ["--question-matrix-evidence", str(evidence)]
+    )
+    check = module.question_matrix_evidence(args)
+    blockers = " ".join(check["blockers"])
+
+    assert check["status"] == "failed"  # nosec B101
+    assert "unresolvedQuestionIds" in blockers  # nosec B101
+    assert "OPS1" in blockers  # nosec B101
+    assert "pillarUnresolvedQuestionCounts" in blockers  # nosec B101
+    assert "questionScoreAverages" in blockers  # nosec B101
+    assert "list of strings" in " ".join(  # noqa: SLF001  # nosec B101
+        module._question_matrix_unresolved_id_blockers(
+            {"unresolvedQuestionIds": [1]},
+            [],
+        )
+    )
+    assert "integer map" in " ".join(  # noqa: SLF001  # nosec B101
+        module._question_matrix_pillar_unresolved_blockers(
+            {"pillarUnresolvedQuestionCounts": {"Security": "1"}},
+            [],
+        )
+    )
+    assert "numeric map" in " ".join(  # noqa: SLF001  # nosec B101
+        module._question_matrix_average_blockers(
+            {"questionScoreAverages": {"Security": True}},
+            [],
+        )
+    )
+    unknown_unresolved_counts = (  # noqa: SLF001
+        module._expected_pillar_unresolved_question_counts(
+            [{"id": "WA99", "status": "unresolved"}]
+        )
+    )
+    assert set(unknown_unresolved_counts) == set(  # nosec B101
+        module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
+    )
+    assert all(count == 0 for count in unknown_unresolved_counts.values())  # nosec B101
+    assert (  # noqa: SLF001  # nosec B101
+        module._expected_pillar_question_score_averages(
+            [{"id": "OPS1", "score": 6}, {"id": "WA99", "score": 5}]
+        )
+        == {}
+    )
 
 
 def test_sns_alert_route_records_sqs_queue_metadata(
