@@ -63,6 +63,55 @@ DEPENDABOT_EXCEPTION_REQUIRED_FIELDS = (
     "reason",
     "remediationPlan",
 )
+SECURITY_ACCOUNT_ATTESTATION_REQUIRED_FIELDS = (
+    "workload",
+    "owner",
+    "approvedBy",
+    "reviewedAt",
+    "expiresAt",
+    "humanAccessPosture",
+    "activeKeyDecision",
+    "permissionsBoundaryDecision",
+    "approval",
+    "evidence",
+    "remediationPlan",
+    "accountEvidence",
+)
+SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS = (
+    "summaryUserCount",
+    "discoveredUserCount",
+    "mfaDeviceCount",
+    "mfaDevicesInUse",
+    "accountMfaEnabled",
+    "accountAccessKeysPresent",
+    "activeUserAccessKeyCount",
+    "inactiveUserAccessKeyCount",
+    "otherUserAccessKeyStatusCount",
+    "usersWithActiveAccessKeys",
+    "unreadableAccessKeyUserCount",
+    "activeUserAccessKeyOlderThan90DaysCount",
+    "activeUserAccessKeyCreateDateUnknownCount",
+    "activeUserAccessKeyNeverUsedCount",
+    "activeUserAccessKeyLastUsedWithin90DaysCount",
+    "activeUserAccessKeyLastUsedOlderThan90DaysCount",
+    "activeUserAccessKeyLastUsedUnknownCount",
+    "unreadableAccessKeyLastUsedCount",
+)
+SECURITY_ACCOUNT_ALLOWED_APPROVALS = frozenset(
+    {"approved", "approved_exception", "accepted_risk"}
+)
+SECURITY_ACCOUNT_ALLOWED_HUMAN_ACCESS = frozenset(
+    {"mfa_sso_verified", "approved", "approved_exception", "accepted_risk"}
+)
+SECURITY_ACCOUNT_ALLOWED_ACTIVE_KEY = frozenset(
+    {"no_active_keys", "rotated", "approved_exception", "accepted_risk"}
+)
+SECURITY_ACCOUNT_ALLOWED_BOUNDARY = frozenset(
+    {"boundary_verified", "approved_exemption", "accepted_risk", "not_required"}
+)
+SECURITY_ACCOUNT_ATTESTED_CONTROLS = frozenset(
+    {"human_access", "active_key", "permissions_boundary"}
+)
 RESTORE_DRILL_REQUIRED_FIELDS = (
     "workload",
     "environment",
@@ -1316,7 +1365,9 @@ def aws_identity(*, runner: Runner = run) -> dict[str, object]:
     )
 
 
-def aws_iam_account_access(*, runner: Runner = run) -> dict[str, object]:
+def aws_iam_account_access(
+    *, attestation_evidence: Path | None = None, runner: Runner = run
+) -> dict[str, object]:
     """Collect non-secret IAM account and static credential metadata."""
     ok, summary, error = _run_json(
         [
@@ -1339,9 +1390,17 @@ def aws_iam_account_access(*, runner: Runner = run) -> dict[str, object]:
     users, user_blockers = _iam_user_names(runner=runner)
     key_counts = _iam_access_key_counts(users, runner=runner)
     evidence = _iam_account_access_evidence(summary, users, key_counts)
+    (
+        attestation_summary,
+        attested_controls,
+        attestation_blockers,
+    ) = _security_account_attestation_coverage(attestation_evidence, evidence)
+    if attestation_summary:
+        evidence["securityAccountAttestation"] = attestation_summary
     blockers = [
         *user_blockers,
-        *_iam_account_access_blockers(evidence),
+        *attestation_blockers,
+        *_iam_account_access_blockers(evidence, attested_controls),
     ]
     return _check(
         "aws_iam_account_access",
@@ -1349,6 +1408,172 @@ def aws_iam_account_access(*, runner: Runner = run) -> dict[str, object]:
         evidence=evidence,
         blockers=blockers,
     )
+
+
+def _security_account_attestation_coverage(
+    evidence_path: Path | None,
+    account_evidence: dict[str, object],
+) -> tuple[dict[str, object], frozenset[str], list[str]]:
+    """Return approved security-account attestation coverage."""
+    if evidence_path is None:
+        return {}, frozenset(), []
+
+    label = "Security account attestation evidence"
+    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
+    blockers.extend(
+        _structured_evidence_payload_blockers(
+            payload,
+            SECURITY_ACCOUNT_ATTESTATION_REQUIRED_FIELDS,
+        )
+    )
+    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
+    blockers.extend(
+        _security_account_attestation_payload_blockers(payload, account_evidence)
+    )
+    controls = SECURITY_ACCOUNT_ATTESTED_CONTROLS if not blockers else frozenset()
+    return (
+        _security_account_attestation_summary(evidence_path, payload),
+        controls,
+        blockers,
+    )
+
+
+def _security_account_attestation_payload_blockers(
+    payload: dict[str, Any],
+    account_evidence: dict[str, object],
+) -> list[str]:
+    """Return blockers for security-owner attestation evidence."""
+    blockers: list[str] = []
+    blockers.extend(
+        _security_account_attestation_choice_blockers(
+            payload,
+            "approval",
+            SECURITY_ACCOUNT_ALLOWED_APPROVALS,
+        )
+    )
+    blockers.extend(
+        _security_account_attestation_choice_blockers(
+            payload,
+            "humanAccessPosture",
+            SECURITY_ACCOUNT_ALLOWED_HUMAN_ACCESS,
+        )
+    )
+    blockers.extend(
+        _security_account_attestation_choice_blockers(
+            payload,
+            "activeKeyDecision",
+            SECURITY_ACCOUNT_ALLOWED_ACTIVE_KEY,
+        )
+    )
+    blockers.extend(
+        _security_account_attestation_choice_blockers(
+            payload,
+            "permissionsBoundaryDecision",
+            SECURITY_ACCOUNT_ALLOWED_BOUNDARY,
+        )
+    )
+    if (
+        account_evidence.get("activeUserAccessKeyCount") != 0
+        and _normalized_text(payload.get("activeKeyDecision")) == "no_active_keys"
+    ):
+        blockers.append(
+            "Security account attestation activeKeyDecision cannot be "
+            "no_active_keys while active keys remain."
+        )
+    if not _non_empty_string_list(payload.get("evidence")):
+        blockers.append(
+            "Security account attestation evidence must include non-empty strings."
+        )
+    if not _non_empty_text(payload.get("remediationPlan")):
+        blockers.append(
+            "Security account attestation remediationPlan must be non-empty."
+        )
+    blockers.extend(
+        _security_account_attestation_expiry_blockers(payload.get("expiresAt"))
+    )
+    blockers.extend(
+        _security_account_attestation_account_blockers(payload, account_evidence)
+    )
+    return blockers
+
+
+def _security_account_attestation_choice_blockers(
+    payload: dict[str, Any],
+    field: str,
+    allowed_values: frozenset[str],
+) -> list[str]:
+    """Return a blocker when an attestation enum field is not accepted."""
+    value = _normalized_text(payload.get(field))
+    if value in allowed_values:
+        return []
+    allowed = ", ".join(sorted(allowed_values))
+    return [f"Security account attestation {field} must be one of: {allowed}."]
+
+
+def _normalized_text(value: object) -> str:
+    """Return a normalized lowercase text value."""
+    return str(value or "").strip().lower()
+
+
+def _non_empty_text(value: object) -> bool:
+    """Return whether a value is non-empty text."""
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _security_account_attestation_expiry_blockers(
+    expires_at_value: object,
+) -> list[str]:
+    """Return blockers for security-account attestation expiry."""
+    expires_at = _parse_reviewed_at(expires_at_value)
+    if expires_at is None:
+        return ["Security account attestation evidence expiresAt must be ISO-8601."]
+    now = dt.datetime.now(dt.timezone.utc)
+    if expires_at <= now:
+        return ["Security account attestation evidence is expired."]
+    return []
+
+
+def _security_account_attestation_account_blockers(
+    payload: dict[str, Any],
+    account_evidence: dict[str, object],
+) -> list[str]:
+    """Return blockers when attested IAM counts do not match live evidence."""
+    attested_evidence = payload.get("accountEvidence")
+    if not isinstance(attested_evidence, dict):
+        return ["Security account attestation accountEvidence must be an object."]
+
+    mismatched_fields = [
+        field
+        for field in SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
+        if attested_evidence.get(field) != account_evidence.get(field)
+    ]
+    if not mismatched_fields:
+        return []
+    return [
+        "Security account attestation accountEvidence does not match live "
+        f"IAM aggregate fields: {', '.join(mismatched_fields)}."
+    ]
+
+
+def _security_account_attestation_summary(
+    evidence_path: Path,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    """Return non-secret security-account attestation metadata."""
+    return {
+        "path": str(evidence_path),
+        "owner": str(payload.get("owner") or ""),
+        "approvedBy": str(payload.get("approvedBy") or ""),
+        "reviewedAt": str(payload.get("reviewedAt") or ""),
+        "expiresAt": str(payload.get("expiresAt") or ""),
+        "approval": str(payload.get("approval") or ""),
+        "humanAccessPosture": str(payload.get("humanAccessPosture") or ""),
+        "activeKeyDecision": str(payload.get("activeKeyDecision") or ""),
+        "permissionsBoundaryDecision": str(
+            payload.get("permissionsBoundaryDecision") or ""
+        ),
+        "remediationPlan": str(payload.get("remediationPlan") or ""),
+    }
 
 
 def _iam_user_names(*, runner: Runner = run) -> tuple[list[str], list[str]]:
@@ -1523,19 +1748,28 @@ def _iam_account_access_evidence(
     }
 
 
-def _iam_account_access_blockers(evidence: dict[str, object]) -> list[str]:
+def _iam_account_access_blockers(
+    evidence: dict[str, object],
+    attested_controls: frozenset[str] = frozenset(),
+) -> list[str]:
     """Return security-account blockers from non-secret IAM metadata."""
     blockers: list[str] = []
     if evidence["accountMfaEnabled"] != 1:
         blockers.append("IAM account summary does not report root/account MFA enabled.")
     if evidence["accountAccessKeysPresent"] != 0:
         blockers.append("IAM account summary reports root account access keys present.")
-    if int(evidence["mfaDevicesInUse"]) < int(evidence["summaryUserCount"]):
+    if (
+        int(evidence["mfaDevicesInUse"]) < int(evidence["summaryUserCount"])
+        and "human_access" not in attested_controls
+    ):
         blockers.append(
             "IAM user count exceeds MFA devices in use; human MFA/SSO posture "
             "requires security-owner attestation."
         )
-    if evidence["activeUserAccessKeyCount"] != 0:
+    if (
+        evidence["activeUserAccessKeyCount"] != 0
+        and "active_key" not in attested_controls
+    ):
         blockers.append(
             "IAM access-key metadata reports active user access keys; record an "
             "approved exception or rotate/remove them before Security 5/5."
@@ -2846,7 +3080,10 @@ def collect_evidence(
             runner=runner,
         ),
         aws_identity(runner=runner),
-        aws_iam_account_access(runner=runner),
+        aws_iam_account_access(
+            attestation_evidence=args.security_account_attestation_evidence,
+            runner=runner,
+        ),
         aws_cost_controls(args.aws_account_id, runner=runner),
         aws_sns_alert_route(args.operations_topic_arn, runner=runner),
         aws_cloudtrail_management_events(
@@ -3039,6 +3276,14 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Optional non-secret owner-approved exception evidence covering the "
             "current open Dependabot alert numbers."
+        ),
+    )
+    parser.add_argument(
+        "--security-account-attestation-evidence",
+        type=Path,
+        help=(
+            "Optional non-secret owner-approved security-account attestation "
+            "covering current aggregate IAM account-access evidence."
         ),
     )
     parser.add_argument("--restore-drill-evidence", type=Path)

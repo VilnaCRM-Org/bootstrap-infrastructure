@@ -267,6 +267,13 @@ JSON exception record and only treats it as coverage when it is current,
 matches the dependency and manifest, covers the exact open alert numbers, and
 records owner approval plus a remediation plan. Invalid or expired exception
 records do not suppress live alert blockers.
+If `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` is set, the collector reads a
+non-secret JSON security-owner attestation for aggregate IAM account-access
+posture. The attestation must be current, unexpired, owner-approved, include
+human MFA/SSO, active-key, permissions-boundary or exemption decisions, and
+match the live aggregate IAM counts exactly. It can only cover the human-access
+and active-key exception blockers; root MFA, root access keys, or unreadable IAM
+metadata remain hard failures.
 Question-matrix and external-control records must include owner, freshness,
 coverage, unresolved-count, evidence-location, and fallback fields; boolean
 confirmation flags do not unlock final 5/5 scores.

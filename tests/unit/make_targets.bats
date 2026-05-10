@@ -510,6 +510,7 @@ EOF
     AWS_ACCOUNT_ID=123456789012 \
     OPERATIONS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations \
     DEPENDABOT_EXCEPTION_EVIDENCE=docs/dependabot-exception-2026-06-10.json \
+    SECURITY_ACCOUNT_ATTESTATION_EVIDENCE=docs/security-account-attestation-2026-06-10.json \
     make -n report-well-architected-evidence
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/collect_well_architected_evidence.py"* ]]
@@ -519,8 +520,11 @@ EOF
   [[ "$output" == *'OPERATIONS_TOPIC_ARN:-'* ]]
   [[ "$output" == *'DEPENDABOT_EXCEPTION_EVIDENCE:-'* ]]
   [[ "$output" == *"--dependabot-exception-evidence"* ]]
+  [[ "$output" == *'SECURITY_ACCOUNT_ATTESTATION_EVIDENCE:-'* ]]
+  [[ "$output" == *"--security-account-attestation-evidence"* ]]
   [[ "$output" != *"bootstrap-test-operations"* ]]
   [[ "$output" != *"dependabot-exception-2026-06-10"* ]]
+  [[ "$output" != *"security-account-attestation-2026-06-10"* ]]
 }
 
 @test "make verify-well-architected-questions compares against AWS docs" {
@@ -563,6 +567,7 @@ EOF
   run env \
     SECURITY_ACCOUNT_ATTESTATION_OUTPUT=docs/security-account-attestation-2026-06-10.md \
     SECURITY_ACCOUNT_REVIEWER=security-reviewer \
+    SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT=docs/security-account-attestation-2026-06-10.json \
     SECURITY_ACCOUNT_OWNER=security-owner \
     SECURITY_ACCOUNT_HUMAN_ACCESS=accepted \
     SECURITY_ACCOUNT_ACTIVE_KEY_DECISION=exception \
@@ -572,6 +577,8 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/record_security_account_attestation.py"* ]]
   [[ "$output" == *'SECURITY_ACCOUNT_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT"* ]]
+  [[ "$output" == *"--json-output"* ]]
   [[ "$output" == *"--human-access-posture"* ]]
   [[ "$output" == *"SECURITY_ACCOUNT_HUMAN_ACCESS"* ]]
   [[ "$output" != *"security-reviewer"* ]]

@@ -386,6 +386,7 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		question_matrix_arg=""; \
 		external_control_arg=""; \
 		dependabot_exception_arg=""; \
+		security_account_attestation_arg=""; \
 		if [ -n "$${PR_NUMBER:-}" ]; then pr_arg="--pr $${PR_NUMBER}"; fi; \
 		if [ -n "$${AWS_ACCOUNT_ID:-}" ]; then account_arg="--aws-account-id $${AWS_ACCOUNT_ID}"; fi; \
 		if [ -n "$${OPERATIONS_TOPIC_ARN:-}" ]; then topic_arg="--operations-topic-arn $${OPERATIONS_TOPIC_ARN}"; fi; \
@@ -394,9 +395,11 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		if [ -n "$${QUESTION_MATRIX_EVIDENCE:-}" ]; then question_matrix_arg="--question-matrix-evidence $${QUESTION_MATRIX_EVIDENCE}"; fi; \
 		if [ -n "$${EXTERNAL_CONTROL_EVIDENCE:-}" ]; then external_control_arg="--external-control-evidence $${EXTERNAL_CONTROL_EVIDENCE}"; fi; \
 		if [ -n "$${DEPENDABOT_EXCEPTION_EVIDENCE:-}" ]; then dependabot_exception_arg="--dependabot-exception-evidence $${DEPENDABOT_EXCEPTION_EVIDENCE}"; fi; \
+		if [ -n "$${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE:-}" ]; then security_account_attestation_arg="--security-account-attestation-evidence $${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE}"; fi; \
 		$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
 			$$pr_arg $$account_arg $$topic_arg $$cloudtrail_arg $$restore_arg \
 			$$question_matrix_arg $$external_control_arg $$dependabot_exception_arg \
+			$$security_account_attestation_arg \
 			--output .artifacts/well-architected/evidence.json \
 			--markdown-output .artifacts/well-architected/evidence.md'
 
@@ -467,6 +470,7 @@ report-security-account-attestation: ## Render security account attestation evid
 		$(REPO_PYTHON) ./scripts/record_security_account_attestation.py \
 			--evidence "$${SECURITY_ACCOUNT_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
 			--output "$${output}" \
+			$${SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT:+--json-output "$${SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT}"} \
 			$${SECURITY_ACCOUNT_REVIEW_DATE:+--review-date "$${SECURITY_ACCOUNT_REVIEW_DATE}"} \
 			$${SECURITY_ACCOUNT_EXPIRY_DATE:+--expiry-date "$${SECURITY_ACCOUNT_EXPIRY_DATE}"} \
 			--reviewer "$${SECURITY_ACCOUNT_REVIEWER}" \

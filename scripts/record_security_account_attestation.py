@@ -9,6 +9,27 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
+SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS = (
+    "summaryUserCount",
+    "discoveredUserCount",
+    "mfaDeviceCount",
+    "mfaDevicesInUse",
+    "accountMfaEnabled",
+    "accountAccessKeysPresent",
+    "activeUserAccessKeyCount",
+    "inactiveUserAccessKeyCount",
+    "otherUserAccessKeyStatusCount",
+    "usersWithActiveAccessKeys",
+    "unreadableAccessKeyUserCount",
+    "activeUserAccessKeyOlderThan90DaysCount",
+    "activeUserAccessKeyCreateDateUnknownCount",
+    "activeUserAccessKeyNeverUsedCount",
+    "activeUserAccessKeyLastUsedWithin90DaysCount",
+    "activeUserAccessKeyLastUsedOlderThan90DaysCount",
+    "activeUserAccessKeyLastUsedUnknownCount",
+    "unreadableAccessKeyLastUsedCount",
+)
+
 
 def _load_report(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -173,6 +194,32 @@ def render_attestation(report: dict[str, Any], args: argparse.Namespace) -> str:
     )
 
 
+def structured_attestation(
+    report: dict[str, Any], args: argparse.Namespace
+) -> dict[str, object]:
+    """Return machine-readable, non-secret security-owner attestation evidence."""
+    _check, evidence = _iam_access_check(report)
+    actions = args.action or ["No follow-up actions recorded."]
+    return {
+        "workload": args.workload,
+        "environment": args.environment,
+        "owner": args.reviewer,
+        "approvedBy": args.security_owner,
+        "reviewedAt": args.review_date,
+        "expiresAt": args.expiry_date,
+        "humanAccessPosture": args.human_access_posture,
+        "activeKeyDecision": args.active_key_decision,
+        "permissionsBoundaryDecision": args.permissions_boundary_decision,
+        "approval": args.approval_decision,
+        "evidence": actions,
+        "remediationPlan": " ".join(actions),
+        "accountEvidence": {
+            field: evidence.get(field)
+            for field in SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
+        },
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -182,6 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--json-output", type=Path)
     parser.add_argument(
         "--review-date", default=dt.datetime.now(dt.timezone.utc).date().isoformat()
     )
@@ -208,12 +256,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         report = _load_report(args.evidence)
         markdown = render_attestation(report, args)
+        json_payload = (
+            structured_attestation(report, args) if args.json_output else None
+        )
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(markdown, encoding="utf-8")
+    if args.json_output:
+        args.json_output.parent.mkdir(parents=True, exist_ok=True)
+        args.json_output.write_text(
+            f"{json.dumps(json_payload, indent=2, sort_keys=True)}\n",
+            encoding="utf-8",
+        )
     return 0
 
 

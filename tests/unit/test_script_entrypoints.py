@@ -185,8 +185,10 @@ def _security_account_evidence_report(
                 "activeUserAccessKeyLastUsedOlderThan90DaysCount": 0,
                 "activeUserAccessKeyLastUsedUnknownCount": 0,
                 "inactiveUserAccessKeyCount": 0,
+                "otherUserAccessKeyStatusCount": 0,
                 "unreadableAccessKeyUserCount": 0,
                 "unreadableAccessKeyLastUsedCount": 0,
+                "usersWithActiveAccessKeys": 1,
             },
             "blockers": blockers
             if blockers is not None
@@ -380,6 +382,7 @@ def test_record_security_account_attestation_writes_owner_review(
     module = load_script_module(monkeypatch, "record_security_account_attestation")
     evidence = tmp_path / "evidence.json"
     output = tmp_path / "security-account-attestation.md"
+    json_output = tmp_path / "security-account-attestation.json"
     evidence.write_text(
         json.dumps(_security_account_evidence_report()), encoding="utf-8"
     )
@@ -390,6 +393,8 @@ def test_record_security_account_attestation_writes_owner_review(
             str(evidence),
             "--output",
             str(output),
+            "--json-output",
+            str(json_output),
             "--review-date",
             "2026-06-10",
             "--reviewer",
@@ -397,13 +402,13 @@ def test_record_security_account_attestation_writes_owner_review(
             "--security-owner",
             "security-owner",
             "--human-access-posture",
-            "Org owner reviewed SSO and MFA posture.",
+            "mfa_sso_verified",
             "--active-key-decision",
-            "Exception accepted pending rotation ticket.",
+            "approved_exception",
             "--permissions-boundary-decision",
-            "Approved exemption for bootstrap role.",
+            "approved_exemption",
             "--approval-decision",
-            "Conditionally approved for issue #28 evidence.",
+            "approved",
             "--expiry-date",
             "2026-07-10",
             "--action",
@@ -419,10 +424,16 @@ def test_record_security_account_attestation_writes_owner_review(
     assert "Active keys older than 90 days" in text  # nosec B101
     assert "Active keys last used within 90 days" in text  # nosec B101
     assert "Unreadable access-key last-used metadata" in text  # nosec B101
-    assert "Conditionally approved for issue #28 evidence." in text  # nosec B101
+    assert "approved" in text  # nosec B101
     assert "IAM user names" in text  # nosec B101
     assert "AKIA" not in text  # nosec B101
     assert "SecretAccessKey" not in text  # nosec B101
+    structured = json.loads(json_output.read_text(encoding="utf-8"))
+    assert structured["humanAccessPosture"] == "mfa_sso_verified"  # nosec B101
+    assert structured["activeKeyDecision"] == "approved_exception"  # nosec B101
+    assert structured["permissionsBoundaryDecision"] == "approved_exemption"  # nosec B101
+    assert structured["approval"] == "approved"  # nosec B101
+    assert structured["accountEvidence"]["activeUserAccessKeyCount"] == 1  # nosec B101
 
 
 def test_record_security_account_attestation_force_overwrites_without_identity(
@@ -3784,6 +3795,152 @@ def test_collect_well_architected_evidence_reads_iam_access_metadata(
     assert "one or more IAM users" in blockers  # nosec B101
     assert "automation" not in blockers  # nosec B101
     assert "maintainer" not in blockers  # nosec B101
+
+
+def test_collect_well_architected_evidence_accepts_security_attestation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Current owner attestation should cover human and active-key IAM blockers."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    old_timestamp = (
+        module.dt.datetime.now(module.dt.timezone.utc) - module.dt.timedelta(days=120)
+    ).isoformat()
+    recent_timestamp = (
+        module.dt.datetime.now(module.dt.timezone.utc) - module.dt.timedelta(days=1)
+    ).isoformat()
+
+    def runner(command, **_kwargs):
+        if command[:3] == ["aws", "iam", "get-account-summary"]:
+            payload = {
+                "AccountAccessKeysPresent": 0,
+                "AccountMFAEnabled": 1,
+                "MFADevices": 1,
+                "MFADevicesInUse": 1,
+                "Users": 2,
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        if command[:3] == ["aws", "iam", "list-users"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps(["automation", "maintainer"]), ""
+            )
+        if command[:3] == ["aws", "iam", "list-access-keys"]:
+            user_name = command[command.index("--user-name") + 1]
+            payload = (
+                [
+                    {
+                        "AccessKeyId": "automation-active-key",
+                        "CreateDate": old_timestamp,
+                        "Status": "Active",
+                    }
+                ]
+                if user_name == "automation"
+                else []
+            )
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        if command[:3] == ["aws", "iam", "get-access-key-last-used"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"LastUsedDate": recent_timestamp}), ""
+            )
+        raise AssertionError(command)  # pragma: no cover
+
+    base = module.aws_iam_account_access(runner=runner)
+    assert base["status"] == "failed"  # nosec B101
+    attestation = {
+        "workload": "bootstrap-infrastructure",
+        "owner": "security-reviewer",
+        "approvedBy": "security-owner",
+        "reviewedAt": module.dt.datetime.now(module.dt.timezone.utc).isoformat(),
+        "expiresAt": (
+            module.dt.datetime.now(module.dt.timezone.utc)
+            + module.dt.timedelta(days=30)
+        ).isoformat(),
+        "humanAccessPosture": "mfa_sso_verified",
+        "activeKeyDecision": "approved_exception",
+        "permissionsBoundaryDecision": "approved_exemption",
+        "approval": "approved",
+        "evidence": ["Security owner reviewed aggregate IAM posture."],
+        "remediationPlan": "Rotate the remaining static key before expiry.",
+        "accountEvidence": base["evidence"],
+    }
+    attestation_path = tmp_path / "security-account-attestation.json"
+    attestation_path.write_text(json.dumps(attestation), encoding="utf-8")
+
+    covered = module.aws_iam_account_access(
+        attestation_evidence=attestation_path,
+        runner=runner,
+    )
+
+    assert covered["status"] == "passed"  # nosec B101
+    assert covered["blockers"] == []  # nosec B101
+    summary = covered["evidence"]["securityAccountAttestation"]
+    assert summary["approvedBy"] == "security-owner"  # nosec B101
+    assert summary["activeKeyDecision"] == "approved_exception"  # nosec B101
+    assert "automation" not in json.dumps(covered)  # nosec B101
+    assert "automation-active-key" not in json.dumps(covered)  # nosec B101
+
+
+def test_collect_well_architected_evidence_rejects_bad_security_attestation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Security attestation evidence must be current, exact, and approved."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    account_evidence = {
+        "accountAccessKeysPresent": 0,
+        "accountMfaEnabled": 1,
+        "activeUserAccessKeyCreateDateUnknownCount": 0,
+        "activeUserAccessKeyCount": 1,
+        "activeUserAccessKeyLastUsedOlderThan90DaysCount": 0,
+        "activeUserAccessKeyLastUsedUnknownCount": 0,
+        "activeUserAccessKeyLastUsedWithin90DaysCount": 1,
+        "activeUserAccessKeyNeverUsedCount": 0,
+        "activeUserAccessKeyOlderThan90DaysCount": 1,
+        "discoveredUserCount": 2,
+        "inactiveUserAccessKeyCount": 0,
+        "mfaDeviceCount": 1,
+        "mfaDevicesInUse": 1,
+        "otherUserAccessKeyStatusCount": 0,
+        "summaryUserCount": 2,
+        "unreadableAccessKeyLastUsedCount": 0,
+        "unreadableAccessKeyUserCount": 0,
+        "usersWithActiveAccessKeys": 1,
+    }
+    payload = {
+        "workload": "bootstrap-infrastructure",
+        "owner": "security-reviewer",
+        "approvedBy": "security-owner",
+        "reviewedAt": module.dt.datetime.now(module.dt.timezone.utc).isoformat(),
+        "expiresAt": "not-a-date",
+        "humanAccessPosture": "unknown",
+        "activeKeyDecision": "no_active_keys",
+        "permissionsBoundaryDecision": "unknown",
+        "approval": "unknown",
+        "evidence": [],
+        "remediationPlan": "",
+        "accountEvidence": {**account_evidence, "activeUserAccessKeyCount": 0},
+    }
+    path = tmp_path / "bad-security-account-attestation.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    summary, controls, blockers = module._security_account_attestation_coverage(  # noqa: SLF001
+        path,
+        account_evidence,
+    )
+
+    blocker_text = " ".join(blockers)
+    assert summary["path"] == str(path)  # nosec B101
+    assert controls == frozenset()  # nosec B101
+    assert "approval must be one of" in blocker_text  # nosec B101
+    assert "humanAccessPosture must be one of" in blocker_text  # nosec B101
+    assert "no_active_keys" in blocker_text  # nosec B101
+    assert "expiresAt must be ISO-8601" in blocker_text  # nosec B101
+    assert "accountEvidence does not match" in blocker_text  # nosec B101
+    assert module._security_account_attestation_expiry_blockers(  # noqa: SLF001  # nosec B101
+        "2025-01-01T00:00:00Z"
+    ) == ["Security account attestation evidence is expired."]
+    assert module._security_account_attestation_account_blockers(  # noqa: SLF001  # nosec B101
+        {"accountEvidence": "not-an-object"},
+        account_evidence,
+    ) == ["Security account attestation accountEvidence must be an object."]
 
 
 def test_collect_well_architected_evidence_handles_iam_key_metadata_gaps(

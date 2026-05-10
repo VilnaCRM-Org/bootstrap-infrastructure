@@ -138,6 +138,11 @@ must not include IAM user names, access key IDs, screenshots with private
 identities, credentials, tokens, or raw account exports. This record path helps
 close issue #28, but SEC1, SEC2, and SEC3 stay below 5/5 until a real security
 owner approves current evidence or records remediation.
+Set `SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT` when rendering the owner record
+to also produce the machine-readable JSON form. A later collector run can take
+that file through `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE`; the collector only
+accepts it when the attested aggregate counts match the live IAM evidence and
+the owner decisions are current, unexpired, and approved.
 
 | Exception | Status | Owner | Expiry | Required follow-up |
 | --- | --- | --- | --- | --- |
