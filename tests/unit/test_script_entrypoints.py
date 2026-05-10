@@ -3169,7 +3169,7 @@ def test_collect_well_architected_evidence_rejects_question_id_gaps(
     scores.pop()
     scores.append(dict(scores[0]))
     unknown_score = dict(scores[1])
-    unknown_score["id"] = "OPS99"
+    unknown_score["id"] = "WA99"
     scores.append(unknown_score)
     evidence_payload["questionCount"] = len(scores)
     evidence_payload["unresolvedQuestionCount"] = 0
@@ -3185,7 +3185,7 @@ def test_collect_well_architected_evidence_rejects_question_id_gaps(
     assert check["status"] == "failed"  # nosec B101
     assert "duplicate question IDs: OPS1" in blockers  # nosec B101
     assert "missing question IDs: SUS6" in blockers  # nosec B101
-    assert "unknown question IDs: OPS99" in blockers  # nosec B101
+    assert "unknown question IDs: WA99" in blockers  # nosec B101
 
 
 def test_sns_alert_route_records_sqs_queue_metadata(
