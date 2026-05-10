@@ -1389,6 +1389,18 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
             }
         elif command[:3] == ["aws", "sts", "get-caller-identity"]:
             payload = {"Account": "123456789012", "Arn": "arn:aws:iam::123:user/test"}
+        elif command[:3] == ["aws", "iam", "get-account-summary"]:
+            payload = {
+                "AccountAccessKeysPresent": 0,
+                "AccountMFAEnabled": 1,
+                "MFADevices": 1,
+                "MFADevicesInUse": 1,
+                "Users": 1,
+            }
+        elif command[:3] == ["aws", "iam", "list-users"]:
+            payload = ["automation"]
+        elif command[:3] == ["aws", "iam", "list-access-keys"]:
+            payload = []
         elif command[:3] == ["aws", "budgets", "describe-budgets"]:
             payload = 1
         elif command[:3] == ["aws", "ce", "get-anomaly-monitors"]:
@@ -1460,6 +1472,19 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
         checks["external_control_evidence"]["evidence"].get("unresolvedControlIds")
         is None
     )
+    assert checks["aws_iam_account_access"]["evidence"] == {  # nosec B101
+        "accountAccessKeysPresent": 0,
+        "accountMfaEnabled": 1,
+        "activeUserAccessKeyCount": 0,
+        "discoveredUserCount": 1,
+        "inactiveUserAccessKeyCount": 0,
+        "mfaDeviceCount": 1,
+        "mfaDevicesInUse": 1,
+        "otherUserAccessKeyStatusCount": 0,
+        "summaryUserCount": 1,
+        "unreadableAccessKeyUserCount": 0,
+        "usersWithActiveAccessKeys": 0,
+    }
 
 
 def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C901
@@ -1517,6 +1542,22 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
             }
         elif command[:3] == ["aws", "sts", "get-caller-identity"]:
             payload = {"Account": "123456789012", "Arn": "arn:aws:iam::123:user/test"}
+        elif command[:3] == ["aws", "iam", "get-account-summary"]:
+            payload = {
+                "AccountAccessKeysPresent": 1,
+                "AccountMFAEnabled": 0,
+                "MFADevices": 0,
+                "MFADevicesInUse": 0,
+                "Users": 2,
+            }
+        elif command[:3] == ["aws", "iam", "list-users"]:
+            payload = ["automation", "maintainer"]
+        elif command[:3] == ["aws", "iam", "list-access-keys"] and (
+            command[command.index("--user-name") + 1] == "maintainer"
+        ):
+            return subprocess.CompletedProcess(command, 1, "", "denied")
+        elif command[:3] == ["aws", "iam", "list-access-keys"]:
+            payload = ["Active", "Inactive", "Unexpected"]
         elif command[:3] == ["aws", "budgets", "describe-budgets"]:
             payload = 0
         elif command[:3] == ["aws", "ce", "get-anomaly-monitors"]:
@@ -1565,6 +1606,7 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
     assert statuses["github_review_threads"] == "failed"  # nosec B101
     assert statuses["github_branch_protection"] == "failed"  # nosec B101
     assert statuses["github_production_environment"] == "failed"  # nosec B101
+    assert statuses["aws_iam_account_access"] == "failed"  # nosec B101
     assert statuses["aws_cost_controls"] == "failed"  # nosec B101
     assert statuses["aws_sns_alert_route"] == "failed"  # nosec B101
     assert statuses["aws_cloudtrail_management_events"] == "failed"  # nosec B101
@@ -1631,6 +1673,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
         == "unknown"
     )
     assert module.aws_identity(runner=failing_runner)["status"] == "unknown"
+    assert module.aws_iam_account_access(runner=failing_runner)["status"] == "unknown"
     assert module.aws_cost_controls(None, runner=failing_runner)["status"] == "unknown"
     assert (
         module.aws_cost_controls("123456789012", runner=failing_runner)["status"]
@@ -2057,6 +2100,90 @@ def test_collect_well_architected_evidence_reports_production_environment_gaps(
     assert "Kravalg" in blockers  # nosec B101
     assert "self-review" in blockers  # nosec B101
     assert "protected branches" in blockers  # nosec B101
+
+
+def test_collect_well_architected_evidence_reads_iam_access_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """IAM access evidence should stay aggregate and avoid key or user output."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        if command[:3] == ["aws", "iam", "get-account-summary"]:
+            payload = {
+                "AccountAccessKeysPresent": 1,
+                "AccountMFAEnabled": 0,
+                "MFADevices": 1,
+                "MFADevicesInUse": 1,
+                "Users": 3,
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        if command[:3] == ["aws", "iam", "list-users"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps(["automation", "maintainer", "auditor"]), ""
+            )
+        if command[:3] == ["aws", "iam", "list-access-keys"] and (
+            command[command.index("--user-name") + 1] == "auditor"
+        ):
+            return subprocess.CompletedProcess(command, 1, "", "denied")
+        if command[:3] == ["aws", "iam", "list-access-keys"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps(["Active", "Inactive", "Other"]), ""
+            )
+        raise AssertionError(command)  # pragma: no cover
+
+    evidence = module.aws_iam_account_access(runner=runner)
+
+    assert evidence["status"] == "failed"  # nosec B101
+    assert evidence["evidence"] == {  # nosec B101
+        "accountAccessKeysPresent": 1,
+        "accountMfaEnabled": 0,
+        "activeUserAccessKeyCount": 2,
+        "discoveredUserCount": 3,
+        "inactiveUserAccessKeyCount": 2,
+        "mfaDeviceCount": 1,
+        "mfaDevicesInUse": 1,
+        "otherUserAccessKeyStatusCount": 2,
+        "summaryUserCount": 3,
+        "unreadableAccessKeyUserCount": 1,
+        "usersWithActiveAccessKeys": 2,
+    }
+    blockers = " ".join(evidence["blockers"])
+    assert "root/account MFA" in blockers  # nosec B101
+    assert "root account access keys" in blockers  # nosec B101
+    assert "active user access keys" in blockers  # nosec B101
+    assert "one or more IAM users" in blockers  # nosec B101
+    assert "automation" not in blockers  # nosec B101
+    assert "maintainer" not in blockers  # nosec B101
+
+
+def test_collect_well_architected_evidence_reports_iam_user_query_gaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed IAM user metadata should block without exposing raw output."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        if command[:3] == ["aws", "iam", "get-account-summary"]:
+            payload = {
+                "AccountAccessKeysPresent": 0,
+                "AccountMFAEnabled": 1,
+                "MFADevices": True,
+                "MFADevicesInUse": 0,
+                "Users": 0,
+            }
+            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+        if command[:3] == ["aws", "iam", "list-users"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"bad": True}), ""
+            )
+        raise AssertionError(command)  # pragma: no cover
+
+    evidence = module.aws_iam_account_access(runner=runner)
+
+    assert evidence["status"] == "failed"  # nosec B101
+    assert evidence["evidence"]["mfaDeviceCount"] == 0  # nosec B101
+    assert "Unable to query IAM users" in " ".join(evidence["blockers"])  # nosec B101
 
 
 def test_collect_well_architected_evidence_paginates_review_threads(

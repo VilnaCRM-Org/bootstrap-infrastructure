@@ -869,6 +869,153 @@ def aws_identity(*, runner: Runner = run) -> dict[str, object]:
     )
 
 
+def aws_iam_account_access(*, runner: Runner = run) -> dict[str, object]:
+    """Collect non-secret IAM account and static credential metadata."""
+    ok, summary, error = _run_json(
+        [
+            "aws",
+            "iam",
+            "get-account-summary",
+            "--query",
+            "SummaryMap",
+            "--output",
+            "json",
+        ],
+        runner=runner,
+    )
+    if not ok or not isinstance(summary, dict):
+        return _check(
+            "aws_iam_account_access",
+            status="unknown",
+            blockers=[f"Unable to query IAM account summary: {error}"],
+        )
+    users, user_blockers = _iam_user_names(runner=runner)
+    key_counts = _iam_access_key_counts(users, runner=runner)
+    evidence = _iam_account_access_evidence(summary, users, key_counts)
+    blockers = [
+        *user_blockers,
+        *_iam_account_access_blockers(evidence),
+    ]
+    return _check(
+        "aws_iam_account_access",
+        status="passed" if not blockers else "failed",
+        evidence=evidence,
+        blockers=blockers,
+    )
+
+
+def _iam_user_names(*, runner: Runner = run) -> tuple[list[str], list[str]]:
+    """Return IAM user names for follow-up metadata queries without emitting them."""
+    ok, payload, error = _run_json(
+        ["aws", "iam", "list-users", "--query", "Users[].UserName", "--output", "json"],
+        runner=runner,
+    )
+    if not ok or not isinstance(payload, list):
+        return [], [f"Unable to query IAM users: {error}"]
+    return [item for item in payload if isinstance(item, str) and item], []
+
+
+def _iam_access_key_counts(
+    users: Sequence[str], *, runner: Runner = run
+) -> dict[str, int]:
+    """Return aggregate access-key status counts without retaining key ids."""
+    counts = {
+        "active": 0,
+        "inactive": 0,
+        "other": 0,
+        "usersWithActive": 0,
+        "unreadableUsers": 0,
+    }
+    for user in users:
+        ok, statuses, _error = _run_json(
+            [
+                "aws",
+                "iam",
+                "list-access-keys",
+                "--user-name",
+                user,
+                "--query",
+                "AccessKeyMetadata[].Status",
+                "--output",
+                "json",
+            ],
+            runner=runner,
+        )
+        if not ok or not isinstance(statuses, list):
+            counts["unreadableUsers"] += 1
+            continue
+        _record_access_key_statuses(statuses, counts)
+    return counts
+
+
+def _record_access_key_statuses(
+    statuses: Sequence[object], counts: dict[str, int]
+) -> None:
+    """Accumulate access-key status metadata for one IAM user."""
+    user_has_active_key = False
+    for status in statuses:
+        if status == "Active":
+            counts["active"] += 1
+            user_has_active_key = True
+        elif status == "Inactive":
+            counts["inactive"] += 1
+        else:
+            counts["other"] += 1
+    if user_has_active_key:
+        counts["usersWithActive"] += 1
+
+
+def _iam_account_access_evidence(
+    summary: dict[str, Any],
+    users: Sequence[str],
+    key_counts: dict[str, int],
+) -> dict[str, object]:
+    """Build non-secret IAM account-access evidence."""
+    return {
+        "summaryUserCount": _summary_int(summary, "Users"),
+        "discoveredUserCount": len(users),
+        "mfaDeviceCount": _summary_int(summary, "MFADevices"),
+        "mfaDevicesInUse": _summary_int(summary, "MFADevicesInUse"),
+        "accountMfaEnabled": _summary_int(summary, "AccountMFAEnabled"),
+        "accountAccessKeysPresent": _summary_int(summary, "AccountAccessKeysPresent"),
+        "activeUserAccessKeyCount": key_counts["active"],
+        "inactiveUserAccessKeyCount": key_counts["inactive"],
+        "otherUserAccessKeyStatusCount": key_counts["other"],
+        "usersWithActiveAccessKeys": key_counts["usersWithActive"],
+        "unreadableAccessKeyUserCount": key_counts["unreadableUsers"],
+    }
+
+
+def _iam_account_access_blockers(evidence: dict[str, object]) -> list[str]:
+    """Return security-account blockers from non-secret IAM metadata."""
+    blockers: list[str] = []
+    if evidence["accountMfaEnabled"] != 1:
+        blockers.append("IAM account summary does not report root/account MFA enabled.")
+    if evidence["accountAccessKeysPresent"] != 0:
+        blockers.append("IAM account summary reports root account access keys present.")
+    if int(evidence["mfaDevicesInUse"]) < int(evidence["summaryUserCount"]):
+        blockers.append(
+            "IAM user count exceeds MFA devices in use; human MFA/SSO posture "
+            "requires security-owner attestation."
+        )
+    if evidence["activeUserAccessKeyCount"] != 0:
+        blockers.append(
+            "IAM access-key metadata reports active user access keys; record an "
+            "approved exception or rotate/remove them before Security 5/5."
+        )
+    if evidence["unreadableAccessKeyUserCount"] != 0:
+        blockers.append(
+            "Unable to query access-key metadata for one or more IAM users."
+        )
+    return blockers
+
+
+def _summary_int(summary: dict[str, Any], key: str) -> int:
+    """Return one IAM summary integer value."""
+    value = summary.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
 def aws_cost_controls(
     account_id: str | None, *, runner: Runner = run
 ) -> dict[str, object]:
@@ -1349,6 +1496,7 @@ PILLAR_CHECKS = {
         "github_review_threads",
         "github_branch_protection",
         "aws_identity",
+        "aws_iam_account_access",
         "aws_cloudtrail_management_events",
     ),
     "Reliability": (
@@ -1735,6 +1883,7 @@ def collect_evidence(
             runner=runner,
         ),
         aws_identity(runner=runner),
+        aws_iam_account_access(runner=runner),
         aws_cost_controls(args.aws_account_id, runner=runner),
         aws_sns_alert_route(args.operations_topic_arn, runner=runner),
         aws_cloudtrail_management_events(
