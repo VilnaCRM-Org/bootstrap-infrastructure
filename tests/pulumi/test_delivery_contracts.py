@@ -715,6 +715,10 @@ def test_multi_account_workflows_use_environment_scoped_oidc_contracts() -> None
             "prod-preview",
             drift_role,
         ),
+        ("well-architected-evidence.yml", "test_account_evidence"): (
+            "test",
+            preview_role,
+        ),
         ("pulumi-pr-guardrails.yml", "preview"): ("test", preview_role),
         ("pulumi-pr-guardrails.yml", "iam_validation"): ("test", preview_role),
         ("pulumi-prod.yml", "preview"): ("prod-preview", preview_role),
