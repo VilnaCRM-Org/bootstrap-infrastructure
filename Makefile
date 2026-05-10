@@ -367,7 +367,8 @@ report-dead-code: ## Run the advisory dead-code report for reusable Python modul
 report-docstrings: ## Run the advisory docstring coverage report for reusable modules.
 	mkdir -p $(QUALITY_ARTIFACT_DIR)
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc '\
-		uv run docstr-coverage $(DOCSTRING_PATHS) > $(QUALITY_ARTIFACT_DIR)/docstr-coverage.txt'
+		set -o pipefail; \
+		uv run docstr-coverage $(DOCSTRING_PATHS) 2>&1 | tee $(QUALITY_ARTIFACT_DIR)/docstr-coverage.txt'
 
 report-sbom: ## Generate a CycloneDX SBOM for the synced Python environment.
 	mkdir -p $(SBOM_ARTIFACT_DIR)
