@@ -284,6 +284,9 @@ unexpired, include an approved downstream route or queue-owner process,
 evidence/remediation notes, and match the live stable SNS/SQS route metadata
 exactly. Volatile queue-depth counts are retained as observation-only metadata
 and are not used for exact matching.
+When `report-alert-route-observation` writes JSON, it rejects missing or
+expired `ALERT_ROUTE_EXPIRY_DATE`, stale or future `ALERT_ROUTE_REVIEW_DATE`,
+and decision values the collector would reject.
 If `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` is set, the collector reads a
 non-secret JSON security-owner attestation for aggregate IAM account-access
 posture. The attestation must be current, unexpired, owner-approved, include
@@ -291,6 +294,10 @@ human MFA/SSO, active-key, permissions-boundary or exemption decisions, and
 match the live aggregate IAM counts exactly. It can only cover the human-access
 and active-key exception blockers; root MFA, root access keys, or unreadable IAM
 metadata remain hard failures.
+When `report-security-account-attestation` writes JSON, it rejects missing or
+expired `SECURITY_ACCOUNT_EXPIRY_DATE`, stale or future
+`SECURITY_ACCOUNT_REVIEW_DATE`, and owner decision values the collector would
+reject.
 Question-matrix and external-control records must include owner, freshness,
 coverage, unresolved-count, evidence-location, and fallback fields; boolean
 confirmation flags do not unlock final 5/5 scores.

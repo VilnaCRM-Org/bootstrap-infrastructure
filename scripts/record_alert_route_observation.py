@@ -29,6 +29,7 @@ ALERT_ROUTE_OBSERVATION_QUEUE_OBSERVATION_FIELDS = (
 ALERT_ROUTE_ALLOWED_DECISIONS = frozenset(
     {"accepted", "approved", "approved_exception", "accepted_risk"}
 )
+STRUCTURED_EVIDENCE_MAX_AGE_DAYS = 30
 
 
 def _load_report(path: Path) -> dict[str, Any]:
@@ -153,6 +154,9 @@ def structured_observation(
         args.decision,
         ALERT_ROUTE_ALLOWED_DECISIONS,
     )
+    _validate_structured_dates(
+        "Alert-route observation", args.review_date, args.expiry_date
+    )
     actions = args.action
     return {
         "workload": args.workload,
@@ -199,6 +203,48 @@ def _validate_choice(field: str, value: str, allowed_values: frozenset[str]) -> 
         return
     allowed = ", ".join(sorted(allowed_values))
     raise ValueError(f"{field} must be one of: {allowed}.")
+
+
+def _validate_structured_dates(
+    label: str, reviewed_at_value: str, expires_at_value: str
+) -> None:
+    """Reject structured evidence dates the collector would later reject."""
+    reviewed_at = _parse_iso_date_or_timestamp(reviewed_at_value)
+    if reviewed_at is None:
+        raise ValueError(f"{label} review-date must be an ISO-8601 date or timestamp.")
+    now = dt.datetime.now(dt.timezone.utc)
+    if reviewed_at > now + dt.timedelta(minutes=5):
+        raise ValueError(f"{label} review-date is in the future.")
+    if now - reviewed_at > dt.timedelta(days=STRUCTURED_EVIDENCE_MAX_AGE_DAYS):
+        raise ValueError(
+            f"{label} review-date is older than "
+            f"{STRUCTURED_EVIDENCE_MAX_AGE_DAYS} days."
+        )
+    if not expires_at_value.strip():
+        raise ValueError(f"{label} JSON output requires --expiry-date.")
+    expires_at = _parse_iso_date_or_timestamp(expires_at_value)
+    if expires_at is None:
+        raise ValueError(f"{label} expiry-date must be an ISO-8601 date or timestamp.")
+    if expires_at <= now:
+        raise ValueError(f"{label} expiry-date is expired.")
+
+
+def _parse_iso_date_or_timestamp(value: str) -> dt.datetime | None:
+    """Parse an ISO date or timestamp into an aware UTC datetime."""
+    try:
+        if "T" not in value:
+            parsed_date = dt.date.fromisoformat(value)
+            return dt.datetime.combine(
+                parsed_date,
+                dt.time.min,
+                tzinfo=dt.timezone.utc,
+            )
+        parsed_datetime = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed_datetime.tzinfo is None:
+        return parsed_datetime.replace(tzinfo=dt.timezone.utc)
+    return parsed_datetime.astimezone(dt.timezone.utc)
 
 
 def build_parser() -> argparse.ArgumentParser:

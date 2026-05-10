@@ -125,6 +125,10 @@ payloads, private incident notes, stack exports, credentials, tokens, and
 access-key material. OPS8 should stay below 5/5 until a real observation file
 exists with an approved downstream route or accepted queue-owner process and
 the monthly history is current.
+When JSON output is requested, the generator also fails before writing if
+`ALERT_ROUTE_EXPIRY_DATE` is missing, invalid, or expired, if the review date is
+stale or future-dated, or if the decision value is outside the collector's
+accepted values.
 
 ## Fallbacks
 

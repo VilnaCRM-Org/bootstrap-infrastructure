@@ -210,6 +210,12 @@ def test_record_alert_route_observation_writes_monthly_review(
     output = tmp_path / "alert-route-observation.md"
     json_output = tmp_path / "alert-route-observation.json"
     evidence.write_text(json.dumps(_alert_route_evidence_report()), encoding="utf-8")
+    review_date = module.dt.datetime.now(module.dt.timezone.utc).date().isoformat()
+    expiry_date = (
+        (module.dt.datetime.now(module.dt.timezone.utc) + module.dt.timedelta(days=60))
+        .date()
+        .isoformat()
+    )
 
     status = module.main(
         [
@@ -220,7 +226,7 @@ def test_record_alert_route_observation_writes_monthly_review(
             "--json-output",
             str(json_output),
             "--review-date",
-            "2026-06-09",
+            review_date,
             "--reviewer",
             "sre-reviewer",
             "--route-owner",
@@ -234,7 +240,7 @@ def test_record_alert_route_observation_writes_monthly_review(
             "--decision",
             "accepted",
             "--expiry-date",
-            "2026-07-09",
+            expiry_date,
             "--action",
             "Open a follow-up if visible messages exceed 10.",
         ]
@@ -242,7 +248,7 @@ def test_record_alert_route_observation_writes_monthly_review(
 
     text = output.read_text(encoding="utf-8")
     assert status == 0  # nosec B101
-    assert "# Alert Route Observation 2026-06-09" in text  # nosec B101
+    assert f"# Alert Route Observation {review_date}" in text  # nosec B101
     assert "bootstrap-test-operations-alerts" in text  # nosec B101
     assert "approved queue-owner process" in text  # nosec B101
     assert "Open a follow-up if visible messages exceed 10." in text  # nosec B101
@@ -338,6 +344,47 @@ def test_record_alert_route_observation_json_rejects_invalid_decision(
 
     assert status == 1  # nosec B101
     assert "decision must be one of" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
+
+
+def test_record_alert_route_observation_json_requires_expiry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Generated JSON should require the collector-required expiry timestamp."""
+    module = load_script_module(monkeypatch, "record_alert_route_observation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "alert-route-observation.md"
+    json_output = tmp_path / "alert-route-observation.json"
+    evidence.write_text(json.dumps(_alert_route_evidence_report()), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "sre-reviewer",
+            "--route-owner",
+            "SRE",
+            "--downstream-route",
+            "approved queue-owner process",
+            "--severity-expectations",
+            "SEV2 during business hours",
+            "--fallback",
+            "Escalate to platform maintainers if queue depth grows.",
+            "--decision",
+            "accepted",
+            "--action",
+            "Open a follow-up if visible messages exceed 10.",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert "requires --expiry-date" in capsys.readouterr().err  # nosec B101
     assert not output.exists()  # nosec B101
     assert not json_output.exists()  # nosec B101
 
@@ -483,6 +530,12 @@ def test_record_security_account_attestation_writes_owner_review(
     evidence.write_text(
         json.dumps(_security_account_evidence_report()), encoding="utf-8"
     )
+    review_date = module.dt.datetime.now(module.dt.timezone.utc).date().isoformat()
+    expiry_date = (
+        (module.dt.datetime.now(module.dt.timezone.utc) + module.dt.timedelta(days=60))
+        .date()
+        .isoformat()
+    )
 
     status = module.main(
         [
@@ -493,7 +546,7 @@ def test_record_security_account_attestation_writes_owner_review(
             "--json-output",
             str(json_output),
             "--review-date",
-            "2026-06-10",
+            review_date,
             "--reviewer",
             "security-reviewer",
             "--security-owner",
@@ -507,7 +560,7 @@ def test_record_security_account_attestation_writes_owner_review(
             "--approval-decision",
             "approved",
             "--expiry-date",
-            "2026-07-10",
+            expiry_date,
             "--action",
             "Rotate the remaining static key before expiry.",
         ]
@@ -515,7 +568,7 @@ def test_record_security_account_attestation_writes_owner_review(
 
     text = output.read_text(encoding="utf-8")
     assert status == 0  # nosec B101
-    assert "# Security Account Attestation 2026-06-10" in text  # nosec B101
+    assert f"# Security Account Attestation {review_date}" in text  # nosec B101
     assert "123456789012" in text  # nosec B101
     assert "Active IAM user access keys" in text  # nosec B101
     assert "Active keys older than 90 days" in text  # nosec B101
@@ -623,6 +676,49 @@ def test_record_security_account_attestation_json_rejects_invalid_choices(
     assert not json_output.exists()  # nosec B101
 
 
+def test_record_security_account_attestation_json_requires_expiry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Generated JSON should require the collector-required expiry timestamp."""
+    module = load_script_module(monkeypatch, "record_security_account_attestation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "security-account-attestation.md"
+    json_output = tmp_path / "security-account-attestation.json"
+    evidence.write_text(
+        json.dumps(_security_account_evidence_report()), encoding="utf-8"
+    )
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "security-reviewer",
+            "--security-owner",
+            "security-owner",
+            "--human-access-posture",
+            "mfa_sso_verified",
+            "--active-key-decision",
+            "approved_exception",
+            "--permissions-boundary-decision",
+            "approved_exemption",
+            "--approval-decision",
+            "approved",
+            "--action",
+            "Rotate the remaining static key before expiry.",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert "requires --expiry-date" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
+
+
 def test_owner_evidence_generator_choices_match_collector(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -650,6 +746,64 @@ def test_owner_evidence_generator_choices_match_collector(
     assert security_module.SECURITY_ACCOUNT_ALLOWED_BOUNDARY == (  # nosec B101
         collector_module.SECURITY_ACCOUNT_ALLOWED_BOUNDARY
     )
+    assert alert_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS == (  # nosec B101
+        collector_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
+    )
+    assert security_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS == (  # nosec B101
+        collector_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
+    )
+
+
+@pytest.mark.parametrize(
+    ("script_name", "label"),
+    [
+        ("record_alert_route_observation", "Alert-route observation"),
+        ("record_security_account_attestation", "Security account attestation"),
+    ],
+)
+def test_owner_evidence_generator_dates_match_collector_rules(
+    monkeypatch: pytest.MonkeyPatch,
+    script_name: str,
+    label: str,
+) -> None:
+    """Generated JSON should fail fast on collector-invalid date fields."""
+    module = load_script_module(monkeypatch, script_name)
+    now = module.dt.datetime.now(module.dt.timezone.utc)
+    valid_review = now.isoformat()
+    valid_expiry = (now + module.dt.timedelta(days=7)).isoformat()
+
+    assert (  # noqa: SLF001  # nosec B101
+        module._parse_iso_date_or_timestamp("2026-04-27T10:00:00").tzinfo is not None
+    )
+    assert (  # noqa: SLF001  # nosec B101
+        module._parse_iso_date_or_timestamp("2026-04-27T10:00:00Z").tzinfo is not None
+    )
+
+    with pytest.raises(ValueError, match="review-date must be"):
+        module._validate_structured_dates(  # noqa: SLF001
+            label, "not-a-date", valid_expiry
+        )
+    with pytest.raises(ValueError, match="future"):
+        module._validate_structured_dates(  # noqa: SLF001
+            label, (now + module.dt.timedelta(days=1)).isoformat(), valid_expiry
+        )
+    with pytest.raises(ValueError, match="older than"):
+        module._validate_structured_dates(  # noqa: SLF001
+            label,
+            (
+                now
+                - module.dt.timedelta(days=module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS + 1)
+            ).isoformat(),
+            valid_expiry,
+        )
+    with pytest.raises(ValueError, match="expiry-date must be"):
+        module._validate_structured_dates(  # noqa: SLF001
+            label, valid_review, "not-a-date"
+        )
+    with pytest.raises(ValueError, match="expired"):
+        module._validate_structured_dates(  # noqa: SLF001
+            label, valid_review, (now - module.dt.timedelta(days=1)).isoformat()
+        )
 
 
 def test_record_security_account_attestation_force_overwrites_without_identity(
