@@ -144,6 +144,7 @@ SECURITY_ACCOUNT_ALLOWED_BOUNDARY = frozenset(
 SECURITY_ACCOUNT_ATTESTED_CONTROLS = frozenset(
     {"human_access", "active_key", "permissions_boundary"}
 )
+STRUCTURED_EVIDENCE_ALLOWED_STATUSES = frozenset({"passed", "unresolved"})
 RESTORE_DRILL_REQUIRED_FIELDS = (
     "workload",
     "environment",
@@ -2854,6 +2855,7 @@ def _structured_evidence_control_blockers(
     return [
         *_missing_external_control_blockers(control_items, required_control_ids),
         *_external_control_id_blockers(control_items, required_control_ids),
+        *_external_control_status_blockers(control_items),
         *_external_control_count_blockers(payload, control_items),
         *_external_control_unresolved_count_blockers(payload, control_items),
         *_external_control_proof_blockers(control_items),
@@ -2909,6 +2911,7 @@ def _question_matrix_score_blockers(payload: dict[str, Any]) -> list[str]:
     blockers.extend(_question_matrix_score_id_blockers(score_items))
     blockers.extend(_question_matrix_score_count_blockers(payload, score_items))
     blockers.extend(_question_matrix_invalid_score_blockers(score_items))
+    blockers.extend(_question_matrix_status_blockers(score_items))
     blockers.extend(_question_matrix_evidence_ref_blockers(score_items))
     blockers.extend(_question_matrix_summary_blockers(payload, score_items))
     return blockers
@@ -3035,6 +3038,25 @@ def _question_matrix_invalid_score_blockers(
 def _invalid_question_score(score: object) -> bool:
     """Return whether a score is not an integer in the 1-5 range."""
     return isinstance(score, bool) or not isinstance(score, int) or not 1 <= score <= 5
+
+
+def _question_matrix_status_blockers(
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers for unsupported question score statuses."""
+    invalid_ids = [
+        str(score.get("id", "<missing>"))
+        for score in scores
+        if not _valid_structured_status(score.get("status"))
+    ]
+    return (
+        [
+            "Question-matrix evidence statuses must be one of "
+            f"{_allowed_status_text()} for: {', '.join(invalid_ids)}."
+        ]
+        if invalid_ids
+        else []
+    )
 
 
 def _question_matrix_evidence_ref_blockers(
@@ -3254,6 +3276,25 @@ def _external_control_id_blockers(
     return blockers
 
 
+def _external_control_status_blockers(
+    controls: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers for unsupported external-control statuses."""
+    invalid_labels = [
+        str(control.get("id") or f"entry {index}")
+        for index, control in enumerate(controls, start=1)
+        if not _valid_structured_status(control.get("status"))
+    ]
+    return (
+        [
+            "External-control evidence statuses must be one of "
+            f"{_allowed_status_text()} for: {', '.join(invalid_labels)}."
+        ]
+        if invalid_labels
+        else []
+    )
+
+
 def _external_control_count_blockers(
     payload: dict[str, Any],
     controls: Sequence[dict[str, Any]],
@@ -3289,6 +3330,16 @@ def _external_control_unresolved_count_blockers(
         "External-control evidence unresolvedControlCount must match "
         "the number of non-passed control entries."
     ]
+
+
+def _valid_structured_status(value: object) -> bool:
+    """Return whether an evidence row status is an allowed exact value."""
+    return isinstance(value, str) and value in STRUCTURED_EVIDENCE_ALLOWED_STATUSES
+
+
+def _allowed_status_text() -> str:
+    """Return allowed structured-evidence statuses for blocker text."""
+    return ", ".join(sorted(STRUCTURED_EVIDENCE_ALLOWED_STATUSES))
 
 
 def _external_control_proof_blockers(

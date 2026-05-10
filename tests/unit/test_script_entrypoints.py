@@ -2872,7 +2872,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
                 "questionScores": [
                     {
                         "id": "OPS1",
-                        "status": "unresolved",
+                        "status": "resolved",
                         "score": 6,
                         "evidenceRefs": [],
                     },
@@ -2905,6 +2905,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert "questionCount" in invalid_question_text  # nosec B101
     assert "unresolvedQuestionCount" in invalid_question_text  # nosec B101
     assert "integers from 1 to 5" in invalid_question_text  # nosec B101
+    assert "statuses must be one of" in invalid_question_text  # nosec B101
     assert "evidenceRefs" in invalid_question_text  # nosec B101
     missing_structured_args = module.build_parser().parse_args(
         ["--external-control-evidence", str(tmp_path / "missing-structured.json")]
@@ -2955,7 +2956,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
             "unresolvedControlCount": 0,
             "controls": [
                 {"id": "branch_protection", "status": "passed", "evidence": []},
-                {"id": "alert_route", "status": "unresolved"},
+                {"id": "alert_route", "status": "blocked"},
             ],
         },
         ("branch_protection", "alert_route"),
@@ -2963,6 +2964,7 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     strict_external_text = " ".join(strict_external_blockers)
     assert "controlCount" in strict_external_text  # nosec B101
     assert "unresolvedControlCount" in strict_external_text  # nosec B101
+    assert "statuses must be one of" in strict_external_text  # nosec B101
     assert "non-empty evidence" in strict_external_text  # nosec B101
     assert "unresolvedReason" in strict_external_text  # nosec B101
     external_id_blockers = module._structured_evidence_control_blockers(  # noqa: SLF001
@@ -3134,6 +3136,10 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert module._question_matrix_score_blockers(  # noqa: SLF001  # nosec B101
         {"questionScores": "missing"}
     ) == ["Question-matrix evidence questionScores must be a list."]
+    assert module._valid_structured_status("passed")  # noqa: SLF001  # nosec B101
+    assert not module._valid_structured_status("passed ")  # noqa: SLF001  # nosec B101
+    assert not module._valid_structured_status("passsed")  # noqa: SLF001  # nosec B101
+    assert module._allowed_status_text() == "passed, unresolved"  # noqa: SLF001  # nosec B101
     assert (  # noqa: SLF001  # nosec B101
         module._question_matrix_score_count_blockers(
             {"questionCount": "1", "unresolvedQuestionCount": "0"},
