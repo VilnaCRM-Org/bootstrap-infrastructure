@@ -300,10 +300,10 @@ counts matching the current AWS Well-Architected Framework question set:
 Operational Excellence `11`, Security `11`, Reliability `13`, Performance
 Efficiency `5`, Cost Optimization `11`, and Sustainability `6`.
 Run `make verify-well-architected-questions` when refreshing the matrix to
-compare the local `questionScores` IDs, `questionCount`, pillar counts, and
-1-5 score values against the AWS public Framework TOC. Non-passed
-`questionScores` entries must also retain non-empty `evidenceRefs` so each
-remaining blocker maps to a concrete issue, collector check, script, workflow,
+compare the local Markdown matrix rows, `questionScores` IDs, `questionCount`,
+pillar counts, and 1-5 score values against the AWS public Framework TOC.
+Non-passed `questionScores` entries must also retain non-empty `evidenceRefs`
+so each remaining blocker maps to a concrete issue, collector check, script, workflow,
 or evidence artifact.
 External-control records are checked per control as well as at the file level:
 

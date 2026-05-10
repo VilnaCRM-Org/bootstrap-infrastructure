@@ -416,6 +416,7 @@ verify-well-architected-questions: ## Compare question evidence with AWS public 
 		if [ -n "$${AWS_WA_QUESTION_VERIFY_OUTPUT:-}" ]; then output_arg="--output $${AWS_WA_QUESTION_VERIFY_OUTPUT}"; fi; \
 		$(REPO_PYTHON) ./scripts/verify_well_architected_questions.py \
 			--question-matrix-evidence "$${QUESTION_MATRIX_EVIDENCE:-specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-05-09.json}" \
+			--question-matrix "$${QUESTION_MATRIX:-specs/issue-17-well-architected-5-of-5/question-matrix.md}" \
 			$$toc_arg $$toc_url_arg $$output_arg'
 
 report-alert-route-observation: ## Render monthly alert-route observation evidence.

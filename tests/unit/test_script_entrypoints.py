@@ -796,23 +796,53 @@ def _well_architected_question_evidence() -> dict[str, object]:
     }
 
 
+def _well_architected_question_markdown() -> str:
+    """Return a Markdown question matrix aligned with the TOC fixture."""
+    prefixes = (
+        ("Operational Excellence", "OPS", 11),
+        ("Security", "SEC", 11),
+        ("Reliability", "REL", 13),
+        ("Performance Efficiency", "PERF", 5),
+        ("Cost Optimization", "COST", 11),
+        ("Sustainability", "SUS", 6),
+    )
+    lines = ["# AWS Well-Architected Question Matrix", ""]
+    for pillar, prefix, count in prefixes:
+        lines.extend(
+            [
+                f"## {pillar}",
+                "",
+                "| ID | Question | Evidence | Gap | Target |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+        )
+        for number in range(1, count + 1):
+            lines.append(f"| {prefix}{number} | Q{number}? | E. | G. | T. |")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def test_verify_well_architected_questions_accepts_matching_toc(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Compare local question evidence with an AWS TOC-shaped fixture."""
     module = load_script_module(monkeypatch, "verify_well_architected_questions")
     evidence = tmp_path / "question-matrix-evidence.json"
+    matrix = tmp_path / "question-matrix.md"
     toc = tmp_path / "toc.json"
     output = tmp_path / "question-verification.json"
     evidence.write_text(
         json.dumps(_well_architected_question_evidence()), encoding="utf-8"
     )
+    matrix.write_text(_well_architected_question_markdown(), encoding="utf-8")
     toc.write_text(json.dumps(_well_architected_question_toc()), encoding="utf-8")
 
     status = module.main(
         [
             "--question-matrix-evidence",
             str(evidence),
+            "--question-matrix",
+            str(matrix),
             "--toc-json",
             str(toc),
             "--output",
@@ -824,6 +854,7 @@ def test_verify_well_architected_questions_accepts_matching_toc(
     assert status == 0  # nosec B101
     assert report["status"] == "passed"  # nosec B101
     assert report["awsQuestionCount"] == 57  # nosec B101
+    assert report["markdownQuestionCount"] == 57  # nosec B101
     assert report["awsPillarQuestionCounts"]["Sustainability"] == 6  # nosec B101
     assert report["blockers"] == []  # nosec B101
 
@@ -841,12 +872,21 @@ def test_verify_well_architected_questions_rejects_gaps_and_bad_scores(
     scores[0]["status"] = "unresolved"
     scores[0]["evidenceRefs"] = []
     evidence = tmp_path / "question-matrix-evidence.json"
+    matrix = tmp_path / "question-matrix.md"
     toc = tmp_path / "toc.json"
     evidence.write_text(json.dumps(evidence_payload), encoding="utf-8")
+    matrix.write_text(_well_architected_question_markdown(), encoding="utf-8")
     toc.write_text(json.dumps(_well_architected_question_toc()), encoding="utf-8")
 
     status = module.main(
-        ["--question-matrix-evidence", str(evidence), "--toc-json", str(toc)]
+        [
+            "--question-matrix-evidence",
+            str(evidence),
+            "--question-matrix",
+            str(matrix),
+            "--toc-json",
+            str(toc),
+        ]
     )
 
     report = json.loads(capsys.readouterr().out)
@@ -857,6 +897,50 @@ def test_verify_well_architected_questions_rejects_gaps_and_bad_scores(
     assert report["missingEvidenceRefQuestionIds"] == ["OPS1"]  # nosec B101
     assert "SUS6" in " ".join(report["blockers"])  # nosec B101
     assert "evidenceRefs" in " ".join(report["blockers"])  # nosec B101
+
+
+def test_verify_well_architected_questions_rejects_markdown_matrix_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The reviewer-facing Markdown matrix must cover the same AWS rows."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    markdown = _well_architected_question_markdown()
+    markdown = markdown.replace("| SUS6 |", "| OPS99 |", 1)
+    markdown = markdown.replace(
+        "## Security",
+        "## Operational Excellence",
+        1,
+    )
+    markdown += "\n| OPS1 | Duplicate? | Evidence. | Gap. | Target. |\n"
+
+    report = module.verify_question_matrix(
+        evidence=_well_architected_question_evidence(),
+        toc=_well_architected_question_toc(),
+        toc_source="fixture",
+        question_matrix_markdown=markdown,
+    )
+
+    blockers = " ".join(report["blockers"])
+    assert report["status"] == "failed"  # nosec B101
+    assert report["missingMarkdownQuestionIds"] == ["SUS6"]  # nosec B101
+    assert report["extraMarkdownQuestionIds"] == ["OPS99"]  # nosec B101
+    assert report["duplicateMarkdownQuestionIds"] == ["OPS1"]  # nosec B101
+    assert "SEC1" in report["markdownPillarMismatchQuestionIds"]  # nosec B101
+    assert "Markdown" in blockers  # nosec B101
+    assert "sections" in blockers  # nosec B101
+    assert module.extract_markdown_questions(  # nosec B101
+        "\n".join(
+            [
+                "## Operational Excellence",
+                "| OPS1 | Q? | E. | G. | T. |",
+                "## Claim Gate",
+                "| OPS2 | Q? | E. | G. | T. |",
+            ]
+        )
+    ) == [
+        {"id": "OPS1", "pillar": "Operational Excellence"},
+        {"id": "OPS2", "pillar": ""},
+    ]
 
 
 def test_verify_well_architected_questions_reports_duplicates_and_extra_ids(
@@ -955,9 +1039,11 @@ def test_verify_well_architected_questions_fetches_toc_and_reports_errors(
     """Cover live-fetch plumbing with a fake response and error rendering."""
     module = load_script_module(monkeypatch, "verify_well_architected_questions")
     evidence = tmp_path / "question-matrix-evidence.json"
+    matrix = tmp_path / "question-matrix.md"
     evidence.write_text(
         json.dumps(_well_architected_question_evidence()), encoding="utf-8"
     )
+    matrix.write_text(_well_architected_question_markdown(), encoding="utf-8")
 
     class FakeResponse(io.StringIO):
         def __enter__(self):
@@ -971,11 +1057,31 @@ def test_verify_well_architected_questions_fetches_toc_and_reports_errors(
         "urlopen",
         lambda url, timeout: FakeResponse(json.dumps(_well_architected_question_toc())),
     )
-    assert module.main(["--question-matrix-evidence", str(evidence)]) == 0
+    assert (
+        module.main(
+            [
+                "--question-matrix-evidence",
+                str(evidence),
+                "--question-matrix",
+                str(matrix),
+            ]
+        )
+        == 0
+    )
     assert '"status": "passed"' in capsys.readouterr().out
 
     monkeypatch.setattr(module, "urlopen", lambda url, timeout: FakeResponse("[]"))
-    assert module.main(["--question-matrix-evidence", str(evidence)]) == 2
+    assert (
+        module.main(
+            [
+                "--question-matrix-evidence",
+                str(evidence),
+                "--question-matrix",
+                str(matrix),
+            ]
+        )
+        == 2
+    )
     assert "AWS Well-Architected TOC must be a JSON object" in capsys.readouterr().err
 
     invalid_evidence = tmp_path / "invalid-question-matrix-evidence.json"
