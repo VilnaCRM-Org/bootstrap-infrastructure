@@ -254,6 +254,11 @@ workload and include cleanup confirmation for any isolated restore location.
 Question-matrix and external-control records must include owner, freshness,
 coverage, unresolved-count, evidence-location, and fallback fields; boolean
 confirmation flags do not unlock final 5/5 scores.
+Question-matrix records must also include `frameworkSourceVerification` with a
+fresh `checkedAt`, source label, non-empty source URL list, and pillar question
+counts matching the current AWS Well-Architected Framework question set:
+Operational Excellence `11`, Security `11`, Reliability `13`, Performance
+Efficiency `5`, Cost Optimization `11`, and Sustainability `6`.
 External-control records are checked per control as well as at the file level:
 
 - `controlCount` must match the number of objects in `controls`

@@ -83,6 +83,14 @@ REQUIRED_EXTERNAL_CONTROL_IDS = (
     "production_approval",
 )
 EXPECTED_WELL_ARCHITECTED_QUESTION_COUNT = 57
+EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS = {
+    "Operational Excellence": 11,
+    "Security": 11,
+    "Reliability": 13,
+    "Performance Efficiency": 5,
+    "Cost Optimization": 11,
+    "Sustainability": 6,
+}
 STRUCTURED_EVIDENCE_MAX_AGE_DAYS = 30
 EXAMPLE_CATALOG_NAMES = frozenset({"repositories.example.json"})
 
@@ -1625,6 +1633,8 @@ def _structured_evidence_check(
     blockers.extend(
         _structured_evidence_control_blockers(payload, required_control_ids)
     )
+    if name == "question_matrix_evidence":
+        blockers.extend(_question_matrix_source_verification_blockers(payload))
     return _check(
         name,
         status="passed" if not blockers else "failed",
@@ -1678,17 +1688,19 @@ def _structured_evidence_field_present(payload: dict[str, Any], field: str) -> b
 def _structured_evidence_freshness_blockers(
     payload: dict[str, Any],
     label: str,
+    *,
+    timestamp_field: str = "reviewedAt",
 ) -> list[str]:
-    """Return blockers for stale or invalid reviewedAt values."""
-    reviewed_at = payload.get("reviewedAt")
+    """Return blockers for stale or invalid structured evidence timestamps."""
+    reviewed_at = payload.get(timestamp_field)
     if not reviewed_at:
         return []
     parsed_at = _parse_reviewed_at(reviewed_at)
     if parsed_at is None:
-        return [f"{label} reviewedAt must be an ISO-8601 date or timestamp."]
+        return [f"{label} {timestamp_field} must be an ISO-8601 date or timestamp."]
     now = dt.datetime.now(dt.timezone.utc)
     if parsed_at > now + dt.timedelta(minutes=5):
-        return [f"{label} reviewedAt is in the future."]
+        return [f"{label} {timestamp_field} is in the future."]
     max_age = dt.timedelta(days=STRUCTURED_EVIDENCE_MAX_AGE_DAYS)
     if now - parsed_at > max_age:
         return [f"{label} is older than {STRUCTURED_EVIDENCE_MAX_AGE_DAYS} days."]
@@ -1755,6 +1767,41 @@ def _structured_evidence_control_blockers(
         *_external_control_unresolved_count_blockers(payload, control_items),
         *_external_control_proof_blockers(control_items),
     ]
+
+
+def _question_matrix_source_verification_blockers(
+    payload: dict[str, Any],
+) -> list[str]:
+    """Return blockers when AWS framework source coverage is not auditable."""
+    verification = payload.get("frameworkSourceVerification")
+    if not isinstance(verification, dict):
+        return [
+            "Question-matrix evidence frameworkSourceVerification must be an object."
+        ]
+
+    blockers = _structured_evidence_freshness_blockers(
+        verification,
+        "Question-matrix framework source verification",
+        timestamp_field="checkedAt",
+    )
+    source = verification.get("source")
+    if not isinstance(source, str) or not source.strip():
+        blockers.append(
+            "Question-matrix framework source verification source is required."
+        )
+    question_counts = verification.get("questionCounts")
+    if question_counts != EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS:
+        blockers.append(
+            "Question-matrix framework source verification questionCounts must "
+            "match the expected AWS Well-Architected pillar counts."
+        )
+    source_urls = verification.get("sourceUrls")
+    if not _non_empty_string_list(source_urls):
+        blockers.append(
+            "Question-matrix framework source verification sourceUrls must include "
+            "non-empty documentation URLs."
+        )
+    return blockers
 
 
 def _missing_external_control_blockers(
@@ -1887,10 +1934,34 @@ def _structured_evidence_payload(
     )
     if pillar_unresolved_counts is not None:
         evidence["pillarUnresolvedQuestionCounts"] = pillar_unresolved_counts
+    framework_source_verification = _framework_source_verification_summary(payload)
+    if framework_source_verification:
+        evidence["frameworkSourceVerification"] = framework_source_verification
     unresolved_control_ids = _unresolved_control_ids(payload)
     if unresolved_control_ids:
         evidence["unresolvedControlIds"] = unresolved_control_ids
     return evidence
+
+
+def _framework_source_verification_summary(
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    """Return non-secret framework source verification evidence."""
+    verification = payload.get("frameworkSourceVerification")
+    if not isinstance(verification, dict):
+        return {}
+    summary: dict[str, object] = {}
+    for key in ("checkedAt", "source"):
+        value = verification.get(key)
+        if isinstance(value, str):
+            summary[key] = value
+    question_counts = _string_key_int_map(verification.get("questionCounts"))
+    if question_counts is not None:
+        summary["questionCounts"] = question_counts
+    source_urls = _string_list(verification.get("sourceUrls"))
+    if source_urls is not None:
+        summary["sourceUrlCount"] = len(source_urls)
+    return summary
 
 
 def _string_list(value: object) -> list[str] | None:

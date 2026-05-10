@@ -1281,6 +1281,16 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                     "Operational Excellence": 0,
                     "Security": 0,
                 },
+                "frameworkSourceVerification": {
+                    "checkedAt": reviewed_at,
+                    "source": (
+                        "AWS Well-Architected Framework latest public documentation"
+                    ),
+                    "questionCounts": module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS,
+                    "sourceUrls": [
+                        "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html"
+                    ],
+                },
                 "evidenceLocation": (
                     "specs/issue-17-well-architected-5-of-5/question-matrix.md"
                 ),
@@ -1499,6 +1509,13 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
     assert question_evidence["questionScoreAverages"]["Security"] == 5.0  # nosec B101
     assert (  # nosec B101
         question_evidence["pillarUnresolvedQuestionCounts"]["Security"] == 0
+    )
+    assert (  # nosec B101
+        question_evidence["frameworkSourceVerification"]["questionCounts"]
+        == module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
+    )
+    assert (  # nosec B101
+        question_evidence["frameworkSourceVerification"]["sourceUrlCount"] == 1
     )
     assert (  # nosec B101
         checks["external_control_evidence"]["evidence"].get("unresolvedControlIds")
@@ -1850,6 +1867,50 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
         ("branch_protection", "alert_route"),
     )
     assert non_count_external_blockers == []  # nosec B101
+    valid_source_blockers = module._question_matrix_source_verification_blockers(  # noqa: SLF001
+        {
+            "frameworkSourceVerification": {
+                "checkedAt": module.dt.datetime.now(
+                    module.dt.timezone.utc
+                ).isoformat(),
+                "source": "AWS Well-Architected Framework latest public documentation",
+                "questionCounts": module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS,
+                "sourceUrls": [
+                    "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html"
+                ],
+            }
+        }
+    )
+    assert valid_source_blockers == []  # nosec B101
+    invalid_source_blockers = module._question_matrix_source_verification_blockers(  # noqa: SLF001
+        {
+            "frameworkSourceVerification": {
+                "checkedAt": "2025-01-01",
+                "source": "",
+                "questionCounts": {"Security": 11},
+                "sourceUrls": [],
+            }
+        }
+    )
+    invalid_source_text = " ".join(invalid_source_blockers)
+    assert "older than" in invalid_source_text  # nosec B101
+    assert "source is required" in invalid_source_text  # nosec B101
+    assert "questionCounts" in invalid_source_text  # nosec B101
+    assert "sourceUrls" in invalid_source_text  # nosec B101
+    assert module._framework_source_verification_summary({}) == {}  # noqa: SLF001
+    assert (  # noqa: SLF001  # nosec B101
+        module._framework_source_verification_summary(
+            {
+                "frameworkSourceVerification": {
+                    "checkedAt": 123,
+                    "source": ["unexpected"],
+                    "questionCounts": {"Security": True},
+                    "sourceUrls": ["https://docs.aws.amazon.com/", 1],
+                }
+            }
+        )
+        == {}
+    )
     stale_structured = tmp_path / "stale-structured.json"
     stale_structured.write_text(
         json.dumps(
