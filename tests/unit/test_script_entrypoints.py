@@ -167,11 +167,24 @@ def test_configure_github_repository_controls_payloads(
         "type": "code_quality",
         "parameters": {"severity": "errors"},
     }
+    existing_code_scanning_rule = {
+        "type": "code_scanning",
+        "parameters": {
+            "code_scanning_tools": [
+                {
+                    "alerts_threshold": "errors",
+                    "security_alerts_threshold": "high_or_higher",
+                    "tool": "CodeQL",
+                }
+            ]
+        },
+    }
 
     payload = module.ruleset_payload(
         [
             existing_pull_request_rule,
             existing_code_quality_rule,
+            existing_code_scanning_rule,
             {"type": "ignored_rule"},
         ]
     )
@@ -186,6 +199,7 @@ def test_configure_github_repository_controls_payloads(
     assert contexts == list(module.REQUIRED_STATUS_CHECKS)  # nosec B101
     assert rules["pull_request"] == existing_pull_request_rule  # nosec B101
     assert rules["code_quality"] == existing_code_quality_rule  # nosec B101
+    assert rules["code_scanning"] == existing_code_scanning_rule  # nosec B101
     assert module.prod_environment_payload(9444106) == {  # nosec B101
         "wait_timer": 0,
         "prevent_self_review": True,
