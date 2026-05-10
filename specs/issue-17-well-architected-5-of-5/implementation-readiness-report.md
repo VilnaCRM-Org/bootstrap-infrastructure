@@ -98,7 +98,7 @@ claim is blocked until all of the following are current and non-secret:
 Repository admins can apply the GitHub-owned controls with:
 
 ```bash
-python3 scripts/configure_github_repository_controls.py \
+uv run python scripts/configure_github_repository_controls.py \
   --repo VilnaCRM-Org/bootstrap-infrastructure \
   --prod-reviewer Kravalg \
   --apply
