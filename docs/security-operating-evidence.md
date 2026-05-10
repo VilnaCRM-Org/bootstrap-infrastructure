@@ -147,6 +147,8 @@ the owner decisions are current, unexpired, and approved. JSON output requires
 owner evidence or remediation note instead of an empty approval shell. JSON
 output also requires a future `SECURITY_ACCOUNT_EXPIRY_DATE` and rejects stale
 or future review dates plus owner decision values the collector would reject.
+Set `SECURITY_ACCOUNT_ATTESTATION_FORCE=1` only when intentionally replacing an
+existing Markdown or JSON attestation artifact.
 
 | Exception | Status | Owner | Expiry | Required follow-up |
 | --- | --- | --- | --- | --- |

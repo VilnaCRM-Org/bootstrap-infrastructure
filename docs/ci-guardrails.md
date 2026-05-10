@@ -284,6 +284,8 @@ rejects missing evidence notes, invalid approvals, missing or expired
 `DEPENDABOT_EXCEPTION_EXPIRY_DATE`, stale or future
 `DEPENDABOT_EXCEPTION_REVIEW_DATE`, and missing dependency or manifest metadata
 before producing a record for `DEPENDABOT_EXCEPTION_EVIDENCE`.
+Set `DEPENDABOT_EXCEPTION_FORCE=1` only when intentionally replacing an
+existing Markdown or JSON exception artifact.
 If `ALERT_ROUTE_OBSERVATION_EVIDENCE` is set, the collector reads a non-secret
 SRE-approved alert-route observation record. The record must be current,
 unexpired, include an approved downstream route or queue-owner process,
@@ -293,6 +295,8 @@ and are not used for exact matching.
 When `report-alert-route-observation` writes JSON, it rejects missing or
 expired `ALERT_ROUTE_EXPIRY_DATE`, stale or future `ALERT_ROUTE_REVIEW_DATE`,
 and decision values the collector would reject.
+Set `ALERT_ROUTE_OBSERVATION_FORCE=1` only when intentionally replacing an
+existing Markdown or JSON observation artifact.
 If `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` is set, the collector reads a
 non-secret JSON security-owner attestation for aggregate IAM account-access
 posture. The attestation must be current, unexpired, owner-approved, include
@@ -304,6 +308,8 @@ When `report-security-account-attestation` writes JSON, it rejects missing or
 expired `SECURITY_ACCOUNT_EXPIRY_DATE`, stale or future
 `SECURITY_ACCOUNT_REVIEW_DATE`, and owner decision values the collector would
 reject.
+Set `SECURITY_ACCOUNT_ATTESTATION_FORCE=1` only when intentionally replacing an
+existing Markdown or JSON attestation artifact.
 Question-matrix and external-control records must include owner, freshness,
 coverage, unresolved-count, evidence-location, and fallback fields; boolean
 confirmation flags do not unlock final 5/5 scores.

@@ -232,6 +232,9 @@ ALERT_ROUTE_OBSERVATION_EVIDENCE=docs/alert-route-observation-YYYY-MM-DD.json \
 make report-well-architected-evidence
 ```
 
+Set `ALERT_ROUTE_OBSERVATION_FORCE=1` only when intentionally replacing an
+existing Markdown or JSON observation artifact.
+
 The generated observation is only acceptable evidence after the reviewer
 records a real downstream route or explicitly approved queue-owner process. The
 target file should be committed or otherwise retained as the monthly
