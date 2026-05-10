@@ -138,6 +138,21 @@ def _missing_evidence_ref_ids(items: Sequence[dict[str, Any]]) -> list[str]:
     return missing
 
 
+def _pillar_mismatch_ids(
+    items: Sequence[dict[str, Any]],
+    aws_pillar_by_id: dict[str, str],
+) -> list[str]:
+    mismatched = []
+    for item in items:
+        question_id = item.get("id")
+        if not isinstance(question_id, str):
+            continue
+        expected_pillar = aws_pillar_by_id.get(question_id)
+        if expected_pillar is not None and item.get("pillar") != expected_pillar:
+            mismatched.append(question_id)
+    return sorted(mismatched)
+
+
 def _verification_blockers(
     *,
     duplicate_aws_ids: Sequence[str],
@@ -146,6 +161,7 @@ def _verification_blockers(
     extra_ids: Sequence[str],
     invalid_score_ids: Sequence[str],
     missing_evidence_ref_ids: Sequence[str],
+    pillar_mismatch_ids: Sequence[str],
     evidence_question_count: object,
     aws_question_count: int,
     declared_counts: object,
@@ -184,6 +200,11 @@ def _verification_blockers(
             f"{', '.join(missing_evidence_ref_ids)}.",
         ),
         (
+            bool(pillar_mismatch_ids),
+            "Question-matrix evidence pillar values must match AWS question IDs "
+            f"for: {', '.join(pillar_mismatch_ids)}.",
+        ),
+        (
             evidence_question_count != aws_question_count,
             "Question-matrix evidence questionCount must match the AWS TOC "
             f"question count ({aws_question_count}).",
@@ -211,6 +232,9 @@ def verify_question_matrix(
     """Compare question evidence with the live AWS Well-Architected TOC."""
     aws_questions = extract_questions(toc)
     aws_ids = [question["id"] for question in aws_questions]
+    aws_pillar_by_id = {
+        question["id"]: question["pillar"] for question in aws_questions
+    }
     aws_counts = _count_by_pillar(aws_questions)
     score_items = _question_scores(evidence)
     evidence_ids = _question_ids(score_items)
@@ -226,6 +250,7 @@ def verify_question_matrix(
     duplicate_evidence_ids = _duplicate_ids(evidence_ids)
     invalid_score_ids = _invalid_score_ids(score_items)
     missing_evidence_ref_ids = _missing_evidence_ref_ids(score_items)
+    pillar_mismatch_ids = _pillar_mismatch_ids(score_items, aws_pillar_by_id)
     blockers = _verification_blockers(
         duplicate_aws_ids=duplicate_aws_ids,
         duplicate_evidence_ids=duplicate_evidence_ids,
@@ -233,6 +258,7 @@ def verify_question_matrix(
         extra_ids=extra_ids,
         invalid_score_ids=invalid_score_ids,
         missing_evidence_ref_ids=missing_evidence_ref_ids,
+        pillar_mismatch_ids=pillar_mismatch_ids,
         evidence_question_count=evidence.get("questionCount"),
         aws_question_count=len(aws_ids),
         declared_counts=declared_counts,
@@ -253,6 +279,7 @@ def verify_question_matrix(
         "duplicateEvidenceQuestionIds": duplicate_evidence_ids,
         "invalidScoreQuestionIds": invalid_score_ids,
         "missingEvidenceRefQuestionIds": missing_evidence_ref_ids,
+        "pillarMismatchQuestionIds": pillar_mismatch_ids,
         "blockers": blockers,
     }
 

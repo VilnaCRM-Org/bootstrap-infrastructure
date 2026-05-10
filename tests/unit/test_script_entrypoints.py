@@ -920,6 +920,33 @@ def test_verify_well_architected_questions_reports_duplicates_and_extra_ids(
     assert len(no_scores_report["missingQuestionIds"]) == 57  # nosec B101
 
 
+def test_verify_well_architected_questions_rejects_pillar_swaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Catch per-question pillar drift even when pillar counts still match."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    evidence = _well_architected_question_evidence()
+    scores = evidence["questionScores"]
+    assert isinstance(scores, list)  # nosec B101
+    ops1 = next(score for score in scores if score["id"] == "OPS1")
+    sec1 = next(score for score in scores if score["id"] == "SEC1")
+    ops1["pillar"], sec1["pillar"] = sec1["pillar"], ops1["pillar"]
+
+    report = module.verify_question_matrix(
+        evidence=evidence,
+        toc=_well_architected_question_toc(),
+        toc_source="fixture",
+    )
+
+    assert report["status"] == "failed"  # nosec B101
+    assert report["pillarMismatchQuestionIds"] == ["OPS1", "SEC1"]  # nosec B101
+    assert (  # nosec B101
+        report["evidencePillarQuestionCounts"] == report["awsPillarQuestionCounts"]
+    )
+    assert "pillar values" in " ".join(report["blockers"])  # nosec B101
+    assert module._pillar_mismatch_ids([{"id": 1}], {}) == []  # noqa: SLF001  # nosec B101
+
+
 def test_verify_well_architected_questions_fetches_toc_and_reports_errors(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2159,7 +2186,16 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                     for pillar in module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
                 },
                 "questionScores": [
-                    {"id": question_id, "score": 5, "status": "passed"}
+                    {
+                        "id": question_id,
+                        "pillar": (
+                            module.EXPECTED_WELL_ARCHITECTED_QUESTION_PILLAR_BY_ID[
+                                question_id
+                            ]
+                        ),
+                        "score": 5,
+                        "status": "passed",
+                    }
                     for question_id in module.EXPECTED_WELL_ARCHITECTED_QUESTION_IDS
                 ],
                 "frameworkSourceVerification": {
@@ -3263,6 +3299,38 @@ def test_collect_well_architected_evidence_rejects_question_id_gaps(
     assert "duplicate question IDs: OPS1" in blockers  # nosec B101
     assert "missing question IDs: SUS6" in blockers  # nosec B101
     assert "unknown question IDs: WA99" in blockers  # nosec B101
+
+
+def test_collect_well_architected_evidence_rejects_question_pillar_drift(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Question score row pillars must agree with AWS question IDs."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    evidence_payload = _well_architected_question_evidence()
+    now = module.dt.datetime.now(module.dt.timezone.utc).isoformat()
+    evidence_payload["reviewedAt"] = now
+    source_verification = evidence_payload["frameworkSourceVerification"]
+    assert isinstance(source_verification, dict)  # nosec B101
+    source_verification["checkedAt"] = now
+    scores = evidence_payload["questionScores"]
+    assert isinstance(scores, list)  # nosec B101
+    for score in scores:
+        assert isinstance(score, dict)  # nosec B101
+        score["status"] = "passed"
+        score.pop("evidenceRefs", None)
+    scores[0]["pillar"] = "Security"
+    evidence = tmp_path / "question-matrix-evidence.json"
+    evidence.write_text(json.dumps(evidence_payload), encoding="utf-8")
+
+    args = module.build_parser().parse_args(
+        ["--question-matrix-evidence", str(evidence)]
+    )
+    check = module.question_matrix_evidence(args)
+    blockers = " ".join(check["blockers"])
+
+    assert check["status"] == "failed"  # nosec B101
+    assert "pillar values" in blockers  # nosec B101
+    assert "OPS1" in blockers  # nosec B101
 
 
 def test_collect_well_architected_evidence_rejects_score_summary_drift(

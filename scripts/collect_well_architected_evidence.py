@@ -2910,6 +2910,7 @@ def _question_matrix_score_blockers(payload: dict[str, Any]) -> list[str]:
             "Question-matrix evidence questionScores entries must be objects."
         )
     blockers.extend(_question_matrix_score_id_blockers(score_items))
+    blockers.extend(_question_matrix_pillar_blockers(score_items))
     blockers.extend(_question_matrix_score_count_blockers(payload, score_items))
     blockers.extend(_question_matrix_invalid_score_blockers(score_items))
     blockers.extend(_question_matrix_status_blockers(score_items))
@@ -2957,6 +2958,30 @@ def _question_matrix_observed_ids(scores: Sequence[dict[str, Any]]) -> list[str]
         for score in scores
         if isinstance(question_id := score.get("id"), str) and question_id.strip()
     ]
+
+
+def _question_matrix_pillar_blockers(
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers when row pillar labels disagree with question IDs."""
+    invalid_ids = []
+    for score in scores:
+        question_id = score.get("id")
+        expected_pillar = (
+            EXPECTED_WELL_ARCHITECTED_QUESTION_PILLAR_BY_ID.get(question_id)
+            if isinstance(question_id, str)
+            else None
+        )
+        if expected_pillar is not None and score.get("pillar") != expected_pillar:
+            invalid_ids.append(question_id)
+    return (
+        [
+            "Question-matrix evidence pillar values must match AWS question IDs "
+            f"for: {', '.join(_sort_question_ids(invalid_ids))}."
+        ]
+        if invalid_ids
+        else []
+    )
 
 
 def _expected_question_id_order(question_ids: set[str]) -> list[str]:
