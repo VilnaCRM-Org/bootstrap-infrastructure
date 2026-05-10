@@ -789,7 +789,8 @@ def _well_architected_question_evidence() -> dict[str, object]:
                 "Sustainability": 6,
             },
             "sourceUrls": [
-                "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html"
+                "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json",
+                "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html",
             ],
         },
         "questionScores": scores,
@@ -2419,7 +2420,8 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                     ),
                     "questionCounts": module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS,
                     "sourceUrls": [
-                        "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html"
+                        "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json",
+                        "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html",
                     ],
                 },
                 "evidenceLocation": (
@@ -2678,7 +2680,7 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
         == module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS
     )
     assert (  # nosec B101
-        question_evidence["frameworkSourceVerification"]["sourceUrlCount"] == 1
+        question_evidence["frameworkSourceVerification"]["sourceUrlCount"] == 2
     )
     assert (  # nosec B101
         checks["external_control_evidence"]["evidence"].get("unresolvedControlIds")
@@ -3322,7 +3324,8 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
                 "source": "AWS Well-Architected Framework latest public documentation",
                 "questionCounts": module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS,
                 "sourceUrls": [
-                    "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html"
+                    "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json",
+                    "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html",
                 ],
             }
         }
@@ -3343,6 +3346,21 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert "source is required" in invalid_source_text  # nosec B101
     assert "questionCounts" in invalid_source_text  # nosec B101
     assert "sourceUrls" in invalid_source_text  # nosec B101
+    missing_toc_blockers = module._question_matrix_source_verification_blockers(  # noqa: SLF001
+        {
+            "frameworkSourceVerification": {
+                "checkedAt": module.dt.datetime.now(module.dt.timezone.utc).isoformat(),
+                "source": "AWS Well-Architected Framework latest public documentation",
+                "questionCounts": module.EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS,
+                "sourceUrls": [
+                    "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html"
+                ],
+            }
+        }
+    )
+    assert module.AWS_WELL_ARCHITECTED_TOC_URL in " ".join(  # nosec B101
+        missing_toc_blockers
+    )
     assert module._framework_source_verification_summary({}) == {}  # noqa: SLF001
     assert (  # noqa: SLF001  # nosec B101
         module._framework_source_verification_summary(

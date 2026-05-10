@@ -35,7 +35,7 @@
     "5": "All target evidence, ownership, freshness, validation, and fallback requirements are current."
   },
   "frameworkSourceVerification": {
-    "checkedAt": "2026-05-09T16:30:00Z",
+    "checkedAt": "2026-05-10T17:18:01.509250Z",
     "source": "AWS Well-Architected Framework latest public documentation",
     "questionCounts": {
       "Operational Excellence": 11,
@@ -46,6 +46,7 @@
       "Sustainability": 6
     },
     "sourceUrls": [
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json",
       "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html",
       "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-11.html",
       "https://docs.aws.amazon.com/wellarchitected/latest/framework/sec-01.html",

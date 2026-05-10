@@ -295,10 +295,11 @@ Question-matrix and external-control records must include owner, freshness,
 coverage, unresolved-count, evidence-location, and fallback fields; boolean
 confirmation flags do not unlock final 5/5 scores.
 Question-matrix records must also include `frameworkSourceVerification` with a
-fresh `checkedAt`, source label, non-empty source URL list, and pillar question
-counts matching the current AWS Well-Architected Framework question set:
-Operational Excellence `11`, Security `11`, Reliability `13`, Performance
-Efficiency `5`, Cost Optimization `11`, and Sustainability `6`.
+fresh `checkedAt`, source label, the official AWS Well-Architected TOC URL
+(`https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json`),
+and pillar question counts matching the current AWS Well-Architected Framework
+question set: Operational Excellence `11`, Security `11`, Reliability `13`,
+Performance Efficiency `5`, Cost Optimization `11`, and Sustainability `6`.
 Run `make verify-well-architected-questions` when refreshing the matrix to
 compare the local Markdown matrix rows, `questionScores` IDs, `questionCount`,
 pillar counts, and 1-5 score values against the AWS public Framework TOC; the

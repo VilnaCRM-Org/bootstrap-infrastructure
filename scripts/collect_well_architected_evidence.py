@@ -61,6 +61,9 @@ DEFAULT_PRODUCTION_ENVIRONMENT = "prod"
 DEFAULT_PRODUCTION_REVIEWER = "Kravalg"
 DEFAULT_DEPENDABOT_DEPENDENCY = "GitPython"
 DEFAULT_DEPENDABOT_MANIFEST = "uv.lock"
+AWS_WELL_ARCHITECTED_TOC_URL = (
+    "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json"
+)
 BLOCKING_DEPENDABOT_SEVERITIES = frozenset({"critical", "high"})
 DEPENDABOT_EXCEPTION_REQUIRED_FIELDS = (
     "workload",
@@ -2904,6 +2907,11 @@ def _question_matrix_source_verification_blockers(
         blockers.append(
             "Question-matrix framework source verification sourceUrls must include "
             "non-empty documentation URLs."
+        )
+    elif AWS_WELL_ARCHITECTED_TOC_URL not in source_urls:
+        blockers.append(
+            "Question-matrix framework source verification sourceUrls must include "
+            f"{AWS_WELL_ARCHITECTED_TOC_URL}."
         )
     return blockers
 
