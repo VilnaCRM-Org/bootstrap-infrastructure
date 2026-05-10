@@ -1,7 +1,7 @@
 {
   "workload": "bootstrap-infrastructure",
   "owner": "platform-maintainers",
-  "reviewedAt": "2026-05-10T21:06:40Z",
+  "reviewedAt": "2026-05-10T23:22:20Z",
   "controlCount": 8,
   "unresolvedControlCount": 3,
   "unresolvedControlIds": [
@@ -17,10 +17,10 @@
       "status": "unresolved",
       "evidence": [
         "collect_well_architected_evidence reports zero required status checks in branch protection/ruleset metadata.",
-        "Current GitHub token reports viewerPermission=WRITE and viewerCanAdminister=false, so ruleset repair requires a repository administrator.",
-        "scripts/configure_github_repository_controls.py --dry-run was retested at 2026-05-10T21:48:54Z; it resolves reviewer Kravalg to GitHub user ID 9444106 and renders the required-status-check payload.",
-        "scripts/configure_github_repository_controls.py --verify-only was retested at 2026-05-10T21:48:54Z; it fails read-only because the active main ruleset is missing required status checks and prod is unreadable.",
-        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T21:48:54Z; it still stops at the repository-admin preflight before any write."
+        "Current GitHub token has push/pull/triage permissions but not admin or maintain, so ruleset repair requires a repository administrator.",
+        "scripts/configure_github_repository_controls.py --dry-run was retested at 2026-05-10T23:22:20Z; it resolves reviewer Kravalg to GitHub user ID 9444106 and renders the required-status-check payload.",
+        "scripts/configure_github_repository_controls.py --verify-only was retested at 2026-05-10T23:20:08Z; it fails read-only because the active main ruleset is missing required status checks and prod is unreadable.",
+        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T23:22:20Z; it still stops at the repository-admin preflight before any write."
       ],
       "unresolvedReason": "Admin-owned ruleset must require the documented status checks: Ruff, Ty, Maintainability, Architecture, Dependency Hygiene, Coverage, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
     },
@@ -93,11 +93,11 @@
       "status": "unresolved",
       "evidence": [
         "Production workflow has preview/apply split and commit SHA gates.",
-        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod returned 404 on 2026-05-10T21:06:40Z.",
-        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod-preview showed no protection rules on 2026-05-10T21:06:40Z.",
-        "scripts/configure_github_repository_controls.py --dry-run was retested at 2026-05-10T21:48:54Z; it resolves reviewer Kravalg to GitHub user ID 9444106 and renders the protected prod environment payload.",
-        "scripts/configure_github_repository_controls.py --verify-only was retested at 2026-05-10T21:48:54Z; it fails read-only because prod is unreadable and the active main ruleset is missing required status checks.",
-        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T21:48:54Z; it still stops at the repository-admin preflight before it can create or protect prod."
+        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod returned 404 on 2026-05-10T23:20:08Z.",
+        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod-preview showed no protection rules on 2026-05-10T23:20:08Z.",
+        "scripts/configure_github_repository_controls.py --dry-run was retested at 2026-05-10T23:22:20Z; it resolves reviewer Kravalg to GitHub user ID 9444106 and renders the protected prod environment payload.",
+        "scripts/configure_github_repository_controls.py --verify-only was retested at 2026-05-10T23:20:08Z; it fails read-only because prod is unreadable and the active main ruleset is missing required status checks.",
+        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T23:22:20Z; it still stops at the repository-admin preflight before it can create or protect prod."
       ],
       "unresolvedReason": "GitHub environment approval evidence, required reviewer settings, and production no-go evidence are external and not yet confirmed."
     }
