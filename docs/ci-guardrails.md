@@ -278,6 +278,12 @@ JSON exception record and only treats it as coverage when it is current,
 matches the dependency and manifest, covers the exact open alert numbers, and
 records owner approval plus a remediation plan. Invalid or expired exception
 records do not suppress live alert blockers.
+When `report-dependabot-exception` writes JSON, it reads the latest collector
+`github_dependabot_alerts` evidence, copies the exact open alert numbers, and
+rejects missing evidence notes, invalid approvals, missing or expired
+`DEPENDABOT_EXCEPTION_EXPIRY_DATE`, stale or future
+`DEPENDABOT_EXCEPTION_REVIEW_DATE`, and missing dependency or manifest metadata
+before producing a record for `DEPENDABOT_EXCEPTION_EVIDENCE`.
 If `ALERT_ROUTE_OBSERVATION_EVIDENCE` is set, the collector reads a non-secret
 SRE-approved alert-route observation record. The record must be current,
 unexpired, include an approved downstream route or queue-owner process,

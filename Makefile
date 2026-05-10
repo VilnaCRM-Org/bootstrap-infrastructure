@@ -82,7 +82,8 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
         report-maintainability-trends report-dead-code report-docstrings \
         report-sbom report-well-architected-evidence verify-well-architected-questions \
-        report-alert-route-observation report-security-account-attestation \
+        report-dependabot-exception report-alert-route-observation \
+        report-security-account-attestation \
         test-quality test-ruff test-ty test-maintainability \
         test-architecture test-dependency-hygiene test-lockfile test-coverage \
         test-bandit test-actionlint test-yaml test-dockerfile \
@@ -418,6 +419,38 @@ verify-well-architected-questions: ## Compare question evidence with AWS public 
 			--question-matrix-evidence "$${QUESTION_MATRIX_EVIDENCE:-specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-05-09.json}" \
 			--question-matrix "$${QUESTION_MATRIX:-specs/issue-17-well-architected-5-of-5/question-matrix.md}" \
 			$$toc_arg $$toc_url_arg $$output_arg'
+
+report-dependabot-exception: ## Render Dependabot exception evidence.
+	@bash -lc '\
+		set -euo pipefail; \
+		output="$${DEPENDABOT_EXCEPTION_OUTPUT:-}"; \
+		if [ -z "$${output}" ]; then \
+			echo "error: DEPENDABOT_EXCEPTION_OUTPUT is required." >&2; \
+			exit 2; \
+		fi; \
+		for name in \
+			DEPENDABOT_EXCEPTION_REVIEWER \
+			DEPENDABOT_EXCEPTION_OWNER \
+			DEPENDABOT_EXCEPTION_APPROVAL \
+			DEPENDABOT_EXCEPTION_REASON \
+			DEPENDABOT_EXCEPTION_REMEDIATION; do \
+			if [ -z "$${!name:-}" ]; then \
+				printf "error: %s is required.\\n" "$${name}" >&2; \
+				exit 2; \
+			fi; \
+		done; \
+		$(REPO_PYTHON) ./scripts/record_dependabot_exception.py \
+			--evidence "$${DEPENDABOT_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+			--output "$${output}" \
+			$${DEPENDABOT_EXCEPTION_JSON_OUTPUT:+--json-output "$${DEPENDABOT_EXCEPTION_JSON_OUTPUT}"} \
+			$${DEPENDABOT_EXCEPTION_REVIEW_DATE:+--review-date "$${DEPENDABOT_EXCEPTION_REVIEW_DATE}"} \
+			$${DEPENDABOT_EXCEPTION_EXPIRY_DATE:+--expiry-date "$${DEPENDABOT_EXCEPTION_EXPIRY_DATE}"} \
+			--reviewer "$${DEPENDABOT_EXCEPTION_REVIEWER}" \
+			--owner "$${DEPENDABOT_EXCEPTION_OWNER}" \
+			--approval "$${DEPENDABOT_EXCEPTION_APPROVAL}" \
+			--reason "$${DEPENDABOT_EXCEPTION_REASON}" \
+			--remediation-plan "$${DEPENDABOT_EXCEPTION_REMEDIATION}" \
+			$${DEPENDABOT_EXCEPTION_EVIDENCE_NOTE:+--evidence-note "$${DEPENDABOT_EXCEPTION_EVIDENCE_NOTE}"}'
 
 report-alert-route-observation: ## Render monthly alert-route observation evidence.
 	@bash -lc '\

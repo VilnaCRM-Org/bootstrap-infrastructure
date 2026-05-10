@@ -46,6 +46,7 @@ assert_help_target() {
     pulumi-refresh
     pulumi-destroy
     report-dead-code
+    report-dependabot-exception
     report-docstrings
     report-maintainability-trends
     report-quality
@@ -549,6 +550,29 @@ EOF
   [[ "$output" == *"--output"* ]]
   [[ "$output" != *"docs/aws-wa-toc.json"* ]]
   [[ "$output" != *"question-verification.json"* ]]
+}
+
+@test "make report-dependabot-exception renders owner exception evidence" {
+  run env \
+    DEPENDABOT_EXCEPTION_OUTPUT=docs/dependabot-exception-2026-06-10.md \
+    DEPENDABOT_EXCEPTION_JSON_OUTPUT=docs/dependabot-exception-2026-06-10.json \
+    DEPENDABOT_EXCEPTION_REVIEWER=security-reviewer \
+    DEPENDABOT_EXCEPTION_OWNER=security-owner \
+    DEPENDABOT_EXCEPTION_APPROVAL=approved_exception \
+    DEPENDABOT_EXCEPTION_REASON='Patched lockfile is staged.' \
+    DEPENDABOT_EXCEPTION_REMEDIATION='Merge patched lockfile before expiry.' \
+    DEPENDABOT_EXCEPTION_EXPIRY_DATE=2026-06-17T00:00:00Z \
+    DEPENDABOT_EXCEPTION_EVIDENCE_NOTE='Security owner approved exception.' \
+    make -n report-dependabot-exception
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/record_dependabot_exception.py"* ]]
+  [[ "$output" == *'DEPENDABOT_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"DEPENDABOT_EXCEPTION_JSON_OUTPUT"* ]]
+  [[ "$output" == *"--json-output"* ]]
+  [[ "$output" == *"--evidence-note"* ]]
+  [[ "$output" != *"security-reviewer"* ]]
+  [[ "$output" != *"Patched lockfile"* ]]
+  [[ "$output" != *"Security owner approved"* ]]
 }
 
 @test "make report-alert-route-observation renders monthly alert route evidence" {

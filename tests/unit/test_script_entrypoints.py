@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import importlib
 import io
@@ -199,6 +200,440 @@ def _security_account_evidence_report(
         }
     )
     return {"generatedAt": "2026-05-10T07:52:18.485352+00:00", "checks": checks}
+
+
+def _dependabot_evidence_report(
+    *,
+    evidence: object | None = None,
+    status: str = "failed",
+) -> dict[str, object]:
+    return {
+        "generatedAt": "2026-05-10T08:00:00+00:00",
+        "checks": [
+            {
+                "name": "github_dependabot_alerts",
+                "status": status,
+                "evidence": evidence
+                if evidence is not None
+                else {
+                    "dependencyName": "GitPython",
+                    "manifestPath": "uv.lock",
+                    "openAlertNumbers": [8, 4, 5, 6, 7],
+                    "unexceptedOpenAlertNumbers": [8, 4, 5, 6, 7],
+                    "openAlertCount": 5,
+                    "unexceptedOpenAlertCount": 5,
+                },
+                "blockers": [
+                    "Open default-branch Dependabot alerts remain for GitPython."
+                ],
+            },
+        ],
+    }
+
+
+def test_record_dependabot_exception_writes_owner_review(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Render open Dependabot alert metadata into an owner exception record."""
+    module = load_script_module(monkeypatch, "record_dependabot_exception")
+    collector = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "dependabot-exception.md"
+    json_output = tmp_path / "dependabot-exception.json"
+    evidence.write_text(json.dumps(_dependabot_evidence_report()), encoding="utf-8")
+    review_date = module.dt.datetime.now(module.dt.timezone.utc).date().isoformat()
+    expiry_date = (
+        (module.dt.datetime.now(module.dt.timezone.utc) + module.dt.timedelta(days=7))
+        .date()
+        .isoformat()
+    )
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--review-date",
+            review_date,
+            "--reviewer",
+            "Kravalg",
+            "--owner",
+            "security-reviewer",
+            "--approval",
+            "approved_exception",
+            "--reason",
+            "Patched lockfile is staged and waiting for default-branch merge.",
+            "--remediation-plan",
+            "Merge the patched lockfile or revisit exception before expiry.",
+            "--expiry-date",
+            expiry_date,
+            "--evidence-note",
+            "Security owner approved a short exception window.",
+        ]
+    )
+
+    text = output.read_text(encoding="utf-8")
+    structured = json.loads(json_output.read_text(encoding="utf-8"))
+    blockers = collector._dependabot_exception_payload_blockers(  # noqa: SLF001
+        structured,
+        dependency="GitPython",
+        manifest_path="uv.lock",
+        blocking_alerts=[{"number": number} for number in (4, 5, 6, 7, 8)],
+    )
+    assert status == 0  # nosec B101
+    assert f"# Dependabot Exception Review {review_date}" in text  # nosec B101
+    assert "Open alert numbers" in text  # nosec B101
+    assert "#4, #5, #6, #7, #8" in text  # nosec B101
+    assert "credentials" in text  # nosec B101
+    assert "SecretString" not in text  # nosec B101
+    assert structured["dependencyName"] == "GitPython"  # nosec B101
+    assert structured["manifestPath"] == "uv.lock"  # nosec B101
+    assert structured["alertNumbers"] == [4, 5, 6, 7, 8]  # nosec B101
+    assert structured["approval"] == "approved_exception"  # nosec B101
+    assert structured["evidence"] == [  # nosec B101
+        "Security owner approved a short exception window."
+    ]
+    assert blockers == []  # nosec B101
+
+
+def test_record_dependabot_exception_json_requires_evidence_note(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Machine-readable Dependabot exceptions must carry approval evidence."""
+    module = load_script_module(monkeypatch, "record_dependabot_exception")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "dependabot-exception.md"
+    json_output = tmp_path / "dependabot-exception.json"
+    evidence.write_text(json.dumps(_dependabot_evidence_report()), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "Kravalg",
+            "--owner",
+            "security-reviewer",
+            "--approval",
+            "approved",
+            "--reason",
+            "Patch is staged.",
+            "--remediation-plan",
+            "Merge patch.",
+            "--expiry-date",
+            "2026-07-10",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert "requires --evidence-note" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
+
+
+def test_record_dependabot_exception_json_rejects_invalid_approval(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Generated JSON should fail fast on collector-invalid approvals."""
+    module = load_script_module(monkeypatch, "record_dependabot_exception")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "dependabot-exception.md"
+    json_output = tmp_path / "dependabot-exception.json"
+    evidence.write_text(json.dumps(_dependabot_evidence_report()), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "Kravalg",
+            "--owner",
+            "security-reviewer",
+            "--approval",
+            "denied",
+            "--reason",
+            "Patch is staged.",
+            "--remediation-plan",
+            "Merge patch.",
+            "--expiry-date",
+            "2026-07-10",
+            "--evidence-note",
+            "Owner rejected this exception.",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert "approval must be one of" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
+
+
+def test_record_dependabot_exception_json_requires_expiry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Generated JSON should require the collector-required expiry timestamp."""
+    module = load_script_module(monkeypatch, "record_dependabot_exception")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "dependabot-exception.md"
+    json_output = tmp_path / "dependabot-exception.json"
+    evidence.write_text(json.dumps(_dependabot_evidence_report()), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "Kravalg",
+            "--owner",
+            "security-reviewer",
+            "--approval",
+            "approved",
+            "--reason",
+            "Patch is staged.",
+            "--remediation-plan",
+            "Merge patch.",
+            "--evidence-note",
+            "Owner approved.",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert "requires --expiry-date" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
+
+
+def test_record_dependabot_exception_force_overwrites_with_default_notes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Force mode supports intentional rerendering and default note text."""
+    module = load_script_module(monkeypatch, "record_dependabot_exception")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "dependabot-exception.md"
+    evidence.write_text(json.dumps(_dependabot_evidence_report()), encoding="utf-8")
+    output.write_text("existing\n", encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "Kravalg",
+            "--owner",
+            "security-reviewer",
+            "--approval",
+            "approved",
+            "--reason",
+            "Patch is staged.",
+            "--remediation-plan",
+            "Merge patch.",
+            "--force",
+        ]
+    )
+
+    assert status == 0  # nosec B101
+    assert "No exception evidence notes recorded." in output.read_text(  # nosec B101
+        encoding="utf-8"
+    )
+
+
+def test_record_dependabot_exception_refuses_overwrite_without_force(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Dependabot exception records should not be overwritten accidentally."""
+    module = load_script_module(monkeypatch, "record_dependabot_exception")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "dependabot-exception.md"
+    evidence.write_text(json.dumps(_dependabot_evidence_report()), encoding="utf-8")
+    output.write_text("existing\n", encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "Kravalg",
+            "--owner",
+            "security-reviewer",
+            "--approval",
+            "approved",
+            "--reason",
+            "Patch is staged.",
+            "--remediation-plan",
+            "Merge patch.",
+        ]
+    )
+
+    assert status == 2  # nosec B101
+    assert output.read_text(encoding="utf-8") == "existing\n"
+    assert "output already exists" in capsys.readouterr().err  # nosec B101
+
+
+def test_record_dependabot_exception_refuses_json_overwrite_without_force(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Structured Dependabot evidence should not be overwritten accidentally."""
+    module = load_script_module(monkeypatch, "record_dependabot_exception")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "dependabot-exception.md"
+    json_output = tmp_path / "dependabot-exception.json"
+    evidence.write_text(json.dumps(_dependabot_evidence_report()), encoding="utf-8")
+    json_output.write_text('{"existing": true}\n', encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "Kravalg",
+            "--owner",
+            "security-reviewer",
+            "--approval",
+            "approved",
+            "--reason",
+            "Patch is staged.",
+            "--remediation-plan",
+            "Merge patch.",
+            "--expiry-date",
+            "2026-07-10",
+            "--evidence-note",
+            "Owner approved.",
+        ]
+    )
+
+    assert status == 2  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert json_output.read_text(encoding="utf-8") == '{"existing": true}\n'
+    assert "JSON output already exists" in capsys.readouterr().err  # nosec B101
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_error"),
+    [
+        ([], "evidence report must be a JSON object"),
+        ({"checks": []}, "does not contain check"),
+        (
+            _dependabot_evidence_report(evidence="not structured"),
+            "github_dependabot_alerts evidence must be a JSON object",
+        ),
+        (
+            _dependabot_evidence_report(evidence={}),
+            "openAlertNumbers must be a list",
+        ),
+        (
+            _dependabot_evidence_report(evidence={"openAlertNumbers": [1, False]}),
+            "openAlertNumbers must contain integers",
+        ),
+    ],
+)
+def test_record_dependabot_exception_reports_invalid_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    payload: object,
+    expected_error: str,
+) -> None:
+    """Invalid collector evidence should block Dependabot exception records."""
+    module = load_script_module(monkeypatch, "record_dependabot_exception")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "dependabot-exception.md"
+    evidence.write_text(json.dumps(payload), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "Kravalg",
+            "--owner",
+            "security-reviewer",
+            "--approval",
+            "approved",
+            "--reason",
+            "Patch is staged.",
+            "--remediation-plan",
+            "Merge patch.",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert expected_error in capsys.readouterr().err  # nosec B101
+
+
+def test_record_dependabot_exception_json_requires_open_alerts_and_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Structured exceptions should require live alert IDs and alert metadata."""
+    module = load_script_module(monkeypatch, "record_dependabot_exception")
+    args = argparse.Namespace(
+        workload="bootstrap-infrastructure",
+        owner="security-reviewer",
+        reviewer="Kravalg",
+        review_date=module.dt.datetime.now(module.dt.timezone.utc).isoformat(),
+        expiry_date=(
+            module.dt.datetime.now(module.dt.timezone.utc) + module.dt.timedelta(days=7)
+        ).isoformat(),
+        approval="approved",
+        reason="Patch is staged.",
+        remediation_plan="Merge patch.",
+        evidence_note=["Owner approved."],
+    )
+
+    with pytest.raises(ValueError, match="at least one open alert"):
+        module.structured_exception(  # noqa: SLF001
+            _dependabot_evidence_report(evidence={"openAlertNumbers": []}),
+            args,
+        )
+    with pytest.raises(ValueError, match="dependencyName is required"):
+        module.structured_exception(  # noqa: SLF001
+            _dependabot_evidence_report(
+                evidence={"openAlertNumbers": [8], "manifestPath": "uv.lock"}
+            ),
+            args,
+        )
+    with pytest.raises(ValueError, match="manifestPath is required"):
+        module.structured_exception(  # noqa: SLF001
+            _dependabot_evidence_report(
+                evidence={"openAlertNumbers": [8], "dependencyName": "GitPython"}
+            ),
+            args,
+        )
+    report = _dependabot_evidence_report()
+    report["checks"].insert(0, {"name": "other"})
+    assert (
+        module._check_by_name(  # noqa: SLF001  # nosec B101
+            report, "github_dependabot_alerts"
+        )["name"]
+        == "github_dependabot_alerts"
+    )
+    assert module._int_list("invalid") == []  # noqa: SLF001  # nosec B101
+    assert module._int_list([1, False]) == []  # noqa: SLF001  # nosec B101
 
 
 def test_record_alert_route_observation_writes_monthly_review(
@@ -724,6 +1159,7 @@ def test_owner_evidence_generator_choices_match_collector(
 ) -> None:
     """Owner evidence generators should reject the same choices as the collector."""
     alert_module = load_script_module(monkeypatch, "record_alert_route_observation")
+    dependabot_module = load_script_module(monkeypatch, "record_dependabot_exception")
     security_module = load_script_module(
         monkeypatch, "record_security_account_attestation"
     )
@@ -733,6 +1169,9 @@ def test_owner_evidence_generator_choices_match_collector(
 
     assert alert_module.ALERT_ROUTE_ALLOWED_DECISIONS == (  # nosec B101
         collector_module.ALERT_ROUTE_ALLOWED_DECISIONS
+    )
+    assert dependabot_module.DEPENDABOT_EXCEPTION_ALLOWED_APPROVALS == (  # nosec B101
+        collector_module.DEPENDABOT_EXCEPTION_ALLOWED_APPROVALS
     )
     assert security_module.SECURITY_ACCOUNT_ALLOWED_APPROVALS == (  # nosec B101
         collector_module.SECURITY_ACCOUNT_ALLOWED_APPROVALS
@@ -749,6 +1188,9 @@ def test_owner_evidence_generator_choices_match_collector(
     assert alert_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS == (  # nosec B101
         collector_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
     )
+    assert dependabot_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS == (  # nosec B101
+        collector_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
+    )
     assert security_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS == (  # nosec B101
         collector_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
     )
@@ -758,6 +1200,7 @@ def test_owner_evidence_generator_choices_match_collector(
     ("script_name", "label"),
     [
         ("record_alert_route_observation", "Alert-route observation"),
+        ("record_dependabot_exception", "Dependabot exception"),
         ("record_security_account_attestation", "Security account attestation"),
     ],
 )

@@ -65,6 +65,9 @@ AWS_WELL_ARCHITECTED_TOC_URL = (
     "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json"
 )
 BLOCKING_DEPENDABOT_SEVERITIES = frozenset({"critical", "high"})
+DEPENDABOT_EXCEPTION_ALLOWED_APPROVALS = frozenset(
+    {"approved", "approved_exception", "accepted_risk"}
+)
 DEPENDABOT_EXCEPTION_REQUIRED_FIELDS = (
     "workload",
     "owner",
@@ -1173,7 +1176,7 @@ def _dependabot_exception_payload_blockers(
             f"Dependabot exception evidence manifestPath must be {manifest_path}."
         )
     approval = str(payload.get("approval") or "").strip().lower()
-    if approval not in {"approved", "approved_exception", "accepted_risk"}:
+    if approval not in DEPENDABOT_EXCEPTION_ALLOWED_APPROVALS:
         blockers.append(
             "Dependabot exception evidence approval must be approved, "
             "approved_exception, or accepted_risk."
