@@ -2022,6 +2022,16 @@ def test_configure_github_repository_controls_payloads(
     assert rendered["prodEnvironment"]["reviewers"][0]["id"] == 0  # nosec B101
     assert rendered["prodEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
 
+    assert (  # nosec B101
+        module.main(["--repo", "VilnaCRM-Org/bootstrap-infrastructure", "--dry-run"])
+        == 0
+    )
+    dry_run_rendered = json.loads(capsys.readouterr().out)
+    assert dry_run_rendered["prodEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
+
+    with pytest.raises(SystemExit):
+        module.main(["--repo", "example/repo", "--apply", "--dry-run"])
+
 
 def test_configure_github_repository_controls_verification_helpers(
     monkeypatch: pytest.MonkeyPatch,

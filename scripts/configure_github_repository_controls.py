@@ -368,10 +368,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PROD_REVIEWER,
         help="GitHub login required to approve prod deployments.",
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--apply",
         action="store_true",
         help="Apply changes with gh api. Without this flag, print the payloads.",
+    )
+    mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print the ruleset and prod environment payloads without applying.",
     )
     return parser
 
