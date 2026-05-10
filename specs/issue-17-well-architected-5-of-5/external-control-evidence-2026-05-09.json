@@ -24,7 +24,7 @@
         "AWS SNS topic arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations exists, is KMS encrypted, and has an SQS subscription.",
         "collect_well_architected_evidence aws_sns_alert_route check passed.",
         "The 2026-05-10 collector records non-secret SQS metadata for arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts: queue name bootstrap-test-operations-alerts, retention 345600 seconds, visibility timeout 30 seconds, and zero not-visible or delayed messages.",
-        "make report-alert-route-observation renders non-secret monthly OPS8 route-observation records from collector evidence while keeping downstream human route approval and observation history as separate SRE-owned evidence."
+        "make report-alert-route-observation renders non-secret monthly OPS8 route-observation records from collector evidence, can write JSON for ALERT_ROUTE_OBSERVATION_EVIDENCE collector validation, and keeps downstream human route approval and observation history as separate SRE-owned evidence."
       ]
     },
     {

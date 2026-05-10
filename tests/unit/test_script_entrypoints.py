@@ -208,6 +208,7 @@ def test_record_alert_route_observation_writes_monthly_review(
     module = load_script_module(monkeypatch, "record_alert_route_observation")
     evidence = tmp_path / "evidence.json"
     output = tmp_path / "alert-route-observation.md"
+    json_output = tmp_path / "alert-route-observation.json"
     evidence.write_text(json.dumps(_alert_route_evidence_report()), encoding="utf-8")
 
     status = module.main(
@@ -216,6 +217,8 @@ def test_record_alert_route_observation_writes_monthly_review(
             str(evidence),
             "--output",
             str(output),
+            "--json-output",
+            str(json_output),
             "--review-date",
             "2026-06-09",
             "--reviewer",
@@ -229,7 +232,9 @@ def test_record_alert_route_observation_writes_monthly_review(
             "--fallback",
             "Escalate to platform maintainers if queue depth grows.",
             "--decision",
-            "Accepted for monthly OPS8 evidence.",
+            "accepted",
+            "--expiry-date",
+            "2026-07-09",
             "--action",
             "Open a follow-up if visible messages exceed 10.",
         ]
@@ -243,6 +248,55 @@ def test_record_alert_route_observation_writes_monthly_review(
     assert "Open a follow-up if visible messages exceed 10." in text  # nosec B101
     assert "credentials" in text  # nosec B101
     assert "SecretString" not in text  # nosec B101
+    structured = json.loads(json_output.read_text(encoding="utf-8"))
+    assert structured["owner"] == "SRE"  # nosec B101
+    assert structured["approvedBy"] == "sre-reviewer"  # nosec B101
+    assert structured["decision"] == "accepted"  # nosec B101
+    assert structured["routeEvidence"]["sqsQueue"]["queueName"] == (  # nosec B101
+        "bootstrap-test-operations-alerts"
+    )
+    assert structured["queueObservation"]["visibleMessages"] == 3  # nosec B101
+
+
+def test_record_alert_route_observation_json_requires_action(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Machine-readable alert observations must include evidence text."""
+    module = load_script_module(monkeypatch, "record_alert_route_observation")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "alert-route-observation.md"
+    json_output = tmp_path / "alert-route-observation.json"
+    evidence.write_text(json.dumps(_alert_route_evidence_report()), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "sre-reviewer",
+            "--route-owner",
+            "SRE",
+            "--downstream-route",
+            "approved queue-owner process",
+            "--severity-expectations",
+            "SEV2 during business hours",
+            "--fallback",
+            "Escalate to platform maintainers if queue depth grows.",
+            "--decision",
+            "accepted",
+            "--expiry-date",
+            "2026-07-09",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert "requires at least one --action" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
 
 
 def test_record_alert_route_observation_refuses_overwrite_without_force(
@@ -3152,6 +3206,196 @@ def test_sns_alert_route_records_sqs_queue_metadata(
     assert queue["visibleMessages"] == 2  # nosec B101
     assert queue["delayedMessages"] is None  # nosec B101
     assert queue["messageRetentionSeconds"] == 345600  # nosec B101
+
+
+def test_sns_alert_route_accepts_observation_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Current SRE observation evidence should attach to alert-route metadata."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    def runner(command, **_kwargs):
+        if command[:3] == ["aws", "sns", "get-topic-attributes"]:
+            payload: object = "alias/bootstrap"
+        elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
+            payload = [
+                {
+                    "Protocol": "sqs",
+                    "Endpoint": (
+                        "arn:aws:sqs:eu-central-1:123456789012:"
+                        "bootstrap-test-operations-alerts"
+                    ),
+                }
+            ]
+        elif command[:3] == ["aws", "sqs", "get-queue-url"]:
+            payload = (
+                "https://sqs.eu-central-1.amazonaws.com/123456789012/"
+                "bootstrap-test-operations-alerts"
+            )
+        elif command[:3] == ["aws", "sqs", "get-queue-attributes"]:
+            payload = {
+                "ApproximateNumberOfMessages": "2",
+                "ApproximateNumberOfMessagesNotVisible": "0",
+                "ApproximateNumberOfMessagesDelayed": "0",
+                "MessageRetentionPeriod": "345600",
+                "VisibilityTimeout": "30",
+            }
+        else:  # pragma: no cover - fail fast if the command contract changes.
+            raise AssertionError(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    route_evidence = {
+        "topicArn": "arn:topic",
+        "encrypted": True,
+        "subscriptionCount": 1,
+        "subscriptionProtocols": ["sqs"],
+        "sqsQueue": {
+            "queueArn": (
+                "arn:aws:sqs:eu-central-1:123456789012:bootstrap-test-operations-alerts"
+            ),
+            "queueName": "bootstrap-test-operations-alerts",
+            "messageRetentionSeconds": 345600,
+            "visibilityTimeoutSeconds": 30,
+        },
+    }
+    observation = {
+        "workload": "bootstrap-infrastructure",
+        "environment": "test",
+        "owner": "SRE",
+        "approvedBy": "sre-reviewer",
+        "reviewedAt": module.dt.datetime.now(module.dt.timezone.utc).isoformat(),
+        "expiresAt": (
+            module.dt.datetime.now(module.dt.timezone.utc)
+            + module.dt.timedelta(days=30)
+        ).isoformat(),
+        "downstreamRoute": "approved queue-owner process",
+        "severityExpectations": "SEV2 during business hours",
+        "fallback": "Escalate to platform maintainers.",
+        "decision": "accepted",
+        "evidence": ["SRE reviewed the queue-owner process."],
+        "remediationPlan": "Review queue consumption monthly.",
+        "routeEvidence": route_evidence,
+    }
+    observation_path = tmp_path / "alert-route-observation.json"
+    observation_path.write_text(json.dumps(observation), encoding="utf-8")
+
+    evidence = module.aws_sns_alert_route(
+        "arn:topic",
+        observation_evidence=observation_path,
+        runner=runner,
+    )
+
+    assert evidence["status"] == "passed"  # nosec B101
+    assert evidence["blockers"] == []  # nosec B101
+    summary = evidence["evidence"]["alertRouteObservation"]
+    assert summary["owner"] == "SRE"  # nosec B101
+    assert summary["decision"] == "accepted"  # nosec B101
+    assert "approved queue-owner process" in json.dumps(evidence)  # nosec B101
+
+
+def test_sns_alert_route_rejects_bad_observation_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Alert-route observation evidence must be current, exact, and approved."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    route_evidence = {
+        "topicArn": "arn:topic",
+        "encrypted": True,
+        "subscriptionCount": 1,
+        "subscriptionProtocols": ["sqs"],
+        "sqsQueue": {
+            "queueArn": "arn:aws:sqs:eu-central-1:123456789012:queue",
+            "queueName": "queue",
+            "messageRetentionSeconds": 345600,
+            "visibilityTimeoutSeconds": 30,
+        },
+    }
+    payload = {
+        "workload": "bootstrap-infrastructure",
+        "environment": "test",
+        "owner": "SRE",
+        "approvedBy": "sre-reviewer",
+        "reviewedAt": module.dt.datetime.now(module.dt.timezone.utc).isoformat(),
+        "expiresAt": "not-a-date",
+        "downstreamRoute": "approved queue-owner process",
+        "severityExpectations": "SEV2 during business hours",
+        "fallback": "Escalate to platform maintainers.",
+        "decision": "rejected",
+        "evidence": [],
+        "remediationPlan": "",
+        "routeEvidence": {
+            **route_evidence,
+            "subscriptionCount": 0,
+            "sqsQueue": {**route_evidence["sqsQueue"], "queueName": "old-queue"},
+        },
+    }
+    path = tmp_path / "bad-alert-route-observation.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    summary, blockers = module._alert_route_observation_coverage(  # noqa: SLF001
+        path,
+        route_evidence,
+    )
+
+    blocker_text = " ".join(blockers)
+    assert summary["path"] == str(path)  # nosec B101
+    assert "decision must be one of" in blocker_text  # nosec B101
+    assert "evidence must include non-empty" in blocker_text  # nosec B101
+    assert "remediationPlan must be non-empty" in blocker_text  # nosec B101
+    assert "expiresAt must be ISO-8601" in blocker_text  # nosec B101
+    assert "subscriptionCount" in blocker_text  # nosec B101
+    assert "sqsQueue.queueName" in blocker_text  # nosec B101
+
+    non_object_path = tmp_path / "non-object-route.json"
+    non_object_payload = {**payload, "routeEvidence": []}
+    non_object_path.write_text(json.dumps(non_object_payload), encoding="utf-8")
+    _, non_object_blockers = module._alert_route_observation_coverage(  # noqa: SLF001
+        non_object_path,
+        route_evidence,
+    )
+    assert "routeEvidence must be an object" in " ".join(non_object_blockers)  # nosec B101
+
+    expired_path = tmp_path / "expired-route.json"
+    expired_payload = {
+        **payload,
+        "decision": "accepted",
+        "evidence": ["SRE reviewed the route."],
+        "remediationPlan": "Review queue consumption monthly.",
+        "expiresAt": (
+            module.dt.datetime.now(module.dt.timezone.utc) - module.dt.timedelta(days=1)
+        ).isoformat(),
+        "routeEvidence": {**route_evidence, "sqsQueue": []},
+    }
+    expired_path.write_text(json.dumps(expired_payload), encoding="utf-8")
+    _, expired_blockers = module._alert_route_observation_coverage(  # noqa: SLF001
+        expired_path,
+        route_evidence,
+    )
+    expired_text = " ".join(expired_blockers)
+    assert "evidence is expired" in expired_text  # nosec B101
+    assert "routeEvidence.sqsQueue must be an object" in expired_text  # nosec B101
+
+    missing_live_queue_path = tmp_path / "missing-live-queue.json"
+    missing_live_queue_payload = {
+        **payload,
+        "decision": "accepted",
+        "evidence": ["SRE reviewed the route."],
+        "remediationPlan": "Review queue consumption monthly.",
+        "expiresAt": (
+            module.dt.datetime.now(module.dt.timezone.utc)
+            + module.dt.timedelta(days=30)
+        ).isoformat(),
+        "routeEvidence": route_evidence,
+    }
+    missing_live_queue_path.write_text(
+        json.dumps(missing_live_queue_payload),
+        encoding="utf-8",
+    )
+    _, missing_live_queue_blockers = module._alert_route_observation_coverage(  # noqa: SLF001
+        missing_live_queue_path,
+        {key: value for key, value in route_evidence.items() if key != "sqsQueue"},
+    )
+    assert "fields: sqsQueue" in " ".join(missing_live_queue_blockers)  # nosec B101
 
 
 def test_sns_alert_route_reports_sqs_metadata_failures(

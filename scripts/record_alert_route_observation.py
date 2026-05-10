@@ -9,6 +9,24 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
+ALERT_ROUTE_OBSERVATION_ROUTE_FIELDS = (
+    "topicArn",
+    "encrypted",
+    "subscriptionCount",
+    "subscriptionProtocols",
+)
+ALERT_ROUTE_OBSERVATION_QUEUE_FIELDS = (
+    "queueArn",
+    "queueName",
+    "messageRetentionSeconds",
+    "visibilityTimeoutSeconds",
+)
+ALERT_ROUTE_OBSERVATION_QUEUE_OBSERVATION_FIELDS = (
+    "visibleMessages",
+    "notVisibleMessages",
+    "delayedMessages",
+)
+
 
 def _load_report(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -118,6 +136,54 @@ def render_observation(report: dict[str, Any], args: argparse.Namespace) -> str:
     )
 
 
+def structured_observation(
+    report: dict[str, Any], args: argparse.Namespace
+) -> dict[str, object]:
+    """Return machine-readable, non-secret alert-route observation evidence."""
+    route = _passed_route_evidence(report)
+    if not args.action:
+        raise ValueError(
+            "structured alert-route observation requires at least one --action"
+        )
+    actions = args.action
+    return {
+        "workload": args.workload,
+        "environment": args.environment,
+        "owner": args.route_owner,
+        "approvedBy": args.reviewer,
+        "reviewedAt": args.review_date,
+        "expiresAt": args.expiry_date,
+        "downstreamRoute": args.downstream_route,
+        "severityExpectations": args.severity_expectations,
+        "fallback": args.fallback,
+        "decision": args.decision,
+        "evidence": actions,
+        "remediationPlan": " ".join(actions),
+        "routeEvidence": _structured_route_evidence(route),
+        "queueObservation": _queue_observation(route),
+    }
+
+
+def _structured_route_evidence(route: dict[str, Any]) -> dict[str, object]:
+    """Return stable route fields that the collector can compare later."""
+    queue = cast("dict[str, Any]", route.get("sqsQueue", {}))
+    return {
+        **{field: route.get(field) for field in ALERT_ROUTE_OBSERVATION_ROUTE_FIELDS},
+        "sqsQueue": {
+            field: queue.get(field) for field in ALERT_ROUTE_OBSERVATION_QUEUE_FIELDS
+        },
+    }
+
+
+def _queue_observation(route: dict[str, Any]) -> dict[str, object]:
+    """Return volatile queue-depth fields as observation-only metadata."""
+    queue = cast("dict[str, Any]", route.get("sqsQueue", {}))
+    return {
+        field: queue.get(field)
+        for field in ALERT_ROUTE_OBSERVATION_QUEUE_OBSERVATION_FIELDS
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -127,6 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--json-output", type=Path)
     parser.add_argument(
         "--review-date", default=dt.datetime.now(dt.timezone.utc).date().isoformat()
     )
@@ -138,6 +205,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--severity-expectations", required=True)
     parser.add_argument("--fallback", required=True)
     parser.add_argument("--decision", required=True)
+    parser.add_argument("--expiry-date", default="")
     parser.add_argument("--action", action="append", default=[])
     parser.add_argument("--force", action="store_true")
     return parser
@@ -152,12 +220,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         report = _load_report(args.evidence)
         markdown = render_observation(report, args)
+        json_payload = (
+            structured_observation(report, args) if args.json_output else None
+        )
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(markdown, encoding="utf-8")
+    if args.json_output:
+        args.json_output.parent.mkdir(parents=True, exist_ok=True)
+        args.json_output.write_text(
+            f"{json.dumps(json_payload, indent=2, sort_keys=True)}\n",
+            encoding="utf-8",
+        )
     return 0
 
 

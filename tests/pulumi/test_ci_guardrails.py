@@ -440,6 +440,10 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
     assert "12-digit AWS account ID" in preflight_step["run"]  # nosec B101
     assert "SNS topic ARN" in preflight_step["run"]  # nosec B101
     assert (  # nosec B101
+        jobs["test_account_evidence"]["env"]["ALERT_ROUTE_OBSERVATION_EVIDENCE"]
+        == "${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE }}"
+    )
+    assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["SECURITY_ACCOUNT_ATTESTATION_EVIDENCE"]
         == "${{ vars.SECURITY_ACCOUNT_ATTESTATION_EVIDENCE }}"
     )

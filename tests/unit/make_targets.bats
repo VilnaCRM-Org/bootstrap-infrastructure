@@ -510,6 +510,7 @@ EOF
     AWS_ACCOUNT_ID=123456789012 \
     OPERATIONS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations \
     DEPENDABOT_EXCEPTION_EVIDENCE=docs/dependabot-exception-2026-06-10.json \
+    ALERT_ROUTE_OBSERVATION_EVIDENCE=docs/alert-route-observation-2026-06-10.json \
     SECURITY_ACCOUNT_ATTESTATION_EVIDENCE=docs/security-account-attestation-2026-06-10.json \
     make -n report-well-architected-evidence
   [ "$status" -eq 0 ]
@@ -520,10 +521,13 @@ EOF
   [[ "$output" == *'OPERATIONS_TOPIC_ARN:-'* ]]
   [[ "$output" == *'DEPENDABOT_EXCEPTION_EVIDENCE:-'* ]]
   [[ "$output" == *"--dependabot-exception-evidence"* ]]
+  [[ "$output" == *'ALERT_ROUTE_OBSERVATION_EVIDENCE:-'* ]]
+  [[ "$output" == *"--alert-route-observation-evidence"* ]]
   [[ "$output" == *'SECURITY_ACCOUNT_ATTESTATION_EVIDENCE:-'* ]]
   [[ "$output" == *"--security-account-attestation-evidence"* ]]
   [[ "$output" != *"bootstrap-test-operations"* ]]
   [[ "$output" != *"dependabot-exception-2026-06-10"* ]]
+  [[ "$output" != *"alert-route-observation-2026-06-10"* ]]
   [[ "$output" != *"security-account-attestation-2026-06-10"* ]]
 }
 
@@ -547,20 +551,27 @@ EOF
 @test "make report-alert-route-observation renders monthly alert route evidence" {
   run env \
     ALERT_ROUTE_OBSERVATION_OUTPUT=docs/alert-route-observation-2026-06-09.md \
+    ALERT_ROUTE_OBSERVATION_JSON_OUTPUT=docs/alert-route-observation-2026-06-09.json \
     ALERT_ROUTE_REVIEWER=sre-reviewer \
     ALERT_ROUTE_OWNER=sre \
     ALERT_ROUTE_DOWNSTREAM=incident-route \
     ALERT_ROUTE_SEVERITY=sev2 \
     ALERT_ROUTE_FALLBACK=queue-owner-review \
     ALERT_ROUTE_DECISION=accepted \
+    ALERT_ROUTE_EXPIRY_DATE=2026-07-09T00:00:00Z \
+    ALERT_ROUTE_ACTION='Review queue consumption monthly.' \
     make -n report-alert-route-observation
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/record_alert_route_observation.py"* ]]
   [[ "$output" == *'ALERT_ROUTE_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"ALERT_ROUTE_OBSERVATION_JSON_OUTPUT"* ]]
+  [[ "$output" == *"--json-output"* ]]
   [[ "$output" == *"--downstream-route"* ]]
   [[ "$output" == *"ALERT_ROUTE_DOWNSTREAM"* ]]
+  [[ "$output" == *"--action"* ]]
   [[ "$output" != *"incident-route"* ]]
   [[ "$output" != *"sre-reviewer"* ]]
+  [[ "$output" != *"Review queue"* ]]
 }
 
 @test "make report-security-account-attestation renders security evidence" {

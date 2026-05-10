@@ -217,13 +217,19 @@ render a reviewed alert-route observation from the collector output:
 make report-well-architected-evidence
 
 ALERT_ROUTE_OBSERVATION_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.md \
+ALERT_ROUTE_OBSERVATION_JSON_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.json \
 ALERT_ROUTE_REVIEWER='<reviewer or team>' \
 ALERT_ROUTE_OWNER='SRE' \
 ALERT_ROUTE_DOWNSTREAM='<ChatOps, ticketing, paging, or approved queue-owner process>' \
 ALERT_ROUTE_SEVERITY='<severity and response expectation>' \
 ALERT_ROUTE_FALLBACK='<fallback when the downstream route is unavailable>' \
-ALERT_ROUTE_DECISION='<accepted, action required, or exception decision>' \
+ALERT_ROUTE_DECISION='accepted' \
+ALERT_ROUTE_EXPIRY_DATE='YYYY-MM-DDTHH:MM:SSZ' \
+ALERT_ROUTE_ACTION='<non-secret evidence and remediation note>' \
 make report-alert-route-observation
+
+ALERT_ROUTE_OBSERVATION_EVIDENCE=docs/alert-route-observation-YYYY-MM-DD.json \
+make report-well-architected-evidence
 ```
 
 The generated observation is only acceptable evidence after the reviewer

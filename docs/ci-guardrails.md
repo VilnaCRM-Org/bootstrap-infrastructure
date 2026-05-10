@@ -267,6 +267,12 @@ JSON exception record and only treats it as coverage when it is current,
 matches the dependency and manifest, covers the exact open alert numbers, and
 records owner approval plus a remediation plan. Invalid or expired exception
 records do not suppress live alert blockers.
+If `ALERT_ROUTE_OBSERVATION_EVIDENCE` is set, the collector reads a non-secret
+SRE-approved alert-route observation record. The record must be current,
+unexpired, include an approved downstream route or queue-owner process,
+evidence/remediation notes, and match the live stable SNS/SQS route metadata
+exactly. Volatile queue-depth counts are retained as observation-only metadata
+and are not used for exact matching.
 If `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` is set, the collector reads a
 non-secret JSON security-owner attestation for aggregate IAM account-access
 posture. The attestation must be current, unexpired, owner-approved, include

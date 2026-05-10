@@ -99,18 +99,28 @@ record from `.artifacts/well-architected/evidence.json`:
 
 ```bash
 ALERT_ROUTE_OBSERVATION_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.md \
+ALERT_ROUTE_OBSERVATION_JSON_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.json \
 ALERT_ROUTE_REVIEWER='<reviewer or team>' \
 ALERT_ROUTE_OWNER='SRE' \
 ALERT_ROUTE_DOWNSTREAM='<ChatOps, ticketing, paging, or approved queue-owner process>' \
 ALERT_ROUTE_SEVERITY='<severity and response expectation>' \
 ALERT_ROUTE_FALLBACK='<fallback when the downstream route is unavailable>' \
-ALERT_ROUTE_DECISION='<accepted, action required, or exception decision>' \
+ALERT_ROUTE_DECISION='accepted' \
+ALERT_ROUTE_EXPIRY_DATE='YYYY-MM-DDTHH:MM:SSZ' \
+ALERT_ROUTE_ACTION='<non-secret evidence and remediation note>' \
 make report-alert-route-observation
+
+ALERT_ROUTE_OBSERVATION_EVIDENCE=docs/alert-route-observation-YYYY-MM-DD.json \
+make report-well-architected-evidence
 ```
 
 The generated record includes SNS/SQS route metadata, queue depth, retention,
 visibility timeout, downstream route, severity expectations, fallback behavior,
-review decision, and follow-up actions. It intentionally omits message
+review decision, and follow-up actions. JSON output can be supplied back to the
+collector through `ALERT_ROUTE_OBSERVATION_EVIDENCE`; the collector validates
+approval, freshness, expiry, evidence/remediation notes, and exact stable
+SNS/SQS route metadata while treating queue depth as observation-only data. It
+intentionally omits message
 payloads, private incident notes, stack exports, credentials, tokens, and
 access-key material. OPS8 should stay below 5/5 until a real observation file
 exists with an approved downstream route or accepted queue-owner process and

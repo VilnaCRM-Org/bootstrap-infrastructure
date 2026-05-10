@@ -386,6 +386,7 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		question_matrix_arg=""; \
 		external_control_arg=""; \
 		dependabot_exception_arg=""; \
+		alert_route_observation_arg=""; \
 		security_account_attestation_arg=""; \
 		if [ -n "$${PR_NUMBER:-}" ]; then pr_arg="--pr $${PR_NUMBER}"; fi; \
 		if [ -n "$${AWS_ACCOUNT_ID:-}" ]; then account_arg="--aws-account-id $${AWS_ACCOUNT_ID}"; fi; \
@@ -395,11 +396,12 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		if [ -n "$${QUESTION_MATRIX_EVIDENCE:-}" ]; then question_matrix_arg="--question-matrix-evidence $${QUESTION_MATRIX_EVIDENCE}"; fi; \
 		if [ -n "$${EXTERNAL_CONTROL_EVIDENCE:-}" ]; then external_control_arg="--external-control-evidence $${EXTERNAL_CONTROL_EVIDENCE}"; fi; \
 		if [ -n "$${DEPENDABOT_EXCEPTION_EVIDENCE:-}" ]; then dependabot_exception_arg="--dependabot-exception-evidence $${DEPENDABOT_EXCEPTION_EVIDENCE}"; fi; \
+		if [ -n "$${ALERT_ROUTE_OBSERVATION_EVIDENCE:-}" ]; then alert_route_observation_arg="--alert-route-observation-evidence $${ALERT_ROUTE_OBSERVATION_EVIDENCE}"; fi; \
 		if [ -n "$${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE:-}" ]; then security_account_attestation_arg="--security-account-attestation-evidence $${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE}"; fi; \
 		$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
 			$$pr_arg $$account_arg $$topic_arg $$cloudtrail_arg $$restore_arg \
 			$$question_matrix_arg $$external_control_arg $$dependabot_exception_arg \
-			$$security_account_attestation_arg \
+			$$alert_route_observation_arg $$security_account_attestation_arg \
 			--output .artifacts/well-architected/evidence.json \
 			--markdown-output .artifacts/well-architected/evidence.md'
 
@@ -439,13 +441,16 @@ report-alert-route-observation: ## Render monthly alert-route observation eviden
 		$(REPO_PYTHON) ./scripts/record_alert_route_observation.py \
 			--evidence "$${ALERT_ROUTE_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
 			--output "$${output}" \
+			$${ALERT_ROUTE_OBSERVATION_JSON_OUTPUT:+--json-output "$${ALERT_ROUTE_OBSERVATION_JSON_OUTPUT}"} \
 			$${ALERT_ROUTE_REVIEW_DATE:+--review-date "$${ALERT_ROUTE_REVIEW_DATE}"} \
+			$${ALERT_ROUTE_EXPIRY_DATE:+--expiry-date "$${ALERT_ROUTE_EXPIRY_DATE}"} \
 			--reviewer "$${ALERT_ROUTE_REVIEWER}" \
 			--route-owner "$${ALERT_ROUTE_OWNER}" \
 			--downstream-route "$${ALERT_ROUTE_DOWNSTREAM}" \
 			--severity-expectations "$${ALERT_ROUTE_SEVERITY}" \
 			--fallback "$${ALERT_ROUTE_FALLBACK}" \
-			--decision "$${ALERT_ROUTE_DECISION}"'
+			--decision "$${ALERT_ROUTE_DECISION}" \
+			$${ALERT_ROUTE_ACTION:+--action "$${ALERT_ROUTE_ACTION}"}'
 
 report-security-account-attestation: ## Render security account attestation evidence.
 	@bash -lc '\
