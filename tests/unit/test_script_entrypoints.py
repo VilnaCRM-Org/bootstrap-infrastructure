@@ -2098,6 +2098,7 @@ def test_collect_well_architected_evidence_reports_dependabot_alerts(
                 "security_advisory": {"severity": "high"},
                 "security_vulnerability": {},
             },
+            "malformed",
         ]
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
 
@@ -2112,6 +2113,15 @@ def test_collect_well_architected_evidence_reports_dependabot_alerts(
     assert evidence["evidence"]["openAlertNumbers"] == [4, 8]  # nosec B101
     assert evidence["evidence"]["alerts"][0]["firstPatchedVersion"] == "3.1.47"  # nosec B101
     assert "GitPython in uv.lock: #4, #8" in evidence["blockers"][0]  # nosec B101
+    assert module._dependabot_alert_blockers(  # noqa: SLF001  # nosec B101
+        dependency="GitPython",
+        manifest_path="uv.lock",
+        open_alert_numbers=[],
+        open_alert_count=2,
+    ) == [
+        "Open default-branch Dependabot alerts remain for "
+        "GitPython in uv.lock: 2 alert(s)."
+    ]
 
 
 def test_collect_well_architected_evidence_reads_ruleset_fallback(

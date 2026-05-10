@@ -731,54 +731,27 @@ def github_dependabot_alerts(
 ) -> dict[str, object]:
     """Collect open Dependabot alert evidence for one dependency manifest."""
     ok, payload, error = _run_json(
-        [
-            "gh",
-            "api",
-            "repos/"
-            f"{repo}/dependabot/alerts?state=open&dependency_name="
-            f"{quote(dependency, safe='')}&per_page=100",
-        ],
+        ["gh", "api", _dependabot_alert_api_path(repo, dependency)],
         runner=runner,
     )
     if not ok or not isinstance(payload, list):
-        return _check(
-            "github_dependabot_alerts",
-            status="unknown",
-            evidence={
-                "dependencyName": dependency,
-                "manifestPath": manifest_path,
-                "blockingSeverities": sorted(blocking_severities),
-            },
-            blockers=[
-                "Unable to read GitHub Dependabot alerts for "
-                f"{dependency} in {manifest_path}: {error}."
-            ],
+        return _unknown_dependabot_alert_check(
+            dependency=dependency,
+            manifest_path=manifest_path,
+            blocking_severities=blocking_severities,
+            error=error,
         )
 
-    matching_alerts = sorted(
-        (
-            summary
-            for item in payload
-            if isinstance(item, dict)
-            for summary in [_dependabot_alert_summary(item)]
-            if _dependabot_alert_matches(
-                summary,
-                dependency=dependency,
-                manifest_path=manifest_path,
-            )
-        ),
-        key=lambda alert: _dependabot_alert_number(alert) or 0,
+    matching_alerts = _matching_dependabot_alerts(
+        payload,
+        dependency=dependency,
+        manifest_path=manifest_path,
     )
-    blocking_alerts = [
-        alert
-        for alert in matching_alerts
-        if str(alert.get("severity", "")).lower() in blocking_severities
-    ]
-    open_alert_numbers = [
-        number
-        for alert in blocking_alerts
-        if (number := _dependabot_alert_number(alert)) is not None
-    ]
+    blocking_alerts = _blocking_dependabot_alerts(
+        matching_alerts,
+        blocking_severities,
+    )
+    open_alert_numbers = _dependabot_alert_numbers(blocking_alerts)
     blockers = _dependabot_alert_blockers(
         dependency=dependency,
         manifest_path=manifest_path,
@@ -801,6 +774,79 @@ def github_dependabot_alerts(
     )
 
 
+def _dependabot_alert_api_path(repo: str, dependency: str) -> str:
+    """Return the GitHub API path for open Dependabot alerts."""
+    return (
+        f"repos/{repo}/dependabot/alerts?state=open&dependency_name="
+        f"{quote(dependency, safe='')}&per_page=100"
+    )
+
+
+def _unknown_dependabot_alert_check(
+    *,
+    dependency: str,
+    manifest_path: str,
+    blocking_severities: frozenset[str],
+    error: str,
+) -> dict[str, object]:
+    """Return an unknown Dependabot check when GitHub metadata is unreadable."""
+    return _check(
+        "github_dependabot_alerts",
+        status="unknown",
+        evidence={
+            "dependencyName": dependency,
+            "manifestPath": manifest_path,
+            "blockingSeverities": sorted(blocking_severities),
+        },
+        blockers=[
+            "Unable to read GitHub Dependabot alerts for "
+            f"{dependency} in {manifest_path}: {error}."
+        ],
+    )
+
+
+def _matching_dependabot_alerts(
+    payload: Sequence[object],
+    *,
+    dependency: str,
+    manifest_path: str,
+) -> list[dict[str, object]]:
+    """Return sorted open alerts for the target dependency manifest."""
+    alerts = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        summary = _dependabot_alert_summary(cast("dict[str, Any]", item))
+        if _dependabot_alert_matches(
+            summary,
+            dependency=dependency,
+            manifest_path=manifest_path,
+        ):
+            alerts.append(summary)
+    return sorted(alerts, key=lambda alert: _dependabot_alert_number(alert) or 0)
+
+
+def _blocking_dependabot_alerts(
+    alerts: Sequence[dict[str, object]],
+    blocking_severities: frozenset[str],
+) -> list[dict[str, object]]:
+    """Return high-impact Dependabot alerts that still block SEC11."""
+    return [
+        alert
+        for alert in alerts
+        if str(alert.get("severity", "")).lower() in blocking_severities
+    ]
+
+
+def _dependabot_alert_numbers(alerts: Sequence[dict[str, object]]) -> list[int]:
+    """Return GitHub alert numbers when present."""
+    return [
+        number
+        for alert in alerts
+        if (number := _dependabot_alert_number(alert)) is not None
+    ]
+
+
 def _dependabot_alert_summary(alert: dict[str, Any]) -> dict[str, object]:
     """Return non-secret metadata from one Dependabot alert."""
     dependency = _mapping(alert.get("dependency"))
@@ -820,7 +866,7 @@ def _dependabot_alert_summary(alert: dict[str, Any]) -> dict[str, object]:
 
 def _mapping(value: object) -> dict[str, Any]:
     """Return a dict payload when an API field is an object."""
-    return value if isinstance(value, dict) else {}
+    return cast("dict[str, Any]", value) if isinstance(value, dict) else {}
 
 
 def _dependabot_alert_matches(
