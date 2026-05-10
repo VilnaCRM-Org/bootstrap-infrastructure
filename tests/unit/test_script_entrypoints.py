@@ -1234,6 +1234,12 @@ def test_required_status_check_contract_matches_collector_and_docs(
     operating_evidence_doc = (
         PROJECT_ROOT / "docs/well-architected-operating-evidence.md"
     ).read_text(encoding="utf-8")
+    implementation_readiness_report = (
+        PROJECT_ROOT
+        / "specs"
+        / "issue-17-well-architected-5-of-5"
+        / "implementation-readiness-report.md"
+    ).read_text(encoding="utf-8")
     external_control_path = (
         PROJECT_ROOT
         / "specs"
@@ -1288,6 +1294,11 @@ def test_required_status_check_contract_matches_collector_and_docs(
     assert (  # nosec B101
         f"Active `main` ruleset requires {required_check_text}."
         in operating_evidence_doc
+    )
+    normalized_readiness_report = " ".join(implementation_readiness_report.split())
+    assert (  # nosec B101
+        f"active `main` ruleset requires {required_check_text}."
+        in normalized_readiness_report
     )
 
 

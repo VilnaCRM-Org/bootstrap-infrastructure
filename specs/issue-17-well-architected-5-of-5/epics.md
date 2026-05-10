@@ -64,7 +64,7 @@ As a maintainer, I want same-repo infrastructure PRs to run real AWS-backed safe
 
 ### Story 1.3: Define branch protection evidence
 **Acceptance Criteria:**
-- Given branch protection is reviewed, Then required status checks match the non-skipped AWS-backed job names.
+- Given branch protection is reviewed, Then required status checks match the full documented PR-blocking check set.
 - Given branch protection is externally managed, Then the owner, evidence URL or screenshot location, and review cadence are documented.
 - Given a Well-Architected score depends on branch protection, Then the evidence includes the PR number, branch, head SHA, check names, skipped-check policy, and reviewer rule state.
 
