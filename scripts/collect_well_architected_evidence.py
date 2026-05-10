@@ -4,7 +4,8 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-from collections.abc import Callable, Sequence
+from collections import Counter
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote
@@ -183,7 +184,20 @@ REQUIRED_EXTERNAL_CONTROL_IDS = (
     "sustainability_governance",
     "production_approval",
 )
-EXPECTED_WELL_ARCHITECTED_QUESTION_COUNT = 57
+EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_COUNTS = (
+    ("OPS", 11),
+    ("SEC", 11),
+    ("REL", 13),
+    ("PERF", 5),
+    ("COST", 11),
+    ("SUS", 6),
+)
+EXPECTED_WELL_ARCHITECTED_QUESTION_IDS = tuple(
+    f"{prefix}{number}"
+    for prefix, count in EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_COUNTS
+    for number in range(1, count + 1)
+)
+EXPECTED_WELL_ARCHITECTED_QUESTION_COUNT = len(EXPECTED_WELL_ARCHITECTED_QUESTION_IDS)
 EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS = {
     "Operational Excellence": 11,
     "Security": 11,
@@ -2881,10 +2895,86 @@ def _question_matrix_score_blockers(payload: dict[str, Any]) -> list[str]:
         blockers.append(
             "Question-matrix evidence questionScores entries must be objects."
         )
+    blockers.extend(_question_matrix_score_id_blockers(score_items))
     blockers.extend(_question_matrix_score_count_blockers(payload, score_items))
     blockers.extend(_question_matrix_invalid_score_blockers(score_items))
     blockers.extend(_question_matrix_evidence_ref_blockers(score_items))
     return blockers
+
+
+def _question_matrix_score_id_blockers(
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers for missing, duplicate, or unknown question IDs."""
+    observed_ids = _question_matrix_observed_ids(scores)
+    id_counts = Counter(observed_ids)
+    duplicate_ids = _sort_question_ids(
+        question_id for question_id, count in id_counts.items() if count > 1
+    )
+    expected_ids = set(EXPECTED_WELL_ARCHITECTED_QUESTION_IDS)
+    observed_id_set = set(observed_ids)
+    missing_ids = _expected_question_id_order(expected_ids - observed_id_set)
+    unknown_ids = _sort_question_ids(observed_id_set - expected_ids)
+    blockers = []
+    if duplicate_ids:
+        blockers.append(
+            "Question-matrix evidence includes duplicate question IDs: "
+            f"{', '.join(duplicate_ids)}."
+        )
+    if missing_ids:
+        blockers.append(
+            "Question-matrix evidence is missing question IDs: "
+            f"{', '.join(missing_ids)}."
+        )
+    if unknown_ids:
+        blockers.append(
+            "Question-matrix evidence includes unknown question IDs: "
+            f"{', '.join(unknown_ids)}."
+        )
+    return blockers
+
+
+def _question_matrix_observed_ids(scores: Sequence[dict[str, Any]]) -> list[str]:
+    """Return populated string question IDs from evidence score entries."""
+    return [
+        question_id.strip()
+        for score in scores
+        if isinstance(question_id := score.get("id"), str) and question_id.strip()
+    ]
+
+
+def _expected_question_id_order(question_ids: set[str]) -> list[str]:
+    """Return expected question IDs in AWS framework order."""
+    return [
+        question_id
+        for question_id in EXPECTED_WELL_ARCHITECTED_QUESTION_IDS
+        if question_id in question_ids
+    ]
+
+
+def _sort_question_ids(question_ids: Iterable[object]) -> list[str]:
+    """Sort question IDs by pillar prefix and numeric suffix."""
+    return sorted(
+        (str(question_id) for question_id in question_ids),
+        key=_question_id_sort_key,
+    )
+
+
+def _question_id_sort_key(question_id: str) -> tuple[int, int, str]:
+    """Return a stable natural-sort key for Well-Architected question IDs."""
+    prefix_order = {
+        prefix: index
+        for index, (prefix, _count) in enumerate(
+            EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_COUNTS
+        )
+    }
+    for prefix, order in prefix_order.items():
+        if not question_id.startswith(prefix):
+            continue
+        suffix = question_id[len(prefix) :]
+        number = int(suffix) if suffix.isdigit() else 0
+        return order, number, question_id
+    return len(prefix_order), 0, question_id
 
 
 def _question_matrix_score_count_blockers(

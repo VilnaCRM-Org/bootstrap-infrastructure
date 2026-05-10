@@ -2159,8 +2159,8 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                     "Security": 0,
                 },
                 "questionScores": [
-                    {"id": f"Q{number}", "score": 5, "status": "passed"}
-                    for number in range(1, 58)
+                    {"id": question_id, "score": 5, "status": "passed"}
+                    for question_id in module.EXPECTED_WELL_ARCHITECTED_QUESTION_IDS
                 ],
                 "frameworkSourceVerification": {
                     "checkedAt": reviewed_at,
@@ -3147,6 +3147,45 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     )
     assert invalid_fanout["status"] == "failed"  # nosec B101
     assert invalid_fanout["evidence"]["reports"][0]["error"] == "invalid catalog"  # nosec B101
+
+
+def test_collect_well_architected_evidence_rejects_question_id_gaps(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Require exact Well-Architected question IDs in score evidence."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    evidence_payload = _well_architected_question_evidence()
+    now = module.dt.datetime.now(module.dt.timezone.utc).isoformat()
+    evidence_payload["reviewedAt"] = now
+    source_verification = evidence_payload["frameworkSourceVerification"]
+    assert isinstance(source_verification, dict)  # nosec B101
+    source_verification["checkedAt"] = now
+    scores = evidence_payload["questionScores"]
+    assert isinstance(scores, list)  # nosec B101
+    for score in scores:
+        assert isinstance(score, dict)  # nosec B101
+        score["status"] = "passed"
+        score.pop("evidenceRefs", None)
+    scores.pop()
+    scores.append(dict(scores[0]))
+    unknown_score = dict(scores[1])
+    unknown_score["id"] = "OPS99"
+    scores.append(unknown_score)
+    evidence_payload["questionCount"] = len(scores)
+    evidence_payload["unresolvedQuestionCount"] = 0
+    evidence = tmp_path / "question-matrix-evidence.json"
+    evidence.write_text(json.dumps(evidence_payload), encoding="utf-8")
+
+    args = module.build_parser().parse_args(
+        ["--question-matrix-evidence", str(evidence)]
+    )
+    check = module.question_matrix_evidence(args)
+    blockers = " ".join(check["blockers"])
+
+    assert check["status"] == "failed"  # nosec B101
+    assert "duplicate question IDs: OPS1" in blockers  # nosec B101
+    assert "missing question IDs: SUS6" in blockers  # nosec B101
+    assert "unknown question IDs: OPS99" in blockers  # nosec B101
 
 
 def test_sns_alert_route_records_sqs_queue_metadata(
