@@ -15,14 +15,16 @@ key IDs.
 | --- | --- |
 | PR | https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/22 |
 | Branch | `codex/wa-5of5-implementation` |
+| Audited PR head | `7c3e922ca1b0f4f9685b2372719ea223caf0e522` |
+| Latest collector timestamp | `2026-05-10T06:42:13.412247+00:00` |
 | Collector artifact | `.artifacts/well-architected/evidence.json` |
+| Collector Markdown report | `.artifacts/well-architected/evidence.md` |
 | Live status surfaces | PR body, issue #17 status block, standing PR audit comment, and blocker comments for issues #26-#30 |
 | Result | Not complete; external/admin blockers remain. |
 
-This tracked audit intentionally avoids embedding a mutable PR head SHA or
-collector timestamp. The branch head changes when this file is committed, so the
-latest live head and collector timestamp must be read from the public PR/issue
-status surfaces and by rerunning the collector before any final score claim.
+This tracked audit records the latest inspected head. The branch head changes
+when this file is committed, so a future final score claim must rerun the
+collector and refresh this table before completion can be asserted.
 
 ## Prompt-To-Artifact Checklist
 
@@ -33,6 +35,7 @@ status surfaces and by rerunning the collector before any final score claim.
 | Check PR #22 code and state. | `gh pr view 22`, hosted checks, standing PR audit comment, and collector `github_pr_checks` / `github_pr_local_state`. | PR control-plane evidence must be rechecked on the current head before a final claim; the latest public status surface records the current result. | Done for latest recorded run |
 | Check whole project code. | Local validation commands and hosted checks: targeted ruff, format check, focused evidence tests, `make test-unit`, `make test-ty`, `make test-maintainability`, `make test-repo-hygiene`, and `git diff --check`. | Repository-owned code validation must be rechecked after each branch update; latest runs reported green status and 100% unit coverage. | Done for latest recorded run |
 | Verify evidence gates cover the objective instead of relying on proxy scores. | `scripts/collect_well_architected_evidence.py` emits both `proxyPillarScores` and capped final `pillarScores`; `scoreBlockers` now distinguishes missing readiness evidence from failing readiness evidence. | Proxy scores are not treated as final while question-matrix or external-control gates fail. | Done |
+| Produce auditable machine and human evidence artifacts. | `make report-well-architected-evidence` writes `.artifacts/well-architected/evidence.json` and `.artifacts/well-architected/evidence.md`; the latest run produced both artifacts and returned the expected blocker exit. | The artifacts summarize the current scores, checks, and blockers without secret material; they do not override failed readiness gates. | Done |
 | Reach 5/5 for every Well-Architected question and condition. | Fresh collector output fails `github_branch_protection`, `github_dependabot_alerts`, `github_production_environment`, `aws_iam_account_access`, `question_matrix_evidence`, and `external_control_evidence`. | Final 5/5 is blocked by live external/admin evidence, not by an untracked repository implementation gap found in this audit. | Blocked |
 
 ## Current Scores
@@ -76,6 +79,22 @@ Live blockers:
   needs an approved exception or rotation/removal.
 - `question_matrix_evidence` has 10 unresolved items.
 - `external_control_evidence` has 3 unresolved items.
+
+Failed collector checks on the latest recorded run:
+
+`github_branch_protection`, `github_dependabot_alerts`,
+`github_production_environment`, `aws_iam_account_access`,
+`question_matrix_evidence`, `external_control_evidence`.
+
+Open handoff issues:
+
+- #26 applies required status checks to the active `main` ruleset.
+- #27 creates and protects the `prod` GitHub environment.
+- #28 records human MFA/SSO, active IAM user access-key, permissions-boundary
+  or exemption, and security-owner evidence.
+- #29 closes or excepts default-branch `GitPython` Dependabot alerts after the
+  patched lockfile lands.
+- #30 records downstream alert consumption and monthly observation evidence.
 
 ## Completion Decision
 
