@@ -134,6 +134,9 @@ Current implementation-PR readiness observations:
 - Local validation and hosted PR checks are current for the branch head,
   including Preview, Destructive Diff Gate, IAM Validation, Local Battery,
   security scans, quality gates, mutation, dependency checks, and CodeQL.
+- `completion-audit-2026-05-10.md` maps the active goal to concrete artifacts,
+  current test and collector evidence, and the external blockers that still
+  prevent an honest final 5/5 claim.
 - The collector confirms the PR head matches the local head, the PR is approved,
   and no current review threads are unresolved.
 - Real test-account preview/apply evidence exists for the branch. A guarded
