@@ -128,7 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--evidence", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
-        "--review-date", default=dt.datetime.now(dt.UTC).date().isoformat()
+        "--review-date", default=dt.datetime.now(dt.timezone.utc).date().isoformat()
     )
     parser.add_argument("--workload", default="bootstrap-infrastructure")
     parser.add_argument("--environment", default="test")
