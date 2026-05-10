@@ -96,7 +96,7 @@ additional always-on compute is accepted in this review.
 | Area | Observation | Target | Follow-up |
 | --- | --- | --- | --- |
 | Local docs/evidence validation | Ruff, JSON consistency, and repository fanout passed for docs-only evidence updates. | Keep docs-only checks fast enough to avoid bypass pressure. | Use full local CI before code changes. |
-| Hosted checks | Current PR head `0923fe5` completed same-repo Preview, IAM Validation, Destructive Diff Gate, Local Battery, mutation, quality, security, and dependency checks on 2026-05-10. | Hosted compute evidence is acceptable for PERF2 in this review. | Platform owner watches hosted queue and evaluates workflow split if queue delay becomes persistent. |
+| Hosted checks | The 2026-05-10 evidence refresh confirmed the current PR head completed same-repo Preview, IAM Validation, Destructive Diff Gate, Local Battery, mutation, quality, security, and dependency checks. | Hosted compute evidence is acceptable for PERF2 in this review. | Platform owner watches hosted queue and evaluates workflow split if queue delay becomes persistent. |
 | Workflow redundancy | No new CI jobs were added by the docs/evidence slices. | Avoid duplicate scans or previews. | Review CI matrix before adding future checks. |
 | Artifact retention | Saved plans and preview artifacts are short-lived and hash-verified. | Keep enough evidence for review without retaining secret-bearing artifacts. | Preserve manifest checks for apply workflows. |
 
