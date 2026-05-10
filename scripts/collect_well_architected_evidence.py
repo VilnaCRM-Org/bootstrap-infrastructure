@@ -39,6 +39,8 @@ DEFAULT_REQUIRED_STATUS_CHECKS = (
     "CodeQL (python)",
     "CodeQL (actions)",
 )
+DEFAULT_PRODUCTION_ENVIRONMENT = "prod"
+DEFAULT_PRODUCTION_REVIEWER = "Kravalg"
 RESTORE_DRILL_REQUIRED_FIELDS = (
     "workload",
     "environment",
@@ -707,6 +709,151 @@ def _active_branch_ruleset_count(rulesets: Sequence[dict]) -> int:
     return sum(1 for ruleset in rulesets if _is_active_branch_ruleset(ruleset))
 
 
+def github_production_environment(
+    repo: str,
+    environment: str = DEFAULT_PRODUCTION_ENVIRONMENT,
+    reviewer_login: str | None = DEFAULT_PRODUCTION_REVIEWER,
+    *,
+    runner: Runner = run,
+) -> dict[str, object]:
+    """Collect protected production environment evidence from GitHub."""
+    ok, payload, error = _run_json(
+        ["gh", "api", f"repos/{repo}/environments/{environment}"],
+        runner=runner,
+    )
+    if not ok or not isinstance(payload, dict):
+        return _check(
+            "github_production_environment",
+            status="failed",
+            evidence={"environment": environment, "readable": False},
+            blockers=[
+                f"GitHub environment {environment!r} is not configured "
+                f"or readable: {error}."
+            ],
+        )
+
+    reviewer_logins = _environment_required_reviewer_logins(payload)
+    reviewer_count = _environment_required_reviewer_count(payload)
+    branch_policy = payload.get("deployment_branch_policy") or {}
+    protected_branches = bool(branch_policy.get("protected_branches"))
+    custom_branch_policies = bool(branch_policy.get("custom_branch_policies"))
+    prevents_self_review = _environment_prevents_self_review(payload)
+    blockers = _production_environment_blockers(
+        environment=environment,
+        reviewer_login=reviewer_login,
+        reviewer_logins=reviewer_logins,
+        reviewer_count=reviewer_count,
+        prevents_self_review=prevents_self_review,
+        protected_branches=protected_branches,
+        custom_branch_policies=custom_branch_policies,
+    )
+    return _check(
+        "github_production_environment",
+        status="passed" if not blockers else "failed",
+        evidence={
+            "environment": environment,
+            "readable": True,
+            "requiredReviewerCount": reviewer_count,
+            "requiredReviewerLogins": reviewer_logins,
+            "expectedReviewerLogin": reviewer_login,
+            "preventSelfReview": prevents_self_review,
+            "protectedBranchesOnly": protected_branches and not custom_branch_policies,
+        },
+        blockers=blockers,
+    )
+
+
+def _production_environment_blockers(
+    *,
+    environment: str,
+    reviewer_login: str | None,
+    reviewer_logins: Sequence[str],
+    reviewer_count: int,
+    prevents_self_review: bool,
+    protected_branches: bool,
+    custom_branch_policies: bool,
+) -> list[str]:
+    """Return blockers for protected production environment metadata."""
+    blockers: list[str] = []
+    if reviewer_count < 1:
+        blockers.append(
+            f"GitHub environment {environment!r} does not require reviewers."
+        )
+    elif reviewer_login and reviewer_logins and reviewer_login not in reviewer_logins:
+        blockers.append(
+            f"GitHub environment {environment!r} required reviewers do not include "
+            f"{reviewer_login}."
+        )
+    if not prevents_self_review:
+        blockers.append(
+            f"GitHub environment {environment!r} does not prevent self-review."
+        )
+    if not protected_branches or custom_branch_policies:
+        blockers.append(
+            f"GitHub environment {environment!r} is not limited to protected branches."
+        )
+    return blockers
+
+
+def _environment_required_reviewer_count(payload: dict[str, Any]) -> int:
+    """Return required reviewer count from either environment response shape."""
+    reviewers = _environment_required_reviewers(payload)
+    return len(reviewers)
+
+
+def _environment_required_reviewer_logins(payload: dict[str, Any]) -> list[str]:
+    """Return required reviewer logins exposed by the environment response."""
+    logins: set[str] = set()
+    for reviewer in _environment_required_reviewers(payload):
+        reviewer_payload = reviewer.get("reviewer")
+        if isinstance(reviewer_payload, dict) and isinstance(
+            reviewer_payload.get("login"), str
+        ):
+            logins.add(reviewer_payload["login"])
+        elif isinstance(reviewer.get("login"), str):
+            logins.add(reviewer["login"])
+    return sorted(logins)
+
+
+def _environment_required_reviewers(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return required reviewer entries from GitHub environment metadata."""
+    direct_reviewers = _dict_items(payload.get("reviewers"))
+    if direct_reviewers:
+        return direct_reviewers
+    for rule in _dict_items(payload.get("protection_rules")):
+        if rule.get("type") == "required_reviewers":
+            rule_reviewers = _dict_items(rule.get("reviewers"))
+            if rule_reviewers:
+                return rule_reviewers
+    return []
+
+
+def _dict_items(value: object) -> list[dict[str, Any]]:
+    """Return dictionary entries from a list-shaped API field."""
+    if not isinstance(value, list):
+        return []
+    items: list[dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, dict):
+            items.append(cast(dict[str, Any], item))
+    return items
+
+
+def _environment_prevents_self_review(payload: dict[str, Any]) -> bool:
+    """Return whether the required-reviewer rule prevents self-review."""
+    if payload.get("prevent_self_review") is True:
+        return True
+    rules = payload.get("protection_rules")
+    if not isinstance(rules, list):
+        return False
+    return any(
+        isinstance(rule, dict)
+        and rule.get("type") == "required_reviewers"
+        and rule.get("prevent_self_review") is True
+        for rule in rules
+    )
+
+
 def aws_identity(*, runner: Runner = run) -> dict[str, object]:
     """Collect current AWS account identity metadata."""
     ok, payload, error = _run_json(
@@ -1192,6 +1339,7 @@ PILLAR_CHECKS = {
         "github_pr_local_state",
         "github_review_threads",
         "github_branch_protection",
+        "github_production_environment",
         "aws_sns_alert_route",
         "aws_cloudtrail_management_events",
     ),
@@ -1206,6 +1354,7 @@ PILLAR_CHECKS = {
     "Reliability": (
         "github_pr_checks",
         "github_pr_local_state",
+        "github_production_environment",
         "aws_sns_alert_route",
         "restore_drill_evidence",
         "repository_fanout",
@@ -1579,6 +1728,12 @@ def collect_evidence(
             ),
             runner=runner,
         ),
+        github_production_environment(
+            args.repo,
+            args.production_environment,
+            args.production_reviewer,
+            runner=runner,
+        ),
         aws_identity(runner=runner),
         aws_cost_controls(args.aws_account_id, runner=runner),
         aws_sns_alert_route(args.operations_topic_arn, runner=runner),
@@ -1629,6 +1784,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--aws-account-id")
     parser.add_argument("--operations-topic-arn")
     parser.add_argument("--operations-cloudtrail-name")
+    parser.add_argument(
+        "--production-environment",
+        default=DEFAULT_PRODUCTION_ENVIRONMENT,
+        help="GitHub environment that must protect production deployments.",
+    )
+    parser.add_argument(
+        "--production-reviewer",
+        default=DEFAULT_PRODUCTION_REVIEWER,
+        help="GitHub login expected to approve production deployments.",
+    )
     parser.add_argument("--restore-drill-evidence", type=Path)
     parser.add_argument("--question-matrix-evidence", type=Path)
     parser.add_argument("--external-control-evidence", type=Path)

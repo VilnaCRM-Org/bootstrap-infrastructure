@@ -1359,6 +1359,28 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                     }
                 }
             }
+        elif command[:2] == ["gh", "api"] and command[-1].endswith(
+            "/environments/prod"
+        ):
+            payload = {
+                "name": "prod",
+                "protection_rules": [
+                    {
+                        "type": "required_reviewers",
+                        "prevent_self_review": True,
+                        "reviewers": [
+                            {
+                                "type": "User",
+                                "reviewer": {"login": "Kravalg"},
+                            }
+                        ],
+                    }
+                ],
+                "deployment_branch_policy": {
+                    "protected_branches": True,
+                    "custom_branch_policies": False,
+                },
+            }
         elif command[:2] == ["gh", "api"]:
             payload = {
                 "required_status_checks": {"contexts": ["Unit"]},
@@ -1484,6 +1506,10 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
                     }
                 }
             }
+        elif command[:2] == ["gh", "api"] and command[-1].endswith(
+            "/environments/prod"
+        ):
+            return subprocess.CompletedProcess(command, 1, "", "not found")
         elif command[:2] == ["gh", "api"]:
             payload = {
                 "required_status_checks": {"contexts": []},
@@ -1538,6 +1564,7 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
     assert statuses["github_pr_local_state"] == "failed"  # nosec B101
     assert statuses["github_review_threads"] == "failed"  # nosec B101
     assert statuses["github_branch_protection"] == "failed"  # nosec B101
+    assert statuses["github_production_environment"] == "failed"  # nosec B101
     assert statuses["aws_cost_controls"] == "failed"  # nosec B101
     assert statuses["aws_sns_alert_route"] == "failed"  # nosec B101
     assert statuses["aws_cloudtrail_management_events"] == "failed"  # nosec B101
@@ -1896,6 +1923,140 @@ def test_collect_well_architected_evidence_reads_ruleset_fallback(
         )
         is False
     )
+
+
+def test_collect_well_architected_evidence_reads_production_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Production environment evidence should require protected approvals."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    payload = {
+        "name": "prod",
+        "protection_rules": [
+            {"type": "wait_timer", "wait_timer": 0},
+            {
+                "type": "required_reviewers",
+                "prevent_self_review": False,
+                "reviewers": "unexpected-shape",
+            },
+            {
+                "type": "required_reviewers",
+                "prevent_self_review": True,
+                "reviewers": [
+                    {"type": "User", "reviewer": {"login": "Kravalg"}},
+                    {"type": "Team", "reviewer": {"login": "platform-admins"}},
+                ],
+            },
+        ],
+        "deployment_branch_policy": {
+            "protected_branches": True,
+            "custom_branch_policies": False,
+        },
+    }
+
+    evidence = module.github_production_environment(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        "prod",
+        "Kravalg",
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, json.dumps(payload), ""
+        ),
+    )
+
+    assert evidence["status"] == "passed"  # nosec B101
+    assert evidence["evidence"]["requiredReviewerCount"] == 2  # nosec B101
+    assert evidence["evidence"]["requiredReviewerLogins"] == [  # nosec B101
+        "Kravalg",
+        "platform-admins",
+    ]
+    assert evidence["evidence"]["preventSelfReview"] is True  # nosec B101
+    assert evidence["evidence"]["protectedBranchesOnly"] is True  # nosec B101
+
+
+def test_collect_well_architected_evidence_reports_production_environment_gaps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Production environment gaps should be explicit blocker text."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+
+    missing = module.github_production_environment(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        "prod",
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 1, "", "not found"
+        ),
+    )
+    assert missing["status"] == "failed"  # nosec B101
+    assert missing["evidence"]["readable"] is False  # nosec B101
+
+    no_reviewers_payload = {
+        "name": "prod",
+        "prevent_self_review": True,
+        "protection_rules": [],
+        "deployment_branch_policy": {
+            "protected_branches": True,
+            "custom_branch_policies": False,
+        },
+    }
+    no_reviewers = module.github_production_environment(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        "prod",
+        "Kravalg",
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, json.dumps(no_reviewers_payload), ""
+        ),
+    )
+    assert no_reviewers["status"] == "failed"  # nosec B101
+    assert "does not require reviewers" in " ".join(  # nosec B101
+        no_reviewers["blockers"]
+    )
+
+    no_shape_payload = {
+        "name": "prod",
+        "prevent_self_review": True,
+        "deployment_branch_policy": {
+            "protected_branches": True,
+            "custom_branch_policies": False,
+        },
+    }
+    no_shape = module.github_production_environment(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        "prod",
+        "Kravalg",
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, json.dumps(no_shape_payload), ""
+        ),
+    )
+    assert no_shape["status"] == "failed"  # nosec B101
+    assert no_shape["evidence"]["requiredReviewerCount"] == 0  # nosec B101
+
+    weak_payload = {
+        "name": "prod",
+        "reviewers": [
+            {"type": "User", "login": "pixelTM"},
+            {"type": "Team"},
+            "unexpected-shape",
+        ],
+        "deployment_branch_policy": {
+            "protected_branches": False,
+            "custom_branch_policies": True,
+        },
+    }
+    weak = module.github_production_environment(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        "prod",
+        "Kravalg",
+        runner=lambda command, **_kwargs: subprocess.CompletedProcess(
+            command, 0, json.dumps(weak_payload), ""
+        ),
+    )
+
+    assert weak["status"] == "failed"  # nosec B101
+    blockers = " ".join(weak["blockers"])
+    assert "Kravalg" in blockers  # nosec B101
+    assert "self-review" in blockers  # nosec B101
+    assert "protected branches" in blockers  # nosec B101
 
 
 def test_collect_well_architected_evidence_paginates_review_threads(
