@@ -1,7 +1,7 @@
 {
   "workload": "bootstrap-infrastructure",
   "owner": "platform-maintainers",
-  "reviewedAt": "2026-05-10T06:10:06Z",
+  "reviewedAt": "2026-05-10T07:40:30Z",
   "questionCount": 57,
   "unresolvedQuestionCount": 10,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
@@ -76,7 +76,7 @@
     {"id": "OPS5", "pillar": "Operational Excellence", "score": 3, "status": "unresolved", "rationale": "Local and CI guardrail contracts are strong and the 2026-05-10 PR head has green hosted checks, but GitHub branch protection currently reports zero required status checks.", "primaryBlocker": "Repository-admin proof that exact safety checks are required."},
     {"id": "OPS6", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "Preview/apply, destructive diff, IAM validation, SHA gates, rollback or fail-forward playbook expectations, and current hosted privileged guardrail evidence are documented.", "primaryBlocker": "Production approval proof remains missing."},
     {"id": "OPS7", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "A current operational readiness record now captures owners, evidence, no-go items, fallback actions, live security-account service posture, and no-drift evidence.", "primaryBlocker": "The ORR still records no-go items for branch protection, production approval, and external human/admin security attestations."},
-    {"id": "OPS8", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "Observability consumption expectations now tie signals to thresholds, owners, fallback actions, retained evidence, and collector-verified durable SNS-to-SQS queue metadata.", "primaryBlocker": "A recurring monthly observation history and downstream human alert route are still missing."},
+    {"id": "OPS8", "pillar": "Operational Excellence", "score": 4, "status": "unresolved", "rationale": "Observability consumption expectations now tie signals to thresholds, owners, fallback actions, retained evidence, collector-verified durable SNS-to-SQS queue metadata, and the make report-alert-route-observation path for monthly non-secret review records.", "primaryBlocker": "A recurring monthly observation history and downstream human alert route are still missing."},
     {"id": "OPS9", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md retains current KPI observations, decisions, owners, freshness, and follow-ups for local validation, PR state, backup, restore, alert route, catalog demand, quota, performance, and sustainability.", "primaryBlocker": ""},
     {"id": "OPS10", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/sre-operations.md records severity, escalation, runbook, and post-incident expectations; docs/alert-routing-evidence.md records the durable route; docs/incident-drill-evidence-2026-05-09.md records a current scenario drill for backup, state, replica, KMS, IAM/OIDC, logging, and workflow events.", "primaryBlocker": ""},
     {"id": "OPS11", "pillar": "Operational Excellence", "score": 5, "status": "passed", "rationale": "docs/operating-review-2026-05-09.md records the current continuous-improvement observations, action decisions, owners, outcomes, next actions, and quarterly review due date.", "primaryBlocker": ""},

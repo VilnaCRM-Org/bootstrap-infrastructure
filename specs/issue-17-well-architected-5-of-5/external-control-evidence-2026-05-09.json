@@ -1,7 +1,7 @@
 {
   "workload": "bootstrap-infrastructure",
   "owner": "platform-maintainers",
-  "reviewedAt": "2026-05-10T06:10:06Z",
+  "reviewedAt": "2026-05-10T07:40:30Z",
   "controlCount": 8,
   "unresolvedControlCount": 3,
   "evidenceLocation": "specs/issue-17-well-architected-5-of-5/",
@@ -13,7 +13,7 @@
       "evidence": [
         "collect_well_architected_evidence reports zero required status checks in branch protection/ruleset metadata.",
         "Current GitHub token reports viewerPermission=WRITE and viewerCanAdminister=false, so ruleset repair requires a repository administrator.",
-        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T06:10:06Z and still stops at the repository-admin preflight before any write."
+        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T07:40:41Z and still stops at the repository-admin preflight before any write."
       ],
       "unresolvedReason": "Admin-owned ruleset must require the documented status checks: Preview, Destructive Diff Gate, IAM Validation, Secrets Scan, Dependency Audit, Bandit, Actionlint, CodeQL (python), and CodeQL (actions)."
     },
@@ -23,7 +23,8 @@
       "evidence": [
         "AWS SNS topic arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations exists, is KMS encrypted, and has an SQS subscription.",
         "collect_well_architected_evidence aws_sns_alert_route check passed.",
-        "The 2026-05-10 collector records non-secret SQS metadata for arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts: queue name bootstrap-test-operations-alerts, retention 345600 seconds, visibility timeout 30 seconds, and zero not-visible or delayed messages."
+        "The 2026-05-10 collector records non-secret SQS metadata for arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts: queue name bootstrap-test-operations-alerts, retention 345600 seconds, visibility timeout 30 seconds, and zero not-visible or delayed messages.",
+        "make report-alert-route-observation renders non-secret monthly OPS8 route-observation records from collector evidence while keeping downstream human route approval and observation history as separate SRE-owned evidence."
       ]
     },
     {
@@ -86,7 +87,7 @@
         "Production workflow has preview/apply split and commit SHA gates.",
         "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod returned 404 in the 2026-05-10 collector run.",
         "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod-preview showed no protection rules on 2026-05-09.",
-        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T06:10:06Z and still stops at the repository-admin preflight before it can create or protect prod."
+        "scripts/configure_github_repository_controls.py --apply was retested at 2026-05-10T07:40:41Z and still stops at the repository-admin preflight before it can create or protect prod."
       ],
       "unresolvedReason": "GitHub environment approval evidence, required reviewer settings, and production no-go evidence are external and not yet confirmed."
     }
