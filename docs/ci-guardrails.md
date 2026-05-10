@@ -464,9 +464,10 @@ uv run python scripts/configure_github_repository_controls.py \
 ```
 
 Run the same command with `--dry-run`, or with neither `--dry-run` nor
-`--apply`, to inspect the ruleset and protected environment payloads. With
-`--apply`, the helper re-reads the active `main` ruleset and `prod` environment
-and exits non-zero unless the required checks, pull-request
+`--apply`, to inspect the ruleset and protected environment payloads. Dry runs
+resolve the reviewer login to the numeric GitHub user ID used by the environment
+API. With `--apply`, the helper re-reads the active `main` ruleset and `prod`
+environment and exits non-zero unless the required checks, pull-request
 review/thread-resolution rules, protected-branch deployment policy, self-review
 prevention, and configured production reviewer are visible in GitHub metadata.
 

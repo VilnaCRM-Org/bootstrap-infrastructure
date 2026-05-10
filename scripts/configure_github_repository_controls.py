@@ -350,7 +350,8 @@ def configure(repo: str, reviewer: str, *, apply: bool) -> int:
         )
         payloads["verification"] = _verify_applied_controls(repo, reviewer_id)
     else:
-        payloads["prodEnvironment"] = prod_environment_payload(0)
+        reviewer_id = _github_user_id(reviewer)
+        payloads["prodEnvironment"] = prod_environment_payload(reviewer_id)
         payloads["prodEnvironmentReviewerLogin"] = reviewer
 
     print(json.dumps(payloads, indent=2, sort_keys=True))

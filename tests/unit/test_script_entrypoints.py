@@ -2015,11 +2015,12 @@ def test_configure_github_repository_controls_payloads(
     }
 
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
+    monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: 9444106)
     assert (  # nosec B101
         module.main(["--repo", "VilnaCRM-Org/bootstrap-infrastructure"]) == 0
     )
     rendered = json.loads(capsys.readouterr().out)
-    assert rendered["prodEnvironment"]["reviewers"][0]["id"] == 0  # nosec B101
+    assert rendered["prodEnvironment"]["reviewers"][0]["id"] == 9444106  # nosec B101
     assert rendered["prodEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
 
     assert (  # nosec B101
@@ -2027,6 +2028,9 @@ def test_configure_github_repository_controls_payloads(
         == 0
     )
     dry_run_rendered = json.loads(capsys.readouterr().out)
+    assert (  # nosec B101
+        dry_run_rendered["prodEnvironment"]["reviewers"][0]["id"] == 9444106
+    )
     assert dry_run_rendered["prodEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
 
     with pytest.raises(SystemExit):
