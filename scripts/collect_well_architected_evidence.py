@@ -2853,6 +2853,7 @@ def _structured_evidence_control_blockers(
     control_items = [control for control in controls if isinstance(control, dict)]
     return [
         *_missing_external_control_blockers(control_items, required_control_ids),
+        *_external_control_id_blockers(control_items, required_control_ids),
         *_external_control_count_blockers(payload, control_items),
         *_external_control_unresolved_count_blockers(payload, control_items),
         *_external_control_proof_blockers(control_items),
@@ -3213,6 +3214,44 @@ def _missing_external_control_blockers(
         if missing
         else []
     )
+
+
+def _external_control_id_blockers(
+    controls: Sequence[dict[str, Any]],
+    required_control_ids: Sequence[str],
+) -> list[str]:
+    """Return blockers for invalid, duplicate, or unknown external control IDs."""
+    invalid_labels: list[str] = []
+    observed_ids: list[str] = []
+    for index, control in enumerate(controls, start=1):
+        control_id = control.get("id")
+        if not isinstance(control_id, str) or not control_id.strip():
+            invalid_labels.append(f"entry {index}")
+            continue
+        observed_ids.append(control_id.strip())
+
+    id_counts = Counter(observed_ids)
+    duplicate_ids = sorted(
+        control_id for control_id, count in id_counts.items() if count > 1
+    )
+    unknown_ids = sorted(set(observed_ids) - set(required_control_ids))
+    blockers = []
+    if invalid_labels:
+        blockers.append(
+            "External-control evidence controls must include non-empty string IDs "
+            f"for: {', '.join(invalid_labels)}."
+        )
+    if duplicate_ids:
+        blockers.append(
+            "External-control evidence includes duplicate controls: "
+            f"{', '.join(duplicate_ids)}."
+        )
+    if unknown_ids:
+        blockers.append(
+            "External-control evidence includes unknown controls: "
+            f"{', '.join(unknown_ids)}."
+        )
+    return blockers
 
 
 def _external_control_count_blockers(

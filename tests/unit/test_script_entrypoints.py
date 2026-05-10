@@ -2965,6 +2965,40 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert "unresolvedControlCount" in strict_external_text  # nosec B101
     assert "non-empty evidence" in strict_external_text  # nosec B101
     assert "unresolvedReason" in strict_external_text  # nosec B101
+    external_id_blockers = module._structured_evidence_control_blockers(  # noqa: SLF001
+        {
+            "controlCount": 5,
+            "unresolvedControlCount": 0,
+            "controls": [
+                {
+                    "id": "branch_protection",
+                    "status": "passed",
+                    "evidence": ["Ruleset verified."],
+                },
+                {
+                    "id": "alert_route",
+                    "status": "passed",
+                    "evidence": ["Alert route verified."],
+                },
+                {
+                    "id": "alert_route",
+                    "status": "passed",
+                    "evidence": ["Duplicate row."],
+                },
+                {
+                    "id": "unexpected",
+                    "status": "passed",
+                    "evidence": ["Unexpected row."],
+                },
+                {"status": "passed", "evidence": ["Missing ID."]},
+            ],
+        },
+        ("branch_protection", "alert_route"),
+    )
+    external_id_text = " ".join(external_id_blockers)
+    assert "non-empty string IDs" in external_id_text  # nosec B101
+    assert "duplicate controls: alert_route" in external_id_text  # nosec B101
+    assert "unknown controls: unexpected" in external_id_text  # nosec B101
     non_count_external_blockers = module._structured_evidence_control_blockers(  # noqa: SLF001
         {
             "controlCount": "2",
