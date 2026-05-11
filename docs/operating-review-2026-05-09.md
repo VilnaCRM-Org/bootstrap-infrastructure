@@ -38,7 +38,7 @@ actions.
 | Incident and DR drill | `docs/incident-drill-evidence-2026-05-09.md` records completed backup jobs, enabled state/log replication rules, replica parity samples, KMS/IAM/OIDC/logging/backup/workflow scenarios, and degraded-mode decisions. | Repository-owned incident and DR exercise evidence is current until the quarterly freshness window expires. | Schedule next incident/DR drill before 2026-08-07. |
 | Catalog demand | `pulumi/repositories.bootstrap.json` has one active repository, owner `platform`, last reviewed 2026-04-27, and two expected environments. | No stale or deprecated catalog entries require cleanup in this review. | Refresh catalog ownership by 2026-05-27 or before expansion. |
 | Quota headroom | Quota evidence records projected bootstrap fanout within quota or repo thresholds, with CloudTrail and AWS Config no-go notes. | Catalog expansion is allowed only while projected counts remain within no-go rules. | Refresh quota evidence before adding repositories or account-level resources. |
-| Performance | No always-on runtime compute exists; current hosted checks completed on 2026-05-09, including Preview, IAM Validation, Destructive Diff Gate, Local Battery, security scans, and quality gates. | Performance model and resource ADRs are current. | Refresh queue/run-time observations monthly and per workflow change. |
+| Performance | No always-on runtime compute exists; current hosted check evidence covers Preview, IAM Validation, Destructive Diff Gate, Local Battery, security scans, and quality gates. | Performance model and resource ADRs are current. | Refresh queue/run-time observations monthly and per workflow change. |
 | Sustainability | Current workload uses managed services, lifecycle controls, data retention, no idle compute, and catalog demand metadata. | Sustainability posture is current for repository-owned controls. | Refresh quarterly or before region, retention, or compute changes. |
 
 ## Priority And Tradeoff Decisions
@@ -85,7 +85,7 @@ destroy safety check, and follow-up date before new durable fanout is added.
 | EventBridge/SNS/SQS | Use managed event routing and durable queue subscription. | Avoids polling compute; live inventory and SNS-to-SQS test are current; downstream human route still external. | SRE records downstream route owner. |
 | Budgets and Cost Anomaly Detection | Use account-level budget/anomaly metadata through operations topic. | Provides spend guardrails; current thresholds, active tags, monthly cost, and transfer evidence are recorded in the FinOps review. | Refresh by 2026-06-09 or before production approval and catalog expansion. |
 | GuardDuty/Security Hub/AWS Config | Use managed account security services. | Adds account-level resources but avoids custom security inventory workers; guarded local apply and no-drift validation proved current test posture. | Refresh metadata monthly and after detector, hub, recorder, delivery, or region changes. |
-| GitHub Actions | Use hosted runners and Dockerized toolchain. | Avoids idle self-hosted compute; the current hosted check suite completed after queue wait on 2026-05-09. | Review queue/run time monthly and per workflow change. |
+| GitHub Actions | Use hosted runners and Dockerized toolchain. | Avoids idle self-hosted compute; the hosted check suite has completed for the current implementation line without requiring idle self-hosted capacity. | Review queue/run time monthly and per workflow change. |
 
 Cost-of-effort decision: this PR favors managed services and repository
 evidence over custom workers. The implementation adds durable account controls
@@ -97,7 +97,7 @@ additional always-on compute is accepted in this review.
 | Area | Observation | Target | Follow-up |
 | --- | --- | --- | --- |
 | Local docs/evidence validation | Ruff, JSON consistency, and repository fanout passed for docs-only evidence updates. | Keep docs-only checks fast enough to avoid bypass pressure. | Use full local CI before code changes. |
-| Hosted checks | The 2026-05-10 evidence refresh confirmed the current PR head completed same-repo Preview, IAM Validation, Destructive Diff Gate, Local Battery, mutation, quality, security, and dependency checks. | Hosted compute evidence is acceptable for PERF2 in this review. | Platform owner watches hosted queue and evaluates workflow split if queue delay becomes persistent. |
+| Hosted checks | The latest collector and hosted-check refresh confirm the PR head completed same-repo Preview, IAM Validation, Destructive Diff Gate, Local Battery, mutation, quality, security, and dependency checks. | Hosted compute evidence is acceptable for PERF2 in this review. | Platform owner watches hosted queue and evaluates workflow split if queue delay becomes persistent. |
 | Workflow redundancy | No new CI jobs were added by the docs/evidence slices. | Avoid duplicate scans or previews. | Review CI matrix before adding future checks. |
 | Artifact retention | Saved plans and preview artifacts are short-lived and hash-verified. | Keep enough evidence for review without retaining secret-bearing artifacts. | Preserve manifest checks for apply workflows. |
 
