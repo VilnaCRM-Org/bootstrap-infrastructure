@@ -94,6 +94,10 @@ def render_exception(report: dict[str, Any], args: argparse.Namespace) -> str:
                 [
                     ("Collector check status", check.get("status", "")),
                     ("Dependency", evidence.get("dependencyName", "")),
+                    (
+                        "Dependency names",
+                        ", ".join(_str_list(evidence.get("dependencyNames"))),
+                    ),
                     ("Manifest path", evidence.get("manifestPath", "")),
                     ("Open alert numbers", _alert_number_text(alert_numbers)),
                     (
@@ -143,6 +147,7 @@ def structured_exception(
         "dependencyName": _required_text(
             "dependencyName", evidence.get("dependencyName")
         ),
+        "dependencyNames": _str_list(evidence.get("dependencyNames")),
         "manifestPath": _required_text("manifestPath", evidence.get("manifestPath")),
         "alertNumbers": alert_numbers,
         "approval": args.approval,
@@ -161,6 +166,14 @@ def _int_list(value: object) -> list[int]:
             return []
         numbers.append(item)
     return sorted(numbers)
+
+
+def _str_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return sorted(
+        {item.strip() for item in value if isinstance(item, str) and item.strip()}
+    )
 
 
 def _validate_choice(value: str) -> None:

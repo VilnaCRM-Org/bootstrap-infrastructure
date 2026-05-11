@@ -298,6 +298,7 @@ def _dependabot_evidence_report(
                 if evidence is not None
                 else {
                     "dependencyName": "GitPython",
+                    "dependencyNames": ["GitPython"],
                     "manifestPath": "uv.lock",
                     "openAlertNumbers": [8, 4, 5, 6, 7],
                     "unexceptedOpenAlertNumbers": [8, 4, 5, 6, 7],
@@ -371,6 +372,7 @@ def test_record_dependabot_exception_writes_owner_review(
     assert "credentials" in text  # nosec B101
     assert "SecretString" not in text  # nosec B101
     assert structured["dependencyName"] == "GitPython"  # nosec B101
+    assert structured["dependencyNames"] == ["GitPython"]  # nosec B101
     assert structured["manifestPath"] == "uv.lock"  # nosec B101
     assert structured["alertNumbers"] == [4, 5, 6, 7, 8]  # nosec B101
     assert structured["approval"] == "approved_exception"  # nosec B101
@@ -6539,6 +6541,18 @@ def test_collect_well_architected_evidence_reports_dependabot_alerts(
                 "security_vulnerability": {},
             },
             {
+                "number": 12,
+                "state": "open",
+                "dependency": {
+                    "package": {"name": "urllib3"},
+                    "manifest_path": "uv.lock",
+                },
+                "security_advisory": {"severity": "high"},
+                "security_vulnerability": {
+                    "first_patched_version": {"identifier": "2.7.0"}
+                },
+            },
+            {
                 "number": 10,
                 "state": "open",
                 "dependency": {
@@ -6566,22 +6580,33 @@ def test_collect_well_architected_evidence_reports_dependabot_alerts(
         module.DependabotAlertRequest("VilnaCRM-Org/bootstrap-infrastructure"),
         runner=runner,
     )
+    specific_evidence = module.github_dependabot_alerts(
+        module.DependabotAlertRequest(
+            "VilnaCRM-Org/bootstrap-infrastructure",
+            dependency="GitPython",
+        ),
+        runner=runner,
+    )
 
     assert evidence["status"] == "failed"  # nosec B101
-    assert evidence["evidence"]["matchingOpenAlertCount"] == 3  # nosec B101
-    assert evidence["evidence"]["openAlertCount"] == 2  # nosec B101
-    assert evidence["evidence"]["openAlertNumbers"] == [4, 8]  # nosec B101
+    assert evidence["evidence"]["dependencyName"] == "all"  # nosec B101
+    assert evidence["evidence"]["dependencyNames"] == [  # nosec B101
+        "GitPython",
+        "urllib3",
+    ]
+    assert evidence["evidence"]["matchingOpenAlertCount"] == 4  # nosec B101
+    assert evidence["evidence"]["openAlertCount"] == 3  # nosec B101
+    assert evidence["evidence"]["openAlertNumbers"] == [4, 8, 12]  # nosec B101
     assert evidence["evidence"]["alerts"][0]["firstPatchedVersion"] == "3.1.47"  # nosec B101
-    assert "GitPython in uv.lock: #4, #8" in evidence["blockers"][0]  # nosec B101
+    assert "in uv.lock: #4, #8, #12" in evidence["blockers"][0]  # nosec B101
+    assert specific_evidence["evidence"]["dependencyName"] == "GitPython"  # nosec B101
+    assert specific_evidence["evidence"]["openAlertNumbers"] == [4, 8]  # nosec B101
     assert module._dependabot_alert_blockers(  # noqa: SLF001  # nosec B101
-        dependency="GitPython",
+        dependency="all",
         manifest_path="uv.lock",
         open_alert_numbers=[],
         open_alert_count=2,
-    ) == [
-        "Open default-branch Dependabot alerts remain for "
-        "GitPython in uv.lock: 2 alert(s)."
-    ]
+    ) == ["Open default-branch Dependabot alerts remain in uv.lock: 2 alert(s)."]
 
 
 def test_collect_well_architected_evidence_accepts_dependabot_exception(
@@ -6604,9 +6629,10 @@ def test_collect_well_architected_evidence_accepts_dependabot_exception(
                     module.dt.datetime.now(module.dt.timezone.utc)
                     + module.dt.timedelta(days=7)
                 ).isoformat(),
-                "dependencyName": "GitPython",
+                "dependencyName": "all",
                 "manifestPath": "uv.lock",
-                "alertNumbers": [8, 4],
+                "dependencyNames": ["urllib3", "GitPython"],
+                "alertNumbers": [8, 4, 9],
                 "approval": "approved",
                 "reason": "Patched lockfile is staged; alerts close after merge.",
                 "remediationPlan": "Merge patched lockfile or revisit exception.",
@@ -6632,6 +6658,18 @@ def test_collect_well_architected_evidence_accepts_dependabot_exception(
                 },
             },
             {
+                "number": 9,
+                "state": "open",
+                "dependency": {
+                    "package": {"name": "urllib3"},
+                    "manifest_path": "uv.lock",
+                },
+                "security_advisory": {"severity": "high"},
+                "security_vulnerability": {
+                    "first_patched_version": {"identifier": "2.7.0"}
+                },
+            },
+            {
                 "number": 4,
                 "state": "open",
                 "dependency": {
@@ -6654,12 +6692,16 @@ def test_collect_well_architected_evidence_accepts_dependabot_exception(
 
     assert evidence["status"] == "passed"  # nosec B101
     assert evidence["blockers"] == []  # nosec B101
-    assert evidence["evidence"]["openAlertNumbers"] == [4, 8]  # nosec B101
+    assert evidence["evidence"]["openAlertNumbers"] == [4, 8, 9]  # nosec B101
     assert evidence["evidence"]["unexceptedOpenAlertCount"] == 0  # nosec B101
-    assert evidence["evidence"]["exceptedOpenAlertNumbers"] == [4, 8]  # nosec B101
+    assert evidence["evidence"]["exceptedOpenAlertNumbers"] == [4, 8, 9]  # nosec B101
     assert (  # nosec B101
         evidence["evidence"]["exceptionEvidence"]["approvedBy"] == "Kravalg"
     )
+    assert evidence["evidence"]["exceptionEvidence"]["dependencyNames"] == [  # nosec B101
+        "GitPython",
+        "urllib3",
+    ]
 
 
 def test_collect_well_architected_evidence_rejects_bad_dependabot_exception(
@@ -6723,7 +6765,7 @@ def test_collect_well_architected_evidence_rejects_bad_dependabot_exception(
     assert "expiresAt" in blocker_text  # nosec B101
     assert "#8" in blocker_text  # nosec B101
     assert "#7" in blocker_text  # nosec B101
-    assert "GitPython in uv.lock: #8" in blocker_text  # nosec B101
+    assert "in uv.lock: #8" in blocker_text  # nosec B101
 
     expired_blockers = module._dependabot_exception_payload_blockers(  # noqa: SLF001
         {

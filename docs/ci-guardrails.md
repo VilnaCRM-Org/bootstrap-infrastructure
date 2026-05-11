@@ -284,12 +284,13 @@ are omitted. When set, `PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
 Restore evidence must be scoped to this bootstrap workload and include cleanup
 confirmation for any isolated restore location.
 The collector also reads non-secret Dependabot alert metadata for the configured
-dependency and manifest path; unresolved high or critical default-branch alerts
-remain SEC11 blockers until closed or covered by an owner-approved exception.
+manifest path, or for an explicit dependency when `--dependabot-dependency` is
+set. Unresolved high or critical default-branch alerts remain SEC11 blockers
+until closed or covered by an owner-approved exception.
 If `DEPENDABOT_EXCEPTION_EVIDENCE` is set, the collector reads a non-secret
 JSON exception record and only treats it as coverage when it is current,
-matches the dependency and manifest, covers the exact open alert numbers, and
-records owner approval plus a remediation plan. Invalid or expired exception
+matches the dependency scope and manifest, covers the exact open alert numbers,
+and records owner approval plus a remediation plan. Invalid or expired exception
 records do not suppress live alert blockers.
 When `report-dependabot-exception` writes JSON, it reads the latest collector
 `github_dependabot_alerts` evidence, copies the exact open alert numbers, and
@@ -402,9 +403,10 @@ The accepted Dependabot exception shape is also non-secret:
   "approvedBy": "Kravalg",
   "reviewedAt": "2026-06-10T09:00:00Z",
   "expiresAt": "2026-06-17T09:00:00Z",
-  "dependencyName": "GitPython",
+  "dependencyName": "all",
+  "dependencyNames": ["GitPython", "urllib3"],
   "manifestPath": "uv.lock",
-  "alertNumbers": [4, 5, 6, 7, 8],
+  "alertNumbers": [4, 5, 6, 7, 8, 9, 10],
   "approval": "approved",
   "reason": "Patched lockfile is staged and default-branch alert closure is pending merge.",
   "remediationPlan": "Merge the patched lockfile or revisit the exception before expiry.",

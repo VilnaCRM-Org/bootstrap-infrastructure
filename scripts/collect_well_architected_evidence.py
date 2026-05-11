@@ -59,7 +59,8 @@ CURRENT_CHECK_NAME_ENV = "WELL_ARCHITECTED_CURRENT_CHECK_NAME"
 ADVISORY_REVIEW_THREAD_AUTHORS = frozenset({"qltysh"})
 DEFAULT_PRODUCTION_ENVIRONMENT = "prod"
 DEFAULT_PRODUCTION_REVIEWER = "Kravalg"
-DEFAULT_DEPENDABOT_DEPENDENCY = "GitPython"
+DEFAULT_DEPENDABOT_DEPENDENCY = ""
+DEPENDABOT_ALL_DEPENDENCIES = "all"
 DEFAULT_DEPENDABOT_MANIFEST = "uv.lock"
 AWS_WELL_ARCHITECTED_TOC_URL = (
     "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json"
@@ -1088,7 +1089,8 @@ def github_dependabot_alerts(
     runner: Runner = run,
 ) -> dict[str, object]:
     """Collect open Dependabot alert evidence for one dependency manifest."""
-    dependency = request.dependency
+    dependency = request.dependency.strip()
+    dependency_scope = _dependabot_dependency_scope(dependency)
     manifest_path = request.manifest_path
     blocking_severities = request.blocking_severities
     ok, payload, error = _run_json(
@@ -1097,7 +1099,7 @@ def github_dependabot_alerts(
     )
     if not ok or not isinstance(payload, list):
         return _unknown_dependabot_alert_check(
-            dependency=dependency,
+            dependency=dependency_scope,
             manifest_path=manifest_path,
             blocking_severities=blocking_severities,
             error=error,
@@ -1115,7 +1117,7 @@ def github_dependabot_alerts(
     exception_summary, excepted_alert_numbers, exception_blockers = (
         _dependabot_exception_coverage(
             exception_evidence,
-            dependency=dependency,
+            dependency=dependency_scope,
             manifest_path=manifest_path,
             blocking_alerts=blocking_alerts,
         )
@@ -1129,14 +1131,15 @@ def github_dependabot_alerts(
     blockers = [
         *exception_blockers,
         *_dependabot_alert_blockers(
-            dependency=dependency,
+            dependency=dependency_scope,
             manifest_path=manifest_path,
             open_alert_numbers=unexcepted_alert_numbers,
             open_alert_count=len(unexcepted_alerts),
         ),
     ]
     evidence: dict[str, object] = {
-        "dependencyName": dependency,
+        "dependencyName": dependency_scope,
+        "dependencyNames": _dependabot_dependency_names(blocking_alerts),
         "manifestPath": manifest_path,
         "blockingSeverities": sorted(blocking_severities),
         "matchingOpenAlertCount": len(matching_alerts),
@@ -1159,10 +1162,17 @@ def github_dependabot_alerts(
 
 def _dependabot_alert_api_path(repo: str, dependency: str) -> str:
     """Return the GitHub API path for open Dependabot alerts."""
+    if not dependency.strip():
+        return f"repos/{repo}/dependabot/alerts?state=open&per_page=100"
     return (
         f"repos/{repo}/dependabot/alerts?state=open&dependency_name="
         f"{quote(dependency, safe='')}&per_page=100"
     )
+
+
+def _dependabot_dependency_scope(dependency: str) -> str:
+    """Return the evidence label for the requested dependency scope."""
+    return dependency or DEPENDABOT_ALL_DEPENDENCIES
 
 
 def _unknown_dependabot_alert_check(
@@ -1271,9 +1281,10 @@ def _dependabot_alert_matches(
     manifest_path: str,
 ) -> bool:
     """Return whether a Dependabot alert targets the dependency manifest."""
+    dependency_name = str(alert.get("dependencyName", ""))
     return (
         str(alert.get("state", "")).lower() == "open"
-        and str(alert.get("dependencyName", "")).lower() == dependency.lower()
+        and (not dependency or dependency_name.lower() == dependency.lower())
         and alert.get("manifestPath") == manifest_path
     )
 
@@ -1298,10 +1309,24 @@ def _dependabot_alert_blockers(
         alert_text = ", ".join(f"#{number}" for number in open_alert_numbers)
     else:
         alert_text = f"{open_alert_count} alert(s)"
-    return [
-        "Open default-branch Dependabot alerts remain for "
-        f"{dependency} in {manifest_path}: {alert_text}."
-    ]
+    if dependency == DEPENDABOT_ALL_DEPENDENCIES:
+        scope = f"in {manifest_path}"
+    else:
+        scope = f"for {dependency} in {manifest_path}"
+    return [f"Open default-branch Dependabot alerts remain {scope}: {alert_text}."]
+
+
+def _dependabot_dependency_names(
+    alerts: Sequence[dict[str, object]],
+) -> list[str]:
+    """Return sorted dependency names represented by blocking alert evidence."""
+    return sorted(
+        {
+            name
+            for alert in alerts
+            if (name := str(alert.get("dependencyName") or "").strip())
+        }
+    )
 
 
 def _dependabot_exception_coverage(
@@ -1440,12 +1465,23 @@ def _dependabot_exception_summary(
         "reviewedAt": str(payload.get("reviewedAt") or ""),
         "expiresAt": str(payload.get("expiresAt") or ""),
         "dependencyName": str(payload.get("dependencyName") or ""),
+        "dependencyNames": _dependabot_dependency_names_from_payload(payload),
         "manifestPath": str(payload.get("manifestPath") or ""),
         "approval": str(payload.get("approval") or ""),
         "alertNumbers": list(alert_numbers),
         "reason": str(payload.get("reason") or ""),
         "remediationPlan": str(payload.get("remediationPlan") or ""),
     }
+
+
+def _dependabot_dependency_names_from_payload(payload: dict[str, Any]) -> list[str]:
+    """Return optional dependency names from owner exception evidence."""
+    names = payload.get("dependencyNames")
+    if not isinstance(names, list):
+        return []
+    return sorted(
+        {name.strip() for name in names if isinstance(name, str) and name.strip()}
+    )
 
 
 def _alert_number_text(numbers: Sequence[int]) -> str:
@@ -3996,7 +4032,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--dependabot-dependency",
         default=DEFAULT_DEPENDABOT_DEPENDENCY,
-        help="Dependency name whose open Dependabot alerts block SEC11.",
+        help=(
+            "Optional dependency name whose open Dependabot alerts block SEC11; "
+            "omit to check the entire manifest."
+        ),
     )
     parser.add_argument(
         "--dependabot-manifest",
