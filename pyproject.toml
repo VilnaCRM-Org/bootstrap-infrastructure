@@ -64,6 +64,7 @@ known_first_party = [
     "_well_architected_markdown",
     "_well_architected_recording",
     "_well_architected_scoring",
+    "_well_architected_structured_evidence",
     "app",
     "infra",
     "policy",

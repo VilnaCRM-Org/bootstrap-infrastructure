@@ -65,6 +65,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "_well_architected_markdown",
         "_well_architected_recording",
         "_well_architected_scoring",
+        "_well_architected_structured_evidence",
         "app",
         "infra",
         "policy",
