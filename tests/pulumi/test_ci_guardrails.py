@@ -445,7 +445,7 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
         "contents": "read",
         "id-token": "write",
         "pull-requests": "read",
-        "security-events": "read",
+        "vulnerability-alerts": "read",
     }
     assert (  # nosec B101
         checkout_step["with"]["ref"]

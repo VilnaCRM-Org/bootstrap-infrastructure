@@ -55,7 +55,7 @@ jobs:
       contents: read
       id-token: write
       pull-requests: read
-      security-events: read
+      vulnerability-alerts: read
     env:
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
