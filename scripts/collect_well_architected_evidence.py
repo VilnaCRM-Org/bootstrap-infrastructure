@@ -134,42 +134,11 @@ SECURITY_ACCOUNT_ALLOWED_BOUNDARY = frozenset(
 SECURITY_ACCOUNT_ATTESTED_CONTROLS = frozenset(
     {"human_access", "active_key", "permissions_boundary"}
 )
-PRODUCTION_DR_OWNER_REQUIRED_FIELDS = (
-    "workload",
-    "environment",
-    "owner",
-    "approvedBy",
-    "reviewedAt",
-    "expiresAt",
-    "rtoTarget",
-    "rpoTarget",
-    "escalationPath",
-    "recoveryOrder",
-    "communicationsPlan",
-    "latestAcceptedDrill",
-    "nextReviewDate",
-    "evidenceRetentionLocation",
-    "approval",
-    "evidence",
-    "remediationPlan",
-    "restoreDrillEvidence",
-)
+PRODUCTION_DR_OWNER_REQUIRED_FIELDS = _recording.PRODUCTION_DR_OWNER_REQUIRED_FIELDS
 PRODUCTION_DR_OWNER_RESTORE_FIELDS = _recording.PRODUCTION_DR_OWNER_RESTORE_FIELDS
-PRODUCTION_DR_OWNER_ALLOWED_APPROVALS = frozenset(
-    {"approved", "approved_exception", "accepted_risk"}
-)
-PRODUCTION_DR_OWNER_SUMMARY_FIELDS = (
-    "owner",
-    "approvedBy",
-    "reviewedAt",
-    "expiresAt",
-    "environment",
-    "approval",
-    "rtoTarget",
-    "rpoTarget",
-    "nextReviewDate",
-    "evidenceRetentionLocation",
-)
+PRODUCTION_DR_OWNER_TEXT_FIELDS = _recording.PRODUCTION_DR_OWNER_TEXT_FIELDS
+PRODUCTION_DR_OWNER_ALLOWED_APPROVALS = _recording.PRODUCTION_DR_OWNER_ALLOWED_APPROVALS
+PRODUCTION_DR_OWNER_SUMMARY_FIELDS = _recording.PRODUCTION_DR_OWNER_SUMMARY_FIELDS
 STRUCTURED_EVIDENCE_ALLOWED_STATUSES = frozenset({"passed", "unresolved"})
 RESTORE_DRILL_REQUIRED_FIELDS = (
     "workload",
@@ -2817,16 +2786,7 @@ def _production_dr_owner_payload_blockers(
         blockers.append(
             f"Production DR owner evidence approval must be one of: {allowed}."
         )
-    for field in (
-        "rtoTarget",
-        "rpoTarget",
-        "escalationPath",
-        "recoveryOrder",
-        "communicationsPlan",
-        "latestAcceptedDrill",
-        "nextReviewDate",
-        "evidenceRetentionLocation",
-    ):
+    for field in PRODUCTION_DR_OWNER_TEXT_FIELDS:
         if not _non_empty_text(payload.get(field)):
             blockers.append(f"Production DR owner evidence {field} must be non-empty.")
     if _parse_reviewed_at(payload.get("nextReviewDate")) is None:

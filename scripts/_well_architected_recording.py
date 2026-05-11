@@ -57,6 +57,51 @@ PRODUCTION_DR_OWNER_RESTORE_FIELDS = (
     "validationResult",
     "cleanupConfirmed",
 )
+PRODUCTION_DR_OWNER_REQUIRED_FIELDS = (
+    "workload",
+    "environment",
+    "owner",
+    "approvedBy",
+    "reviewedAt",
+    "expiresAt",
+    "rtoTarget",
+    "rpoTarget",
+    "escalationPath",
+    "recoveryOrder",
+    "communicationsPlan",
+    "latestAcceptedDrill",
+    "nextReviewDate",
+    "evidenceRetentionLocation",
+    "approval",
+    "evidence",
+    "remediationPlan",
+    "restoreDrillEvidence",
+)
+PRODUCTION_DR_OWNER_TEXT_FIELDS = (
+    "rtoTarget",
+    "rpoTarget",
+    "escalationPath",
+    "recoveryOrder",
+    "communicationsPlan",
+    "latestAcceptedDrill",
+    "nextReviewDate",
+    "evidenceRetentionLocation",
+)
+PRODUCTION_DR_OWNER_SUMMARY_FIELDS = (
+    "owner",
+    "approvedBy",
+    "reviewedAt",
+    "expiresAt",
+    "environment",
+    "approval",
+    "rtoTarget",
+    "rpoTarget",
+    "nextReviewDate",
+    "evidenceRetentionLocation",
+)
+PRODUCTION_DR_OWNER_ALLOWED_APPROVALS = frozenset(
+    {"approved", "approved_exception", "accepted_risk"}
+)
 
 
 def load_report(path: Path) -> JsonObject:
