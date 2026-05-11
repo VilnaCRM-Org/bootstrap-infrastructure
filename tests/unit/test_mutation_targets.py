@@ -277,12 +277,16 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert statements["ManageBootstrapCloudTrail"]["Resource"] == [  # nosec B101
         "arn:aws:cloudtrail:*:123456789012:trail/bootstrap-test-management-events"
     ]
+    assert statements["ReadCloudTrailTrailsForRefresh"] == {  # nosec B101
+        "Sid": "ReadCloudTrailTrailsForRefresh",
+        "Effect": "Allow",
+        "Action": ["cloudtrail:DescribeTrails"],
+        "Resource": "*",
+    }
     assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
         "arn:aws:sns:*:123456789012:bootstrap-test-operations"
     ]
-    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == [  # nosec B101
-        "arn:aws:sns:*:123456789012:bootstrap-test-operations:*"
-    ]
+    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == "*"  # nosec B101
     assert statements["ManageBootstrapSqs"]["Resource"] == [  # nosec B101
         "arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"
     ]
@@ -368,8 +372,10 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "CreateBootstrapGuardDutyDetector",
         "ListBootstrapOidcProviders",
         "ListBootstrapKmsAliases",
+        "ManageBootstrapSnsSubscriptions",
         "ManageAwsConfigDeliveryChannel",
         "ReadBillingViewDataForBudgets",
+        "ReadCloudTrailTrailsForRefresh",
         "ReadGuardDutyDetectors",
         "ReadIdentity",
     }  # nosec B101

@@ -55,6 +55,7 @@ _AUTOMATION_MANAGED_POLICY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
             {
                 "ManageBootstrapEventBridge",
                 "ManageBootstrapCloudTrail",
+                "ReadCloudTrailTrailsForRefresh",
                 "ManageBootstrapSns",
                 "ManageBootstrapSnsSubscriptions",
                 "ManageBootstrapSqs",
@@ -208,6 +209,10 @@ _AUTOMATION_CLOUDTRAIL_ACTIONS = (
     "cloudtrail:StopLogging",
     "cloudtrail:UpdateTrail",
 )
+_AUTOMATION_CLOUDTRAIL_ACCOUNT_READ_ACTIONS = (
+    # DescribeTrails does not support CloudTrail resource-level permissions.
+    "cloudtrail:DescribeTrails",
+)
 _AUTOMATION_SNS_ACTIONS = (
     "sns:CreateTopic",
     "sns:DeleteTopic",
@@ -220,6 +225,7 @@ _AUTOMATION_SNS_ACTIONS = (
     "sns:UntagResource",
 )
 _AUTOMATION_SNS_SUBSCRIPTION_ACTIONS = (
+    # These subscription APIs do not support SNS resource-level permissions.
     "sns:GetSubscriptionAttributes",
     "sns:Unsubscribe",
 )
@@ -453,14 +459,6 @@ def _automation_sns_resources(
     """Scope SNS management to the bootstrap operations alert topic."""
     environment = _sns_environment_resource_part(settings)
     return [f"arn:aws:sns:*:{account_id}:bootstrap-{environment}-operations"]
-
-
-def _automation_sns_subscription_resources(
-    account_id: str, settings: BootstrapSettings
-) -> list[str]:
-    """Scope SNS subscription management to operations alert subscriptions."""
-    environment = _sns_environment_resource_part(settings)
-    return [f"arn:aws:sns:*:{account_id}:bootstrap-{environment}-operations:*"]
 
 
 def _automation_sqs_resources(
@@ -761,6 +759,12 @@ def _automation_policy(
                     "Resource": _automation_cloudtrail_resources(account_id, settings),
                 },
                 {
+                    "Sid": "ReadCloudTrailTrailsForRefresh",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_CLOUDTRAIL_ACCOUNT_READ_ACTIONS),
+                    "Resource": "*",
+                },
+                {
                     "Sid": "ManageBootstrapSns",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_SNS_ACTIONS),
@@ -770,10 +774,7 @@ def _automation_policy(
                     "Sid": "ManageBootstrapSnsSubscriptions",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_SNS_SUBSCRIPTION_ACTIONS),
-                    "Resource": _automation_sns_subscription_resources(
-                        account_id,
-                        settings,
-                    ),
+                    "Resource": "*",
                 },
                 {
                     "Sid": "ManageBootstrapSqs",

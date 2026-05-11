@@ -188,9 +188,7 @@ def test_github_automation_policy_normalizes_sns_environment_and_allocation_tags
     assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
         "arn:aws:sns:*:123456789012:bootstrap-prod-eu-operations"
     ]
-    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == [  # nosec B101
-        "arn:aws:sns:*:123456789012:bootstrap-prod-eu-operations:*"
-    ]
+    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == "*"  # nosec B101
     assert statements["ManageBootstrapCostAllocationTags"] == {  # nosec B101
         "Sid": "ManageBootstrapCostAllocationTags",
         "Effect": "Allow",
@@ -1326,19 +1324,24 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert "kms:ReEncryptFrom" not in all_actions  # nosec B101
     assert "cloudtrail:*" not in all_actions  # nosec B101
     assert "cloudtrail:CreateTrail" in all_actions  # nosec B101
+    assert "cloudtrail:DescribeTrails" in all_actions  # nosec B101
     assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
         "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
     ]
     assert statements["ManageBootstrapCloudTrail"]["Resource"] == [  # nosec B101
         "arn:aws:cloudtrail:*:123456789012:trail/bootstrap-test-management-events"
     ]
+    assert statements["ReadCloudTrailTrailsForRefresh"] == {  # nosec B101
+        "Sid": "ReadCloudTrailTrailsForRefresh",
+        "Effect": "Allow",
+        "Action": ["cloudtrail:DescribeTrails"],
+        "Resource": "*",
+    }
     assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
         "arn:aws:sns:*:123456789012:bootstrap-test-operations"
     ]
     assert "sns:Subscribe" in statements["ManageBootstrapSns"]["Action"]  # nosec B101
-    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == [  # nosec B101
-        "arn:aws:sns:*:123456789012:bootstrap-test-operations:*"
-    ]
+    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == "*"  # nosec B101
     assert statements["ManageBootstrapSnsSubscriptions"]["Action"] == [  # nosec B101
         "sns:GetSubscriptionAttributes",
         "sns:Unsubscribe",
