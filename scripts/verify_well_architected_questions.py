@@ -130,6 +130,14 @@ def _invalid_score_ids(items: Sequence[dict[str, Any]]) -> list[str]:
     return invalid
 
 
+def _invalid_status_ids(items: Sequence[dict[str, Any]]) -> list[str]:
+    return [
+        str(item.get("id", "<missing>"))
+        for item in items
+        if item.get("status") not in {"passed", "unresolved"}
+    ]
+
+
 def _score_status_mismatch_ids(items: Sequence[dict[str, Any]]) -> list[str]:
     mismatched = []
     for item in items:
@@ -202,6 +210,7 @@ def _verification_blockers(
     missing_ids: Sequence[str],
     extra_ids: Sequence[str],
     invalid_score_ids: Sequence[str],
+    invalid_status_ids: Sequence[str],
     score_status_mismatch_ids: Sequence[str],
     missing_evidence_ref_ids: Sequence[str],
     pillar_mismatch_ids: Sequence[str],
@@ -240,6 +249,11 @@ def _verification_blockers(
             bool(invalid_score_ids),
             "Question-matrix evidence scores must be integers from 1 to 5 for: "
             f"{', '.join(invalid_score_ids)}.",
+        ),
+        (
+            bool(invalid_status_ids),
+            "Question-matrix evidence statuses must be one of passed, "
+            f"unresolved for: {', '.join(invalid_status_ids)}.",
         ),
         (
             bool(score_status_mismatch_ids),
@@ -329,6 +343,7 @@ def verify_question_matrix(
     duplicate_aws_ids = _duplicate_ids(aws_ids)
     duplicate_evidence_ids = _duplicate_ids(evidence_ids)
     invalid_score_ids = _invalid_score_ids(score_items)
+    invalid_status_ids = _invalid_status_ids(score_items)
     score_status_mismatch_ids = _score_status_mismatch_ids(score_items)
     missing_evidence_ref_ids = _missing_evidence_ref_ids(score_items)
     pillar_mismatch_ids = _pillar_mismatch_ids(score_items, aws_pillar_by_id)
@@ -349,6 +364,7 @@ def verify_question_matrix(
         missing_ids=missing_ids,
         extra_ids=extra_ids,
         invalid_score_ids=invalid_score_ids,
+        invalid_status_ids=invalid_status_ids,
         score_status_mismatch_ids=score_status_mismatch_ids,
         missing_evidence_ref_ids=missing_evidence_ref_ids,
         pillar_mismatch_ids=pillar_mismatch_ids,
@@ -376,6 +392,7 @@ def verify_question_matrix(
         "duplicateAwsQuestionIds": duplicate_aws_ids,
         "duplicateEvidenceQuestionIds": duplicate_evidence_ids,
         "invalidScoreQuestionIds": invalid_score_ids,
+        "invalidStatusQuestionIds": invalid_status_ids,
         "scoreStatusMismatchQuestionIds": score_status_mismatch_ids,
         "missingEvidenceRefQuestionIds": missing_evidence_ref_ids,
         "pillarMismatchQuestionIds": pillar_mismatch_ids,

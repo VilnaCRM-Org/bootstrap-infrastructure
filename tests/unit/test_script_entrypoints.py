@@ -2137,6 +2137,28 @@ def test_verify_well_architected_questions_rejects_score_status_drift(
     assert "passed entries must score 5" in " ".join(report["blockers"])  # nosec B101
 
 
+def test_verify_well_architected_questions_rejects_invalid_status_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Question status values must be from the collector-compatible enum."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    evidence = _well_architected_question_evidence()
+    scores = evidence["questionScores"]
+    assert isinstance(scores, list)  # nosec B101
+    assert isinstance(scores[0], dict)  # nosec B101
+    scores[0]["status"] = "waived"
+
+    report = module.verify_question_matrix(
+        evidence=evidence,
+        toc=_well_architected_question_toc(),
+        toc_source="fixture",
+    )
+
+    assert report["status"] == "failed"  # nosec B101
+    assert report["invalidStatusQuestionIds"] == ["OPS1"]  # nosec B101
+    assert "statuses must be one of" in " ".join(report["blockers"])  # nosec B101
+
+
 def test_verify_well_architected_questions_reports_duplicates_and_extra_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
