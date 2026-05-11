@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import pulumi_aws as aws
 
@@ -22,6 +23,16 @@ COST_ALLOCATION_TAG_KEYS = (
     "RepositoryProject",
     "RetentionClass",
 )
+
+
+@dataclass(frozen=True)
+class CostControlInputs:
+    """Inputs that shape account cost-control resources."""
+
+    operations_topic_arn: pulumi.Input[str]
+    notification_dependencies: Sequence[pulumi.Resource] | None = None
+    resource_dependencies: Sequence[pulumi.Resource] | None = None
+    settings: BootstrapSettings | None = None
 
 
 def _environment_part(settings: BootstrapSettings) -> str:
@@ -72,27 +83,25 @@ class CostControls(pulumi.ComponentResource):
     def __init__(
         self,
         name: str,
+        inputs: CostControlInputs,
         *,
-        operations_topic_arn: pulumi.Input[str],
-        notification_dependencies: Sequence[pulumi.Resource] | None = None,
-        resource_dependencies: Sequence[pulumi.Resource] | None = None,
-        settings: BootstrapSettings | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize AWS Budgets and Cost Anomaly Detection controls."""
         super().__init__("bootstrap:cost:CostControls", name, None, opts)
 
-        configured_settings = settings or default_settings
+        configured_settings = inputs.settings or default_settings
         account_id = aws.get_caller_identity().account_id
+        resource_dependencies = list(inputs.resource_dependencies or [])
         base_opts = pulumi.ResourceOptions(
             parent=self,
-            depends_on=list(resource_dependencies or []),
+            depends_on=resource_dependencies,
         )
         notification_opts = pulumi.ResourceOptions(
             parent=self,
             depends_on=[
-                *list(resource_dependencies or []),
-                *list(notification_dependencies or []),
+                *resource_dependencies,
+                *list(inputs.notification_dependencies or []),
             ],
         )
 
@@ -113,7 +122,7 @@ class CostControls(pulumi.ComponentResource):
             limit_amount=configured_settings.monthly_budget_limit_usd,
             limit_unit="USD",
             name=_budget_name(configured_settings),
-            notifications=_budget_notifications(operations_topic_arn),
+            notifications=_budget_notifications(inputs.operations_topic_arn),
             tags=base_tags(
                 {"Purpose": "cost-budget"},
                 settings=configured_settings,
@@ -148,7 +157,7 @@ class CostControls(pulumi.ComponentResource):
             name=_anomaly_subscription_name(configured_settings),
             subscribers=[
                 aws.costexplorer.AnomalySubscriptionSubscriberArgs(
-                    address=operations_topic_arn,
+                    address=inputs.operations_topic_arn,
                     type="SNS",
                 )
             ],

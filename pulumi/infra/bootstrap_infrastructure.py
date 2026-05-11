@@ -6,6 +6,7 @@ import pulumi
 
 from .bootstrap_dependencies import BootstrapInfrastructureDependencies
 from .bootstrap_settings import BootstrapSettings
+from .cost_controls import CostControlInputs
 from .repository_catalog import ManagedRepositoryCatalog
 
 
@@ -97,10 +98,12 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
         )
         self.cost_controls = self.dependencies.cost_controls_cls(
             "cost-controls",
-            operations_topic_arn=self.monitoring.topic.arn,
-            notification_dependencies=[self.monitoring.topic_policy],
-            resource_dependencies=automation_policy_dependencies,
-            settings=settings,
+            CostControlInputs(
+                operations_topic_arn=self.monitoring.topic.arn,
+                notification_dependencies=[self.monitoring.topic_policy],
+                resource_dependencies=automation_policy_dependencies,
+                settings=settings,
+            ),
             opts=child_opts,
         )
         self.security_account_controls = (

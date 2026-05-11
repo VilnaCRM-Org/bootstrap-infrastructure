@@ -8,6 +8,7 @@ from infra import (
     BootstrapInfrastructure,
     BootstrapInfrastructureDependencies,
     CentralLoggingBuckets,
+    CostControlInputs,
     CostControls,
     GitHubAutomation,
     ManagedRepositoryCatalog,
@@ -661,8 +662,10 @@ def test_cost_controls_emit_budget_and_anomaly_resources(pulumi_mocks, monkeypat
     start = len(pulumi_mocks.resources)
     controls = CostControls(
         "cost-controls",
-        operations_topic_arn=(
-            "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+        CostControlInputs(
+            operations_topic_arn=(
+                "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+            )
         ),
     )
 
@@ -718,8 +721,10 @@ def test_cost_controls_can_reuse_existing_anomaly_monitor(pulumi_mocks, monkeypa
     start = len(pulumi_mocks.resources)
     controls = CostControls(
         "cost-controls-existing-monitor",
-        operations_topic_arn=(
-            "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+        CostControlInputs(
+            operations_topic_arn=(
+                "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+            )
         ),
     )
 
