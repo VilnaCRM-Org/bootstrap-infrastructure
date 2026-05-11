@@ -1943,6 +1943,23 @@ def _well_architected_question_evidence() -> dict[str, object]:
         "reviewedAt": "2026-05-10T08:23:23Z",
         "questionCount": len(scores),
         "unresolvedQuestionCount": 1,
+        "unresolvedQuestionIds": ["OPS1"],
+        "pillarUnresolvedQuestionCounts": {
+            "Operational Excellence": 1,
+            "Security": 0,
+            "Reliability": 0,
+            "Performance Efficiency": 0,
+            "Cost Optimization": 0,
+            "Sustainability": 0,
+        },
+        "questionScoreAverages": {
+            "Operational Excellence": 4.91,
+            "Security": 5.0,
+            "Reliability": 5.0,
+            "Performance Efficiency": 5.0,
+            "Cost Optimization": 5.0,
+            "Sustainability": 5.0,
+        },
         "evidenceLocation": "specs/question-matrix.md",
         "frameworkSourceVerification": {
             "checkedAt": "2026-05-10T08:00:00Z",
@@ -2025,6 +2042,9 @@ def test_verify_well_architected_questions_accepts_matching_toc(
     assert report["awsQuestionCount"] == 57  # nosec B101
     assert report["markdownQuestionCount"] == 57  # nosec B101
     assert report["awsPillarQuestionCounts"]["Sustainability"] == 6  # nosec B101
+    assert report["expectedUnresolvedQuestionIds"] == ["OPS1"]  # nosec B101
+    assert report["evidenceUnresolvedQuestionIds"] == ["OPS1"]  # nosec B101
+    assert report["expectedQuestionScoreAverages"]["Operational Excellence"] == 4.91  # nosec B101
     assert report["blockers"] == []  # nosec B101
 
 
@@ -2135,6 +2155,50 @@ def test_verify_well_architected_questions_rejects_score_status_drift(
     assert report["status"] == "failed"  # nosec B101
     assert report["scoreStatusMismatchQuestionIds"] == ["OPS1", "OPS2"]  # nosec B101
     assert "passed entries must score 5" in " ".join(report["blockers"])  # nosec B101
+
+
+def test_verify_well_architected_questions_rejects_score_summary_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Structured summary fields must agree with the individual score rows."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    evidence = _well_architected_question_evidence()
+    evidence["unresolvedQuestionCount"] = 0
+    evidence["unresolvedQuestionIds"] = ["SEC1"]
+    evidence["pillarUnresolvedQuestionCounts"] = {
+        "Operational Excellence": 0,
+        "Security": 1,
+        "Reliability": 0,
+        "Performance Efficiency": 0,
+        "Cost Optimization": 0,
+        "Sustainability": 0,
+    }
+    evidence["questionScoreAverages"] = {
+        "Operational Excellence": 5.0,
+        "Security": 4.91,
+        "Reliability": 5.0,
+        "Performance Efficiency": 5.0,
+        "Cost Optimization": 5.0,
+        "Sustainability": 5.0,
+    }
+
+    report = module.verify_question_matrix(
+        evidence=evidence,
+        toc=_well_architected_question_toc(),
+        toc_source="fixture",
+    )
+
+    blockers = " ".join(report["blockers"])
+    assert report["status"] == "failed"  # nosec B101
+    assert report["expectedUnresolvedQuestionCount"] == 1  # nosec B101
+    assert report["evidenceUnresolvedQuestionCount"] == 0  # nosec B101
+    assert report["expectedUnresolvedQuestionIds"] == ["OPS1"]  # nosec B101
+    assert report["evidenceUnresolvedQuestionIds"] == ["SEC1"]  # nosec B101
+    assert "unresolvedQuestionCount" in blockers  # nosec B101
+    assert "unresolvedQuestionIds" in blockers  # nosec B101
+    assert "pillarUnresolvedQuestionCounts" in blockers  # nosec B101
+    assert "questionScoreAverages" in blockers  # nosec B101
+    assert "OPS1" in blockers  # nosec B101
 
 
 def test_verify_well_architected_questions_rejects_invalid_status_values(

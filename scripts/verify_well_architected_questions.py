@@ -8,6 +8,7 @@ import re
 import sys
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any, cast
 from urllib.request import urlopen
@@ -148,6 +149,167 @@ def _score_status_mismatch_ids(items: Sequence[dict[str, Any]]) -> list[str]:
         if (status == "passed" and score != 5) or (status != "passed" and score == 5):
             mismatched.append(str(item.get("id", "<missing>")))
     return mismatched
+
+
+def _expected_unresolved_question_ids(items: Sequence[dict[str, Any]]) -> list[str]:
+    return _expected_question_id_order(
+        str(item.get("id"))
+        for item in items
+        if item.get("status") != "passed" and isinstance(item.get("id"), str)
+    )
+
+
+def _expected_question_id_order(question_ids: Iterable[str]) -> list[str]:
+    return sorted(question_ids, key=_question_id_sort_key)
+
+
+def _question_id_sort_key(question_id: str) -> tuple[int, int, str]:
+    for order, prefix in enumerate(PILLAR_BY_PREFIX):
+        if question_id.startswith(prefix):
+            suffix = question_id[len(prefix) :]
+            number = int(suffix) if suffix.isdigit() else 0
+            return order, number, question_id
+    return len(PILLAR_BY_PREFIX), 0, question_id
+
+
+def _expected_pillar_unresolved_question_counts(
+    items: Sequence[dict[str, Any]],
+    aws_pillar_by_id: dict[str, str],
+) -> dict[str, int]:
+    counts = {pillar: 0 for pillar in PILLAR_ORDER}
+    for item in items:
+        if item.get("status") == "passed":
+            continue
+        question_id = item.get("id")
+        pillar = (
+            aws_pillar_by_id.get(question_id) if isinstance(question_id, str) else None
+        )
+        if pillar is not None:
+            counts[pillar] += 1
+    return counts
+
+
+def _expected_pillar_question_score_averages(
+    items: Sequence[dict[str, Any]],
+    aws_pillar_by_id: dict[str, str],
+) -> dict[str, float]:
+    scores_by_pillar: dict[str, list[int]] = {pillar: [] for pillar in PILLAR_ORDER}
+    for item in items:
+        question_id = item.get("id")
+        pillar = (
+            aws_pillar_by_id.get(question_id) if isinstance(question_id, str) else None
+        )
+        score = item.get("score")
+        if (
+            pillar is None
+            or isinstance(score, bool)
+            or not isinstance(score, int)
+            or not 1 <= score <= 5
+        ):
+            continue
+        scores_by_pillar[pillar].append(score)
+    if any(not pillar_scores for pillar_scores in scores_by_pillar.values()):
+        return {}
+    return {
+        pillar: _rounded_average(pillar_scores)
+        for pillar, pillar_scores in scores_by_pillar.items()
+    }
+
+
+def _rounded_average(values: Sequence[int]) -> float:
+    total = sum(Decimal(value) for value in values)
+    average = total / Decimal(len(values))
+    return float(average.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _string_list(value: object) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    if not all(isinstance(item, str) for item in value):
+        return None
+    return cast("list[str]", list(value))
+
+
+def _string_key_number_map(value: object) -> dict[str, int | float] | None:
+    if not isinstance(value, dict):
+        return None
+    result: dict[str, int | float] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or isinstance(item, bool):
+            return None
+        if not isinstance(item, (int, float)):
+            return None
+        result[key] = item
+    return result
+
+
+def _string_key_int_map(value: object) -> dict[str, int] | None:
+    if not isinstance(value, dict):
+        return None
+    result: dict[str, int] = {}
+    for key, item in value.items():
+        if not isinstance(key, str) or isinstance(item, bool):
+            return None
+        if not isinstance(item, int):
+            return None
+        result[key] = item
+    return result
+
+
+def _question_matrix_summary_blockers(
+    *,
+    evidence: dict[str, Any],
+    expected_unresolved_count: int,
+    expected_unresolved_ids: Sequence[str],
+    expected_pillar_unresolved_counts: dict[str, int],
+    expected_score_averages: dict[str, float],
+) -> list[str]:
+    blockers: list[str] = []
+    if evidence.get("unresolvedQuestionCount") != expected_unresolved_count:
+        blockers.append(
+            "Question-matrix evidence unresolvedQuestionCount must match the "
+            "number of non-passed questionScores entries."
+        )
+    declared_ids = _string_list(evidence.get("unresolvedQuestionIds"))
+    if declared_ids is None:
+        blockers.append(
+            "Question-matrix evidence unresolvedQuestionIds must be a list of strings."
+        )
+    elif declared_ids != list(expected_unresolved_ids):
+        blockers.append(
+            "Question-matrix evidence unresolvedQuestionIds must match non-passed "
+            "questionScores entries: "
+            f"{_question_id_list_text(expected_unresolved_ids)}."
+        )
+    declared_counts = _string_key_int_map(
+        evidence.get("pillarUnresolvedQuestionCounts")
+    )
+    if declared_counts is None:
+        blockers.append(
+            "Question-matrix evidence pillarUnresolvedQuestionCounts must be a "
+            "string-keyed integer map."
+        )
+    elif declared_counts != expected_pillar_unresolved_counts:
+        blockers.append(
+            "Question-matrix evidence pillarUnresolvedQuestionCounts must match "
+            "non-passed questionScores entries by pillar."
+        )
+    declared_averages = _string_key_number_map(evidence.get("questionScoreAverages"))
+    if declared_averages is None:
+        blockers.append(
+            "Question-matrix evidence questionScoreAverages must be a "
+            "string-keyed numeric map."
+        )
+    elif expected_score_averages and declared_averages != expected_score_averages:
+        blockers.append(
+            "Question-matrix evidence questionScoreAverages must match score "
+            "averages computed from questionScores entries."
+        )
+    return blockers
+
+
+def _question_id_list_text(question_ids: Sequence[str]) -> str:
+    return ", ".join(question_ids) if question_ids else "none"
 
 
 def _missing_evidence_ref_ids(items: Sequence[dict[str, Any]]) -> list[str]:
@@ -347,6 +509,23 @@ def verify_question_matrix(
     score_status_mismatch_ids = _score_status_mismatch_ids(score_items)
     missing_evidence_ref_ids = _missing_evidence_ref_ids(score_items)
     pillar_mismatch_ids = _pillar_mismatch_ids(score_items, aws_pillar_by_id)
+    expected_unresolved_ids = _expected_unresolved_question_ids(score_items)
+    expected_unresolved_count = len(expected_unresolved_ids)
+    expected_pillar_unresolved_counts = _expected_pillar_unresolved_question_counts(
+        score_items,
+        aws_pillar_by_id,
+    )
+    expected_score_averages = _expected_pillar_question_score_averages(
+        score_items,
+        aws_pillar_by_id,
+    )
+    evidence_unresolved_ids = _string_list(evidence.get("unresolvedQuestionIds"))
+    evidence_pillar_unresolved_counts = _string_key_int_map(
+        evidence.get("pillarUnresolvedQuestionCounts")
+    )
+    evidence_score_averages = _string_key_number_map(
+        evidence.get("questionScoreAverages")
+    )
     duplicate_markdown_ids = _duplicate_ids(markdown_ids)
     missing_markdown_ids = (
         sorted(set(aws_ids) - set(markdown_ids))
@@ -378,6 +557,15 @@ def verify_question_matrix(
         extra_markdown_ids=extra_markdown_ids,
         markdown_pillar_mismatch_ids=markdown_pillar_mismatch_ids,
     )
+    blockers.extend(
+        _question_matrix_summary_blockers(
+            evidence=evidence,
+            expected_unresolved_count=expected_unresolved_count,
+            expected_unresolved_ids=expected_unresolved_ids,
+            expected_pillar_unresolved_counts=expected_pillar_unresolved_counts,
+            expected_score_averages=expected_score_averages,
+        )
+    )
 
     return {
         "status": "passed" if not blockers else "failed",
@@ -396,6 +584,14 @@ def verify_question_matrix(
         "scoreStatusMismatchQuestionIds": score_status_mismatch_ids,
         "missingEvidenceRefQuestionIds": missing_evidence_ref_ids,
         "pillarMismatchQuestionIds": pillar_mismatch_ids,
+        "expectedUnresolvedQuestionCount": expected_unresolved_count,
+        "evidenceUnresolvedQuestionCount": evidence.get("unresolvedQuestionCount"),
+        "expectedUnresolvedQuestionIds": expected_unresolved_ids,
+        "evidenceUnresolvedQuestionIds": evidence_unresolved_ids,
+        "expectedPillarUnresolvedQuestionCounts": expected_pillar_unresolved_counts,
+        "evidencePillarUnresolvedQuestionCounts": evidence_pillar_unresolved_counts,
+        "expectedQuestionScoreAverages": expected_score_averages,
+        "evidenceQuestionScoreAverages": evidence_score_averages,
         "markdownQuestionCount": (
             len(markdown_ids) if question_matrix_markdown is not None else None
         ),
