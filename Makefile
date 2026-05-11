@@ -83,7 +83,7 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         report-maintainability-trends report-dead-code report-docstrings \
         report-sbom report-well-architected-evidence verify-well-architected-questions \
         report-dependabot-exception report-alert-route-observation \
-        report-security-account-attestation \
+        report-security-account-attestation report-production-dr-owner-evidence \
         test-quality test-ruff test-ty test-maintainability \
         test-architecture test-dependency-hygiene test-lockfile test-coverage \
         test-bandit test-actionlint test-yaml test-dockerfile \
