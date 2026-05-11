@@ -266,12 +266,16 @@ REQUIRED_EXTERNAL_CONTROL_IDS = (
     "sustainability_governance",
     "production_approval",
 )
+OPERATIONAL_EXCELLENCE_PILLAR = "Operational Excellence"
+PERFORMANCE_EFFICIENCY_PILLAR = "Performance Efficiency"
+COST_OPTIMIZATION_PILLAR = "Cost Optimization"
+MISSING_QUESTION_ID = "<missing>"
 EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_PILLARS = (
-    ("OPS", "Operational Excellence", 11),
+    ("OPS", OPERATIONAL_EXCELLENCE_PILLAR, 11),
     ("SEC", "Security", 11),
     ("REL", "Reliability", 13),
-    ("PERF", "Performance Efficiency", 5),
-    ("COST", "Cost Optimization", 11),
+    ("PERF", PERFORMANCE_EFFICIENCY_PILLAR, 5),
+    ("COST", COST_OPTIMIZATION_PILLAR, 11),
     ("SUS", "Sustainability", 6),
 )
 EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_COUNTS = tuple(
@@ -290,11 +294,11 @@ EXPECTED_WELL_ARCHITECTED_QUESTION_PILLAR_BY_ID = {
 }
 EXPECTED_WELL_ARCHITECTED_QUESTION_COUNT = len(EXPECTED_WELL_ARCHITECTED_QUESTION_IDS)
 EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS = {
-    "Operational Excellence": 11,
+    OPERATIONAL_EXCELLENCE_PILLAR: 11,
     "Security": 11,
     "Reliability": 13,
-    "Performance Efficiency": 5,
-    "Cost Optimization": 11,
+    PERFORMANCE_EFFICIENCY_PILLAR: 5,
+    COST_OPTIMIZATION_PILLAR: 11,
     "Sustainability": 6,
 }
 STRUCTURED_EVIDENCE_MAX_AGE_DAYS = 30
@@ -826,7 +830,7 @@ def _unresolved_review_threads(nodes: Sequence[object]) -> list[dict[str, Any]]:
     unresolved = []
     for node in nodes:
         if _review_thread_unresolved(node):
-            unresolved.append(cast("dict[str, Any]", node))
+            unresolved.append(cast(dict[str, Any], node))
     return unresolved
 
 
@@ -1267,7 +1271,7 @@ def _matching_dependabot_alerts(
     for item in payload:
         if not isinstance(item, dict):
             continue
-        summary = _dependabot_alert_summary(cast("dict[str, Any]", item))
+        summary = _dependabot_alert_summary(cast(dict[str, Any], item))
         if _dependabot_alert_matches(
             summary,
             dependency=dependency,
@@ -1329,7 +1333,7 @@ def _dependabot_alert_summary(alert: dict[str, Any]) -> dict[str, object]:
 
 def _mapping(value: object) -> dict[str, Any]:
     """Return a dict payload when an API field is an object."""
-    return cast("dict[str, Any]", value) if isinstance(value, dict) else {}
+    return cast(dict[str, Any], value) if isinstance(value, dict) else {}
 
 
 def _dependabot_alert_matches(
@@ -2956,7 +2960,7 @@ def _evidence_repository_catalog_paths(root_dir: Path) -> list[Path]:
 
 
 PILLAR_CHECKS = {
-    "Operational Excellence": (
+    OPERATIONAL_EXCELLENCE_PILLAR: (
         "github_pr_checks",
         "github_pr_local_state",
         "github_review_threads",
@@ -2983,8 +2987,8 @@ PILLAR_CHECKS = {
         "restore_drill_evidence",
         "repository_fanout",
     ),
-    "Performance Efficiency": ("repository_fanout",),
-    "Cost Optimization": ("aws_cost_controls", "repository_fanout"),
+    PERFORMANCE_EFFICIENCY_PILLAR: ("repository_fanout",),
+    COST_OPTIMIZATION_PILLAR: ("aws_cost_controls", "repository_fanout"),
     "Sustainability": ("repository_fanout",),
 }
 WELL_ARCHITECTED_SCORE_CAP = 4.0
@@ -3439,7 +3443,7 @@ def _question_matrix_invalid_score_blockers(
 ) -> list[str]:
     """Return blockers for question scores outside the accepted 1-5 range."""
     invalid_ids = [
-        str(score.get("id", "<missing>"))
+        str(score.get("id", MISSING_QUESTION_ID))
         for score in scores
         if _invalid_question_score(score.get("score"))
     ]
@@ -3463,7 +3467,7 @@ def _question_matrix_status_blockers(
 ) -> list[str]:
     """Return blockers for unsupported question score statuses."""
     invalid_ids = [
-        str(score.get("id", "<missing>"))
+        str(score.get("id", MISSING_QUESTION_ID))
         for score in scores
         if not _valid_structured_status(score.get("status"))
     ]
@@ -3482,7 +3486,7 @@ def _question_matrix_score_status_blockers(
 ) -> list[str]:
     """Return blockers when scores and pass/fail status disagree."""
     invalid_ids = [
-        str(score.get("id", "<missing>"))
+        str(score.get("id", MISSING_QUESTION_ID))
         for score in scores
         if _valid_question_score(score.get("score"))
         and (
@@ -3510,7 +3514,7 @@ def _question_matrix_evidence_ref_blockers(
 ) -> list[str]:
     """Return blockers when unresolved question entries lack evidenceRefs."""
     missing_ids = [
-        str(score.get("id", "<missing>"))
+        str(score.get("id", MISSING_QUESTION_ID))
         for score in scores
         if score.get("status") != "passed"
         and not _non_empty_string_list(score.get("evidenceRefs"))
