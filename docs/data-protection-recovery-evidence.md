@@ -87,6 +87,41 @@ Monthly backup review must retain:
 Quarterly restore drills must use an isolated target and metadata-only
 validation. A restore drill becomes stale after 90 days.
 
+## Production DR Owner Evidence
+
+`RESTORE_DRILL_EVIDENCE` proves the workload-scoped restore drill. Production
+DR claims also need a production-owner record before `REL13` can move to 5/5.
+Generate that non-secret record from the latest collector output after the
+owner has approved production RTO/RPO targets, recovery ownership, escalation,
+recovery order, communications expectations, latest accepted drill evidence,
+next review or drill date, and evidence retention location:
+
+```bash
+PRODUCTION_DR_OWNER_OUTPUT=docs/production-dr-owner-YYYY-MM-DD.md \
+PRODUCTION_DR_OWNER_JSON_OUTPUT=docs/production-dr-owner-YYYY-MM-DD.json \
+PRODUCTION_DR_REVIEWER='<reviewer or team>' \
+PRODUCTION_DR_OWNER='<production recovery owner or team>' \
+PRODUCTION_DR_ESCALATION_PATH='<escalation path>' \
+PRODUCTION_DR_RTO_TARGET='<production RTO target or accepted exemption>' \
+PRODUCTION_DR_RPO_TARGET='<production RPO target or accepted exemption>' \
+PRODUCTION_DR_RECOVERY_ORDER='<ordered recovery expectations>' \
+PRODUCTION_DR_COMMUNICATIONS_PLAN='<communications expectations>' \
+PRODUCTION_DR_LATEST_ACCEPTED_DRILL='<accepted drill or tabletop evidence>' \
+PRODUCTION_DR_NEXT_REVIEW_DATE='YYYY-MM-DD' \
+PRODUCTION_DR_EVIDENCE_RETENTION_LOCATION='<evidence location>' \
+PRODUCTION_DR_APPROVAL='approved' \
+PRODUCTION_DR_ACTION='<non-secret owner evidence and follow-up note>' \
+PRODUCTION_DR_EXPIRY_DATE='YYYY-MM-DDTHH:MM:SSZ' \
+make report-production-dr-owner-evidence
+```
+
+Then include the JSON in a collector run:
+
+```bash
+PRODUCTION_DR_OWNER_EVIDENCE=docs/production-dr-owner-YYYY-MM-DD.json \
+make report-well-architected-evidence
+```
+
 ## Degraded Mode Playbooks
 
 | Scenario | First checks | Recovery path | Evidence |

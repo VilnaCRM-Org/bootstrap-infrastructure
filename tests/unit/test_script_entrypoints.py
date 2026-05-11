@@ -143,6 +143,36 @@ def _alert_route_evidence_report(
     }
 
 
+def _production_dr_evidence_report(
+    *,
+    status: str = "passed",
+    evidence: object | None = None,
+    blockers: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "generatedAt": "2026-05-10T08:30:00+00:00",
+        "checks": [
+            {
+                "name": "restore_drill_evidence",
+                "status": status,
+                "evidence": evidence
+                if evidence is not None
+                else {
+                    "workload": "bootstrap-infrastructure",
+                    "environment": "test",
+                    "completedAt": "2026-04-27T10:00:00Z",
+                    "targetRestoreLocation": (
+                        "s3://awsbackup-restore-test-bootstrap-123456789012-drill"
+                    ),
+                    "validationResult": "passed",
+                    "cleanupConfirmed": True,
+                },
+                "blockers": blockers or [],
+            },
+        ],
+    }
+
+
 def _security_account_evidence_report(
     *,
     status: str = "failed",
@@ -783,6 +813,131 @@ def test_record_alert_route_observation_json_rejects_invalid_decision(
     assert not json_output.exists()  # nosec B101
 
 
+def test_record_production_dr_owner_evidence_writes_owner_review(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Render non-secret production DR owner evidence from restore metadata."""
+    module = load_script_module(monkeypatch, "record_production_dr_owner_evidence")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "production-dr-owner.md"
+    json_output = tmp_path / "production-dr-owner.json"
+    evidence.write_text(json.dumps(_production_dr_evidence_report()), encoding="utf-8")
+    review_date = module.dt.datetime.now(module.dt.timezone.utc).date().isoformat()
+    expiry_date = (
+        (module.dt.datetime.now(module.dt.timezone.utc) + module.dt.timedelta(days=60))
+        .date()
+        .isoformat()
+    )
+    next_review = (
+        (module.dt.datetime.now(module.dt.timezone.utc) + module.dt.timedelta(days=30))
+        .date()
+        .isoformat()
+    )
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--review-date",
+            review_date,
+            "--reviewer",
+            "prod-reviewer",
+            "--production-owner",
+            "SRE",
+            "--escalation-path",
+            "SRE primary, platform maintainer backup",
+            "--rto-target",
+            "4 hours",
+            "--rpo-target",
+            "24 hours",
+            "--recovery-order",
+            "Restore state, validate logs, resume applies",
+            "--communications-plan",
+            "Post owner-approved status updates in the incident channel",
+            "--latest-accepted-drill",
+            "2026-04-27 restore drill and 2026-05-09 tabletop accepted",
+            "--next-review-date",
+            next_review,
+            "--evidence-retention-location",
+            "docs/production-dr-owner-YYYY-MM-DD.md",
+            "--approval",
+            "approved",
+            "--expiry-date",
+            expiry_date,
+            "--action",
+            "Run the next restore drill before the evidence expires.",
+        ]
+    )
+
+    text = output.read_text(encoding="utf-8")
+    assert status == 0  # nosec B101
+    assert f"# Production DR Owner Evidence {review_date}" in text  # nosec B101
+    assert "Production recovery owner" in text  # nosec B101
+    assert "4 hours" in text  # nosec B101
+    assert "s3://awsbackup-restore-test-bootstrap" in text  # nosec B101
+    assert "credentials" in text  # nosec B101
+    assert "SecretAccessKey" not in text  # nosec B101
+    structured = json.loads(json_output.read_text(encoding="utf-8"))
+    assert structured["owner"] == "SRE"  # nosec B101
+    assert structured["approval"] == "approved"  # nosec B101
+    assert structured["restoreDrillEvidence"]["validationResult"] == "passed"  # nosec B101
+
+
+def test_record_production_dr_owner_evidence_json_requires_action(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Machine-readable production DR evidence must include owner actions."""
+    module = load_script_module(monkeypatch, "record_production_dr_owner_evidence")
+    evidence = tmp_path / "evidence.json"
+    output = tmp_path / "production-dr-owner.md"
+    json_output = tmp_path / "production-dr-owner.json"
+    evidence.write_text(json.dumps(_production_dr_evidence_report()), encoding="utf-8")
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "prod-reviewer",
+            "--production-owner",
+            "SRE",
+            "--escalation-path",
+            "SRE primary, platform maintainer backup",
+            "--rto-target",
+            "4 hours",
+            "--rpo-target",
+            "24 hours",
+            "--recovery-order",
+            "Restore state, validate logs, resume applies",
+            "--communications-plan",
+            "Post owner-approved status updates in the incident channel",
+            "--latest-accepted-drill",
+            "2026-04-27 restore drill and 2026-05-09 tabletop accepted",
+            "--next-review-date",
+            "2026-07-10",
+            "--evidence-retention-location",
+            "docs/production-dr-owner-YYYY-MM-DD.md",
+            "--approval",
+            "approved",
+            "--expiry-date",
+            "2026-07-10",
+        ]
+    )
+
+    assert status == 1  # nosec B101
+    assert "requires at least one --action" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+    assert not json_output.exists()  # nosec B101
+
+
 def test_record_alert_route_observation_json_requires_expiry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1204,6 +1359,9 @@ def test_owner_evidence_generator_choices_match_collector(
     """Owner evidence generators should reject the same choices as the collector."""
     alert_module = load_script_module(monkeypatch, "record_alert_route_observation")
     dependabot_module = load_script_module(monkeypatch, "record_dependabot_exception")
+    production_dr_module = load_script_module(
+        monkeypatch, "record_production_dr_owner_evidence"
+    )
     security_module = load_script_module(
         monkeypatch, "record_security_account_attestation"
     )
@@ -1216,6 +1374,9 @@ def test_owner_evidence_generator_choices_match_collector(
     )
     assert dependabot_module.DEPENDABOT_EXCEPTION_ALLOWED_APPROVALS == (  # nosec B101
         collector_module.DEPENDABOT_EXCEPTION_ALLOWED_APPROVALS
+    )
+    assert production_dr_module.PRODUCTION_DR_OWNER_ALLOWED_APPROVALS == (  # nosec B101
+        collector_module.PRODUCTION_DR_OWNER_ALLOWED_APPROVALS
     )
     assert security_module.SECURITY_ACCOUNT_ALLOWED_APPROVALS == (  # nosec B101
         collector_module.SECURITY_ACCOUNT_ALLOWED_APPROVALS
@@ -1235,6 +1396,9 @@ def test_owner_evidence_generator_choices_match_collector(
     assert dependabot_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS == (  # nosec B101
         collector_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
     )
+    assert production_dr_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS == (  # nosec B101
+        collector_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
+    )
     assert security_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS == (  # nosec B101
         collector_module.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
     )
@@ -1245,6 +1409,7 @@ def test_owner_evidence_generator_choices_match_collector(
     [
         ("record_alert_route_observation", "Alert-route observation"),
         ("record_dependabot_exception", "Dependabot exception"),
+        ("record_production_dr_owner_evidence", "Production DR owner evidence"),
         ("record_security_account_attestation", "Security account attestation"),
     ],
 )
@@ -4223,6 +4388,78 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     invalid_restore = module.restore_drill_evidence(invalid_restore_evidence)
     assert invalid_restore["status"] == "failed"  # nosec B101
     assert "bootstrap-infrastructure" in " ".join(invalid_restore["blockers"])  # nosec B101
+    valid_restore_evidence = tmp_path / "valid-restore.json"
+    valid_restore_evidence.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "environment": "test",
+                "completedAt": "2026-04-27T10:00:00Z",
+                "sourceRecoveryPointArn": (
+                    "arn:aws:backup:us-east-1:123456789012:recovery-point:test"
+                ),
+                "targetRestoreLocation": (
+                    "s3://awsbackup-restore-test-bootstrap-123456789012-drill"
+                ),
+                "validationResult": "passed",
+                "cleanupConfirmed": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    production_owner_evidence = tmp_path / "production-dr-owner.json"
+    production_owner_evidence.write_text(
+        json.dumps(
+            {
+                "workload": "bootstrap-infrastructure",
+                "environment": "prod",
+                "owner": "SRE",
+                "approvedBy": "prod-reviewer",
+                "reviewedAt": module.dt.datetime.now(
+                    module.dt.timezone.utc
+                ).isoformat(),
+                "expiresAt": (
+                    module.dt.datetime.now(module.dt.timezone.utc)
+                    + module.dt.timedelta(days=30)
+                ).isoformat(),
+                "rtoTarget": "4 hours",
+                "rpoTarget": "24 hours",
+                "escalationPath": "SRE primary, platform maintainer backup",
+                "recoveryOrder": "Restore state, validate logs, resume applies",
+                "communicationsPlan": "Post owner-approved status updates.",
+                "latestAcceptedDrill": "2026-04-27 restore drill accepted.",
+                "nextReviewDate": (
+                    module.dt.datetime.now(module.dt.timezone.utc)
+                    + module.dt.timedelta(days=20)
+                )
+                .date()
+                .isoformat(),
+                "evidenceRetentionLocation": "docs/production-dr-owner.md",
+                "approval": "approved",
+                "evidence": ["Production owner reviewed the DR target."],
+                "remediationPlan": "Run the next drill before expiry.",
+                "restoreDrillEvidence": {
+                    "workload": "bootstrap-infrastructure",
+                    "environment": "test",
+                    "completedAt": "2026-04-27T10:00:00Z",
+                    "targetRestoreLocation": (
+                        "s3://awsbackup-restore-test-bootstrap-123456789012-drill"
+                    ),
+                    "validationResult": "passed",
+                    "cleanupConfirmed": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    owner_covered_restore = module.restore_drill_evidence(
+        valid_restore_evidence,
+        production_dr_owner_evidence=production_owner_evidence,
+    )
+    assert owner_covered_restore["status"] == "passed"  # nosec B101
+    owner_summary = owner_covered_restore["evidence"]["productionDrOwnerEvidence"]
+    assert owner_summary["owner"] == "SRE"  # nosec B101
+    assert owner_summary["approval"] == "approved"  # nosec B101
     legacy_args = module.build_parser().parse_args(
         [
             "--question-matrix-evidence-confirmed",
@@ -5018,6 +5255,60 @@ def test_sns_alert_route_rejects_bad_observation_evidence(
         {key: value for key, value in route_evidence.items() if key != "sqsQueue"},
     )
     assert "fields: sqsQueue" in " ".join(missing_live_queue_blockers)  # nosec B101
+
+
+def test_restore_drill_rejects_bad_production_dr_owner_evidence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Production DR owner evidence must be current, complete, and restore-bound."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    restore_evidence = {
+        "workload": "bootstrap-infrastructure",
+        "environment": "test",
+        "completedAt": "2026-04-27T10:00:00Z",
+        "targetRestoreLocation": "s3://awsbackup-restore-test-bootstrap-drill",
+        "validationResult": "passed",
+        "cleanupConfirmed": True,
+    }
+    payload = {
+        "workload": "bootstrap-infrastructure",
+        "environment": "prod",
+        "owner": "SRE",
+        "approvedBy": "prod-reviewer",
+        "reviewedAt": module.dt.datetime.now(module.dt.timezone.utc).isoformat(),
+        "expiresAt": "not-a-date",
+        "rtoTarget": "",
+        "rpoTarget": "24 hours",
+        "escalationPath": "SRE primary",
+        "recoveryOrder": "Restore state, validate logs, resume applies",
+        "communicationsPlan": "Post owner-approved status updates.",
+        "latestAcceptedDrill": "2026-04-27 restore drill accepted.",
+        "nextReviewDate": "not-a-date",
+        "evidenceRetentionLocation": "docs/production-dr-owner.md",
+        "approval": "unknown",
+        "evidence": [],
+        "remediationPlan": "",
+        "restoreDrillEvidence": {
+            **restore_evidence,
+            "targetRestoreLocation": "s3://stale-target",
+        },
+    }
+    path = tmp_path / "bad-production-dr-owner.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    summary, blockers = module._production_dr_owner_coverage(  # noqa: SLF001
+        path,
+        restore_evidence,
+    )
+
+    blocker_text = " ".join(blockers)
+    assert summary["path"] == str(path)  # nosec B101
+    assert "approval must be one of" in blocker_text  # nosec B101
+    assert "rtoTarget must be non-empty" in blocker_text  # nosec B101
+    assert "nextReviewDate must be ISO-8601" in blocker_text  # nosec B101
+    assert "evidence must include non-empty" in blocker_text  # nosec B101
+    assert "remediationPlan must be non-empty" in blocker_text  # nosec B101
+    assert "restoreDrillEvidence does not match" in blocker_text  # nosec B101
 
 
 def test_sns_alert_route_reports_sqs_metadata_failures(

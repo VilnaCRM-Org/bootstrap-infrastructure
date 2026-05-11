@@ -55,7 +55,10 @@ evidence remain open.
 3. SRE records the downstream human alert route or an accepted SQS-only
    escalation exemption.
 4. Production owner records protected-environment approval evidence for the
-   reviewed commit, saved plan, destructive diff, and IAM validation.
+   reviewed commit, saved plan, destructive diff, and IAM validation, and
+   supplies `PRODUCTION_DR_OWNER_EVIDENCE` for `REL13` production DR ownership,
+   RTO/RPO, escalation, recovery order, communications, latest accepted drill,
+   next review, and evidence retention location.
 5. Maintainer reruns the collector and updates structured evidence only when
    every question row and external control is resolved.
 

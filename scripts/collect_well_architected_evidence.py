@@ -164,6 +164,37 @@ SECURITY_ACCOUNT_ALLOWED_BOUNDARY = frozenset(
 SECURITY_ACCOUNT_ATTESTED_CONTROLS = frozenset(
     {"human_access", "active_key", "permissions_boundary"}
 )
+PRODUCTION_DR_OWNER_REQUIRED_FIELDS = (
+    "workload",
+    "environment",
+    "owner",
+    "approvedBy",
+    "reviewedAt",
+    "expiresAt",
+    "rtoTarget",
+    "rpoTarget",
+    "escalationPath",
+    "recoveryOrder",
+    "communicationsPlan",
+    "latestAcceptedDrill",
+    "nextReviewDate",
+    "evidenceRetentionLocation",
+    "approval",
+    "evidence",
+    "remediationPlan",
+    "restoreDrillEvidence",
+)
+PRODUCTION_DR_OWNER_RESTORE_FIELDS = (
+    "workload",
+    "environment",
+    "completedAt",
+    "targetRestoreLocation",
+    "validationResult",
+    "cleanupConfirmed",
+)
+PRODUCTION_DR_OWNER_ALLOWED_APPROVALS = frozenset(
+    {"approved", "approved_exception", "accepted_risk"}
+)
 STRUCTURED_EVIDENCE_ALLOWED_STATUSES = frozenset({"passed", "unresolved"})
 RESTORE_DRILL_REQUIRED_FIELDS = (
     "workload",
@@ -2516,7 +2547,10 @@ def _restore_drill_evidence_payload(payload: dict[str, Any]) -> dict[str, object
     }
 
 
-def restore_drill_evidence(evidence_path: Path | None) -> dict[str, object]:
+def restore_drill_evidence(
+    evidence_path: Path | None,
+    production_dr_owner_evidence: Path | None = None,
+) -> dict[str, object]:
     """Validate a workload-scoped restore-drill evidence record."""
     if evidence_path is None:
         return _check(
@@ -2529,13 +2563,140 @@ def restore_drill_evidence(evidence_path: Path | None) -> dict[str, object]:
         )
 
     payload, read_blockers = _read_restore_drill_payload(evidence_path)
-    blockers = [*read_blockers, *_restore_drill_payload_blockers(payload)]
+    restore_evidence = _restore_drill_evidence_payload(payload)
+    owner_summary, owner_blockers = _production_dr_owner_coverage(
+        production_dr_owner_evidence,
+        restore_evidence,
+    )
+    blockers = [
+        *read_blockers,
+        *_restore_drill_payload_blockers(payload),
+        *owner_blockers,
+    ]
+    evidence = restore_evidence
+    if owner_summary:
+        evidence["productionDrOwnerEvidence"] = owner_summary
     return _check(
         "restore_drill_evidence",
         status="passed" if not blockers else "failed",
-        evidence=_restore_drill_evidence_payload(payload),
+        evidence=evidence,
         blockers=blockers,
     )
+
+
+def _production_dr_owner_coverage(
+    evidence_path: Path | None,
+    restore_evidence: dict[str, object],
+) -> tuple[dict[str, object], list[str]]:
+    """Return approved production DR owner metadata for restore evidence."""
+    if evidence_path is None:
+        return {}, []
+
+    label = "Production DR owner evidence"
+    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
+    blockers.extend(
+        _structured_evidence_payload_blockers(
+            payload,
+            PRODUCTION_DR_OWNER_REQUIRED_FIELDS,
+        )
+    )
+    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
+    blockers.extend(_production_dr_owner_payload_blockers(payload, restore_evidence))
+    return _production_dr_owner_summary(evidence_path, payload), blockers
+
+
+def _production_dr_owner_payload_blockers(
+    payload: dict[str, Any],
+    restore_evidence: dict[str, object],
+) -> list[str]:
+    """Return blockers for production DR owner evidence."""
+    blockers: list[str] = []
+    approval = _normalized_text(payload.get("approval"))
+    if approval not in PRODUCTION_DR_OWNER_ALLOWED_APPROVALS:
+        allowed = ", ".join(sorted(PRODUCTION_DR_OWNER_ALLOWED_APPROVALS))
+        blockers.append(
+            f"Production DR owner evidence approval must be one of: {allowed}."
+        )
+    for field in (
+        "rtoTarget",
+        "rpoTarget",
+        "escalationPath",
+        "recoveryOrder",
+        "communicationsPlan",
+        "latestAcceptedDrill",
+        "nextReviewDate",
+        "evidenceRetentionLocation",
+    ):
+        if not _non_empty_text(payload.get(field)):
+            blockers.append(f"Production DR owner evidence {field} must be non-empty.")
+    if _parse_reviewed_at(payload.get("nextReviewDate")) is None:
+        blockers.append("Production DR owner evidence nextReviewDate must be ISO-8601.")
+    if not _non_empty_string_list(payload.get("evidence")):
+        blockers.append(
+            "Production DR owner evidence must include non-empty evidence strings."
+        )
+    if not _non_empty_text(payload.get("remediationPlan")):
+        blockers.append(
+            "Production DR owner evidence remediationPlan must be non-empty."
+        )
+    blockers.extend(_production_dr_owner_expiry_blockers(payload.get("expiresAt")))
+    blockers.extend(_production_dr_owner_restore_blockers(payload, restore_evidence))
+    return blockers
+
+
+def _production_dr_owner_expiry_blockers(expires_at_value: object) -> list[str]:
+    """Return blockers for production DR owner evidence expiry."""
+    expires_at = _parse_reviewed_at(expires_at_value)
+    if expires_at is None:
+        return ["Production DR owner evidence expiresAt must be ISO-8601."]
+    now = dt.datetime.now(dt.timezone.utc)
+    if expires_at <= now:
+        return ["Production DR owner evidence is expired."]
+    return []
+
+
+def _production_dr_owner_restore_blockers(
+    payload: dict[str, Any],
+    restore_evidence: dict[str, object],
+) -> list[str]:
+    """Return blockers when production DR evidence references stale restore data."""
+    attested_restore = payload.get("restoreDrillEvidence")
+    if not isinstance(attested_restore, dict):
+        return ["Production DR owner evidence restoreDrillEvidence must be an object."]
+
+    mismatched_fields = [
+        field
+        for field in PRODUCTION_DR_OWNER_RESTORE_FIELDS
+        if attested_restore.get(field) != restore_evidence.get(field)
+    ]
+    if not mismatched_fields:
+        return []
+    return [
+        "Production DR owner evidence restoreDrillEvidence does not match current "
+        f"restore evidence fields: {', '.join(mismatched_fields)}."
+    ]
+
+
+def _production_dr_owner_summary(
+    evidence_path: Path,
+    payload: dict[str, Any],
+) -> dict[str, object]:
+    """Return non-secret production DR owner evidence metadata."""
+    return {
+        "path": str(evidence_path),
+        "owner": str(payload.get("owner") or ""),
+        "approvedBy": str(payload.get("approvedBy") or ""),
+        "reviewedAt": str(payload.get("reviewedAt") or ""),
+        "expiresAt": str(payload.get("expiresAt") or ""),
+        "environment": str(payload.get("environment") or ""),
+        "approval": str(payload.get("approval") or ""),
+        "rtoTarget": str(payload.get("rtoTarget") or ""),
+        "rpoTarget": str(payload.get("rpoTarget") or ""),
+        "nextReviewDate": str(payload.get("nextReviewDate") or ""),
+        "evidenceRetentionLocation": str(
+            payload.get("evidenceRetentionLocation") or ""
+        ),
+    }
 
 
 def repository_fanout_evidence(
@@ -3662,7 +3823,10 @@ def collect_evidence(
             args.operations_cloudtrail_name, runner=runner
         ),
         aws_restore_jobs(args.restore_window_days, runner=runner),
-        restore_drill_evidence(args.restore_drill_evidence),
+        restore_drill_evidence(
+            args.restore_drill_evidence,
+            production_dr_owner_evidence=args.production_dr_owner_evidence,
+        ),
         repository_fanout_evidence(args.root_dir, args),
         question_matrix_evidence(args),
         external_control_evidence(args),
@@ -3864,6 +4028,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Optional non-secret SRE-approved alert-route observation evidence "
             "covering current stable SNS/SQS route metadata."
+        ),
+    )
+    parser.add_argument(
+        "--production-dr-owner-evidence",
+        type=Path,
+        help=(
+            "Optional non-secret production-owner DR evidence covering current "
+            "restore-drill metadata, RTO/RPO targets, recovery ownership, "
+            "escalation, communications, next review, and retention location."
         ),
     )
     parser.add_argument("--restore-drill-evidence", type=Path)

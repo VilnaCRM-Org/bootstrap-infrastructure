@@ -390,6 +390,7 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		dependabot_exception_arg=""; \
 		alert_route_observation_arg=""; \
 		security_account_attestation_arg=""; \
+		production_dr_owner_arg=""; \
 		if [ -n "$${PR_NUMBER:-}" ]; then pr_arg="--pr $${PR_NUMBER}"; fi; \
 		if [ -n "$${AWS_ACCOUNT_ID:-}" ]; then account_arg="--aws-account-id $${AWS_ACCOUNT_ID}"; fi; \
 		if [ -n "$${OPERATIONS_TOPIC_ARN:-}" ]; then topic_arg="--operations-topic-arn $${OPERATIONS_TOPIC_ARN}"; fi; \
@@ -400,10 +401,12 @@ report-well-architected-evidence: ## Collect metadata-only Well-Architected evid
 		if [ -n "$${DEPENDABOT_EXCEPTION_EVIDENCE:-}" ]; then dependabot_exception_arg="--dependabot-exception-evidence $${DEPENDABOT_EXCEPTION_EVIDENCE}"; fi; \
 		if [ -n "$${ALERT_ROUTE_OBSERVATION_EVIDENCE:-}" ]; then alert_route_observation_arg="--alert-route-observation-evidence $${ALERT_ROUTE_OBSERVATION_EVIDENCE}"; fi; \
 		if [ -n "$${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE:-}" ]; then security_account_attestation_arg="--security-account-attestation-evidence $${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE}"; fi; \
+		if [ -n "$${PRODUCTION_DR_OWNER_EVIDENCE:-}" ]; then production_dr_owner_arg="--production-dr-owner-evidence $${PRODUCTION_DR_OWNER_EVIDENCE}"; fi; \
 		$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
 			$$pr_arg $$account_arg $$topic_arg $$cloudtrail_arg $$restore_arg \
 			$$question_matrix_arg $$external_control_arg $$dependabot_exception_arg \
 			$$alert_route_observation_arg $$security_account_attestation_arg \
+			$$production_dr_owner_arg \
 			--output .artifacts/well-architected/evidence.json \
 			--markdown-output .artifacts/well-architected/evidence.md'
 
@@ -523,6 +526,51 @@ report-security-account-attestation: ## Render security account attestation evid
 			--approval-decision "$${SECURITY_ACCOUNT_APPROVAL}" \
 			$${SECURITY_ACCOUNT_ACTION:+--action "$${SECURITY_ACCOUNT_ACTION}"} \
 			$${SECURITY_ACCOUNT_ATTESTATION_FORCE:+--force}'
+
+report-production-dr-owner-evidence: ## Render production DR owner evidence.
+	@bash -lc '\
+		set -euo pipefail; \
+		output="$${PRODUCTION_DR_OWNER_OUTPUT:-}"; \
+		if [ -z "$${output}" ]; then \
+			echo "error: PRODUCTION_DR_OWNER_OUTPUT is required." >&2; \
+			exit 2; \
+		fi; \
+		for name in \
+			PRODUCTION_DR_REVIEWER \
+			PRODUCTION_DR_OWNER \
+			PRODUCTION_DR_ESCALATION_PATH \
+			PRODUCTION_DR_RTO_TARGET \
+			PRODUCTION_DR_RPO_TARGET \
+			PRODUCTION_DR_RECOVERY_ORDER \
+			PRODUCTION_DR_COMMUNICATIONS_PLAN \
+			PRODUCTION_DR_LATEST_ACCEPTED_DRILL \
+			PRODUCTION_DR_NEXT_REVIEW_DATE \
+			PRODUCTION_DR_EVIDENCE_RETENTION_LOCATION \
+			PRODUCTION_DR_APPROVAL; do \
+			if [ -z "$${!name:-}" ]; then \
+				printf "error: %s is required.\\n" "$${name}" >&2; \
+				exit 2; \
+			fi; \
+		done; \
+		$(REPO_PYTHON) ./scripts/record_production_dr_owner_evidence.py \
+			--evidence "$${PRODUCTION_DR_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+			--output "$${output}" \
+			$${PRODUCTION_DR_OWNER_JSON_OUTPUT:+--json-output "$${PRODUCTION_DR_OWNER_JSON_OUTPUT}"} \
+			$${PRODUCTION_DR_REVIEW_DATE:+--review-date "$${PRODUCTION_DR_REVIEW_DATE}"} \
+			$${PRODUCTION_DR_EXPIRY_DATE:+--expiry-date "$${PRODUCTION_DR_EXPIRY_DATE}"} \
+			--reviewer "$${PRODUCTION_DR_REVIEWER}" \
+			--production-owner "$${PRODUCTION_DR_OWNER}" \
+			--escalation-path "$${PRODUCTION_DR_ESCALATION_PATH}" \
+			--rto-target "$${PRODUCTION_DR_RTO_TARGET}" \
+			--rpo-target "$${PRODUCTION_DR_RPO_TARGET}" \
+			--recovery-order "$${PRODUCTION_DR_RECOVERY_ORDER}" \
+			--communications-plan "$${PRODUCTION_DR_COMMUNICATIONS_PLAN}" \
+			--latest-accepted-drill "$${PRODUCTION_DR_LATEST_ACCEPTED_DRILL}" \
+			--next-review-date "$${PRODUCTION_DR_NEXT_REVIEW_DATE}" \
+			--evidence-retention-location "$${PRODUCTION_DR_EVIDENCE_RETENTION_LOCATION}" \
+			--approval "$${PRODUCTION_DR_APPROVAL}" \
+			$${PRODUCTION_DR_ACTION:+--action "$${PRODUCTION_DR_ACTION}"} \
+			$${PRODUCTION_DR_OWNER_FORCE:+--force}'
 
 report-quality: ## Run scheduled quality reports and generate fresh artifacts.
 	$(MAKE) report-maintainability-trends

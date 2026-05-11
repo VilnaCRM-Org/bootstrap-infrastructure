@@ -219,6 +219,7 @@ Optional or job-specific environment variables:
 | `AWS_APPLY_ROLE_ARN` | OIDC role used by test or production apply jobs |
 | `OPERATIONS_CLOUDTRAIL_NAME` | Standard metadata input for evidence collection when the environment reuses an existing operations CloudTrail |
 | `RESTORE_DRILL_EVIDENCE` | Standard metadata input pointing to the latest workload-scoped restore drill evidence record |
+| `PRODUCTION_DR_OWNER_EVIDENCE` | Optional non-secret production-owner DR evidence that binds RTO/RPO, recovery ownership, escalation, communications, latest accepted drill, next review, and retention location to current restore-drill metadata |
 | `QUESTION_MATRIX_EVIDENCE` | Standard metadata input pointing to the structured 57-question review evidence record |
 | `EXTERNAL_CONTROL_EVIDENCE` | Standard metadata input pointing to the structured external-control owner and freshness evidence record |
 
