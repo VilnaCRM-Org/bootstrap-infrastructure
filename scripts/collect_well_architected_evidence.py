@@ -7,6 +7,7 @@ import json
 import os
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -304,6 +305,39 @@ EXPECTED_WELL_ARCHITECTED_QUESTION_COUNTS = {
 STRUCTURED_EVIDENCE_MAX_AGE_DAYS = 30
 EXAMPLE_CATALOG_NAMES = frozenset({"repositories.example.json"})
 IAM_ACCESS_KEY_STALE_DAYS = 90
+
+
+@dataclass(frozen=True)
+class GitHubPrLocalStateSnapshot:
+    """Metadata needed to verify local checkout state against a PR."""
+
+    head_ok: bool
+    local_head: str
+    head_error: str
+    status_ok: bool
+    dirty_count: int
+    status_error: str
+    pr_ok: bool
+    pr_payload: Any
+    pr_error: str
+
+
+@dataclass(frozen=True)
+class ProductionEnvironmentMetadata:
+    """Protected production environment settings relevant to WAF evidence."""
+
+    environment: str
+    reviewer_login: str | None
+    reviewer_logins: Sequence[str]
+    reviewer_count: int
+    prevents_self_review: bool
+    protected_branches: bool
+    custom_branch_policies: bool
+
+    @property
+    def protected_branches_only(self) -> bool:
+        """Return whether deployment is limited to protected branches."""
+        return self.protected_branches and not self.custom_branch_policies
 
 
 def _check(
@@ -634,7 +668,7 @@ def github_pr_local_state(
         pr_number,
         runner=runner,
     )
-    blockers = _github_pr_local_state_blockers(
+    snapshot = GitHubPrLocalStateSnapshot(
         head_ok=head_ok,
         local_head=local_head,
         head_error=head_error,
@@ -645,13 +679,8 @@ def github_pr_local_state(
         pr_payload=pr_payload,
         pr_error=pr_error,
     )
-    evidence = _github_pr_local_state_evidence(
-        head_ok=head_ok,
-        local_head=local_head,
-        status_ok=status_ok,
-        dirty_count=dirty_count,
-        pr_payload=pr_payload if isinstance(pr_payload, dict) else {},
-    )
+    blockers = _github_pr_local_state_blockers(snapshot)
+    evidence = _github_pr_local_state_evidence(snapshot)
     return _check(
         "github_pr_local_state",
         status="passed" if not blockers else "failed",
@@ -709,46 +738,37 @@ def _github_pr_head_metadata(
 
 
 def _github_pr_local_state_blockers(
-    *,
-    head_ok: bool,
-    local_head: str,
-    head_error: str,
-    status_ok: bool,
-    dirty_count: int,
-    status_error: str,
-    pr_ok: bool,
-    pr_payload: Any,
-    pr_error: str,
+    snapshot: GitHubPrLocalStateSnapshot,
 ) -> list[str]:
     """Return blockers for local PR state evidence."""
     blockers = []
-    if not head_ok:
-        blockers.append(f"Unable to query local git HEAD: {head_error}")
-    if not status_ok:
-        blockers.append(f"Unable to query local git status: {status_error}")
-    elif dirty_count:
+    if not snapshot.head_ok:
+        blockers.append(f"Unable to query local git HEAD: {snapshot.head_error}")
+    if not snapshot.status_ok:
+        blockers.append(f"Unable to query local git status: {snapshot.status_error}")
+    elif snapshot.dirty_count:
         blockers.append("Local worktree has uncommitted tracked or untracked changes.")
-    if not pr_ok or not isinstance(pr_payload, dict):
-        blockers.append(f"Unable to query PR head metadata: {pr_error}")
-    if head_ok and _pr_head_oid(pr_payload) and local_head != _pr_head_oid(pr_payload):
+    if not snapshot.pr_ok or not isinstance(snapshot.pr_payload, dict):
+        blockers.append(f"Unable to query PR head metadata: {snapshot.pr_error}")
+    if (
+        snapshot.head_ok
+        and _pr_head_oid(snapshot.pr_payload)
+        and snapshot.local_head != _pr_head_oid(snapshot.pr_payload)
+    ):
         blockers.append("Local HEAD does not match the GitHub PR head commit.")
     return blockers
 
 
 def _github_pr_local_state_evidence(
-    *,
-    head_ok: bool,
-    local_head: str,
-    status_ok: bool,
-    dirty_count: int,
-    pr_payload: dict[str, Any],
+    snapshot: GitHubPrLocalStateSnapshot,
 ) -> dict[str, object]:
     """Return non-secret local PR state evidence."""
+    pr_payload = snapshot.pr_payload if isinstance(snapshot.pr_payload, dict) else {}
     return {
-        "localHead": local_head if head_ok else None,
+        "localHead": snapshot.local_head if snapshot.head_ok else None,
         "prHeadRefOid": _pr_head_oid(pr_payload) or None,
         "prHeadRefName": pr_payload.get("headRefName"),
-        "dirtyFileCount": dirty_count if status_ok else None,
+        "dirtyFileCount": snapshot.dirty_count if snapshot.status_ok else None,
     }
 
 
@@ -1557,7 +1577,7 @@ def github_production_environment(
     protected_branches = bool(branch_policy.get("protected_branches"))
     custom_branch_policies = bool(branch_policy.get("custom_branch_policies"))
     prevents_self_review = _environment_prevents_self_review(payload)
-    blockers = _production_environment_blockers(
+    metadata = ProductionEnvironmentMetadata(
         environment=environment,
         reviewer_login=reviewer_login,
         reviewer_logins=reviewer_logins,
@@ -1566,52 +1586,58 @@ def github_production_environment(
         protected_branches=protected_branches,
         custom_branch_policies=custom_branch_policies,
     )
+    blockers = _production_environment_blockers(metadata)
     return _check(
         "github_production_environment",
         status="passed" if not blockers else "failed",
-        evidence={
-            "environment": environment,
-            "readable": True,
-            "requiredReviewerCount": reviewer_count,
-            "requiredReviewerLogins": reviewer_logins,
-            "expectedReviewerLogin": reviewer_login,
-            "preventSelfReview": prevents_self_review,
-            "protectedBranchesOnly": protected_branches and not custom_branch_policies,
-        },
+        evidence=_production_environment_evidence(metadata),
         blockers=blockers,
     )
 
 
 def _production_environment_blockers(
-    *,
-    environment: str,
-    reviewer_login: str | None,
-    reviewer_logins: Sequence[str],
-    reviewer_count: int,
-    prevents_self_review: bool,
-    protected_branches: bool,
-    custom_branch_policies: bool,
+    metadata: ProductionEnvironmentMetadata,
 ) -> list[str]:
     """Return blockers for protected production environment metadata."""
     blockers: list[str] = []
-    if reviewer_count < 1:
+    if metadata.reviewer_count < 1:
         blockers.append(
-            f"GitHub environment {environment!r} does not require reviewers."
+            f"GitHub environment {metadata.environment!r} does not require reviewers."
         )
-    elif reviewer_login and reviewer_logins and reviewer_login not in reviewer_logins:
+    elif (
+        metadata.reviewer_login
+        and metadata.reviewer_logins
+        and metadata.reviewer_login not in metadata.reviewer_logins
+    ):
         blockers.append(
-            f"GitHub environment {environment!r} required reviewers do not include "
-            f"{reviewer_login}."
+            f"GitHub environment {metadata.environment!r} required reviewers do not "
+            f"include {metadata.reviewer_login}."
         )
-    if not prevents_self_review:
+    if not metadata.prevents_self_review:
         blockers.append(
-            f"GitHub environment {environment!r} does not prevent self-review."
+            f"GitHub environment {metadata.environment!r} does not prevent self-review."
         )
-    if not protected_branches or custom_branch_policies:
+    if not metadata.protected_branches_only:
         blockers.append(
-            f"GitHub environment {environment!r} is not limited to protected branches."
+            f"GitHub environment {metadata.environment!r} is not limited to protected "
+            "branches."
         )
     return blockers
+
+
+def _production_environment_evidence(
+    metadata: ProductionEnvironmentMetadata,
+) -> dict[str, object]:
+    """Return non-secret protected production environment evidence."""
+    return {
+        "environment": metadata.environment,
+        "readable": True,
+        "requiredReviewerCount": metadata.reviewer_count,
+        "requiredReviewerLogins": list(metadata.reviewer_logins),
+        "expectedReviewerLogin": metadata.reviewer_login,
+        "preventSelfReview": metadata.prevents_self_review,
+        "protectedBranchesOnly": metadata.protected_branches_only,
+    }
 
 
 def _environment_required_reviewer_count(payload: dict[str, Any]) -> int:
