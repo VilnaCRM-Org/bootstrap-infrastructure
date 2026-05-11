@@ -195,6 +195,18 @@ PRODUCTION_DR_OWNER_RESTORE_FIELDS = (
 PRODUCTION_DR_OWNER_ALLOWED_APPROVALS = frozenset(
     {"approved", "approved_exception", "accepted_risk"}
 )
+PRODUCTION_DR_OWNER_SUMMARY_FIELDS = (
+    "owner",
+    "approvedBy",
+    "reviewedAt",
+    "expiresAt",
+    "environment",
+    "approval",
+    "rtoTarget",
+    "rpoTarget",
+    "nextReviewDate",
+    "evidenceRetentionLocation",
+)
 STRUCTURED_EVIDENCE_ALLOWED_STATUSES = frozenset({"passed", "unresolved"})
 RESTORE_DRILL_REQUIRED_FIELDS = (
     "workload",
@@ -2684,18 +2696,10 @@ def _production_dr_owner_summary(
     """Return non-secret production DR owner evidence metadata."""
     return {
         "path": str(evidence_path),
-        "owner": str(payload.get("owner") or ""),
-        "approvedBy": str(payload.get("approvedBy") or ""),
-        "reviewedAt": str(payload.get("reviewedAt") or ""),
-        "expiresAt": str(payload.get("expiresAt") or ""),
-        "environment": str(payload.get("environment") or ""),
-        "approval": str(payload.get("approval") or ""),
-        "rtoTarget": str(payload.get("rtoTarget") or ""),
-        "rpoTarget": str(payload.get("rpoTarget") or ""),
-        "nextReviewDate": str(payload.get("nextReviewDate") or ""),
-        "evidenceRetentionLocation": str(
-            payload.get("evidenceRetentionLocation") or ""
-        ),
+        **{
+            field: str(payload.get(field) or "")
+            for field in PRODUCTION_DR_OWNER_SUMMARY_FIELDS
+        },
     }
 
 

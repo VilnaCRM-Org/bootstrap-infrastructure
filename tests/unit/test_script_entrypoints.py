@@ -938,6 +938,201 @@ def test_record_production_dr_owner_evidence_json_requires_action(
     assert not json_output.exists()  # nosec B101
 
 
+def test_record_production_dr_owner_evidence_rejects_invalid_inputs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Production DR owner records should fail before writing invalid evidence."""
+    module = load_script_module(monkeypatch, "record_production_dr_owner_evidence")
+    valid_review = module.dt.datetime.now(module.dt.timezone.utc).isoformat()
+    valid_expiry = (
+        module.dt.datetime.now(module.dt.timezone.utc) + module.dt.timedelta(days=7)
+    ).isoformat()
+    args = argparse.Namespace(
+        workload="bootstrap-infrastructure",
+        environment="prod",
+        production_owner="SRE",
+        reviewer="prod-reviewer",
+        review_date=valid_review,
+        expiry_date=valid_expiry,
+        rto_target="4 hours",
+        rpo_target="24 hours",
+        escalation_path="SRE primary",
+        recovery_order="Restore state, validate logs, resume applies",
+        communications_plan="Post owner-approved status updates.",
+        latest_accepted_drill="2026-04-27 restore drill accepted.",
+        next_review_date="2026-07-10",
+        evidence_retention_location="docs/production-dr-owner.md",
+        approval="approved",
+        action=["Run the next drill before expiry."],
+    )
+
+    with pytest.raises(ValueError, match="must pass before production DR"):
+        module.structured_owner_evidence(  # noqa: SLF001
+            _production_dr_evidence_report(status="failed", blockers=["blocked"]),
+            args,
+        )
+    with pytest.raises(ValueError, match="evidence must be a JSON object"):
+        module.structured_owner_evidence(  # noqa: SLF001
+            _production_dr_evidence_report(evidence="not structured"),
+            args,
+        )
+    with pytest.raises(ValueError, match="does not contain check"):
+        module._check_by_name({"checks": []}, "restore_drill_evidence")  # noqa: SLF001
+    report_with_leading_check = _production_dr_evidence_report()
+    report_with_leading_check["checks"].insert(0, {"name": "other"})
+    assert (  # noqa: SLF001  # nosec B101
+        module._check_by_name(report_with_leading_check, "restore_drill_evidence")[
+            "name"
+        ]
+        == "restore_drill_evidence"
+    )
+
+    list_report = tmp_path / "list-report.json"
+    list_report.write_text("[]", encoding="utf-8")
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        module._load_report(list_report)  # noqa: SLF001
+
+    invalid_choice_args = argparse.Namespace(**{**vars(args), "approval": "denied"})
+    with pytest.raises(ValueError, match="approval must be one of"):
+        module.structured_owner_evidence(  # noqa: SLF001
+            _production_dr_evidence_report(),
+            invalid_choice_args,
+        )
+
+    missing_expiry_args = argparse.Namespace(**{**vars(args), "expiry_date": ""})
+    with pytest.raises(ValueError, match="requires --expiry-date"):
+        module.structured_owner_evidence(  # noqa: SLF001
+            _production_dr_evidence_report(),
+            missing_expiry_args,
+        )
+
+    invalid_next_review_args = argparse.Namespace(
+        **{**vars(args), "next_review_date": "not-a-date"}
+    )
+    with pytest.raises(ValueError, match="next-review-date must be"):
+        module.structured_owner_evidence(  # noqa: SLF001
+            _production_dr_evidence_report(),
+            invalid_next_review_args,
+        )
+
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text(json.dumps(_production_dr_evidence_report()), encoding="utf-8")
+    output = tmp_path / "production-dr-owner.md"
+    output.write_text("existing", encoding="utf-8")
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(output),
+            "--reviewer",
+            "prod-reviewer",
+            "--production-owner",
+            "SRE",
+            "--escalation-path",
+            "SRE primary",
+            "--rto-target",
+            "4 hours",
+            "--rpo-target",
+            "24 hours",
+            "--recovery-order",
+            "Restore state, validate logs, resume applies",
+            "--communications-plan",
+            "Post owner-approved status updates.",
+            "--latest-accepted-drill",
+            "2026-04-27 restore drill accepted.",
+            "--next-review-date",
+            "2026-07-10",
+            "--evidence-retention-location",
+            "docs/production-dr-owner.md",
+            "--approval",
+            "approved",
+            "--action",
+            "Run the next drill before expiry.",
+        ]
+    )
+    assert status == 2  # nosec B101
+    assert "output already exists" in capsys.readouterr().err  # nosec B101
+
+    json_output = tmp_path / "production-dr-owner.json"
+    json_output.write_text("existing", encoding="utf-8")
+    new_output = tmp_path / "new-production-dr-owner.md"
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(new_output),
+            "--json-output",
+            str(json_output),
+            "--reviewer",
+            "prod-reviewer",
+            "--production-owner",
+            "SRE",
+            "--escalation-path",
+            "SRE primary",
+            "--rto-target",
+            "4 hours",
+            "--rpo-target",
+            "24 hours",
+            "--recovery-order",
+            "Restore state, validate logs, resume applies",
+            "--communications-plan",
+            "Post owner-approved status updates.",
+            "--latest-accepted-drill",
+            "2026-04-27 restore drill accepted.",
+            "--next-review-date",
+            "2026-07-10",
+            "--evidence-retention-location",
+            "docs/production-dr-owner.md",
+            "--approval",
+            "approved",
+            "--expiry-date",
+            valid_expiry,
+            "--action",
+            "Run the next drill before expiry.",
+        ]
+    )
+    assert status == 2  # nosec B101
+    assert "JSON output already exists" in capsys.readouterr().err  # nosec B101
+
+    no_json_output = tmp_path / "production-dr-owner-no-json.md"
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--output",
+            str(no_json_output),
+            "--reviewer",
+            "prod-reviewer",
+            "--production-owner",
+            "SRE",
+            "--escalation-path",
+            "SRE primary",
+            "--rto-target",
+            "4 hours",
+            "--rpo-target",
+            "24 hours",
+            "--recovery-order",
+            "Restore state, validate logs, resume applies",
+            "--communications-plan",
+            "Post owner-approved status updates.",
+            "--latest-accepted-drill",
+            "2026-04-27 restore drill accepted.",
+            "--next-review-date",
+            "2026-07-10",
+            "--evidence-retention-location",
+            "docs/production-dr-owner.md",
+            "--approval",
+            "approved",
+            "--action",
+            "Run the next drill before expiry.",
+        ]
+    )
+    assert status == 0  # nosec B101
+    assert no_json_output.exists()  # nosec B101
+
+
 def test_record_alert_route_observation_json_requires_expiry(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -5309,6 +5504,46 @@ def test_restore_drill_rejects_bad_production_dr_owner_evidence(
     assert "evidence must include non-empty" in blocker_text  # nosec B101
     assert "remediationPlan must be non-empty" in blocker_text  # nosec B101
     assert "restoreDrillEvidence does not match" in blocker_text  # nosec B101
+
+    expired_path = tmp_path / "expired-production-dr-owner.json"
+    expired_payload = {
+        **payload,
+        "approval": "approved",
+        "rtoTarget": "4 hours",
+        "evidence": ["Production owner reviewed the target."],
+        "remediationPlan": "Run the next drill before expiry.",
+        "nextReviewDate": "2026-07-10",
+        "expiresAt": (
+            module.dt.datetime.now(module.dt.timezone.utc) - module.dt.timedelta(days=1)
+        ).isoformat(),
+    }
+    expired_path.write_text(json.dumps(expired_payload), encoding="utf-8")
+    _, expired_blockers = module._production_dr_owner_coverage(  # noqa: SLF001
+        expired_path,
+        restore_evidence,
+    )
+    assert "evidence is expired" in " ".join(expired_blockers)  # nosec B101
+
+    non_object_restore_path = tmp_path / "non-object-production-dr-owner.json"
+    non_object_restore_payload = {
+        **expired_payload,
+        "expiresAt": (
+            module.dt.datetime.now(module.dt.timezone.utc)
+            + module.dt.timedelta(days=30)
+        ).isoformat(),
+        "restoreDrillEvidence": [],
+    }
+    non_object_restore_path.write_text(
+        json.dumps(non_object_restore_payload),
+        encoding="utf-8",
+    )
+    _, non_object_restore_blockers = module._production_dr_owner_coverage(  # noqa: SLF001
+        non_object_restore_path,
+        restore_evidence,
+    )
+    assert "restoreDrillEvidence must be an object" in " ".join(  # nosec B101
+        non_object_restore_blockers
+    )
 
 
 def test_sns_alert_route_reports_sqs_metadata_failures(
