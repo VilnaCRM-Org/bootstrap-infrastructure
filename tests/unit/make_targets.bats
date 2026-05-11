@@ -52,6 +52,7 @@ assert_help_target() {
     report-quality
     report-sbom
     report-alert-route-observation
+    report-production-dr-owner-evidence
     report-security-account-attestation
     report-well-architected-evidence
     sh

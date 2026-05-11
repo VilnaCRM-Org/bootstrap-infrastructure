@@ -65,6 +65,7 @@ verify-well-architected-questions  Compare question evidence with AWS public doc
 report-dependabot-exception  Render a non-secret Dependabot exception review from collector evidence.
 report-alert-route-observation  Render a monthly alert-route observation from collector evidence.
 report-security-account-attestation  Render a non-secret security account attestation from collector evidence.
+report-production-dr-owner-evidence  Render non-secret production DR owner evidence from collector evidence.
 start             Initialize and start the Pulumi development environment.
 pulumi-preview    Preview infrastructure changes with the policy pack enforced.
 pulumi-up         Apply the current infrastructure plan with the policy pack enforced.

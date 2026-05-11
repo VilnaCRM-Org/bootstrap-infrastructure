@@ -272,9 +272,10 @@ It is advisory while the external controls tracked in #26-#30 remain open; set
 and the collector exits cleanly. Fork PRs do not receive AWS credentials and
 record an unprivileged skip summary instead.
 When set, `OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
-`QUESTION_MATRIX_EVIDENCE`, and `EXTERNAL_CONTROL_EVIDENCE` are standard
-evidence inputs, not secrets. Restore evidence must be scoped to this bootstrap
-workload and include cleanup confirmation for any isolated restore location.
+`QUESTION_MATRIX_EVIDENCE`, `EXTERNAL_CONTROL_EVIDENCE`, and
+`PRODUCTION_DR_OWNER_EVIDENCE` are standard evidence inputs, not secrets.
+Restore evidence must be scoped to this bootstrap workload and include cleanup
+confirmation for any isolated restore location.
 The collector also reads non-secret Dependabot alert metadata for the configured
 dependency and manifest path; unresolved high or critical default-branch alerts
 remain SEC11 blockers until closed or covered by an owner-approved exception.
@@ -315,6 +316,17 @@ expired `SECURITY_ACCOUNT_EXPIRY_DATE`, stale or future
 reject.
 Set `SECURITY_ACCOUNT_ATTESTATION_FORCE=1` only when intentionally replacing an
 existing Markdown or JSON attestation artifact.
+If `PRODUCTION_DR_OWNER_EVIDENCE` is set, the collector reads a non-secret JSON
+production DR owner record. The record must be current, unexpired,
+owner-approved, include production recovery ownership, escalation,
+communications, RTO/RPO, latest accepted drill, next review, evidence retention,
+and match the latest restore-drill metadata exactly.
+When `report-production-dr-owner-evidence` writes JSON, it rejects missing or
+expired `PRODUCTION_DR_EXPIRY_DATE`, stale or future
+`PRODUCTION_DR_REVIEW_DATE`, missing owner actions, invalid approvals, and
+restore-drill mismatches the collector would reject.
+Set `PRODUCTION_DR_OWNER_FORCE=1` only when intentionally replacing an existing
+Markdown or JSON production DR owner artifact.
 Question-matrix and external-control records must include owner, freshness,
 coverage, unresolved-count, evidence-location, and fallback fields; boolean
 confirmation flags do not unlock final 5/5 scores.

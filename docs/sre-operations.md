@@ -257,6 +257,8 @@ secret-bearing dumps. Retain these non-secret handles when validating a stack:
 - `backupVaultName` and `backupVaultArn`
 - `OPERATIONS_CLOUDTRAIL_NAME` when an existing operations trail is reused
 - `RESTORE_DRILL_EVIDENCE` for the latest workload-scoped restore drill record
+- `PRODUCTION_DR_OWNER_EVIDENCE` for non-secret production DR owner approval,
+  RTO/RPO, escalation, communications, drill, review, and retention evidence
 - `QUESTION_MATRIX_EVIDENCE` for the structured 57-question review record
 - `EXTERNAL_CONTROL_EVIDENCE` for structured external-control evidence
 
@@ -271,10 +273,13 @@ Run `make report-well-architected-evidence` after privileged guardrails or a
 test-account smoke deploy to create the standard metadata-only evidence bundle.
 Set `PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
 `OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
-`QUESTION_MATRIX_EVIDENCE`, and `EXTERNAL_CONTROL_EVIDENCE` only when those
-non-secret identifiers or evidence records are available; the collector records
-missing values as blockers so operators can close them without fabricating 5/5
-evidence. External-control evidence must name the required control IDs for
+`QUESTION_MATRIX_EVIDENCE`, `EXTERNAL_CONTROL_EVIDENCE`, and optional
+owner-evidence paths such as `DEPENDABOT_EXCEPTION_EVIDENCE`,
+`ALERT_ROUTE_OBSERVATION_EVIDENCE`, `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE`,
+and `PRODUCTION_DR_OWNER_EVIDENCE` only when those non-secret identifiers or
+evidence records are available; the collector records missing values as
+blockers so operators can close them without fabricating 5/5 evidence.
+External-control evidence must name the required control IDs for
 branch protection, alert route, backup/restore, FinOps, quota headroom,
 security account controls, sustainability governance, and production approval.
 The collector also validates the per-control proof shape: passed controls need
