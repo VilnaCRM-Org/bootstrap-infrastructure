@@ -342,7 +342,8 @@ pillar counts, `unresolvedQuestionCount`, `unresolvedQuestionIds`,
 per-pillar unresolved counts, score averages, 1-5 score values, status values,
 score/status consistency, and `frameworkSourceVerification` source metadata
 against the AWS public Framework TOC; the verification artifact records its own
-`checkedAt` timestamp for audit freshness.
+`checkedAt` timestamp for audit freshness and includes a sanitized copy of the
+validated framework-source metadata.
 Non-passed `questionScores` entries must also retain non-empty `evidenceRefs`
 so each remaining blocker maps to a concrete issue, collector check, script, workflow,
 or evidence artifact.

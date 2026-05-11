@@ -2045,6 +2045,22 @@ def test_verify_well_architected_questions_accepts_matching_toc(
     assert report["expectedUnresolvedQuestionIds"] == ["OPS1"]  # nosec B101
     assert report["evidenceUnresolvedQuestionIds"] == ["OPS1"]  # nosec B101
     assert report["expectedQuestionScoreAverages"]["Operational Excellence"] == 4.91  # nosec B101
+    assert (  # nosec B101
+        report["evidenceFrameworkSourceVerification"]["officialTocUrlPresent"] is True
+    )
+    assert (  # nosec B101
+        report["evidenceFrameworkSourceVerification"]["sourceUrlCount"] == 2
+    )
+    assert (  # nosec B101
+        report["evidenceFrameworkSourceVerification"]["sourceUrls"][0]
+        == module.AWS_WELL_ARCHITECTED_TOC_URL
+    )
+    assert (  # nosec B101
+        report["evidenceFrameworkSourceVerification"]["questionCounts"][
+            "Sustainability"
+        ]
+        == 6
+    )
     assert report["blockers"] == []  # nosec B101
 
 
@@ -2281,6 +2297,9 @@ def test_verify_well_architected_questions_rejects_source_metadata_drift(
     assert "must be an object" in " ".join(  # nosec B101
         missing_object_report["blockers"]
     )
+    assert (  # nosec B101
+        missing_object_report["evidenceFrameworkSourceVerification"] is None
+    )
 
     missing_toc_evidence = _well_architected_question_evidence()
     missing_toc_source = missing_toc_evidence["frameworkSourceVerification"]
@@ -2300,6 +2319,7 @@ def test_verify_well_architected_questions_rejects_source_metadata_drift(
     assert module._valid_iso_timestamp("") is False  # noqa: SLF001  # nosec B101
     assert module._non_empty_strings([]) is False  # noqa: SLF001  # nosec B101
     assert module._non_empty_strings([""]) is False  # noqa: SLF001  # nosec B101
+    assert module._framework_source_metadata_summary("missing") is None  # noqa: SLF001  # nosec B101
 
 
 def test_verify_well_architected_questions_rejects_invalid_status_values(

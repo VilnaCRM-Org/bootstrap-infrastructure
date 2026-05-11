@@ -189,9 +189,9 @@ This PR should be validated by:
   credentials.
 - Confirming the question matrix still contains all 57 AWS Well-Architected
   questions, includes the official AWS Well-Architected TOC source URL in
-  `frameworkSourceVerification`, and does not claim final 5/5 scores before
-  structured `QUESTION_MATRIX_EVIDENCE` and `EXTERNAL_CONTROL_EVIDENCE` records
-  exist.
+  `frameworkSourceVerification`, exposes the validated source metadata in the
+  verifier artifact, and does not claim final 5/5 scores before structured
+  `QUESTION_MATRIX_EVIDENCE` and `EXTERNAL_CONTROL_EVIDENCE` records exist.
 - Dispatching or observing the existing `Pulumi Test Deploy` workflow, or a
   safe equivalent test-account Pulumi run, before merge readiness is claimed.
 - Re-running `scripts/collect_well_architected_evidence.py` after each external

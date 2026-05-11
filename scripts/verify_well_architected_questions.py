@@ -346,6 +346,26 @@ def _framework_source_metadata_blockers(verification: object) -> list[str]:
     return blockers
 
 
+def _framework_source_metadata_summary(
+    verification: object,
+) -> dict[str, object] | None:
+    if not isinstance(verification, dict):
+        return None
+    source_urls = _string_list(verification.get("sourceUrls"))
+    return {
+        "checkedAt": verification.get("checkedAt"),
+        "source": verification.get("source"),
+        "sourceUrlCount": len(source_urls) if source_urls is not None else None,
+        "sourceUrls": source_urls,
+        "officialTocUrlPresent": (
+            AWS_WELL_ARCHITECTED_TOC_URL in source_urls
+            if source_urls is not None
+            else False
+        ),
+        "questionCounts": _string_key_int_map(verification.get("questionCounts")),
+    }
+
+
 def _valid_iso_timestamp(value: object) -> bool:
     if not isinstance(value, str) or not value.strip():
         return False
@@ -643,6 +663,11 @@ def verify_question_matrix(
         "evidencePillarUnresolvedQuestionCounts": evidence_pillar_unresolved_counts,
         "expectedQuestionScoreAverages": expected_score_averages,
         "evidenceQuestionScoreAverages": evidence_score_averages,
+        "evidenceFrameworkSourceVerification": (
+            _framework_source_metadata_summary(
+                evidence.get("frameworkSourceVerification")
+            )
+        ),
         "markdownQuestionCount": (
             len(markdown_ids) if question_matrix_markdown is not None else None
         ),
