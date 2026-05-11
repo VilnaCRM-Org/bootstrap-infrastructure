@@ -306,7 +306,6 @@ def render_closeout_bundle(
         failed_check_names, unresolved_questions, unresolved_controls, score_blockers
     )
     repo = str(evidence_report.get("repo", ""))
-    repo_arg = f" --repo {repo}" if repo else ""
     pr_head = pr_checks.get("headRefOid", "")
     final_collector_command = _collector_command(
         evidence_report.get("pr", ""),
@@ -464,11 +463,13 @@ def render_closeout_bundle(
             "### Repository Admin",
             "",
             "- Apply and verify repository controls with "
-            f"`python3 scripts/configure_github_repository_controls.py{repo_arg} "
-            "--apply`, "
+            f"`GITHUB_REPOSITORY_CONTROLS_REPO={repo} "
+            "GITHUB_REPOSITORY_CONTROLS_MODE=--apply "
+            "make configure-github-repository-controls`, "
             "then "
-            f"`python3 scripts/configure_github_repository_controls.py{repo_arg} "
-            "--verify-only`.",
+            f"`GITHUB_REPOSITORY_CONTROLS_REPO={repo} "
+            "GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only "
+            "make configure-github-repository-controls`.",
             "- Confirm `main` requires all PR checks and the `prod` environment "
             "requires an independent reviewer.",
             "- After real owner evidence JSON paths exist, set the non-secret "

@@ -494,10 +494,10 @@ gh api graphql \
   -f query='query { repository(owner:"VilnaCRM-Org", name:"bootstrap-infrastructure") { viewerPermission viewerCanAdminister } }' \
   --jq '.data.repository'
 
-uv run python scripts/configure_github_repository_controls.py \
-  --repo VilnaCRM-Org/bootstrap-infrastructure \
-  --prod-reviewer Kravalg \
-  --apply
+GITHUB_REPOSITORY_CONTROLS_REPO=VilnaCRM-Org/bootstrap-infrastructure \
+GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER=Kravalg \
+GITHUB_REPOSITORY_CONTROLS_MODE=--apply \
+make configure-github-repository-controls
 ```
 
 The GraphQL preflight must report an admin-capable identity before `--apply`
@@ -506,16 +506,17 @@ non-admin evidence for PR #22 is `viewerPermission=WRITE` and
 `viewerCanAdminister=false`, so this command is intentionally expected to stop
 at the admin-rights preflight until a repository administrator runs it.
 
-Run the same command with `--dry-run`, or with neither `--dry-run` nor
-`--apply`, to inspect the ruleset and protected environment payloads. Dry runs
-resolve the reviewer login to the numeric GitHub user ID used by the environment
-API. Use `--verify-only` after applying settings manually or through another
-tool to re-read the active `main` ruleset and `prod` environment without
-writing. With `--apply`, the helper writes the desired controls and then runs
-the same verification. Verification exits non-zero unless the required checks,
-pull-request review/thread-resolution rules, protected-branch deployment
-policy, self-review prevention, and configured production reviewer are visible
-in GitHub metadata.
+Set `GITHUB_REPOSITORY_CONTROLS_MODE=--dry-run`, or omit the variable, to
+inspect the ruleset and protected environment payloads. Dry runs resolve the
+reviewer login to the numeric GitHub user ID used by the environment API. Set
+`GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only` after applying settings
+manually or through another tool to re-read the active `main` ruleset and
+`prod` environment without writing. With
+`GITHUB_REPOSITORY_CONTROLS_MODE=--apply`, the helper writes the desired
+controls and then runs the same verification. Verification exits non-zero unless
+the required checks, pull-request review/thread-resolution rules,
+protected-branch deployment policy, self-review prevention, and configured
+production reviewer are visible in GitHub metadata.
 
 ## Current limitations
 

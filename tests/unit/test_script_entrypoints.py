@@ -2728,12 +2728,14 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "OPS5, SEC1" in text  # nosec B101
     assert "branch_protection, production_approval" in text  # nosec B101
     assert (  # nosec B101
-        "python3 scripts/configure_github_repository_controls.py "
-        "--repo VilnaCRM-Org/bootstrap-infrastructure --apply" in text
+        "GITHUB_REPOSITORY_CONTROLS_REPO=VilnaCRM-Org/bootstrap-infrastructure "
+        "GITHUB_REPOSITORY_CONTROLS_MODE=--apply "
+        "make configure-github-repository-controls" in text
     )
     assert (  # nosec B101
-        "python3 scripts/configure_github_repository_controls.py "
-        "--repo VilnaCRM-Org/bootstrap-infrastructure --verify-only" in text
+        "GITHUB_REPOSITORY_CONTROLS_REPO=VilnaCRM-Org/bootstrap-infrastructure "
+        "GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only "
+        "make configure-github-repository-controls" in text
     )
     assert (  # nosec B101
         "gh variable set DEPENDABOT_EXCEPTION_EVIDENCE "

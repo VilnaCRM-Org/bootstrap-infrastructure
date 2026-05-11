@@ -106,10 +106,10 @@ gh api graphql \
   -f query='query { repository(owner:"VilnaCRM-Org", name:"bootstrap-infrastructure") { viewerPermission viewerCanAdminister } }' \
   --jq '.data.repository'
 
-uv run python scripts/configure_github_repository_controls.py \
-  --repo VilnaCRM-Org/bootstrap-infrastructure \
-  --prod-reviewer Kravalg \
-  --apply
+GITHUB_REPOSITORY_CONTROLS_REPO=VilnaCRM-Org/bootstrap-infrastructure \
+GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER=Kravalg \
+GITHUB_REPOSITORY_CONTROLS_MODE=--apply \
+make configure-github-repository-controls
 ```
 
 The permission preflight must show an admin-capable identity before the helper

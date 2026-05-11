@@ -59,6 +59,9 @@ TOTAL_COVERAGE_INCLUDE   ?= pulumi/*,policy/*,scripts/*
 BRANCH_COVERAGE_MIN      ?= 100
 QUALITY_ARTIFACT_DIR     ?= .artifacts/quality
 SBOM_ARTIFACT_DIR        ?= .artifacts/sbom
+GITHUB_REPOSITORY_CONTROLS_REPO ?= VilnaCRM-Org/$(PROJECT)
+GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER ?= Kravalg
+GITHUB_REPOSITORY_CONTROLS_MODE ?= --dry-run
 DOCSTRING_PATHS          ?= pulumi/app policy scripts/pulumi_ci_guardrails.py
 WILY_TARGETS             ?= pulumi policy scripts
 YAML_LINT_PATHS          ?= .github/workflows .github/actionlint.yaml docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
@@ -80,6 +83,7 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
 .PHONY: help doctor build start publish-pulumi-preview-summary pulumi-preview pulumi-plan \
         pulumi-up pulumi-up-plan pulumi-refresh \
         pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
+        configure-github-repository-controls \
         report-maintainability-trends report-dead-code report-docstrings \
         report-sbom report-well-architected-evidence verify-well-architected-questions \
         report-well-architected-closeout \
@@ -403,6 +407,12 @@ report-well-architected-closeout: ## Render owner/admin Well-Architected closeou
 		--evidence "$${WELL_ARCHITECTED_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
 		--question-verification "$${WELL_ARCHITECTED_QUESTION_VERIFICATION:-.artifacts/well-architected/question-verification.json}" \
 		--output "$${WELL_ARCHITECTED_CLOSEOUT_OUTPUT:-.artifacts/well-architected/owner-closeout-bundle.md}"
+
+configure-github-repository-controls: ## Print, apply, or verify GitHub ruleset and prod environment controls.
+	$(REPO_PYTHON) ./scripts/configure_github_repository_controls.py \
+		--repo "$(GITHUB_REPOSITORY_CONTROLS_REPO)" \
+		--prod-reviewer "$(GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER)" \
+		$(GITHUB_REPOSITORY_CONTROLS_MODE)
 
 report-dependabot-exception: ## Render Dependabot exception evidence.
 	@bash -lc '\

@@ -34,6 +34,7 @@ assert_help_target() {
     ci-pr
     ci-pr-unprivileged
     clean
+    configure-github-repository-controls
     doctor
     down
     help
@@ -100,6 +101,21 @@ assert_help_target() {
   for target in "${expected_targets[@]}"; do
     assert_help_target "$target"
   done
+}
+
+@test "make configure-github-repository-controls wraps admin helper" {
+  run env \
+    GITHUB_REPOSITORY_CONTROLS_REPO=VilnaCRM-Org/bootstrap-infrastructure \
+    GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER=Kravalg \
+    GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only \
+    make -n configure-github-repository-controls
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/configure_github_repository_controls.py"* ]]
+  [[ "$output" == *"--repo"* ]]
+  [[ "$output" == *"VilnaCRM-Org/bootstrap-infrastructure"* ]]
+  [[ "$output" == *"--prod-reviewer"* ]]
+  [[ "$output" == *"Kravalg"* ]]
+  [[ "$output" == *"--verify-only"* ]]
 }
 
 @test "make all delegates to the help output" {
