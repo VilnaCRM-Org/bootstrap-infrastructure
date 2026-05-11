@@ -2246,6 +2246,62 @@ def test_verify_well_architected_questions_rejects_score_summary_drift(
     )
 
 
+def test_verify_well_architected_questions_rejects_source_metadata_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The verifier must enforce the same auditable AWS source contract."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    evidence = _well_architected_question_evidence()
+    source_verification = evidence["frameworkSourceVerification"]
+    assert isinstance(source_verification, dict)  # nosec B101
+    source_verification["checkedAt"] = "not-a-timestamp"
+    source_verification["source"] = ""
+    source_verification["sourceUrls"] = []
+
+    report = module.verify_question_matrix(
+        evidence=evidence,
+        toc=_well_architected_question_toc(),
+        toc_source="fixture",
+    )
+
+    blockers = " ".join(report["blockers"])
+    assert report["status"] == "failed"  # nosec B101
+    assert "checkedAt" in blockers  # nosec B101
+    assert "source is required" in blockers  # nosec B101
+    assert "sourceUrls" in blockers  # nosec B101
+
+    missing_object_report = module.verify_question_matrix(
+        evidence={
+            **_well_architected_question_evidence(),
+            "frameworkSourceVerification": "missing",
+        },
+        toc=_well_architected_question_toc(),
+        toc_source="fixture",
+    )
+    assert "must be an object" in " ".join(  # nosec B101
+        missing_object_report["blockers"]
+    )
+
+    missing_toc_evidence = _well_architected_question_evidence()
+    missing_toc_source = missing_toc_evidence["frameworkSourceVerification"]
+    assert isinstance(missing_toc_source, dict)  # nosec B101
+    missing_toc_source["sourceUrls"] = [
+        "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html"
+    ]
+    missing_toc_report = module.verify_question_matrix(
+        evidence=missing_toc_evidence,
+        toc=_well_architected_question_toc(),
+        toc_source="fixture",
+    )
+    assert module.AWS_WELL_ARCHITECTED_TOC_URL in " ".join(  # nosec B101
+        missing_toc_report["blockers"]
+    )
+    assert module._valid_iso_timestamp(123) is False  # noqa: SLF001  # nosec B101
+    assert module._valid_iso_timestamp("") is False  # noqa: SLF001  # nosec B101
+    assert module._non_empty_strings([]) is False  # noqa: SLF001  # nosec B101
+    assert module._non_empty_strings([""]) is False  # noqa: SLF001  # nosec B101
+
+
 def test_verify_well_architected_questions_rejects_invalid_status_values(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

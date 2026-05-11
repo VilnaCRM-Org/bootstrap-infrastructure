@@ -315,6 +315,51 @@ def _question_id_list_text(question_ids: Sequence[str]) -> str:
     return ", ".join(question_ids) if question_ids else "none"
 
 
+def _framework_source_metadata_blockers(verification: object) -> list[str]:
+    if not isinstance(verification, dict):
+        return [
+            "Question-matrix evidence frameworkSourceVerification must be an object."
+        ]
+    blockers: list[str] = []
+    checked_at = verification.get("checkedAt")
+    if not _valid_iso_timestamp(checked_at):
+        blockers.append(
+            "Question-matrix framework source verification checkedAt must be "
+            "an ISO-8601 timestamp."
+        )
+    source = verification.get("source")
+    if not isinstance(source, str) or not source.strip():
+        blockers.append(
+            "Question-matrix framework source verification source is required."
+        )
+    source_urls = _string_list(verification.get("sourceUrls"))
+    if source_urls is None or not _non_empty_strings(source_urls):
+        blockers.append(
+            "Question-matrix framework source verification sourceUrls must include "
+            "non-empty documentation URLs."
+        )
+    elif AWS_WELL_ARCHITECTED_TOC_URL not in source_urls:
+        blockers.append(
+            "Question-matrix framework source verification sourceUrls must include "
+            f"{AWS_WELL_ARCHITECTED_TOC_URL}."
+        )
+    return blockers
+
+
+def _valid_iso_timestamp(value: object) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
+def _non_empty_strings(values: Sequence[str]) -> bool:
+    return bool(values) and all(value.strip() for value in values)
+
+
 def _missing_evidence_ref_ids(items: Sequence[dict[str, Any]]) -> list[str]:
     missing = []
     for item in items:
@@ -568,6 +613,9 @@ def verify_question_matrix(
             expected_pillar_unresolved_counts=expected_pillar_unresolved_counts,
             expected_score_averages=expected_score_averages,
         )
+    )
+    blockers.extend(
+        _framework_source_metadata_blockers(evidence.get("frameworkSourceVerification"))
     )
 
     return {
