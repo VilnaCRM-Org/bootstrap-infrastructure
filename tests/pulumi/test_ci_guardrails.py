@@ -461,6 +461,10 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
         step.get("run", "") for step in evidence_steps
     )
     assert "make report-well-architected-evidence" in collector_step["run"]  # nosec B101
+    assert "make verify-well-architected-questions" in collector_step["run"]  # nosec B101
+    assert "make report-well-architected-closeout" in collector_step["run"]  # nosec B101
+    assert "owner-closeout-bundle.md" in collector_step["run"]  # nosec B101
+    assert "Well-Architected Closeout Audit" in collector_step["run"]  # nosec B101
     assert "GITHUB_STEP_SUMMARY" in collector_step["run"]  # nosec B101
     assert "exit 1" not in collector_step["run"]  # nosec B101
     assert upload_step["with"]["name"] == "well-architected-evidence"  # nosec B101

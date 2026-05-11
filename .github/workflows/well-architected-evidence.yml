@@ -137,14 +137,24 @@ jobs:
       - name: Collect Well-Architected evidence
         id: collector
         run: |
+          export REPO_PYTHON="${HOME}/.local/bin/uv run python"
           set +e
-          REPO_PYTHON="${HOME}/.local/bin/uv run python" \
-            make report-well-architected-evidence
+          make report-well-architected-evidence
           collector_status=$?
           set -e
           echo "exit_code=${collector_status}" >> "${GITHUB_OUTPUT}"
+          make verify-well-architected-questions
+          make report-well-architected-closeout
           if [[ -f .artifacts/well-architected/evidence.md ]]; then
             cat .artifacts/well-architected/evidence.md >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          if [[ -f .artifacts/well-architected/owner-closeout-bundle.md ]]; then
+            {
+              echo
+              echo "## Well-Architected Closeout Audit"
+              echo
+              cat .artifacts/well-architected/owner-closeout-bundle.md
+            } >> "${GITHUB_STEP_SUMMARY}"
           fi
           if [[ "${collector_status}" -eq 0 ]]; then
             echo "::notice::Well-Architected evidence passed all readiness gates."

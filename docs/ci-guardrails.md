@@ -349,6 +349,10 @@ against the AWS public Framework TOC; the verification artifact records its own
 validated framework-source metadata. By default the Make target writes this
 artifact to `.artifacts/well-architected/question-verification.json`; set
 `AWS_WA_QUESTION_VERIFY_OUTPUT` only when a different path is needed.
+The hosted Well-Architected Evidence workflow runs the verifier after the
+collector, renders `.artifacts/well-architected/owner-closeout-bundle.md` with
+`make report-well-architected-closeout`, appends the closeout audit to the job
+summary, and uploads the full `.artifacts/well-architected` directory.
 Non-passed `questionScores` entries must also retain non-empty `evidenceRefs`
 so each remaining blocker maps to a concrete issue, collector check, script, workflow,
 or evidence artifact.
