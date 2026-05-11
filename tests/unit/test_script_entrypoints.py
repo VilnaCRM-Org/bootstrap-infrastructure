@@ -6958,8 +6958,10 @@ def test_collect_well_architected_evidence_paginates_review_threads(
                                             {
                                                 "author": {"login": "qltysh"},
                                                 "body": (
-                                                    "Found repeated code "
-                                                    "<i>[qlty:similar-code]</i>"
+                                                    "Define a constant instead of "
+                                                    "duplicating this literal. "
+                                                    "<i>[radarlint-python:python:"
+                                                    "S1192]</i>"
                                                 ),
                                             }
                                         ]

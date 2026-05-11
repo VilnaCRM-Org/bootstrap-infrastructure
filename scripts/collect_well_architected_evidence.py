@@ -718,12 +718,7 @@ def _review_thread_is_advisory(node: dict) -> bool:
     first_comment = _review_thread_first_comment(node)
     author = first_comment.get("author", {})
     login = author.get("login") if isinstance(author, dict) else ""
-    body = first_comment.get("body", "")
-    return (
-        login in ADVISORY_REVIEW_THREAD_AUTHORS
-        and isinstance(body, str)
-        and "[qlty:" in body
-    )
+    return login in ADVISORY_REVIEW_THREAD_AUTHORS
 
 
 def _review_thread_first_comment(node: dict) -> dict[str, Any]:
