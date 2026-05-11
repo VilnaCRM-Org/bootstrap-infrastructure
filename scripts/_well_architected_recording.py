@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-from collections.abc import Sequence
+import sys
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 JsonObject = dict[str, Any]
+MarkdownRenderer = Callable[[JsonObject, argparse.Namespace], str]
+JsonRenderer = Callable[[JsonObject, argparse.Namespace], object]
 STRUCTURED_EVIDENCE_MAX_AGE_DAYS = 30
 
 
@@ -92,6 +95,39 @@ def write_recording_outputs(
         f"{json.dumps(json_payload, indent=2, sort_keys=True)}\n",
         encoding="utf-8",
     )
+
+
+def run_recording_cli(
+    parser: argparse.ArgumentParser,
+    argv: Sequence[str] | None,
+    *,
+    render_markdown: MarkdownRenderer,
+    render_json: JsonRenderer,
+) -> int:
+    """Run the common owner evidence load, render, and write command flow."""
+    args = parser.parse_args(argv)
+    overwrite_error = output_exists_error(
+        args.output, args.json_output, force=args.force
+    )
+    if overwrite_error:
+        print(f"error: {overwrite_error}", file=sys.stderr)
+        return 2
+
+    try:
+        report = load_report(args.evidence)
+        markdown = render_markdown(report, args)
+        json_payload = render_json(report, args) if args.json_output else None
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
+    write_recording_outputs(
+        args.output,
+        markdown,
+        json_output=args.json_output,
+        json_payload=json_payload,
+    )
+    return 0
 
 
 def validate_choice(field: str, value: str, allowed_values: frozenset[str]) -> None:

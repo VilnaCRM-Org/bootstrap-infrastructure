@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from collections.abc import Sequence
 from typing import Any
 
@@ -287,31 +286,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    overwrite_error = _recording.output_exists_error(
-        args.output, args.json_output, force=args.force
+    return _recording.run_recording_cli(
+        build_parser(),
+        argv,
+        render_markdown=render_attestation,
+        render_json=structured_attestation,
     )
-    if overwrite_error:
-        print(f"error: {overwrite_error}", file=sys.stderr)
-        return 2
-
-    try:
-        report = _load_report(args.evidence)
-        markdown = render_attestation(report, args)
-        json_payload = (
-            structured_attestation(report, args) if args.json_output else None
-        )
-    except (OSError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-
-    _recording.write_recording_outputs(
-        args.output,
-        markdown,
-        json_output=args.json_output,
-        json_payload=json_payload,
-    )
-    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover
