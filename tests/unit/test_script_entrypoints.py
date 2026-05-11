@@ -1934,6 +1934,7 @@ def _well_architected_question_evidence() -> dict[str, object]:
         for prefix, pillar in pillar_by_prefix.items()
         for number in range(1, counts[prefix] + 1)
     ]
+    scores[0]["score"] = 4
     scores[0]["status"] = "unresolved"
     scores[0]["evidenceRefs"] = ["issue:#26"]
     return {
@@ -1941,7 +1942,7 @@ def _well_architected_question_evidence() -> dict[str, object]:
         "owner": "platform-maintainers",
         "reviewedAt": "2026-05-10T08:23:23Z",
         "questionCount": len(scores),
-        "unresolvedQuestionCount": 0,
+        "unresolvedQuestionCount": 1,
         "evidenceLocation": "specs/question-matrix.md",
         "frameworkSourceVerification": {
             "checkedAt": "2026-05-10T08:00:00Z",
@@ -2109,6 +2110,31 @@ def test_verify_well_architected_questions_rejects_markdown_matrix_drift(
         {"id": "OPS1", "pillar": "Operational Excellence"},
         {"id": "OPS2", "pillar": ""},
     ]
+
+
+def test_verify_well_architected_questions_rejects_score_status_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 5/5 claim must keep score and pass/unresolved status aligned."""
+    module = load_script_module(monkeypatch, "verify_well_architected_questions")
+    evidence = _well_architected_question_evidence()
+    scores = evidence["questionScores"]
+    assert isinstance(scores, list)  # nosec B101
+    assert isinstance(scores[0], dict)  # nosec B101
+    assert isinstance(scores[1], dict)  # nosec B101
+    scores[0]["score"] = 5
+    scores[1]["score"] = 4
+    scores[1]["status"] = "passed"
+
+    report = module.verify_question_matrix(
+        evidence=evidence,
+        toc=_well_architected_question_toc(),
+        toc_source="fixture",
+    )
+
+    assert report["status"] == "failed"  # nosec B101
+    assert report["scoreStatusMismatchQuestionIds"] == ["OPS1", "OPS2"]  # nosec B101
+    assert "passed entries must score 5" in " ".join(report["blockers"])  # nosec B101
 
 
 def test_verify_well_architected_questions_reports_duplicates_and_extra_ids(
@@ -5011,6 +5037,14 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert not module._valid_structured_status("passed ")  # noqa: SLF001  # nosec B101
     assert not module._valid_structured_status("passsed")  # noqa: SLF001  # nosec B101
     assert module._allowed_status_text() == "passed, unresolved"  # noqa: SLF001  # nosec B101
+    assert "OPS1, OPS2" in " ".join(  # noqa: SLF001  # nosec B101
+        module._question_matrix_score_status_blockers(
+            [
+                {"id": "OPS1", "score": 4, "status": "passed"},
+                {"id": "OPS2", "score": 5, "status": "unresolved"},
+            ]
+        )
+    )
     assert (  # noqa: SLF001  # nosec B101
         module._question_matrix_score_count_blockers(
             {"questionCount": "1", "unresolvedQuestionCount": "0"},
@@ -5076,6 +5110,7 @@ def test_collect_well_architected_evidence_rejects_question_id_gaps(
     for score in scores:
         assert isinstance(score, dict)  # nosec B101
         score["status"] = "passed"
+        score["score"] = 5
         score.pop("evidenceRefs", None)
     scores.pop()
     scores.append(dict(scores[0]))
@@ -5115,6 +5150,7 @@ def test_collect_well_architected_evidence_rejects_question_pillar_drift(
     for score in scores:
         assert isinstance(score, dict)  # nosec B101
         score["status"] = "passed"
+        score["score"] = 5
         score.pop("evidenceRefs", None)
     scores[0]["pillar"] = "Security"
     evidence = tmp_path / "question-matrix-evidence.json"

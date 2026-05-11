@@ -3104,6 +3104,7 @@ def _question_matrix_score_blockers(payload: dict[str, Any]) -> list[str]:
     blockers.extend(_question_matrix_score_count_blockers(payload, score_items))
     blockers.extend(_question_matrix_invalid_score_blockers(score_items))
     blockers.extend(_question_matrix_status_blockers(score_items))
+    blockers.extend(_question_matrix_score_status_blockers(score_items))
     blockers.extend(_question_matrix_evidence_ref_blockers(score_items))
     blockers.extend(_question_matrix_summary_blockers(payload, score_items))
     return blockers
@@ -3273,6 +3274,34 @@ def _question_matrix_status_blockers(
         if invalid_ids
         else []
     )
+
+
+def _question_matrix_score_status_blockers(
+    scores: Sequence[dict[str, Any]],
+) -> list[str]:
+    """Return blockers when scores and pass/fail status disagree."""
+    invalid_ids = [
+        str(score.get("id", "<missing>"))
+        for score in scores
+        if _valid_question_score(score.get("score"))
+        and (
+            (score.get("status") == "passed" and score.get("score") != 5)
+            or (score.get("status") != "passed" and score.get("score") == 5)
+        )
+    ]
+    return (
+        [
+            "Question-matrix passed entries must score 5 and non-passed entries "
+            f"must score below 5 for: {', '.join(invalid_ids)}."
+        ]
+        if invalid_ids
+        else []
+    )
+
+
+def _valid_question_score(score: object) -> bool:
+    """Return whether a score is an integer in the accepted 1-5 range."""
+    return not _invalid_question_score(score)
 
 
 def _question_matrix_evidence_ref_blockers(

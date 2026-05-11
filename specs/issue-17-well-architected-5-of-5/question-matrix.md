@@ -32,7 +32,8 @@ Boolean confirmation flags are not sufficient for a final 5/5 claim.
 Structured evidence must pass the repository validators before it can support a
 score claim. The question matrix is rejected for missing, duplicate, or unknown
 AWS question IDs; question IDs mapped to the wrong pillar; invalid score or
-status values; missing `evidenceRefs` on non-passed questions; stale unresolved
+status values; passed rows whose score is not `5`; non-passed rows whose score
+is `5`; missing `evidenceRefs` on non-passed questions; stale unresolved
 question summaries; and stale per-pillar or score-average summaries. External
 control evidence is rejected for duplicate or unknown control IDs, stale
 unresolved-control summaries, and unsupported status values.
@@ -140,5 +141,5 @@ A future implementation PR may raise a question score only when all of the follo
 - The relevant tests, policy checks, workflow checks, AWS metadata checks, or external-control attestations are linked.
 - The owner and cadence are still valid.
 - The implementation is compared with `main` so the review can identify whether the score improved, regressed, or stayed the same.
-- `make verify-well-architected-questions` and `make report-well-architected-evidence` accept the structured evidence without stale IDs, pillar mappings, status values, or summary fields.
+- `make verify-well-architected-questions` and `make report-well-architected-evidence` accept the structured evidence without stale IDs, pillar mappings, score/status mismatches, or summary fields.
 - Proxy scores are labeled as readiness indicators and are not presented as final 5/5 Well-Architected scores.
