@@ -14,6 +14,7 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = PROJECT_ROOT / ".github" / "workflows"
+ACTIONLINT_CONFIG = PROJECT_ROOT / ".github" / "actionlint.yaml"
 GUARDRAILS_DOC = PROJECT_ROOT / "docs" / "ci-guardrails.md"
 PREVIEW_SCRIPT = PROJECT_ROOT / "scripts" / "run_pulumi_preview.py"
 PREVIEW_SUMMARY_SCRIPT = PROJECT_ROOT / "scripts" / "publish_pulumi_preview_summary.py"
@@ -381,6 +382,7 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
 def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
     """Keep the Well-Architected evidence workflow safe while blockers remain."""
     workflow = _workflow("well-architected-evidence.yml")
+    actionlint_config = yaml.safe_load(ACTIONLINT_CONFIG.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
     triggers = _triggers(workflow)
     evidence_steps = jobs["test_account_evidence"]["steps"]
@@ -447,6 +449,10 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
         "pull-requests": "read",
         "vulnerability-alerts": "read",
     }
+    actionlint_ignores = actionlint_config["paths"][
+        ".github/workflows/well-architected-evidence.yml"
+    ]["ignore"]
+    assert any("vulnerability-alerts" in item for item in actionlint_ignores)  # nosec B101
     assert (  # nosec B101
         checkout_step["with"]["ref"]
         == "${{ github.event.pull_request.head.sha || github.sha }}"

@@ -61,7 +61,7 @@ QUALITY_ARTIFACT_DIR     ?= .artifacts/quality
 SBOM_ARTIFACT_DIR        ?= .artifacts/sbom
 DOCSTRING_PATHS          ?= pulumi/app policy scripts/pulumi_ci_guardrails.py
 WILY_TARGETS             ?= pulumi policy scripts
-YAML_LINT_PATHS          ?= .github/workflows docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
+YAML_LINT_PATHS          ?= .github/workflows .github/actionlint.yaml docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
 MUTATION_TEST_TARGETS    ?= tests/unit/test_environment_component.py tests/unit/test_guardrails.py
 MUTATION_TESTS_DIR       ?= tests/unit
 INTEGRATION_COVERAGE_ENV  = -e COVERAGE_FILE=/workspace/.coverage.integration \
@@ -73,10 +73,6 @@ POLICY_COVERAGE_ENV       = -e COVERAGE_FILE=/workspace/.coverage.policy \
 	-e COVERAGE_RCFILE=/workspace/.coveragerc
 TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
 	-e COVERAGE_RCFILE=/workspace/.coveragerc
-ACTIONLINT_FLAGS          ?= -color
-# GitHub supports vulnerability-alerts for Dependabot, but actionlint's
-# permission allowlist still lags this workflow scope.
-ACTIONLINT_IGNORES        ?= -ignore 'unknown permission scope "vulnerability-alerts"'
 
 # Misc
 .DEFAULT_GOAL     = help
@@ -243,7 +239,7 @@ test-bandit: ## Lint Python sources for common security hazards.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run bandit -q -c pyproject.toml -r pulumi policy scripts
 
 test-actionlint: ## Lint GitHub Actions workflows with actionlint.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) actionlint $(ACTIONLINT_FLAGS) $(ACTIONLINT_IGNORES)
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) actionlint -color
 
 test-yaml: ## Lint GitHub workflows, Pulumi stacks, and operational YAML.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run yamllint -c .yamllint.yml $(YAML_LINT_PATHS)

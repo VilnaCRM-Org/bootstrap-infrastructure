@@ -389,7 +389,6 @@ EOF
   [ "$status" -eq 0 ]
   assert_compose_env_file
   [[ "$output" == *"actionlint -color"* ]]
-  [[ "$output" == *"vulnerability-alerts"* ]]
 }
 
 @test "make test-yaml executes yamllint against operational YAML" {
