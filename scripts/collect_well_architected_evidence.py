@@ -14,6 +14,7 @@ from typing import Any, cast
 from urllib.parse import quote
 
 import _github_repository_controls as _repository_controls
+import _well_architected_env as _env
 import _well_architected_markdown as _markdown
 import _well_architected_recording as _recording
 from _script_support import repo_root, run
@@ -4161,29 +4162,9 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _environment_value(name: str) -> str | None:
-    """Return a non-empty environment variable value."""
-    value = os.environ.get(name)
-    return value if value else None
-
-
 def apply_environment_defaults(args: argparse.Namespace) -> argparse.Namespace:
     """Populate omitted standard evidence flags from environment variables."""
-    if args.pr is None:
-        pr_number = _environment_value("PR_NUMBER")
-        if pr_number is not None:
-            args.pr = int(pr_number)
-    for attribute, variable in ENV_STRING_DEFAULTS.items():
-        if getattr(args, attribute) is None:
-            value = _environment_value(variable)
-            if value is not None:
-                setattr(args, attribute, value)
-    for attribute, variable in ENV_PATH_DEFAULTS.items():
-        if getattr(args, attribute) is None:
-            value = _environment_value(variable)
-            if value is not None:
-                setattr(args, attribute, Path(value))
-    return args
+    return _env.apply_environment_defaults(args, ENV_STRING_DEFAULTS, ENV_PATH_DEFAULTS)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

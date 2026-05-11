@@ -60,6 +60,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "_github_repository_controls",
         "_pulumi_command_support",
         "_script_support",
+        "_well_architected_env",
         "_well_architected_markdown",
         "_well_architected_recording",
         "app",
