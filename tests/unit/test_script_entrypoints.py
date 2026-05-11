@@ -2682,6 +2682,14 @@ def test_render_well_architected_closeout_writes_owner_handoff(
         "scripts/configure_github_repository_controls.py "
         "--repo VilnaCRM-Org/bootstrap-infrastructure --verify-only" in text
     )
+    assert (  # nosec B101
+        "gh variable set DEPENDABOT_EXCEPTION_EVIDENCE "
+        "--repo VilnaCRM-Org/bootstrap-infrastructure "
+        "--body '<path-to-dependabot-exception.json>'" in text
+    )
+    assert "ALERT_ROUTE_OBSERVATION_EVIDENCE" in text  # nosec B101
+    assert "SECURITY_ACCOUNT_ATTESTATION_EVIDENCE" in text  # nosec B101
+    assert "PRODUCTION_DR_OWNER_EVIDENCE" in text  # nosec B101
     assert "make report-security-account-attestation" in text  # nosec B101
     assert "SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT" in text  # nosec B101
     assert "SECURITY_ACCOUNT_EXPIRY_DATE" in text  # nosec B101

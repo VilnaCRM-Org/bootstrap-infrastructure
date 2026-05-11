@@ -118,6 +118,36 @@ def _shell_template(assignments: Sequence[tuple[str, str]], make_target: str) ->
     return "\n".join(lines)
 
 
+def _github_variable_template(repo: str) -> str:
+    """Return GitHub Actions variable commands for hosted owner evidence."""
+    repo_arg = f" --repo {repo}" if repo else ""
+    variables = [
+        (
+            "DEPENDABOT_EXCEPTION_EVIDENCE",
+            "<path-to-dependabot-exception.json>",
+        ),
+        (
+            "ALERT_ROUTE_OBSERVATION_EVIDENCE",
+            "<path-to-alert-route-observation.json>",
+        ),
+        (
+            "SECURITY_ACCOUNT_ATTESTATION_EVIDENCE",
+            "<path-to-security-account-attestation.json>",
+        ),
+        (
+            "PRODUCTION_DR_OWNER_EVIDENCE",
+            "<path-to-production-dr-owner.json>",
+        ),
+    ]
+    lines = ["```bash"]
+    lines.extend(
+        f"gh variable set {name}{repo_arg} --body '{value}'"
+        for name, value in variables
+    )
+    lines.append("```")
+    return "\n".join(lines)
+
+
 def _goal_status(
     failed_check_names: Sequence[str],
     unresolved_questions: Sequence[str],
@@ -435,6 +465,11 @@ def render_closeout_bundle(
             "--verify-only`.",
             "- Confirm `main` requires all PR checks and the `prod` environment "
             "requires an independent reviewer.",
+            "- After real owner evidence JSON paths exist, set the non-secret "
+            "repository Actions variables for hosted evidence runs. Leave any "
+            "variable unset until its owner evidence exists.",
+            "",
+            _github_variable_template(repo),
             "",
             "### Security Owner",
             "",
