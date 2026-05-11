@@ -2683,9 +2683,19 @@ def test_render_well_architected_closeout_writes_owner_handoff(
         "--repo VilnaCRM-Org/bootstrap-infrastructure --verify-only" in text
     )
     assert "make report-security-account-attestation" in text  # nosec B101
+    assert "SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT" in text  # nosec B101
+    assert "SECURITY_ACCOUNT_EXPIRY_DATE" in text  # nosec B101
+    assert "SECURITY_ACCOUNT_ACTIVE_KEY_DECISION" in text  # nosec B101
     assert "make report-dependabot-exception" in text  # nosec B101
+    assert "DEPENDABOT_EXCEPTION_JSON_OUTPUT" in text  # nosec B101
+    assert "DEPENDABOT_EXCEPTION_EXPIRY_DATE" in text  # nosec B101
     assert "make report-alert-route-observation" in text  # nosec B101
+    assert "ALERT_ROUTE_OBSERVATION_JSON_OUTPUT" in text  # nosec B101
+    assert "ALERT_ROUTE_EXPIRY_DATE" in text  # nosec B101
     assert "make report-production-dr-owner-evidence" in text  # nosec B101
+    assert "PRODUCTION_DR_OWNER_JSON_OUTPUT" in text  # nosec B101
+    assert "PRODUCTION_DR_EXPIRY_DATE" in text  # nosec B101
+    assert "PRODUCTION_DR_LATEST_ACCEPTED_DRILL" in text  # nosec B101
     assert "make verify-well-architected-questions" in text  # nosec B101
     assert "PR_NUMBER=22 OPERATIONS_TOPIC_ARN=arn:aws:sns" in text  # nosec B101
     assert "OPERATIONS_CLOUDTRAIL_NAME=bootstrap-test-management-events" in text

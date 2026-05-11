@@ -105,6 +105,15 @@ def _collector_command(pr_number: object, topic_arn: object, trail_name: object)
     return f"{prefix} make report-well-architected-evidence"
 
 
+def _shell_template(assignments: Sequence[tuple[str, str]], make_target: str) -> str:
+    """Return a copy-pasteable non-secret shell template for owner evidence."""
+    lines = ["```bash"]
+    lines.extend(f"{key}='{value}' \\" for key, value in assignments)
+    lines.append(f"make {make_target}")
+    lines.append("```")
+    return "\n".join(lines)
+
+
 def _goal_status(
     failed_check_names: Sequence[str],
     unresolved_questions: Sequence[str],
@@ -427,6 +436,44 @@ def render_closeout_bundle(
             "",
             "- Generate security account evidence with "
             "`make report-security-account-attestation`.",
+            "",
+            _shell_template(
+                [
+                    (
+                        "SECURITY_ACCOUNT_ATTESTATION_OUTPUT",
+                        ".artifacts/well-architected/security-account-attestation.md",
+                    ),
+                    (
+                        "SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT",
+                        ".artifacts/well-architected/security-account-attestation.json",
+                    ),
+                    ("SECURITY_ACCOUNT_REVIEWER", "<reviewer-login>"),
+                    ("SECURITY_ACCOUNT_OWNER", "<security-owner-login-or-team>"),
+                    (
+                        "SECURITY_ACCOUNT_HUMAN_ACCESS",
+                        "<mfa_sso_verified|approved_exception|accepted_risk>",
+                    ),
+                    (
+                        "SECURITY_ACCOUNT_ACTIVE_KEY_DECISION",
+                        "<rotated|removed|approved_exception|accepted_risk>",
+                    ),
+                    (
+                        "SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY",
+                        "<boundary_arn|approved_exemption|accepted_risk>",
+                    ),
+                    (
+                        "SECURITY_ACCOUNT_APPROVAL",
+                        "<approved|approved_exception|accepted_risk>",
+                    ),
+                    ("SECURITY_ACCOUNT_EXPIRY_DATE", "<YYYY-MM-DD>"),
+                    (
+                        "SECURITY_ACCOUNT_ACTION",
+                        "<non-secret remediation or exception note>",
+                    ),
+                ],
+                "report-security-account-attestation",
+            ),
+            "",
             "- Re-run `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE=<path> "
             "make report-well-architected-evidence`.",
             "",
@@ -438,10 +485,75 @@ def render_closeout_bundle(
             "`DEPENDABOT_EXCEPTION_EVIDENCE=<path> "
             "make report-well-architected-evidence`.",
             "",
+            _shell_template(
+                [
+                    (
+                        "DEPENDABOT_EXCEPTION_OUTPUT",
+                        ".artifacts/well-architected/dependabot-exception.md",
+                    ),
+                    (
+                        "DEPENDABOT_EXCEPTION_JSON_OUTPUT",
+                        ".artifacts/well-architected/dependabot-exception.json",
+                    ),
+                    ("DEPENDABOT_EXCEPTION_REVIEWER", "<reviewer-login>"),
+                    ("DEPENDABOT_EXCEPTION_OWNER", "<security-owner-login-or-team>"),
+                    (
+                        "DEPENDABOT_EXCEPTION_APPROVAL",
+                        "<approved|approved_exception|accepted_risk>",
+                    ),
+                    (
+                        "DEPENDABOT_EXCEPTION_REASON",
+                        "<non-secret reason alerts cannot close immediately>",
+                    ),
+                    (
+                        "DEPENDABOT_EXCEPTION_REMEDIATION",
+                        "<non-secret remediation plan and target>",
+                    ),
+                    ("DEPENDABOT_EXCEPTION_EXPIRY_DATE", "<YYYY-MM-DD>"),
+                    (
+                        "DEPENDABOT_EXCEPTION_EVIDENCE_NOTE",
+                        "<non-secret owner evidence reference>",
+                    ),
+                ],
+                "report-dependabot-exception",
+            ),
+            "",
             "### SRE Owner",
             "",
             "- Generate monthly downstream alert-route evidence with "
             "`make report-alert-route-observation`.",
+            "",
+            _shell_template(
+                [
+                    (
+                        "ALERT_ROUTE_OBSERVATION_OUTPUT",
+                        ".artifacts/well-architected/alert-route-observation.md",
+                    ),
+                    (
+                        "ALERT_ROUTE_OBSERVATION_JSON_OUTPUT",
+                        ".artifacts/well-architected/alert-route-observation.json",
+                    ),
+                    ("ALERT_ROUTE_REVIEWER", "<reviewer-login>"),
+                    ("ALERT_ROUTE_OWNER", "<route-owner-login-or-team>"),
+                    (
+                        "ALERT_ROUTE_DOWNSTREAM",
+                        "<ChatOps, ticketing, paging, or approved queue-owner process>",
+                    ),
+                    (
+                        "ALERT_ROUTE_SEVERITY",
+                        "<non-secret severity and response expectation>",
+                    ),
+                    ("ALERT_ROUTE_FALLBACK", "<non-secret fallback action>"),
+                    ("ALERT_ROUTE_DECISION", "<approved|accepted_risk>"),
+                    ("ALERT_ROUTE_EXPIRY_DATE", "<YYYY-MM-DD>"),
+                    (
+                        "ALERT_ROUTE_ACTION",
+                        "<non-secret follow-up or observation note>",
+                    ),
+                ],
+                "report-alert-route-observation",
+            ),
+            "",
             "- Re-run `ALERT_ROUTE_OBSERVATION_EVIDENCE=<path> "
             "make report-well-architected-evidence`.",
             "",
@@ -449,6 +561,55 @@ def render_closeout_bundle(
             "",
             "- Generate production recovery-owner evidence with "
             "`make report-production-dr-owner-evidence`.",
+            "",
+            _shell_template(
+                [
+                    (
+                        "PRODUCTION_DR_OWNER_OUTPUT",
+                        ".artifacts/well-architected/production-dr-owner.md",
+                    ),
+                    (
+                        "PRODUCTION_DR_OWNER_JSON_OUTPUT",
+                        ".artifacts/well-architected/production-dr-owner.json",
+                    ),
+                    ("PRODUCTION_DR_REVIEWER", "<reviewer-login>"),
+                    ("PRODUCTION_DR_OWNER", "<production-owner-login-or-team>"),
+                    (
+                        "PRODUCTION_DR_ESCALATION_PATH",
+                        "<non-secret escalation path>",
+                    ),
+                    ("PRODUCTION_DR_RTO_TARGET", "<production RTO target>"),
+                    ("PRODUCTION_DR_RPO_TARGET", "<production RPO target>"),
+                    (
+                        "PRODUCTION_DR_RECOVERY_ORDER",
+                        "<non-secret recovery order>",
+                    ),
+                    (
+                        "PRODUCTION_DR_COMMUNICATIONS_PLAN",
+                        "<non-secret communications plan>",
+                    ),
+                    (
+                        "PRODUCTION_DR_LATEST_ACCEPTED_DRILL",
+                        "<restore drill evidence id or date>",
+                    ),
+                    ("PRODUCTION_DR_NEXT_REVIEW_DATE", "<YYYY-MM-DD>"),
+                    (
+                        "PRODUCTION_DR_EVIDENCE_RETENTION_LOCATION",
+                        "<non-secret evidence location>",
+                    ),
+                    (
+                        "PRODUCTION_DR_APPROVAL",
+                        "<approved|approved_exception|accepted_risk>",
+                    ),
+                    ("PRODUCTION_DR_EXPIRY_DATE", "<YYYY-MM-DD>"),
+                    (
+                        "PRODUCTION_DR_ACTION",
+                        "<non-secret follow-up or owner action>",
+                    ),
+                ],
+                "report-production-dr-owner-evidence",
+            ),
+            "",
             "- Re-run `PRODUCTION_DR_OWNER_EVIDENCE=<path> "
             "make report-well-architected-evidence`.",
             "",
