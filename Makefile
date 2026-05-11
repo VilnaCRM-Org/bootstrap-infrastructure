@@ -82,6 +82,7 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
         report-maintainability-trends report-dead-code report-docstrings \
         report-sbom report-well-architected-evidence verify-well-architected-questions \
+        report-well-architected-closeout \
         report-dependabot-exception report-alert-route-observation \
         report-security-account-attestation report-production-dr-owner-evidence \
         test-quality test-ruff test-ty test-maintainability \
@@ -395,6 +396,13 @@ verify-well-architected-questions: ## Compare question evidence with AWS public 
 			--question-matrix-evidence "$${QUESTION_MATRIX_EVIDENCE:-specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-05-09.json}" \
 			--question-matrix "$${QUESTION_MATRIX:-specs/issue-17-well-architected-5-of-5/question-matrix.md}" \
 			$$toc_arg $$toc_url_arg $$output_arg'
+
+report-well-architected-closeout: ## Render owner/admin Well-Architected closeout handoff.
+	mkdir -p .artifacts/well-architected
+	$(REPO_PYTHON) ./scripts/render_well_architected_closeout.py \
+		--evidence "$${WELL_ARCHITECTED_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+		--question-verification "$${WELL_ARCHITECTED_QUESTION_VERIFICATION:-.artifacts/well-architected/question-verification.json}" \
+		--output "$${WELL_ARCHITECTED_CLOSEOUT_OUTPUT:-.artifacts/well-architected/owner-closeout-bundle.md}"
 
 report-dependabot-exception: ## Render Dependabot exception evidence.
 	@bash -lc '\

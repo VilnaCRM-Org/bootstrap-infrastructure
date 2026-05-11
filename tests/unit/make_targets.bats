@@ -54,6 +54,7 @@ assert_help_target() {
     report-alert-route-observation
     report-production-dr-owner-evidence
     report-security-account-attestation
+    report-well-architected-closeout
     report-well-architected-evidence
     sh
     start
@@ -584,6 +585,23 @@ EOF
   [[ "$output" == *"--toc-json"* ]]
   [[ "$output" == *"--output"* ]]
   [[ "$output" != *"docs/aws-wa-toc.json"* ]]
+}
+
+@test "make report-well-architected-closeout renders owner handoff bundle" {
+  run env \
+    WELL_ARCHITECTED_EVIDENCE=docs/evidence.json \
+    WELL_ARCHITECTED_QUESTION_VERIFICATION=docs/question-verification.json \
+    WELL_ARCHITECTED_CLOSEOUT_OUTPUT=docs/owner-closeout-bundle.md \
+    make -n report-well-architected-closeout
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mkdir -p .artifacts/well-architected"* ]]
+  [[ "$output" == *"./scripts/render_well_architected_closeout.py"* ]]
+  [[ "$output" == *'WELL_ARCHITECTED_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *'WELL_ARCHITECTED_QUESTION_VERIFICATION:-.artifacts/well-architected/question-verification.json'* ]]
+  [[ "$output" == *'WELL_ARCHITECTED_CLOSEOUT_OUTPUT:-.artifacts/well-architected/owner-closeout-bundle.md'* ]]
+  [[ "$output" != *"docs/evidence.json"* ]]
+  [[ "$output" != *"docs/question-verification.json"* ]]
+  [[ "$output" != *"docs/owner-closeout-bundle.md"* ]]
 }
 
 @test "make report-dependabot-exception renders owner exception evidence" {

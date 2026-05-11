@@ -2491,6 +2491,155 @@ def test_verify_well_architected_questions_fetches_toc_and_reports_errors(
     assert "must contain a JSON object" in capsys.readouterr().err
 
 
+def test_render_well_architected_closeout_writes_owner_handoff(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Render the combined owner/admin closeout bundle from existing artifacts."""
+    module = load_script_module(monkeypatch, "render_well_architected_closeout")
+    evidence = tmp_path / "evidence.json"
+    verification = tmp_path / "question-verification.json"
+    output = tmp_path / "owner-closeout-bundle.md"
+    evidence.write_text(
+        json.dumps(
+            {
+                "generatedAt": "2026-05-11T06:17:11.983255+00:00",
+                "repo": "VilnaCRM-Org/bootstrap-infrastructure",
+                "pr": 22,
+                "branch": "main",
+                "checks": [
+                    {
+                        "name": "github_pr_checks",
+                        "status": "passed",
+                        "evidence": {
+                            "checkCount": 35,
+                            "headRefOid": "abc123",
+                            "mergeStateStatus": "CLEAN",
+                            "mergeable": "MERGEABLE",
+                            "nonPassingCheckCount": 0,
+                            "reviewDecision": "APPROVED",
+                        },
+                        "blockers": [],
+                    },
+                    {
+                        "name": "github_pr_local_state",
+                        "status": "passed",
+                        "evidence": {"dirtyFileCount": 0, "localHead": "abc123"},
+                        "blockers": [],
+                    },
+                    {
+                        "name": "github_review_threads",
+                        "status": "passed",
+                        "evidence": {
+                            "threadCount": 46,
+                            "unresolvedThreadCount": 0,
+                        },
+                        "blockers": [],
+                    },
+                    {
+                        "name": "github_branch_protection",
+                        "status": "failed",
+                        "evidence": {"missingRequiredStatusChecks": ["Ruff"]},
+                        "blockers": [
+                            "Branch protection does not report required status checks."
+                        ],
+                    },
+                    {
+                        "name": "external_control_evidence",
+                        "status": "failed",
+                        "evidence": {
+                            "unresolvedControlCount": 2,
+                            "unresolvedControlIds": [
+                                "branch_protection",
+                                "production_approval",
+                            ],
+                        },
+                        "blockers": ["External-control evidence has gaps."],
+                    },
+                    "ignored",
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    verification.write_text(
+        json.dumps(
+            {
+                "checkedAt": "2026-05-11T06:11:57.890809Z",
+                "tocSource": (
+                    "https://docs.aws.amazon.com/wellarchitected/latest/"
+                    "framework/toc-contents.json"
+                ),
+                "evidenceUnresolvedQuestionCount": 2,
+                "evidenceUnresolvedQuestionIds": ["OPS5", "SEC1"],
+                "evidenceQuestionCount": 57,
+                "markdownQuestionCount": 57,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = module.main(
+        [
+            "--evidence",
+            str(evidence),
+            "--question-verification",
+            str(verification),
+            "--output",
+            str(output),
+        ]
+    )
+
+    text = output.read_text(encoding="utf-8")
+    assert status == 0  # nosec B101
+    assert str(output) in capsys.readouterr().out  # nosec B101
+    assert "# Owner Closeout Bundle" in text  # nosec B101
+    assert "2026-05-11T06:17:11.983255+00:00" in text  # nosec B101
+    assert "2026-05-11T06:11:57.890809Z" in text  # nosec B101
+    assert "https://docs.aws.amazon.com/wellarchitected/latest/" in text  # nosec B101
+    assert "| github_branch_protection | failed | Branch protection" in text  # nosec B101
+    assert "OPS5, SEC1" in text  # nosec B101
+    assert "branch_protection, production_approval" in text  # nosec B101
+    assert "scripts/configure_github_repository_controls.py --apply" in text  # nosec B101
+    assert "make report-security-account-attestation" in text  # nosec B101
+    assert "make report-dependabot-exception" in text  # nosec B101
+    assert "make report-alert-route-observation" in text  # nosec B101
+    assert "make report-production-dr-owner-evidence" in text  # nosec B101
+    assert "make verify-well-architected-questions" in text  # nosec B101
+    assert "PR_NUMBER=22 make report-well-architected-evidence" in text  # nosec B101
+    assert "SecretString" not in text  # nosec B101
+
+
+def test_render_well_architected_closeout_handles_clean_and_invalid_inputs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Cover the fallback rows and error path for malformed source artifacts."""
+    module = load_script_module(monkeypatch, "render_well_architected_closeout")
+    text = module.render_closeout_bundle(
+        {"generatedAt": "2026-05-11T00:00:00Z", "checks": "not a list"},
+        {
+            "checkedAt": "2026-05-11T00:01:00Z",
+            "tocSource": "fixture",
+            "evidenceUnresolvedQuestionIds": "not a list",
+        },
+    )
+    invalid = tmp_path / "invalid.json"
+    output = tmp_path / "bundle.md"
+    invalid.write_text("[]", encoding="utf-8")
+
+    assert "| None | passed | None |" in text  # nosec B101
+    assert "| Unresolved question IDs | None |" in text  # nosec B101
+    assert "| Unresolved control IDs | None |" in text  # nosec B101
+    assert (  # nosec B101
+        module._check_evidence(  # noqa: SLF001
+            {"bad": {"evidence": "not an object"}}, "bad"
+        )
+        == {}
+    )
+    assert module.main(["--evidence", str(invalid), "--output", str(output)]) == 1
+    assert "must contain a JSON object" in capsys.readouterr().err  # nosec B101
+    assert not output.exists()  # nosec B101
+
+
 def test_doctor_main_reports_missing_and_ready_states(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
