@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 import pulumi_aws as aws
@@ -331,6 +332,18 @@ _AUTOMATION_SECURITY_SERVICE_LINKED_ROLE_SERVICES = (
     "guardduty.amazonaws.com",
     "securityhub.amazonaws.com",
 )
+
+
+@dataclass(frozen=True)
+class AutomationResourceContext:
+    """Shared inputs for repository-scoped automation resources."""
+
+    parent: pulumi.Resource
+    name: str
+    settings: BootstrapSettings
+    repo_name: str
+    repo_project: str
+    opts: pulumi.ResourceOptions
 
 
 def _environment_resource_part(settings: BootstrapSettings) -> str:
@@ -1071,29 +1084,25 @@ def _automation_tags(
 
 
 def _create_automation_repository(
-    parent: pulumi.Resource,
-    name: str,
-    configured_settings: BootstrapSettings,
-    repo_name: str,
-    repo_project: str,
+    context: AutomationResourceContext,
 ) -> aws.ecr.Repository:
     """Create or adopt the automation runner ECR repository."""
-    ecr_repository_name = configured_settings.runner_ecr_repository_name(repo_name)
+    ecr_repository_name = context.settings.runner_ecr_repository_name(context.repo_name)
     return aws.ecr.Repository(
-        f"{name}-repository",
+        f"{context.name}-repository",
         name=ecr_repository_name,
         image_tag_mutability="IMMUTABLE",
         image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
             scan_on_push=True
         ),
         tags=_automation_tags(
-            configured_settings,
-            repo_name,
-            repo_project,
+            context.settings,
+            context.repo_name,
+            context.repo_project,
             "pulumi-automation-runner",
         ),
         opts=_resource_options(
-            parent,
+            context.parent,
             import_id=ecr_repository_name
             if _ecr_repository_exists(ecr_repository_name)
             else None,
@@ -1143,47 +1152,40 @@ def _create_automation_lifecycle_policy(
 
 
 def _create_automation_role(
-    parent: pulumi.Resource,
-    name: str,
-    configured_settings: BootstrapSettings,
-    repo_name: str,
-    repo_project: str,
+    context: AutomationResourceContext,
     provider_arn: pulumi.Input[str],
 ) -> aws.iam.Role:
     """Create or adopt the GitHub Actions automation role."""
-    role_name = configured_settings.automation_role_name(repo_name)
+    role_name = context.settings.automation_role_name(context.repo_name)
     return aws.iam.Role(
-        f"{name}-role",
+        f"{context.name}-role",
         name=role_name,
         assume_role_policy=apply_output(
             pulumi.Output.from_input(provider_arn),
             lambda arn: _automation_assume_role_policy(
                 arn,
-                configured_settings.org,
-                repo_name,
-                configured_settings.environment,
+                context.settings.org,
+                context.repo_name,
+                context.settings.environment,
             ),
         ),
         tags=_automation_tags(
-            configured_settings,
-            repo_name,
-            repo_project,
+            context.settings,
+            context.repo_name,
+            context.repo_project,
             "pulumi-automation",
         ),
         opts=_resource_options(
-            parent,
+            context.parent,
             import_id=role_name if _iam_role_exists(role_name) else None,
         ),
     )
 
 
 def _create_automation_managed_policy(
+    context: AutomationResourceContext,
     policy_name: str,
     policy_document: str,
-    configured_settings: BootstrapSettings,
-    repo_name: str,
-    repo_project: str,
-    opts: pulumi.ResourceOptions,
 ) -> aws.iam.Policy:
     """Create one customer-managed policy for automation permissions."""
     return aws.iam.Policy(
@@ -1191,12 +1193,12 @@ def _create_automation_managed_policy(
         name=policy_name,
         policy=policy_document,
         tags=_automation_tags(
-            configured_settings,
-            repo_name,
-            repo_project,
+            context.settings,
+            context.repo_name,
+            context.repo_project,
             "pulumi-automation-policy",
         ),
-        opts=opts,
+        opts=context.opts,
     )
 
 
@@ -1216,13 +1218,8 @@ def _attach_automation_managed_policy(
 
 
 def _create_automation_role_policies(
-    parent: pulumi.Resource,
-    name: str,
+    context: AutomationResourceContext,
     role: aws.iam.Role,
-    configured_settings: BootstrapSettings,
-    repo_name: str,
-    repo_project: str,
-    opts: pulumi.ResourceOptions,
 ) -> tuple[
     aws.iam.RolePolicy,
     list[aws.iam.Policy],
@@ -1231,34 +1228,36 @@ def _create_automation_role_policies(
     """Create inline and customer-managed policies for the automation role."""
     policy_documents = _automation_policy_documents(
         aws.get_caller_identity().account_id,
-        configured_settings,
-        repo_name,
+        context.settings,
+        context.repo_name,
     )
     inline_policy_suffix, inline_policy_document = policy_documents[0]
-    inline_policy_name = f"{name}-{inline_policy_suffix}"
+    inline_policy_name = f"{context.name}-{inline_policy_suffix}"
     inline_policy = aws.iam.RolePolicy(
         inline_policy_name,
         name=inline_policy_name,
         role=role.id,
         policy=inline_policy_document,
-        opts=opts,
+        opts=context.opts,
     )
 
     managed_policies: list[aws.iam.Policy] = []
     policy_attachments: list[aws.iam.RolePolicyAttachment] = []
     for policy_suffix, policy_document in policy_documents[1:]:
-        policy_name = f"{name}-{policy_suffix}"
+        policy_name = f"{context.name}-{policy_suffix}"
         policy = _create_automation_managed_policy(
+            context,
             policy_name,
             policy_document,
-            configured_settings,
-            repo_name,
-            repo_project,
-            opts,
         )
         managed_policies.append(policy)
         policy_attachments.append(
-            _attach_automation_managed_policy(parent, policy_name, role, policy)
+            _attach_automation_managed_policy(
+                context.parent,
+                policy_name,
+                role,
+                policy,
+            )
         )
 
     return inline_policy, managed_policies, policy_attachments
@@ -1291,23 +1290,22 @@ class GitHubAutomation(pulumi.ComponentResource):
         repo_name = configured_settings.repo
         repo_project = repository_project or repo_name
         base_opts = _resource_options(self)
+        resource_context = AutomationResourceContext(
+            parent=self,
+            name=name,
+            settings=configured_settings,
+            repo_name=repo_name,
+            repo_project=repo_project,
+            opts=base_opts,
+        )
 
-        repository = _create_automation_repository(
-            self, name, configured_settings, repo_name, repo_project
-        )
+        repository = _create_automation_repository(resource_context)
         _create_automation_lifecycle_policy(name, repository, base_opts)
-        role = _create_automation_role(
-            self, name, configured_settings, repo_name, repo_project, provider_arn
-        )
+        role = _create_automation_role(resource_context, provider_arn)
         inline_policy, managed_policies, policy_attachments = (
             _create_automation_role_policies(
-                self,
-                name,
+                resource_context,
                 role,
-                configured_settings,
-                repo_name,
-                repo_project,
-                base_opts,
             )
         )
 
