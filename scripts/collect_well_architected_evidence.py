@@ -565,7 +565,26 @@ def _github_pr_changed_file_paths(
         runner=runner,
     )
     if not ok:
-        return False, [], error
+        fallback_ok, fallback_output, fallback_error = _run_text(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/pulls/{pr_number}/files",
+                "--paginate",
+                "--jq",
+                ".[].filename",
+            ],
+            runner=runner,
+        )
+        if not fallback_ok:
+            return False, [], f"{error}; file-list fallback failed: {fallback_error}"
+        return (
+            True,
+            sorted(
+                line.strip() for line in fallback_output.splitlines() if line.strip()
+            ),
+            "",
+        )
     return (
         True,
         sorted(line.strip() for line in output.splitlines() if line.strip()),

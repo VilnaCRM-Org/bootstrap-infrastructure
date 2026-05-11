@@ -5156,6 +5156,73 @@ def test_github_pr_checks_requires_concrete_codeql_checks_for_aggregate_allowanc
     ]
 
 
+def test_github_pr_checks_falls_back_to_files_api_when_diff_is_too_large(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changed-file evidence should survive GitHub's oversized diff limit."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    commands: list[list[str]] = []
+
+    def runner(command, **_kwargs):
+        commands.append(command)
+        if command[:3] == ["gh", "pr", "diff"]:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                "",
+                "HTTP 406: Sorry, the diff exceeded the maximum number of lines",
+            )
+        if command[:2] == ["gh", "api"]:
+            assert command == [  # nosec B101
+                "gh",
+                "api",
+                "repos/org/repo/pulls/1/files",
+                "--paginate",
+                "--jq",
+                ".[].filename",
+            ]
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                "tests/unit/test_script_entrypoints.py\n"
+                "scripts/collect_well_architected_evidence.py\n",
+                "",
+            )
+        if command[-1] == "statusCheckRollup":
+            payload = {
+                "statusCheckRollup": [
+                    {
+                        "__typename": "CheckRun",
+                        "name": "Unit",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                    }
+                ]
+            }
+        else:
+            payload = {
+                "mergeStateStatus": "CLEAN",
+                "mergeable": "MERGEABLE",
+                "reviewDecision": "APPROVED",
+                "headRefOid": "abc123",
+            }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    check = module.github_pr_checks("org/repo", 1, runner=runner)
+
+    assert check["status"] == "passed"  # nosec B101
+    assert ["gh", "pr", "diff", "1", "--repo", "org/repo", "--name-only"] in commands
+    assert check["evidence"]["changedFileCount"] == 2  # nosec B101
+    assert check["evidence"]["changedFileTopLevelPaths"] == [  # nosec B101
+        "scripts",
+        "tests",
+    ]
+    assert check["evidence"]["changedFilePaths"] == [  # nosec B101
+        "scripts/collect_well_architected_evidence.py",
+        "tests/unit/test_script_entrypoints.py",
+    ]
+
+
 def test_github_pr_checks_omits_current_in_progress_check(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5318,6 +5385,8 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     def diff_failing_runner(command, **_kwargs):
         if command[2] == "diff":
             return subprocess.CompletedProcess(command, 1, "", "diff unavailable")
+        if command[:2] == ["gh", "api"]:
+            return subprocess.CompletedProcess(command, 1, "", "files unavailable")
         if command[-1] == "statusCheckRollup":
             return subprocess.CompletedProcess(
                 command,
@@ -5343,7 +5412,10 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert diff_failed["status"] == "failed"  # nosec B101
     assert (  # nosec B101
         diff_failed["blockers"]
-        == ["Unable to query PR changed files: diff unavailable"]
+        == [
+            "Unable to query PR changed files: diff unavailable; "
+            "file-list fallback failed: files unavailable"
+        ]
     )
     assert (
         module.github_pr_local_state("org/repo", 1, tmp_path, runner=failing_runner)[
