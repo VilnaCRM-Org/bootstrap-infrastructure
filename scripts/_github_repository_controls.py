@@ -132,6 +132,45 @@ def required_status_contexts(ruleset: Mapping[str, Any]) -> set[str]:
     return contexts
 
 
+def is_active_branch_ruleset(ruleset: Mapping[str, Any]) -> bool:
+    """Return whether a ruleset is an active branch ruleset."""
+    return ruleset.get("target") == "branch" and ruleset.get("enforcement") == "active"
+
+
+def ruleset_contains_pull_request_rule(ruleset: Mapping[str, Any]) -> bool:
+    """Return whether a ruleset contains any pull-request rule."""
+    rules = ruleset.get("rules") or []
+    return any(
+        isinstance(rule, Mapping) and rule.get("type") == "pull_request"
+        for rule in rules
+    )
+
+
+def rulesets_have_pull_request_rule(rulesets: Sequence[Mapping[str, Any]]) -> bool:
+    """Return whether any active branch ruleset contains a pull-request rule."""
+    return any(
+        is_active_branch_ruleset(ruleset)
+        and ruleset_contains_pull_request_rule(ruleset)
+        for ruleset in rulesets
+    )
+
+
+def required_status_contexts_for_rulesets(
+    rulesets: Sequence[Mapping[str, Any]],
+) -> set[str]:
+    """Return required status contexts from active branch rulesets."""
+    contexts: set[str] = set()
+    for ruleset in rulesets:
+        if is_active_branch_ruleset(ruleset):
+            contexts.update(required_status_contexts(ruleset))
+    return contexts
+
+
+def active_branch_ruleset_count(rulesets: Sequence[Mapping[str, Any]]) -> int:
+    """Return active branch ruleset count."""
+    return sum(1 for ruleset in rulesets if is_active_branch_ruleset(ruleset))
+
+
 def ruleset_has_pull_request_reviews(ruleset: Mapping[str, Any]) -> bool:
     """Return whether the ruleset requires PR reviews and thread resolution."""
     rules = ruleset.get("rules")

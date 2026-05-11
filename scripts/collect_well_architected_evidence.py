@@ -13,10 +13,8 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote
 
+import _github_repository_controls as _repository_controls
 import _well_architected_recording as _recording
-from _github_repository_controls import (
-    REQUIRED_STATUS_CHECKS as DEFAULT_REQUIRED_STATUS_CHECKS,
-)
 from _script_support import repo_root, run
 from validate_repository_catalogs import (
     _fanout_failures,
@@ -28,6 +26,12 @@ from validate_repository_catalogs import (
 
 ROOT_DIR = repo_root(__file__)
 Runner = Callable[..., Any]
+DEFAULT_REQUIRED_STATUS_CHECKS = _repository_controls.REQUIRED_STATUS_CHECKS
+_active_branch_ruleset_count = _repository_controls.active_branch_ruleset_count
+_ruleset_required_status_check_contexts = (
+    _repository_controls.required_status_contexts_for_rulesets
+)
+_ruleset_has_pull_request_reviews = _repository_controls.rulesets_have_pull_request_rule
 
 PASSING_CHECK_CONCLUSIONS = {"SUCCESS"}
 PASSING_STATUS_STATES = {"SUCCESS"}
@@ -980,46 +984,6 @@ def _github_rulesets(
     return rulesets, errors
 
 
-def _ruleset_has_pull_request_reviews(rulesets: Sequence[dict]) -> bool:
-    """Return whether any active branch ruleset requires pull request review."""
-    for ruleset in rulesets:
-        if not _is_active_branch_ruleset(ruleset):
-            continue
-        rules = ruleset.get("rules") or []
-        if any(rule.get("type") == "pull_request" for rule in rules):
-            return True
-    return False
-
-
-def _ruleset_required_status_check_contexts(rulesets: Sequence[dict]) -> set[str]:
-    """Return required status check contexts from active branch rulesets."""
-    contexts: set[str] = set()
-    for ruleset in rulesets:
-        if not _is_active_branch_ruleset(ruleset):
-            continue
-        for rule in ruleset.get("rules") or []:
-            contexts.update(_required_status_contexts_from_rule(rule))
-    return contexts
-
-
-def _is_active_branch_ruleset(ruleset: dict[str, Any]) -> bool:
-    """Return whether a ruleset is an active branch ruleset."""
-    return ruleset.get("target") == "branch" and ruleset.get("enforcement") == "active"
-
-
-def _required_status_contexts_from_rule(rule: dict[str, Any]) -> set[str]:
-    """Return required status contexts from one ruleset rule."""
-    if rule.get("type") != "required_status_checks":
-        return set()
-    parameters = rule.get("parameters") or {}
-    checks = parameters.get("required_status_checks") or []
-    return {
-        str(check.get("context") or check.get("name"))
-        for check in checks
-        if isinstance(check, dict) and (check.get("context") or check.get("name"))
-    }
-
-
 def github_branch_protection(
     repo: str,
     branch: str,
@@ -1109,11 +1073,6 @@ def _branch_protection_blockers(
     if not requires_reviews:
         blockers.append("Branch protection does not require pull request reviews.")
     return blockers
-
-
-def _active_branch_ruleset_count(rulesets: Sequence[dict]) -> int:
-    """Return active branch ruleset count."""
-    return sum(1 for ruleset in rulesets if _is_active_branch_ruleset(ruleset))
 
 
 def github_dependabot_alerts(
