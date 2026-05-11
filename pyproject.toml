@@ -62,6 +62,7 @@ known_first_party = [
     "_well_architected_env",
     "_well_architected_markdown",
     "_well_architected_recording",
+    "_well_architected_scoring",
     "app",
     "infra",
     "policy",
