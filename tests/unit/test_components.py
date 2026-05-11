@@ -1349,6 +1349,12 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
         "arn:aws:budgets::123456789012:budget/bootstrap-test-*"
     ]
+    assert statements["ReadAccountBudgetsForEvidence"] == {  # nosec B101
+        "Sid": "ReadAccountBudgetsForEvidence",
+        "Effect": "Allow",
+        "Action": ["budgets:ViewBudget"],
+        "Resource": ["arn:aws:budgets::123456789012:budget/*"],
+    }
     assert statements["CreateBudgetServiceLinkedRole"]["Resource"] == (  # nosec B101
         "arn:aws:iam::123456789012:role/aws-service-role/"
         "budgets.amazonaws.com/AWSServiceRoleForBudgets"
@@ -1381,6 +1387,12 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
             "aws:RequestTag/Environment": "test",
             "aws:RequestTag/Purpose": "cost-anomaly-subscription",
         }
+    }
+    assert statements["ReadCostAnomalyMonitorsForEvidence"] == {  # nosec B101
+        "Sid": "ReadCostAnomalyMonitorsForEvidence",
+        "Effect": "Allow",
+        "Action": ["ce:GetAnomalyMonitors"],
+        "Resource": ["arn:aws:ce::123456789012:anomalymonitor/*"],
     }
     assert statements["ManageBootstrapCostAnomalyMonitors"]["Resource"] == [  # nosec B101
         "arn:aws:ce::123456789012:anomalymonitor/*",

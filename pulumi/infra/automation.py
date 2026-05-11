@@ -67,10 +67,12 @@ _AUTOMATION_MANAGED_POLICY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
         frozenset(
             {
                 "ManageBootstrapBudgets",
+                "ReadAccountBudgetsForEvidence",
                 "CreateBudgetServiceLinkedRole",
                 "ReadBillingViewDataForBudgets",
                 "CreateBootstrapCostAnomalyMonitor",
                 "CreateBootstrapCostAnomalySubscription",
+                "ReadCostAnomalyMonitorsForEvidence",
                 "ManageBootstrapCostAnomalyMonitors",
                 "ManageBootstrapCostAnomalySubscriptions",
                 "ManageBootstrapCostAllocationTags",
@@ -247,9 +249,17 @@ _AUTOMATION_BUDGETS_ACTIONS = (
     "budgets:TagResource",
     "budgets:UntagResource",
 )
+_AUTOMATION_BUDGETS_ACCOUNT_READ_ACTIONS = (
+    # DescribeBudgets authorizes as ViewBudget against the account budget set.
+    "budgets:ViewBudget",
+)
 _AUTOMATION_COST_EXPLORER_MONITOR_CREATE_ACTIONS = ("ce:CreateAnomalyMonitor",)
 _AUTOMATION_COST_EXPLORER_SUBSCRIPTION_CREATE_ACTIONS = (
     "ce:CreateAnomalySubscription",
+)
+_AUTOMATION_COST_EXPLORER_MONITOR_READ_ACTIONS = (
+    # GetAnomalyMonitors requires all-or-none access to account monitor ARNs.
+    "ce:GetAnomalyMonitors",
 )
 _AUTOMATION_COST_EXPLORER_MONITOR_RESOURCE_ACTIONS = (
     "ce:DeleteAnomalyMonitor",
@@ -475,6 +485,11 @@ def _automation_budget_resources(
     """Scope Budgets management to deterministic bootstrap budgets."""
     environment = _environment_resource_part(settings)
     return [f"arn:aws:budgets::{account_id}:budget/bootstrap-{environment}-*"]
+
+
+def _automation_account_budget_resources(account_id: str) -> list[str]:
+    """Scope read-only Budget evidence to account-local budgets."""
+    return [f"arn:aws:budgets::{account_id}:budget/*"]
 
 
 def _automation_cost_explorer_monitor_resources(account_id: str) -> list[str]:
@@ -789,6 +804,12 @@ def _automation_policy(
                     "Resource": _automation_budget_resources(account_id, settings),
                 },
                 {
+                    "Sid": "ReadAccountBudgetsForEvidence",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_BUDGETS_ACCOUNT_READ_ACTIONS),
+                    "Resource": _automation_account_budget_resources(account_id),
+                },
+                {
                     "Sid": "CreateBudgetServiceLinkedRole",
                     "Effect": "Allow",
                     "Action": ["iam:CreateServiceLinkedRole"],
@@ -835,6 +856,12 @@ def _automation_policy(
                     ),
                     "Resource": "*",
                     "Condition": cost_explorer_subscription_request_tag_condition,
+                },
+                {
+                    "Sid": "ReadCostAnomalyMonitorsForEvidence",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_COST_EXPLORER_MONITOR_READ_ACTIONS),
+                    "Resource": _automation_cost_explorer_monitor_resources(account_id),
                 },
                 {
                     "Sid": "ManageBootstrapCostAnomalyMonitors",

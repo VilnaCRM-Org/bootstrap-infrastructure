@@ -293,9 +293,21 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
         "arn:aws:budgets::123456789012:budget/bootstrap-test-*"
     ]
+    assert statements["ReadAccountBudgetsForEvidence"] == {  # nosec B101
+        "Sid": "ReadAccountBudgetsForEvidence",
+        "Effect": "Allow",
+        "Action": ["budgets:ViewBudget"],
+        "Resource": ["arn:aws:budgets::123456789012:budget/*"],
+    }
     assert statements["ManageBootstrapCostAnomalyMonitors"]["Resource"] == [  # nosec B101
         "arn:aws:ce::123456789012:anomalymonitor/*",
     ]
+    assert statements["ReadCostAnomalyMonitorsForEvidence"] == {  # nosec B101
+        "Sid": "ReadCostAnomalyMonitorsForEvidence",
+        "Effect": "Allow",
+        "Action": ["ce:GetAnomalyMonitors"],
+        "Resource": ["arn:aws:ce::123456789012:anomalymonitor/*"],
+    }
     assert statements["ManageBootstrapCostAnomalyMonitors"]["Condition"] == {  # nosec B101
         "StringEquals": {
             "aws:ResourceTag/Environment": "test",
