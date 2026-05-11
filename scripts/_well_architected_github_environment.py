@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any, Sequence, cast
 
 
 @dataclass(frozen=True)
@@ -123,7 +123,11 @@ def _dict_items(value: object) -> list[dict[str, Any]]:
     """Return dictionary entries from a list-shaped API field."""
     if not isinstance(value, list):
         return []
-    return [item for item in value if isinstance(item, dict)]
+    items: list[dict[str, Any]] = []
+    for item in value:
+        if isinstance(item, dict):
+            items.append(cast(dict[str, Any], item))
+    return items
 
 
 def _environment_prevents_self_review(payload: dict[str, Any]) -> bool:
