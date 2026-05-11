@@ -273,7 +273,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         json_payload = (
             structured_owner_evidence(report, args) if args.json_output else None
         )
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

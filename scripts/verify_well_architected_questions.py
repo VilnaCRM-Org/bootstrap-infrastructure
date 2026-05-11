@@ -722,7 +722,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             toc_source=toc_source,
             question_matrix_markdown=question_matrix_markdown,
         )
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 

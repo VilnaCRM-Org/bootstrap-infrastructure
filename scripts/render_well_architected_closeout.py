@@ -679,7 +679,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         evidence_report = _load_json_object(args.evidence)
         question_verification = _load_json_object(args.question_verification)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

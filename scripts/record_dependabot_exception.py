@@ -272,7 +272,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = _load_report(args.evidence)
         markdown = render_exception(report, args)
         json_payload = structured_exception(report, args) if args.json_output else None
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
