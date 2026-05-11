@@ -2525,6 +2525,8 @@ def test_render_well_architected_closeout_writes_owner_handoff(
                             "mergeStateStatus": "CLEAN",
                             "mergeable": "MERGEABLE",
                             "nonPassingCheckCount": 0,
+                            "changedFileCount": 2,
+                            "changedFileTopLevelPaths": ["scripts", "tests"],
                             "reviewDecision": "APPROVED",
                         },
                         "blockers": [],
@@ -2584,6 +2586,19 @@ def test_render_well_architected_closeout_writes_owner_handoff(
                         },
                         "blockers": ["External-control evidence has gaps."],
                     },
+                    {
+                        "name": "question_matrix_evidence",
+                        "status": "failed",
+                        "evidence": {
+                            "scoreScale": "1-5",
+                            "questionScoreCount": 57,
+                            "questionScoreAverages": {
+                                "Operational Excellence": 4.55,
+                                "Security": 4.64,
+                            },
+                        },
+                        "blockers": ["Question-matrix evidence has gaps."],
+                    },
                     "ignored",
                 ],
             }
@@ -2633,6 +2648,14 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "Check all AWS Well-Architected Framework questions" in text  # nosec B101
     assert "Check PR code and whole project code" in text  # nosec B101
     assert "Put scores from 1 to 5" in text  # nosec B101
+    assert "| Changed file count | 2 |" in text  # nosec B101
+    assert "| Changed top-level paths | scripts, tests |" in text  # nosec B101
+    assert "Question score scale `1-5`; 57 question score rows" in text  # nosec B101
+    assert "| Question score rows | 57 |" in text  # nosec B101
+    assert (  # nosec B101
+        "| Question score averages | Operational Excellence: 4.55, Security: 4.64 |"
+        in text
+    )
     assert "Work until PR is 5/5" in text  # nosec B101
     assert "| github_branch_protection | failed | Branch protection" in text  # nosec B101
     assert "### Reviewer" in text  # nosec B101
@@ -4312,6 +4335,7 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                 "workload": "bootstrap-infrastructure",
                 "owner": "platform",
                 "reviewedAt": reviewed_at,
+                "scoreScale": "1-5",
                 "questionCount": 57,
                 "unresolvedQuestionCount": 0,
                 "unresolvedQuestionIds": [],
@@ -4420,6 +4444,14 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
             return subprocess.CompletedProcess(command, 0, "abc123\n", "")
         if command[:4] == ["git", "-C", str(PROJECT_ROOT), "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
+        if command[:3] == ["gh", "pr", "diff"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                "scripts/collect_well_architected_evidence.py\n"
+                "tests/unit/test_script_entrypoints.py\n",
+                "",
+            )
         if command[:3] == ["gh", "pr", "view"]:
             payload = {
                 "mergeStateStatus": "CLEAN",
@@ -4592,6 +4624,8 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
     checks = {check["name"]: check for check in report["checks"]}
     question_evidence = checks["question_matrix_evidence"]["evidence"]
     assert question_evidence["unresolvedQuestionIds"] == []  # nosec B101
+    assert question_evidence["scoreScale"] == "1-5"  # nosec B101
+    assert question_evidence["questionScoreCount"] == 57  # nosec B101
     assert question_evidence["questionScoreAverages"]["Security"] == 5.0  # nosec B101
     assert (  # nosec B101
         question_evidence["pillarUnresolvedQuestionCounts"]["Security"] == 0
@@ -4650,6 +4684,13 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
             return subprocess.CompletedProcess(command, 0, "local123\n", "")
         if command[0] == "git" and command[3] == "status":
             return subprocess.CompletedProcess(command, 0, " M file.py\n", "")
+        if command[:3] == ["gh", "pr", "diff"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                "pulumi/infra/bootstrap_infrastructure.py\nscripts/example.py\n",
+                "",
+            )
         if command[:3] == ["gh", "pr", "view"]:
             payload = {
                 "mergeStateStatus": "DIRTY",
@@ -4794,7 +4835,14 @@ def test_github_pr_checks_accepts_covered_codeql_aggregate(
 
     def runner(command, **_kwargs):
         commands.append(command)
-        assert command[:3] == ["gh", "pr", "view"]  # nosec B101
+        assert command[:2] == ["gh", "pr"]  # nosec B101
+        if command[2] == "diff":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                ".github/workflows/ci.yml\nREADME.md\nscripts/example.py\n",
+                "",
+            )
         if command[-1] == "statusCheckRollup":
             payload = {
                 "statusCheckRollup": [
@@ -4830,8 +4878,19 @@ def test_github_pr_checks_accepts_covered_codeql_aggregate(
     check = module.github_pr_checks("org/repo", 1, runner=runner)
 
     assert check["status"] == "passed"  # nosec B101
-    assert len(commands) == 2  # nosec B101
+    assert len(commands) == 3  # nosec B101
     assert check["evidence"]["nonPassingCheckCount"] == 0  # nosec B101
+    assert check["evidence"]["changedFileCount"] == 3  # nosec B101
+    assert check["evidence"]["changedFileTopLevelPaths"] == [  # nosec B101
+        ".github",
+        "README.md",
+        "scripts",
+    ]
+    assert check["evidence"]["changedFilePaths"] == [  # nosec B101
+        ".github/workflows/ci.yml",
+        "README.md",
+        "scripts/example.py",
+    ]
     assert check["evidence"]["mergeStateStatus"] == "BLOCKED"  # nosec B101
     assert check["evidence"]["mergeable"] == "MERGEABLE"  # nosec B101
     assert check["evidence"]["reviewDecision"] == "APPROVED"  # nosec B101
@@ -4844,7 +4903,9 @@ def test_github_pr_checks_requires_concrete_codeql_checks_for_aggregate_allowanc
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
 
     def runner(command, **_kwargs):
-        assert command[:3] == ["gh", "pr", "view"]  # nosec B101
+        assert command[:2] == ["gh", "pr"]  # nosec B101
+        if command[2] == "diff":
+            return subprocess.CompletedProcess(command, 0, "policy/pack.py\n", "")
         payload = {
             "mergeStateStatus": "CLEAN",
             "reviewDecision": "APPROVED",
@@ -4870,6 +4931,7 @@ def test_github_pr_checks_requires_concrete_codeql_checks_for_aggregate_allowanc
 
     assert check["status"] == "failed"  # nosec B101
     assert check["evidence"]["nonPassingCheckCount"] == 1  # nosec B101
+    assert check["evidence"]["changedFileCount"] == 1  # nosec B101
     assert check["blockers"] == [  # nosec B101
         "Non-passing check contexts: CodeQL."
     ]
@@ -4921,6 +4983,9 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert module._account_id_from_identity({"evidence": "unknown"}) == ""  # noqa: SLF001
     assert module._all_blockers([{"blockers": "unknown"}]) == []  # noqa: SLF001
     assert module._pr_head_oid([]) == ""  # noqa: SLF001
+    assert module._changed_file_top_level_paths(  # noqa: SLF001  # nosec B101
+        ["", "README.md", "scripts/example.py"]
+    ) == ["README.md", "scripts"]
     assert module.github_pr_checks("org/repo", None)["status"] == "missing"
     assert (
         module.github_pr_local_state("org/repo", None, tmp_path)["status"] == "missing"
@@ -4952,6 +5017,37 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert (  # nosec B101
         module.github_pr_checks("org/repo", 1, runner=rollup_failing_runner)["status"]
         == "unknown"
+    )
+
+    def diff_failing_runner(command, **_kwargs):
+        if command[2] == "diff":
+            return subprocess.CompletedProcess(command, 1, "", "diff unavailable")
+        if command[-1] == "statusCheckRollup":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"statusCheckRollup": []}),
+                "",
+            )
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(
+                {
+                    "mergeStateStatus": "CLEAN",
+                    "mergeable": "MERGEABLE",
+                    "reviewDecision": "APPROVED",
+                    "headRefOid": "abc123",
+                }
+            ),
+            "",
+        )
+
+    diff_failed = module.github_pr_checks("org/repo", 1, runner=diff_failing_runner)
+    assert diff_failed["status"] == "failed"  # nosec B101
+    assert (  # nosec B101
+        diff_failed["blockers"]
+        == ["Unable to query PR changed files: diff unavailable"]
     )
     assert (
         module.github_pr_local_state("org/repo", 1, tmp_path, runner=failing_runner)[

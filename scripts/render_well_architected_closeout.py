@@ -148,12 +148,16 @@ def _prompt_checklist_lines(
     question_verification: dict[str, Any],
     pr_checks: dict[str, Any],
     local_state: dict[str, Any],
+    question_matrix: dict[str, Any],
     pr_head: object,
     unresolved_questions: Sequence[str],
     failed_check_names: Sequence[str],
     goal_status: str,
     evidence_report: dict[str, Any],
 ) -> list[str]:
+    changed_top_level = _comma_list(
+        _string_entries(pr_checks.get("changedFileTopLevelPaths"))
+    )
     return [
         "## Prompt-To-Artifact Checklist",
         "",
@@ -174,17 +178,22 @@ def _prompt_checklist_lines(
             f"PR head `{pr_head}`; hosted checks "
             f"{pr_checks.get('checkCount', '')}; non-passing hosted checks "
             f"{pr_checks.get('nonPassingCheckCount', '')}; local dirty files "
-            f"{local_state.get('dirtyFileCount', '')} | "
-            "Hosted PR gates plus local evidence state cover the reviewed branch; "
-            "repository-owned tests still need to stay green after every new push | "
+            f"{local_state.get('dirtyFileCount', '')}; changed files "
+            f"{pr_checks.get('changedFileCount', '')}; changed top-level paths "
+            f"{changed_top_level} | "
+            "Hosted PR gates, changed-file metadata, and local evidence state cover "
+            "the reviewed branch; repository-owned tests still need to stay green "
+            "after every new push | "
             f"merge state {pr_checks.get('mergeStateStatus', '')}; review decision "
             f"{pr_checks.get('reviewDecision', '') or 'empty'} |"
         ),
         (
             "| Put scores from 1 to 5 | "
-            "Collector `pillarScores`, `proxyPillarScores`, and score blockers | "
-            "Final scores are capped by failed readiness gates; proxy scores are "
-            "not accepted as final | "
+            f"Question score scale `{question_matrix.get('scoreScale', '')}`; "
+            f"{question_matrix.get('questionScoreCount', '')} question score rows; "
+            "collector `pillarScores`, `proxyPillarScores`, and score blockers | "
+            "Question rows carry 1-5 scores; final pillar scores are capped by "
+            "failed readiness gates; proxy scores are not accepted as final | "
             f"{_score_summary(evidence_report.get('pillarScores'))} |"
         ),
         (
@@ -211,6 +220,7 @@ def render_closeout_bundle(
     review_threads = _check_evidence(checks_by_name, "github_review_threads")
     alert_route = _check_evidence(checks_by_name, "aws_sns_alert_route")
     cloudtrail = _check_evidence(checks_by_name, "aws_cloudtrail_management_events")
+    question_matrix = _check_evidence(checks_by_name, "question_matrix_evidence")
     external_controls = _check_evidence(checks_by_name, "external_control_evidence")
 
     failed_checks = [check for check in checks if check.get("status") != "passed"]
@@ -263,6 +273,7 @@ def render_closeout_bundle(
             question_verification,
             pr_checks,
             local_state,
+            question_matrix,
             pr_head,
             unresolved_questions,
             failed_check_names,
@@ -280,6 +291,13 @@ def render_closeout_bundle(
                 (
                     "Non-passing hosted checks",
                     pr_checks.get("nonPassingCheckCount", ""),
+                ),
+                ("Changed file count", pr_checks.get("changedFileCount", "")),
+                (
+                    "Changed top-level paths",
+                    _comma_list(
+                        _string_entries(pr_checks.get("changedFileTopLevelPaths"))
+                    ),
                 ),
                 ("Review decision", pr_checks.get("reviewDecision", "")),
                 ("Merge state", pr_checks.get("mergeStateStatus", "")),
@@ -321,6 +339,15 @@ def render_closeout_bundle(
             "",
             _table(
                 [
+                    ("Question score scale", question_matrix.get("scoreScale", "")),
+                    (
+                        "Question score rows",
+                        question_matrix.get("questionScoreCount", ""),
+                    ),
+                    (
+                        "Question score averages",
+                        _score_summary(question_matrix.get("questionScoreAverages")),
+                    ),
                     (
                         "Unresolved question count",
                         question_verification.get(

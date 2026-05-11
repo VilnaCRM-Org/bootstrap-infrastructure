@@ -458,24 +458,101 @@ def github_pr_checks(
     )
     if not rollup_ok or not isinstance(rollup_payload, dict):
         return _check("github_pr_checks", status="unknown", blockers=[rollup_error])
+    files_ok, changed_files, files_error = _github_pr_changed_file_paths(
+        repo,
+        pr_number,
+        runner=runner,
+    )
 
     rollup = rollup_payload.get("statusCheckRollup", [])
     entries = [entry for entry in rollup if isinstance(entry, dict)]
     failing = _non_passing_rollup_labels(entries)
-    blockers = _github_pr_check_blockers(payload, failing)
+    blockers = _github_pr_check_blockers_with_files(
+        payload,
+        failing,
+        files_ok,
+        files_error,
+    )
     return _check(
         "github_pr_checks",
         status="passed" if not blockers else "failed",
-        evidence={
-            "headRefOid": payload.get("headRefOid"),
-            "mergeStateStatus": payload.get("mergeStateStatus"),
-            "mergeable": payload.get("mergeable"),
-            "reviewDecision": payload.get("reviewDecision"),
-            "checkCount": len(entries),
-            "nonPassingCheckCount": len(failing),
-        },
+        evidence=_github_pr_check_evidence(
+            payload,
+            entries,
+            failing,
+            files_ok=files_ok,
+            changed_files=changed_files,
+        ),
         blockers=blockers,
     )
+
+
+def _github_pr_check_blockers_with_files(
+    payload: dict[str, Any],
+    failing: Sequence[str],
+    files_ok: bool,
+    files_error: str,
+) -> list[str]:
+    """Return PR blockers including changed-file metadata availability."""
+    blockers = _github_pr_check_blockers(payload, failing)
+    if not files_ok:
+        blockers.append(f"Unable to query PR changed files: {files_error}")
+    return blockers
+
+
+def _github_pr_check_evidence(
+    payload: dict[str, Any],
+    entries: Sequence[dict[str, Any]],
+    failing: Sequence[str],
+    *,
+    files_ok: bool,
+    changed_files: Sequence[str],
+) -> dict[str, object]:
+    """Return PR check evidence including non-secret changed-file metadata."""
+    return {
+        "headRefOid": payload.get("headRefOid"),
+        "mergeStateStatus": payload.get("mergeStateStatus"),
+        "mergeable": payload.get("mergeable"),
+        "reviewDecision": payload.get("reviewDecision"),
+        "checkCount": len(entries),
+        "nonPassingCheckCount": len(failing),
+        "changedFileCount": len(changed_files) if files_ok else None,
+        "changedFileTopLevelPaths": (
+            _changed_file_top_level_paths(changed_files) if files_ok else []
+        ),
+        "changedFilePaths": list(changed_files) if files_ok else [],
+    }
+
+
+def _github_pr_changed_file_paths(
+    repo: str,
+    pr_number: int,
+    *,
+    runner: Runner = run,
+) -> tuple[bool, list[str], str]:
+    """Return changed PR file paths without file contents."""
+    ok, output, error = _run_text(
+        ["gh", "pr", "diff", str(pr_number), "--repo", repo, "--name-only"],
+        runner=runner,
+    )
+    if not ok:
+        return False, [], error
+    return (
+        True,
+        sorted(line.strip() for line in output.splitlines() if line.strip()),
+        "",
+    )
+
+
+def _changed_file_top_level_paths(paths: Sequence[str]) -> list[str]:
+    """Return stable top-level path categories for changed files."""
+    top_level = set()
+    for path in paths:
+        if "/" in path:
+            top_level.add(path.split("/", 1)[0])
+        elif path:
+            top_level.add(path)
+    return sorted(top_level)
 
 
 def github_pr_local_state(
@@ -3752,6 +3829,14 @@ def _control_ids(payload: dict[str, Any]) -> list[str]:
 def _question_matrix_payload_fields(payload: dict[str, Any]) -> dict[str, object]:
     """Return optional question-matrix summary fields."""
     fields: dict[str, object] = {}
+    score_scale = payload.get("scoreScale")
+    if isinstance(score_scale, str):
+        fields["scoreScale"] = score_scale
+    scores = payload.get("questionScores")
+    if isinstance(scores, list):
+        fields["questionScoreCount"] = len(
+            [score for score in scores if isinstance(score, dict)]
+        )
     unresolved_question_ids = _string_list(payload.get("unresolvedQuestionIds"))
     if unresolved_question_ids is not None:
         fields["unresolvedQuestionIds"] = unresolved_question_ids
