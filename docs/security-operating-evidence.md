@@ -82,9 +82,10 @@ that explains why the scoped repository controls are sufficient.
 
 The test account posture was proven with metadata-only checks after a guarded
 local Pulumi apply using the AWS KMS secrets provider on 2026-05-09 UTC. The
-apply ran from PR head `b05d233` and completed with 30 resources created, 1
-updated, and 86 unchanged. A follow-up drift check from PR head `b84bb4f` passed
-with `Resources: 117 unchanged`.
+initial security-service apply ran from PR head `b05d233` and completed with 30
+resources created, 1 updated, and 86 unchanged. The hosted Pulumi Test Deploy
+for PR head `86e3a05` passed preview, IAM validation, destructive diff, apply,
+and post-apply drift on 2026-05-11 UTC.
 
 | Service | Live evidence | Follow-up |
 | --- | --- | --- |
@@ -95,7 +96,7 @@ with `Resources: 117 unchanged`.
 
 ## Human And Static-Credential Metadata
 
-A non-secret IAM metadata refresh on 2026-05-10 UTC confirmed that the
+A non-secret IAM metadata refresh on 2026-05-11 UTC confirmed that the
 security-account external control is still open:
 
 | Check | Result | Follow-up |
@@ -103,7 +104,7 @@ security-account external control is still open:
 | Caller identity | `arn:aws:iam::891377212104:user/codex_cli`. | Treat local static credentials as an owner-approved exception until remediated. |
 | IAM account summary | `Users=4`, `MFADevices=1`, `MFADevicesInUse=1`, `AccountMFAEnabled=1`, `AccountPasswordPresent=1`, and `AccountAccessKeysPresent=0`. | Security owner must attest human MFA/SSO posture without exposing private user data. |
 | IAM user inventory | Four IAM users exist in the account; password last-used values were not present in the metadata returned. | Security owner decides which users are required, retired, or covered by an exception. |
-| Access-key status by user | One IAM user has an active access key; the other three users returned no access-key status rows. Access key IDs were not printed or retained. | Record static-key exception, rotation plan, or remediation before SEC2 can pass at 5/5. |
+| Access-key status by user | One IAM user has an active access key; the key was created more than 90 days ago and was used within the last 90 days. The other three users returned no access-key status rows. Access key IDs were not printed or retained. | Record static-key exception, rotation plan, or remediation before SEC2 can pass at 5/5. |
 
 This metadata does not prove human MFA/SSO coverage, does not replace an
 administrator-owned permissions boundary, and does not constitute external

@@ -70,11 +70,11 @@
         "The PR now adds Pulumi-managed GuardDuty, Security Hub, AWS Config recorder, Config delivery channel, and a dedicated encrypted AWS Config S3 delivery bucket.",
         "A real Pulumi preview for the test stack passed with the policy pack, destructive gate, cost proxy, and IAM validation on 2026-05-09.",
         "A guarded local Pulumi apply using the AWS KMS secrets provider and PR head b05d233 completed on 2026-05-09T22:00Z with 30 created, 1 updated, and 86 unchanged resources.",
-        "A follow-up drift check from PR head b84bb4f on 2026-05-09T22:15Z passed with Resources: 117 unchanged.",
+        "The hosted Pulumi Test Deploy for PR head 86e3a05 passed preview, IAM validation, destructive diff, apply, and post-apply drift on 2026-05-11.",
         "aws guardduty get-detector in eu-central-1 returned detector 502efed8294c4b95a7f0778aaa4b8d62 with Status=ENABLED and bootstrap security-detection tags.",
         "aws securityhub describe-hub in eu-central-1 returned arn:aws:securityhub:eu-central-1:891377212104:hub/default with AutoEnableControls=true.",
         "aws configservice describe-configuration-recorders, describe-delivery-channels, and describe-configuration-recorder-status returned recorder bootstrap-test-configuration-recorder, delivery bucket bootstrap-891377212104-eu-central-1-test-aws-config, recording=true, and lastStatus=SUCCESS.",
-        "The 2026-05-10 collector records account MFA enabled, no root/account access keys, four discovered IAM users, one MFA device in use, and one active IAM user access key without exposing user names or key IDs.",
+        "The 2026-05-11 live IAM metadata read records account MFA enabled, no root/account access keys, four discovered IAM users, one MFA device in use, and one active IAM user access key without exposing user names or key IDs.",
         "make report-security-account-attestation renders a non-secret security-owner attestation record from collector evidence and explicit owner decisions while keeping IAM user names and access key IDs out of the artifact."
       ],
       "unresolvedReason": "Human MFA/SSO, static-key exception evidence or remediation, administrator-owned permissions-boundary or exemption attestation, and external security owner approval remain outside the repository evidence until an owner records them."

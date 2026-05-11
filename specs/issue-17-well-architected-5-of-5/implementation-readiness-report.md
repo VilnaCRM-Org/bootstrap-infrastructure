@@ -157,12 +157,14 @@ Current implementation-PR readiness observations:
 - `completion-audit-2026-05-10.md` maps the active goal to concrete artifacts,
   current test and collector evidence, and the external blockers that still
   prevent an honest final 5/5 claim.
-- The collector confirms the PR head matches the local head, the PR is approved,
-  and no current review threads are unresolved.
+- The collector confirms the PR head matches the local head, but the live PR is
+  not approved and remains merge-blocked. Hosted checks are green, but human
+  review and admin-controlled repository settings remain external blockers.
 - Real test-account preview/apply evidence exists for the branch. A guarded
   local apply on 2026-05-09 UTC created the GuardDuty, Security Hub, and AWS
-  Config resources, and a follow-up drift check from PR head `b84bb4f` reported
-  `Resources: 117 unchanged`.
+  Config resources, and the hosted Pulumi Test Deploy for PR head `86e3a05`
+  passed preview, IAM validation, destructive diff, apply, and post-apply drift
+  on 2026-05-11 UTC.
 - The current GitHub token has write access but not repository admin rights, so
   branch-protection and protected-environment repair must be performed by a
   repository admin.

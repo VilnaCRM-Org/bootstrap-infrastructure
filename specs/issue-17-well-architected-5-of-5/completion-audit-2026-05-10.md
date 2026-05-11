@@ -1,4 +1,4 @@
-# Completion Audit 2026-05-10
+# Completion Audit 2026-05-11 Refresh
 
 Scope: PR #22 and the `bootstrap-infrastructure` repository against the active
 goal to check every AWS Well-Architected Framework question, review the PR and
@@ -37,15 +37,15 @@ claim.
 | --- | --- | --- | --- |
 | Check all AWS Well-Architected Framework questions. | `question-matrix-evidence-2026-05-09.json` reports `questionCount=57`; `question-matrix.md` has 57 Markdown question rows; `frameworkSourceVerification.questionCounts` records Operational Excellence `11`, Security `11`, Reliability `13`, Performance Efficiency `5`, Cost Optimization `11`, and Sustainability `6`; `frameworkSourceVerification.sourceUrls` includes the official AWS TOC URL; `make verify-well-architected-questions` compares the structured and Markdown matrix with the AWS public TOC at `https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json`. | The collector validates the expected pillar counts, per-question pillar mapping, official TOC source URL, and source metadata before accepting the structured evidence, and the verifier confirms the structured score matrix and reviewer-facing Markdown matrix have no missing, extra, duplicate, or pillar-mismatched AWS question IDs while recording a `checkedAt` timestamp and sanitized `evidenceFrameworkSourceVerification` summary in the verification artifact. The verifier also recalculates unresolved-question summaries and per-pillar score averages from `questionScores`, and rejects missing or malformed `frameworkSourceVerification` source metadata. | Done |
 | Put scores from 1 to 5 for every question. | `question-matrix-evidence-2026-05-09.json` contains `questionScores` with score, status, rationale, primary blocker, and `evidenceRefs` for every non-passed question. | Scores exist for every question; 47 are passed and score `5`, while 10 remain unresolved below `5`. The verifier and collector fail if status values, score/status semantics, unresolved-question summaries, or score-average summaries drift, or if a non-passed entry loses its evidence references. | Done |
-| Check PR #22 code and state. | `gh pr view 22`, hosted checks, standing PR audit comment, and collector `github_pr_checks` / `github_pr_local_state`. | The latest audited PR state is approved, not draft, `mergeStateStatus=CLEAN`, `mergeable=MERGEABLE`, with 35 checks and 0 non-passing checks. Hosted check snapshots report 32 passing checks and 3 expected unprivileged skips after each current audit refresh. PR control-plane evidence must still be rechecked on the current head before a final claim. | Done for latest audited run |
-| Check whole project code. | Local validation commands and hosted checks: targeted ruff, format check, focused Well-Architected question/pillar validation tests, focused owner-evidence generator tests, `make verify-well-architected-questions`, `make test-unit`, `make test-cli`, hosted quality/security/policy/mutation/local-battery checks, and `git diff --check`. | Repository-owned code validation is green on the latest audited head; latest local validation covered score-ID, score/status semantics, score-summary, question status values, evidence status, external-control ID, unresolved-control summary, external-control evidence proof for both passed and unresolved controls, per-question pillar drift rejection, Markdown matrix row drift rejection, framework-source artifact summary output, owner-evidence JSON choice/expiry/freshness validation, Dependabot exception Markdown/JSON generation for exact open alerts, alert-route/security-account/production-DR owner evidence validation, Make force passthrough and docs for owner-evidence wrappers, unprivileged CI Make target coverage, post-apply and read-only GitHub admin-control verification, and branch-protection required-check contract drift across the helper, collector, guardrail docs, quality-gate docs, implementation readiness report, external-control evidence, and operating evidence. Current full local unit validation reports `331 passed`; the verifier-focused unit selection reports `10 passed`; hosted PR checks report 32 passing checks and 3 expected unprivileged skips. | Done for latest audited run |
+| Check PR #22 code and state. | `gh pr view 22`, `gh pr checks 22`, hosted checks, standing PR audit comment, and collector `github_pr_checks` / `github_pr_local_state`. | The latest live PR state is open, not draft, `mergeStateStatus=BLOCKED`, `mergeable=MERGEABLE`, and has no review decision. Review requests remain open for the configured reviewers. Hosted PR check snapshots report 32 passing checks, 3 expected unprivileged skips, and 0 non-passing hosted check contexts, but the PR control-plane gate still fails because the PR is not approved. PR state must be rechecked on the current head before any final claim. | Blocked by approval |
+| Check whole project code. | Local validation commands and hosted checks: targeted ruff, format check, focused Well-Architected question/pillar validation tests, focused owner-evidence generator tests, `make verify-well-architected-questions`, `make ci-pr-unprivileged`, hosted quality/security/policy/mutation/local-battery checks, hosted privileged preview/apply/drift, and `git diff --check`. | Repository-owned code validation is green on the latest audited head. The 2026-05-11 local `make ci-pr-unprivileged` aggregate passed, including structural Pulumi tests, repository catalog and fanout checks, policy tests, Ruff, Ty, maintainability, architecture, dependency hygiene, workflow/YAML/Dockerfile hygiene, unit tests, Bats Makefile contracts, security scans, and unprivileged preview/destructive/cost/IAM guardrails. Hosted PR checks report 32 passing checks and 3 expected unprivileged skips, and the hosted Pulumi Test Deploy passed preview, IAM validation, destructive diff, apply, and post-apply drift on the same implementation line. | Done for repository-owned code |
 | Verify evidence gates cover the objective instead of relying on proxy scores. | `scripts/collect_well_architected_evidence.py` emits both `proxyPillarScores` and capped final `pillarScores`; `scoreBlockers` now distinguishes missing readiness evidence from failing readiness evidence. | Proxy scores are not treated as final while question-matrix or external-control gates fail. | Done |
 | Produce auditable machine and human evidence artifacts. | `make report-well-architected-evidence` writes `.artifacts/well-architected/evidence.json` and `.artifacts/well-architected/evidence.md`; audited runs produce both artifacts and return the expected blocker exit while external controls remain unresolved. | The artifacts summarize the current scores, checks, and blockers without secret material; they do not override failed readiness gates. | Done |
 | Produce repeatable OPS8 monthly observation evidence. | `make report-alert-route-observation`, `scripts/record_alert_route_observation.py`, `ALERT_ROUTE_OBSERVATION_EVIDENCE`, `docs/alert-routing-evidence.md`, the advisory evidence workflow monthly schedule, and issue #30 owner command template. | Repository-owned Markdown/JSON record generation exists and is tested; the collector can validate current, approved, exact-route JSON evidence when an SRE supplies it. This does not prove downstream human consumption or recurring history by itself. | Done for validation path; OPS8 still blocked |
 | Produce repeatable security account-control attestation evidence. | `make report-security-account-attestation`, optional `SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT`, optional collector input `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE`, `scripts/record_security_account_attestation.py`, `docs/security-operating-evidence.md`, focused unit/Bats tests, and issue #28 owner command template. | Repository-owned record generation and collector validation exist and are tested. They do not prove human MFA/SSO posture, active-key exception/remediation, permissions-boundary or exemption decision, or security-owner approval by themselves; they only validate a real current owner record when supplied. | Done for recording and validation path; SEC1/SEC2/SEC3 still blocked |
 | Support owner-approved SEC11 Dependabot exception evidence. | `make report-dependabot-exception`, optional `DEPENDABOT_EXCEPTION_JSON_OUTPUT`, `DEPENDABOT_EXCEPTION_EVIDENCE`, `scripts/record_dependabot_exception.py`, `scripts/collect_well_architected_evidence.py`, `.github/workflows/well-architected-evidence.yml`, `docs/ci-guardrails.md`, focused unit/Bats tests, and issue #29 exception template. | The collector can validate current, exact-alert, owner-approved exception evidence, and the generator now renders Markdown/JSON from the latest collector output while rejecting invalid approval values, missing evidence notes, stale review dates, expired or missing expiry, missing dependency/manifest metadata, and mismatched alert numbers before JSON can be supplied. No real exception file is supplied, so live default-branch `GitPython` alerts still block SEC11. | Done for recording and validation path; SEC11 still blocked |
 | Produce repeatable REL13 production DR owner evidence. | `make report-production-dr-owner-evidence`, optional `PRODUCTION_DR_OWNER_JSON_OUTPUT`, optional collector input `PRODUCTION_DR_OWNER_EVIDENCE`, `scripts/record_production_dr_owner_evidence.py`, `scripts/collect_well_architected_evidence.py`, `docs/data-protection-recovery-evidence.md`, `.github/workflows/well-architected-evidence.yml`, focused unit/Bats tests, and issue #27 owner command template. | Repository-owned Markdown/JSON record generation exists and is tested. The collector can validate current, approved, exact-restore-drill production-owner evidence when an SRE supplies it, while rejecting missing owner actions, invalid approvals, stale or expired records, and restore-drill mismatches. No real production-owner record is supplied, and the protected `prod` environment is still missing, so REL13 remains blocked. | Done for recording and validation path; REL13 still blocked |
-| Reach 5/5 for every Well-Architected question and condition. | Fresh collector output fails `github_branch_protection`, `github_dependabot_alerts`, `github_production_environment`, `aws_iam_account_access`, `question_matrix_evidence`, and `external_control_evidence`. | Final 5/5 is blocked by live external/admin evidence, not by an untracked repository implementation gap found in this audit. | Blocked |
+| Reach 5/5 for every Well-Architected question and condition. | Fresh collector output fails `github_pr_checks`, `github_branch_protection`, `github_dependabot_alerts`, `github_production_environment`, `aws_iam_account_access`, `question_matrix_evidence`, and `external_control_evidence`. | Final 5/5 is blocked by live external/admin evidence, not by an untracked repository implementation gap found in this audit. | Blocked |
 
 ## Audited Scores
 
@@ -55,15 +55,15 @@ or public status surfaces. At the current blocker state they are:
 | Pillar | Score |
 | --- | ---: |
 | Cost Optimization | 4.0 |
-| Operational Excellence | 3.57 |
+| Operational Excellence | 2.86 |
 | Performance Efficiency | 4.0 |
-| Reliability | 4.0 |
-| Security | 3.12 |
+| Reliability | 3.33 |
+| Security | 2.5 |
 | Sustainability | 4.0 |
 
 Proxy readiness scores are Cost Optimization `5.0`, Performance Efficiency
-`5.0`, Sustainability `5.0`, Reliability `4.17`, Operational Excellence
-`3.57`, and Security `3.12`. These are not final Well-Architected scores while
+`5.0`, Sustainability `5.0`, Reliability `3.33`, Operational Excellence
+`2.86`, and Security `2.5`. These are not final Well-Architected scores while
 readiness gates fail.
 
 ## AWS Question Verifier Result
@@ -109,6 +109,9 @@ Unresolved external-control IDs:
 
 Live blockers:
 
+- PR #22 is not approved. The live PR is open and mergeable but reports
+  `mergeStateStatus=BLOCKED`, no review decision, and outstanding review
+  requests. Hosted checks are green, but they do not replace human approval.
 - The active `main` ruleset reports no required status checks, so it still does
   not enforce the documented quality, security, policy, and privileged
   infrastructure PR gate set. The repository-controls helper supports
@@ -126,11 +129,11 @@ Live blockers:
   non-secret exception JSON template an owner can use if closure cannot happen
   immediately.
 - Aggregate IAM account-access evidence still needs security-owner attestation:
-  IAM user count exceeds MFA devices in use, and one active IAM user access key
-  needs an approved exception or rotation/removal. The latest collector keeps
-  the key evidence aggregate and reports that the active key was created more
-  than 90 days ago, was last used within 90 days, and had readable last-used
-  metadata. PR #22 now includes a non-secret
+  the 2026-05-11 live read reports root/account MFA enabled, four IAM users,
+  one MFA device in use, no root/account access keys, and one active IAM user
+  access key. The active user key was created more than 90 days ago, was last
+  used within 90 days, and had readable last-used metadata. PR #22 now includes
+  a non-secret
   `make report-security-account-attestation` path for recording that owner
   decision once supplied, and issue #28 includes the exact command template.
 - OPS8 now has a repeatable monthly observation record path, but still lacks an
@@ -147,7 +150,7 @@ Live blockers:
 
 Failed collector checks on the latest audited run:
 
-`github_branch_protection`, `github_dependabot_alerts`,
+`github_pr_checks`, `github_branch_protection`, `github_dependabot_alerts`,
 `github_production_environment`, `aws_iam_account_access`,
 `question_matrix_evidence`, `external_control_evidence`.
 
