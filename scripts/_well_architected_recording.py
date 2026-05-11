@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import datetime as dt
 import json
 from collections.abc import Sequence
@@ -34,6 +35,63 @@ def markdown_table(rows: Sequence[tuple[str, object]]) -> str:
         f"| {markdown_cell(key)} | {markdown_cell(value)} |" for key, value in rows
     )
     return "\n".join(lines)
+
+
+def markdown_list(values: Sequence[str], default: str) -> str:
+    """Return a Markdown bullet list with a default item when values are empty."""
+    items = values or [default]
+    return "\n".join(f"- {markdown_cell(item)}" for item in items)
+
+
+def default_review_date() -> str:
+    """Return the current UTC date for owner evidence records."""
+    return dt.datetime.now(dt.timezone.utc).date().isoformat()
+
+
+def add_recording_output_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    include_environment: bool,
+    environment_default: str = "test",
+) -> None:
+    """Add common evidence input and report output arguments to a parser."""
+    parser.add_argument("--evidence", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--json-output", type=Path)
+    parser.add_argument("--review-date", default=default_review_date())
+    parser.add_argument("--workload", default="bootstrap-infrastructure")
+    if include_environment:
+        parser.add_argument("--environment", default=environment_default)
+
+
+def output_exists_error(
+    output: Path, json_output: Path | None, *, force: bool
+) -> str | None:
+    """Return an overwrite error message for report outputs, if any."""
+    if output.exists() and not force:
+        return f"output already exists: {output}"
+    if json_output is not None and json_output.exists() and not force:
+        return f"JSON output already exists: {json_output}"
+    return None
+
+
+def write_recording_outputs(
+    output: Path,
+    markdown: str,
+    *,
+    json_output: Path | None = None,
+    json_payload: object | None = None,
+) -> None:
+    """Write owner evidence Markdown and optional JSON payload outputs."""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(markdown, encoding="utf-8")
+    if json_output is None:
+        return
+    json_output.parent.mkdir(parents=True, exist_ok=True)
+    json_output.write_text(
+        f"{json.dumps(json_payload, indent=2, sort_keys=True)}\n",
+        encoding="utf-8",
+    )
 
 
 def validate_choice(field: str, value: str, allowed_values: frozenset[str]) -> None:

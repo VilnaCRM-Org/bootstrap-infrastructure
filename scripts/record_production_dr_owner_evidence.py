@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 import argparse
-import datetime as dt
-import json
 import sys
 from collections.abc import Sequence
-from pathlib import Path
 from typing import Any
 
 import _well_architected_recording as _recording
 
+dt = _recording.dt
 PRODUCTION_DR_OWNER_ALLOWED_APPROVALS = frozenset(
     {"approved", "approved_exception", "accepted_risk"}
 )
@@ -26,6 +24,7 @@ STRUCTURED_EVIDENCE_MAX_AGE_DAYS = _recording.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
 _load_report = _recording.load_report
 _check_by_name = _recording.check_by_name
 _markdown_cell = _recording.markdown_cell
+_markdown_list = _recording.markdown_list
 _table = _recording.markdown_table
 _parse_iso_date_or_timestamp = _recording.parse_iso_date_or_timestamp
 _validate_choice = _recording.validate_choice
@@ -48,8 +47,7 @@ def _restore_drill_evidence(report: dict[str, Any]) -> dict[str, Any]:
 
 def render_owner_evidence(report: dict[str, Any], args: argparse.Namespace) -> str:
     restore = _restore_drill_evidence(report)
-    actions = args.action or ["No follow-up actions recorded."]
-    action_lines = "\n".join(f"- {_markdown_cell(action)}" for action in actions)
+    action_lines = _markdown_list(args.action, "No follow-up actions recorded.")
 
     return "\n".join(
         [
@@ -166,14 +164,9 @@ def build_parser() -> argparse.ArgumentParser:
             "Well-Architected collector restore evidence."
         )
     )
-    parser.add_argument("--evidence", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--json-output", type=Path)
-    parser.add_argument(
-        "--review-date", default=dt.datetime.now(dt.timezone.utc).date().isoformat()
+    _recording.add_recording_output_arguments(
+        parser, include_environment=True, environment_default="prod"
     )
-    parser.add_argument("--workload", default="bootstrap-infrastructure")
-    parser.add_argument("--environment", default="prod")
     parser.add_argument("--reviewer", required=True)
     parser.add_argument("--production-owner", required=True)
     parser.add_argument("--escalation-path", required=True)
@@ -193,11 +186,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.output.exists() and not args.force:
-        print(f"error: output already exists: {args.output}", file=sys.stderr)
-        return 2
-    if args.json_output and args.json_output.exists() and not args.force:
-        print(f"error: JSON output already exists: {args.json_output}", file=sys.stderr)
+    overwrite_error = _recording.output_exists_error(
+        args.output, args.json_output, force=args.force
+    )
+    if overwrite_error:
+        print(f"error: {overwrite_error}", file=sys.stderr)
         return 2
 
     try:
@@ -210,14 +203,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(markdown, encoding="utf-8")
-    if args.json_output:
-        args.json_output.parent.mkdir(parents=True, exist_ok=True)
-        args.json_output.write_text(
-            f"{json.dumps(json_payload, indent=2, sort_keys=True)}\n",
-            encoding="utf-8",
-        )
+    _recording.write_recording_outputs(
+        args.output,
+        markdown,
+        json_output=args.json_output,
+        json_payload=json_payload,
+    )
     return 0
 
 
