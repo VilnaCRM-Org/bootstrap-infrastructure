@@ -5357,7 +5357,10 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
         == "unknown"
     )
     assert (
-        module.github_dependabot_alerts("org/repo", runner=failing_runner)["status"]
+        module.github_dependabot_alerts(
+            module.DependabotAlertRequest("org/repo"),
+            runner=failing_runner,
+        )["status"]
         == "unknown"
     )
     assert module.aws_identity(runner=failing_runner)["status"] == "unknown"
@@ -6558,7 +6561,7 @@ def test_collect_well_architected_evidence_reports_dependabot_alerts(
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
 
     evidence = module.github_dependabot_alerts(
-        "VilnaCRM-Org/bootstrap-infrastructure",
+        module.DependabotAlertRequest("VilnaCRM-Org/bootstrap-infrastructure"),
         runner=runner,
     )
 
@@ -6642,7 +6645,7 @@ def test_collect_well_architected_evidence_accepts_dependabot_exception(
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
 
     evidence = module.github_dependabot_alerts(
-        "VilnaCRM-Org/bootstrap-infrastructure",
+        module.DependabotAlertRequest("VilnaCRM-Org/bootstrap-infrastructure"),
         exception_evidence=exception_path,
         runner=runner,
     )
@@ -6704,7 +6707,7 @@ def test_collect_well_architected_evidence_rejects_bad_dependabot_exception(
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
 
     evidence = module.github_dependabot_alerts(
-        "VilnaCRM-Org/bootstrap-infrastructure",
+        module.DependabotAlertRequest("VilnaCRM-Org/bootstrap-infrastructure"),
         exception_evidence=exception_path,
         runner=runner,
     )

@@ -9,24 +9,7 @@ import _well_architected_recording as _recording
 
 dt = _recording.dt
 SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS = (
-    "summaryUserCount",
-    "discoveredUserCount",
-    "mfaDeviceCount",
-    "mfaDevicesInUse",
-    "accountMfaEnabled",
-    "accountAccessKeysPresent",
-    "activeUserAccessKeyCount",
-    "inactiveUserAccessKeyCount",
-    "otherUserAccessKeyStatusCount",
-    "usersWithActiveAccessKeys",
-    "unreadableAccessKeyUserCount",
-    "activeUserAccessKeyOlderThan90DaysCount",
-    "activeUserAccessKeyCreateDateUnknownCount",
-    "activeUserAccessKeyNeverUsedCount",
-    "activeUserAccessKeyLastUsedWithin90DaysCount",
-    "activeUserAccessKeyLastUsedOlderThan90DaysCount",
-    "activeUserAccessKeyLastUsedUnknownCount",
-    "unreadableAccessKeyLastUsedCount",
+    _recording.SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
 )
 SECURITY_ACCOUNT_ALLOWED_APPROVALS = frozenset(
     {"approved", "approved_exception", "accepted_risk"}

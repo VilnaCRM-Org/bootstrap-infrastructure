@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+REQUIRED_STATUS_CHECKS = (
+    "Ruff",
+    "Ty",
+    "Maintainability",
+    "Architecture",
+    "Structural",
+    "Dependency Hygiene",
+    "Coverage",
+    "Local Battery",
+    "Mutation",
+    "Run Bats Tests",
+    "Secrets Scan",
+    "Dependency Audit",
+    "Bandit",
+    "Dependency Review",
+    "Actionlint",
+    "Yamllint",
+    "Hadolint",
+    "Preview",
+    "Destructive Diff Gate",
+    "IAM Validation",
+    "Policy",
+    "CodeQL (python)",
+    "CodeQL (actions)",
+)

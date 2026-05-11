@@ -8,22 +8,10 @@ from typing import Any, cast
 import _well_architected_recording as _recording
 
 dt = _recording.dt
-ALERT_ROUTE_OBSERVATION_ROUTE_FIELDS = (
-    "topicArn",
-    "encrypted",
-    "subscriptionCount",
-    "subscriptionProtocols",
-)
-ALERT_ROUTE_OBSERVATION_QUEUE_FIELDS = (
-    "queueArn",
-    "queueName",
-    "messageRetentionSeconds",
-    "visibilityTimeoutSeconds",
-)
+ALERT_ROUTE_OBSERVATION_ROUTE_FIELDS = _recording.ALERT_ROUTE_OBSERVATION_ROUTE_FIELDS
+ALERT_ROUTE_OBSERVATION_QUEUE_FIELDS = _recording.ALERT_ROUTE_OBSERVATION_QUEUE_FIELDS
 ALERT_ROUTE_OBSERVATION_QUEUE_OBSERVATION_FIELDS = (
-    "visibleMessages",
-    "notVisibleMessages",
-    "delayedMessages",
+    _recording.ALERT_ROUTE_OBSERVATION_QUEUE_OBSERVATION_FIELDS
 )
 ALERT_ROUTE_ALLOWED_DECISIONS = frozenset(
     {"accepted", "approved", "approved_exception", "accepted_risk"}

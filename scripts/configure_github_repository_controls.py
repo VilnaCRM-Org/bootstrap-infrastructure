@@ -10,31 +10,8 @@ import sys
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-REQUIRED_STATUS_CHECKS = (
-    "Ruff",
-    "Ty",
-    "Maintainability",
-    "Architecture",
-    "Structural",
-    "Dependency Hygiene",
-    "Coverage",
-    "Local Battery",
-    "Mutation",
-    "Run Bats Tests",
-    "Secrets Scan",
-    "Dependency Audit",
-    "Bandit",
-    "Dependency Review",
-    "Actionlint",
-    "Yamllint",
-    "Hadolint",
-    "Preview",
-    "Destructive Diff Gate",
-    "IAM Validation",
-    "Policy",
-    "CodeQL (python)",
-    "CodeQL (actions)",
-)
+from _github_repository_controls import REQUIRED_STATUS_CHECKS
+
 DEFAULT_PROD_REVIEWER = "Kravalg"
 
 

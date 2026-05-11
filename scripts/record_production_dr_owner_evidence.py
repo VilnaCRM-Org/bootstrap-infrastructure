@@ -11,14 +11,7 @@ dt = _recording.dt
 PRODUCTION_DR_OWNER_ALLOWED_APPROVALS = frozenset(
     {"approved", "approved_exception", "accepted_risk"}
 )
-PRODUCTION_DR_OWNER_RESTORE_FIELDS = (
-    "workload",
-    "environment",
-    "completedAt",
-    "targetRestoreLocation",
-    "validationResult",
-    "cleanupConfirmed",
-)
+PRODUCTION_DR_OWNER_RESTORE_FIELDS = _recording.PRODUCTION_DR_OWNER_RESTORE_FIELDS
 STRUCTURED_EVIDENCE_MAX_AGE_DAYS = _recording.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
 _load_report = _recording.load_report
 _check_by_name = _recording.check_by_name

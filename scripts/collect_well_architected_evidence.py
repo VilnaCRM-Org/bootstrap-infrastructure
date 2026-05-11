@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote
 
+import _well_architected_recording as _recording
+from _github_repository_controls import (
+    REQUIRED_STATUS_CHECKS as DEFAULT_REQUIRED_STATUS_CHECKS,
+)
 from _script_support import repo_root, run
 from validate_repository_catalogs import (
     _fanout_failures,
@@ -40,31 +44,6 @@ COVERED_AGGREGATE_CHECKS = {
 }
 CURRENT_CHECK_NAME_ENV = "WELL_ARCHITECTED_CURRENT_CHECK_NAME"
 ADVISORY_REVIEW_THREAD_AUTHORS = frozenset({"qltysh"})
-DEFAULT_REQUIRED_STATUS_CHECKS = (
-    "Ruff",
-    "Ty",
-    "Maintainability",
-    "Architecture",
-    "Structural",
-    "Dependency Hygiene",
-    "Coverage",
-    "Local Battery",
-    "Mutation",
-    "Run Bats Tests",
-    "Secrets Scan",
-    "Dependency Audit",
-    "Bandit",
-    "Dependency Review",
-    "Actionlint",
-    "Yamllint",
-    "Hadolint",
-    "Preview",
-    "Destructive Diff Gate",
-    "IAM Validation",
-    "Policy",
-    "CodeQL (python)",
-    "CodeQL (actions)",
-)
 DEFAULT_PRODUCTION_ENVIRONMENT = "prod"
 DEFAULT_PRODUCTION_REVIEWER = "Kravalg"
 DEFAULT_DEPENDABOT_DEPENDENCY = "GitPython"
@@ -118,18 +97,8 @@ ALERT_ROUTE_OBSERVATION_REQUIRED_FIELDS = (
     "remediationPlan",
     "routeEvidence",
 )
-ALERT_ROUTE_OBSERVATION_ROUTE_FIELDS = (
-    "topicArn",
-    "encrypted",
-    "subscriptionCount",
-    "subscriptionProtocols",
-)
-ALERT_ROUTE_OBSERVATION_QUEUE_FIELDS = (
-    "queueArn",
-    "queueName",
-    "messageRetentionSeconds",
-    "visibilityTimeoutSeconds",
-)
+ALERT_ROUTE_OBSERVATION_ROUTE_FIELDS = _recording.ALERT_ROUTE_OBSERVATION_ROUTE_FIELDS
+ALERT_ROUTE_OBSERVATION_QUEUE_FIELDS = _recording.ALERT_ROUTE_OBSERVATION_QUEUE_FIELDS
 ALERT_ROUTE_ALLOWED_DECISIONS = frozenset(
     {"accepted", "approved", "approved_exception", "accepted_risk"}
 )
@@ -148,24 +117,7 @@ SECURITY_ACCOUNT_ATTESTATION_REQUIRED_FIELDS = (
     "accountEvidence",
 )
 SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS = (
-    "summaryUserCount",
-    "discoveredUserCount",
-    "mfaDeviceCount",
-    "mfaDevicesInUse",
-    "accountMfaEnabled",
-    "accountAccessKeysPresent",
-    "activeUserAccessKeyCount",
-    "inactiveUserAccessKeyCount",
-    "otherUserAccessKeyStatusCount",
-    "usersWithActiveAccessKeys",
-    "unreadableAccessKeyUserCount",
-    "activeUserAccessKeyOlderThan90DaysCount",
-    "activeUserAccessKeyCreateDateUnknownCount",
-    "activeUserAccessKeyNeverUsedCount",
-    "activeUserAccessKeyLastUsedWithin90DaysCount",
-    "activeUserAccessKeyLastUsedOlderThan90DaysCount",
-    "activeUserAccessKeyLastUsedUnknownCount",
-    "unreadableAccessKeyLastUsedCount",
+    _recording.SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
 )
 SECURITY_ACCOUNT_ALLOWED_APPROVALS = frozenset(
     {"approved", "approved_exception", "accepted_risk"}
@@ -202,14 +154,7 @@ PRODUCTION_DR_OWNER_REQUIRED_FIELDS = (
     "remediationPlan",
     "restoreDrillEvidence",
 )
-PRODUCTION_DR_OWNER_RESTORE_FIELDS = (
-    "workload",
-    "environment",
-    "completedAt",
-    "targetRestoreLocation",
-    "validationResult",
-    "cleanupConfirmed",
-)
+PRODUCTION_DR_OWNER_RESTORE_FIELDS = _recording.PRODUCTION_DR_OWNER_RESTORE_FIELDS
 PRODUCTION_DR_OWNER_ALLOWED_APPROVALS = frozenset(
     {"approved", "approved_exception", "accepted_risk"}
 )
@@ -320,6 +265,39 @@ class GitHubPrLocalStateSnapshot:
     pr_ok: bool
     pr_payload: Any
     pr_error: str
+
+
+@dataclass(frozen=True)
+class ReviewThreadPageRequest:
+    """Inputs shared by every GitHub review-thread pagination request."""
+
+    owner: str
+    name: str
+    pr_number: int
+    query: str
+
+
+@dataclass(frozen=True)
+class DependabotAlertRequest:
+    """Scope for Dependabot alert evidence collection."""
+
+    repo: str
+    dependency: str = DEFAULT_DEPENDABOT_DEPENDENCY
+    manifest_path: str = DEFAULT_DEPENDABOT_MANIFEST
+    blocking_severities: frozenset[str] = BLOCKING_DEPENDABOT_SEVERITIES
+
+
+@dataclass(frozen=True)
+class StructuredEvidenceSpec:
+    """Validation contract for one structured evidence artifact."""
+
+    name: str
+    label: str
+    required_fields: Sequence[str]
+    count_field: str
+    unresolved_field: str
+    minimum_count: int
+    required_control_ids: Sequence[str] = ()
 
 
 @dataclass(frozen=True)
@@ -901,15 +879,17 @@ def _collect_review_thread_nodes(
     runner: Runner = run,
 ) -> tuple[list[dict], str]:
     """Collect paginated review-thread nodes or return a blocker."""
-    query = _review_threads_query()
+    request = ReviewThreadPageRequest(
+        owner=owner,
+        name=name,
+        pr_number=pr_number,
+        query=_review_threads_query(),
+    )
     nodes = []
     after: str | None = None
     for _page in range(20):
         page_nodes, page_info, error = _fetch_review_thread_page(
-            owner,
-            name,
-            pr_number,
-            query,
+            request,
             after,
             runner=runner,
         )
@@ -925,16 +905,13 @@ def _collect_review_thread_nodes(
 
 
 def _fetch_review_thread_page(
-    owner: str,
-    name: str,
-    pr_number: int,
-    query: str,
+    request: ReviewThreadPageRequest,
     after: str | None,
     *,
     runner: Runner = run,
 ) -> tuple[list[dict], dict[str, Any], str]:
     """Fetch one review-thread page."""
-    command = _review_threads_command(owner, name, pr_number, query, after)
+    command = _review_threads_command(request, after)
     ok, payload, error = _run_json(command, runner=runner)
     if not ok or not isinstance(payload, dict):
         return [], {}, error
@@ -968,10 +945,7 @@ def _review_threads_query() -> str:
 
 
 def _review_threads_command(
-    owner: str,
-    name: str,
-    pr_number: int,
-    query: str,
+    request: ReviewThreadPageRequest,
     after: str | None,
 ) -> list[str]:
     """Build a metadata-only review-thread GraphQL command."""
@@ -980,13 +954,13 @@ def _review_threads_command(
         "api",
         "graphql",
         "-f",
-        f"owner={owner}",
+        f"owner={request.owner}",
         "-f",
-        f"name={name}",
+        f"name={request.name}",
         "-F",
-        f"number={pr_number}",
+        f"number={request.pr_number}",
         "-f",
-        f"query={query}",
+        f"query={request.query}",
     ]
     if after:
         command.extend(["-f", f"after={after}"])
@@ -1174,17 +1148,17 @@ def _active_branch_ruleset_count(rulesets: Sequence[dict]) -> int:
 
 
 def github_dependabot_alerts(
-    repo: str,
-    dependency: str = DEFAULT_DEPENDABOT_DEPENDENCY,
-    manifest_path: str = DEFAULT_DEPENDABOT_MANIFEST,
-    blocking_severities: frozenset[str] = BLOCKING_DEPENDABOT_SEVERITIES,
+    request: DependabotAlertRequest,
     exception_evidence: Path | None = None,
     *,
     runner: Runner = run,
 ) -> dict[str, object]:
     """Collect open Dependabot alert evidence for one dependency manifest."""
+    dependency = request.dependency
+    manifest_path = request.manifest_path
+    blocking_severities = request.blocking_severities
     ok, payload, error = _run_json(
-        ["gh", "api", _dependabot_alert_api_path(repo, dependency)],
+        ["gh", "api", _dependabot_alert_api_path(request.repo, dependency)],
         runner=runner,
     )
     if not ok or not isinstance(payload, list):
@@ -1408,14 +1382,11 @@ def _dependabot_exception_coverage(
         return {}, set(), []
 
     label = "Dependabot exception evidence"
-    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
-    blockers.extend(
-        _structured_evidence_payload_blockers(
-            payload,
-            DEPENDABOT_EXCEPTION_REQUIRED_FIELDS,
-        )
+    payload, blockers = _read_required_structured_evidence(
+        evidence_path,
+        label,
+        DEPENDABOT_EXCEPTION_REQUIRED_FIELDS,
     )
-    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
     blockers.extend(
         _dependabot_exception_payload_blockers(
             payload,
@@ -1768,14 +1739,11 @@ def _security_account_attestation_coverage(
         return {}, frozenset(), []
 
     label = "Security account attestation evidence"
-    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
-    blockers.extend(
-        _structured_evidence_payload_blockers(
-            payload,
-            SECURITY_ACCOUNT_ATTESTATION_REQUIRED_FIELDS,
-        )
+    payload, blockers = _read_required_structured_evidence(
+        evidence_path,
+        label,
+        SECURITY_ACCOUNT_ATTESTATION_REQUIRED_FIELDS,
     )
-    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
     blockers.extend(
         _security_account_attestation_payload_blockers(payload, account_evidence)
     )
@@ -1887,21 +1855,16 @@ def _security_account_attestation_account_blockers(
     account_evidence: dict[str, object],
 ) -> list[str]:
     """Return blockers when attested IAM counts do not match live evidence."""
-    attested_evidence = payload.get("accountEvidence")
-    if not isinstance(attested_evidence, dict):
-        return ["Security account attestation accountEvidence must be an object."]
-
-    mismatched_fields = [
-        field
-        for field in SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
-        if attested_evidence.get(field) != account_evidence.get(field)
-    ]
-    if not mismatched_fields:
-        return []
-    return [
-        "Security account attestation accountEvidence does not match live "
-        f"IAM aggregate fields: {', '.join(mismatched_fields)}."
-    ]
+    return _structured_evidence_mismatch_blockers(
+        payload.get("accountEvidence"),
+        account_evidence,
+        SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS,
+        object_error="Security account attestation accountEvidence must be an object.",
+        mismatch_message=(
+            "Security account attestation accountEvidence does not match live "
+            "IAM aggregate fields"
+        ),
+    )
 
 
 def _security_account_attestation_summary(
@@ -2312,14 +2275,11 @@ def _alert_route_observation_coverage(
         return {}, []
 
     label = "Alert-route observation evidence"
-    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
-    blockers.extend(
-        _structured_evidence_payload_blockers(
-            payload,
-            ALERT_ROUTE_OBSERVATION_REQUIRED_FIELDS,
-        )
+    payload, blockers = _read_required_structured_evidence(
+        evidence_path,
+        label,
+        ALERT_ROUTE_OBSERVATION_REQUIRED_FIELDS,
     )
-    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
     blockers.extend(_alert_route_observation_payload_blockers(payload, route_evidence))
     return _alert_route_observation_summary(evidence_path, payload), blockers
 
@@ -2836,14 +2796,11 @@ def _production_dr_owner_coverage(
         return {}, []
 
     label = "Production DR owner evidence"
-    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
-    blockers.extend(
-        _structured_evidence_payload_blockers(
-            payload,
-            PRODUCTION_DR_OWNER_REQUIRED_FIELDS,
-        )
+    payload, blockers = _read_required_structured_evidence(
+        evidence_path,
+        label,
+        PRODUCTION_DR_OWNER_REQUIRED_FIELDS,
     )
-    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
     blockers.extend(_production_dr_owner_payload_blockers(payload, restore_evidence))
     return _production_dr_owner_summary(evidence_path, payload), blockers
 
@@ -2903,21 +2860,18 @@ def _production_dr_owner_restore_blockers(
     restore_evidence: dict[str, object],
 ) -> list[str]:
     """Return blockers when production DR evidence references stale restore data."""
-    attested_restore = payload.get("restoreDrillEvidence")
-    if not isinstance(attested_restore, dict):
-        return ["Production DR owner evidence restoreDrillEvidence must be an object."]
-
-    mismatched_fields = [
-        field
-        for field in PRODUCTION_DR_OWNER_RESTORE_FIELDS
-        if attested_restore.get(field) != restore_evidence.get(field)
-    ]
-    if not mismatched_fields:
-        return []
-    return [
-        "Production DR owner evidence restoreDrillEvidence does not match current "
-        f"restore evidence fields: {', '.join(mismatched_fields)}."
-    ]
+    return _structured_evidence_mismatch_blockers(
+        payload.get("restoreDrillEvidence"),
+        restore_evidence,
+        PRODUCTION_DR_OWNER_RESTORE_FIELDS,
+        object_error=(
+            "Production DR owner evidence restoreDrillEvidence must be an object."
+        ),
+        mismatch_message=(
+            "Production DR owner evidence restoreDrillEvidence does not match current "
+            "restore evidence fields"
+        ),
+    )
 
 
 def _production_dr_owner_summary(
@@ -3075,79 +3029,87 @@ def score_blockers(checks: Sequence[dict[str, object]]) -> list[str]:
 def question_matrix_evidence(args: argparse.Namespace) -> dict[str, object]:
     """Validate structured evidence for all Well-Architected questions."""
     return _structured_evidence_check(
-        name="question_matrix_evidence",
-        label="Question-matrix evidence",
+        StructuredEvidenceSpec(
+            name="question_matrix_evidence",
+            label="Question-matrix evidence",
+            required_fields=QUESTION_MATRIX_REQUIRED_FIELDS,
+            count_field="questionCount",
+            unresolved_field="unresolvedQuestionCount",
+            minimum_count=EXPECTED_WELL_ARCHITECTED_QUESTION_COUNT,
+        ),
         evidence_path=args.question_matrix_evidence,
         legacy_confirmed=args.question_matrix_evidence_confirmed,
-        required_fields=QUESTION_MATRIX_REQUIRED_FIELDS,
-        count_field="questionCount",
-        unresolved_field="unresolvedQuestionCount",
-        minimum_count=EXPECTED_WELL_ARCHITECTED_QUESTION_COUNT,
     )
 
 
 def external_control_evidence(args: argparse.Namespace) -> dict[str, object]:
     """Validate structured evidence for external control ownership and freshness."""
     return _structured_evidence_check(
-        name="external_control_evidence",
-        label="External-control evidence",
+        StructuredEvidenceSpec(
+            name="external_control_evidence",
+            label="External-control evidence",
+            required_fields=EXTERNAL_CONTROL_REQUIRED_FIELDS,
+            count_field="controlCount",
+            unresolved_field="unresolvedControlCount",
+            minimum_count=len(REQUIRED_EXTERNAL_CONTROL_IDS),
+            required_control_ids=REQUIRED_EXTERNAL_CONTROL_IDS,
+        ),
         evidence_path=args.external_control_evidence,
         legacy_confirmed=args.external_control_evidence_confirmed,
-        required_fields=EXTERNAL_CONTROL_REQUIRED_FIELDS,
-        count_field="controlCount",
-        unresolved_field="unresolvedControlCount",
-        minimum_count=len(REQUIRED_EXTERNAL_CONTROL_IDS),
-        required_control_ids=REQUIRED_EXTERNAL_CONTROL_IDS,
     )
 
 
 def _structured_evidence_check(
+    spec: StructuredEvidenceSpec,
     *,
-    name: str,
-    label: str,
     evidence_path: Path | None,
     legacy_confirmed: bool,
-    required_fields: Sequence[str],
-    count_field: str,
-    unresolved_field: str,
-    minimum_count: int,
-    required_control_ids: Sequence[str] = (),
 ) -> dict[str, object]:
     """Validate a non-secret, owner-backed evidence record."""
     if evidence_path is None:
         blockers = [
-            f"{label} JSON path is required for final Well-Architected scoring."
+            f"{spec.label} JSON path is required for final Well-Architected scoring."
         ]
         if legacy_confirmed:
             blockers.append(
-                f"{label} cannot be satisfied by a boolean confirmation flag."
+                f"{spec.label} cannot be satisfied by a boolean confirmation flag."
             )
-        return _check(name, status="missing", blockers=blockers)
+        return _check(spec.name, status="missing", blockers=blockers)
 
-    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
-    blockers.extend(_structured_evidence_payload_blockers(payload, required_fields))
-    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
+    payload, blockers = _read_structured_evidence_payload(evidence_path, spec.label)
     blockers.extend(
-        _structured_evidence_count_blockers(
-            payload,
-            label=label,
-            count_field=count_field,
-            unresolved_field=unresolved_field,
-            minimum_count=minimum_count,
-        )
+        _structured_evidence_payload_blockers(payload, spec.required_fields)
     )
+    blockers.extend(_structured_evidence_freshness_blockers(payload, spec.label))
+    blockers.extend(_structured_evidence_count_blockers(payload, spec))
     blockers.extend(
-        _structured_evidence_control_blockers(payload, required_control_ids)
+        _structured_evidence_control_blockers(payload, spec.required_control_ids)
     )
-    if name == "question_matrix_evidence":
+    if spec.name == "question_matrix_evidence":
         blockers.extend(_question_matrix_source_verification_blockers(payload))
         blockers.extend(_question_matrix_score_blockers(payload))
     return _check(
-        name,
+        spec.name,
         status="passed" if not blockers else "failed",
-        evidence=_structured_evidence_payload(payload, count_field, unresolved_field),
+        evidence=_structured_evidence_payload(
+            payload,
+            spec.count_field,
+            spec.unresolved_field,
+        ),
         blockers=blockers,
     )
+
+
+def _read_required_structured_evidence(
+    evidence_path: Path,
+    label: str,
+    required_fields: Sequence[str],
+) -> tuple[dict[str, Any], list[str]]:
+    """Read structured evidence and apply shared required-field checks."""
+    payload, blockers = _read_structured_evidence_payload(evidence_path, label)
+    blockers.extend(_structured_evidence_payload_blockers(payload, required_fields))
+    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
+    return payload, blockers
 
 
 def _read_structured_evidence_payload(
@@ -3190,6 +3152,26 @@ def _structured_evidence_field_present(payload: dict[str, Any], field: str) -> b
         return False
     value = payload[field]
     return not (isinstance(value, str) and not value.strip())
+
+
+def _structured_evidence_mismatch_blockers(
+    candidate: object,
+    expected: dict[str, object],
+    fields: Sequence[str],
+    *,
+    object_error: str,
+    mismatch_message: str,
+) -> list[str]:
+    """Return blockers when an embedded evidence object differs from live evidence."""
+    if not isinstance(candidate, dict):
+        return [object_error]
+
+    mismatched_fields = [
+        field for field in fields if candidate.get(field) != expected.get(field)
+    ]
+    if not mismatched_fields:
+        return []
+    return [f"{mismatch_message}: {', '.join(mismatched_fields)}."]
 
 
 def _structured_evidence_freshness_blockers(
@@ -3236,24 +3218,22 @@ def _parse_reviewed_at(value: object) -> dt.datetime | None:
 
 def _structured_evidence_count_blockers(
     payload: dict[str, Any],
-    *,
-    label: str,
-    count_field: str,
-    unresolved_field: str,
-    minimum_count: int,
+    spec: StructuredEvidenceSpec,
 ) -> list[str]:
     """Return blockers for coverage and unresolved counts."""
     blockers = []
-    count = payload.get(count_field)
-    unresolved = payload.get(unresolved_field)
+    count = payload.get(spec.count_field)
+    unresolved = payload.get(spec.unresolved_field)
     if isinstance(count, bool) or not isinstance(count, int):
-        blockers.append(f"{label} {count_field} must be an integer.")
-    elif count < minimum_count:
-        blockers.append(f"{label} {count_field} must be at least {minimum_count}.")
+        blockers.append(f"{spec.label} {spec.count_field} must be an integer.")
+    elif count < spec.minimum_count:
+        blockers.append(
+            f"{spec.label} {spec.count_field} must be at least {spec.minimum_count}."
+        )
     if isinstance(unresolved, bool) or not isinstance(unresolved, int):
-        blockers.append(f"{label} {unresolved_field} must be an integer.")
+        blockers.append(f"{spec.label} {spec.unresolved_field} must be an integer.")
     elif unresolved != 0:
-        blockers.append(f"{label} has {unresolved} unresolved item(s).")
+        blockers.append(f"{spec.label} has {unresolved} unresolved item(s).")
     return blockers
 
 
@@ -4084,9 +4064,11 @@ def collect_evidence(
             runner=runner,
         ),
         github_dependabot_alerts(
-            args.repo,
-            args.dependabot_dependency,
-            args.dependabot_manifest,
+            DependabotAlertRequest(
+                repo=args.repo,
+                dependency=args.dependabot_dependency,
+                manifest_path=args.dependabot_manifest,
+            ),
             exception_evidence=args.dependabot_exception_evidence,
             runner=runner,
         ),

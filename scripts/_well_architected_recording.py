@@ -12,6 +12,51 @@ JsonObject = dict[str, Any]
 MarkdownRenderer = Callable[[JsonObject, argparse.Namespace], str]
 JsonRenderer = Callable[[JsonObject, argparse.Namespace], object]
 STRUCTURED_EVIDENCE_MAX_AGE_DAYS = 30
+ALERT_ROUTE_OBSERVATION_ROUTE_FIELDS = (
+    "topicArn",
+    "encrypted",
+    "subscriptionCount",
+    "subscriptionProtocols",
+)
+ALERT_ROUTE_OBSERVATION_QUEUE_FIELDS = (
+    "queueArn",
+    "queueName",
+    "messageRetentionSeconds",
+    "visibilityTimeoutSeconds",
+)
+ALERT_ROUTE_OBSERVATION_QUEUE_OBSERVATION_FIELDS = (
+    "visibleMessages",
+    "notVisibleMessages",
+    "delayedMessages",
+)
+SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS = (
+    "summaryUserCount",
+    "discoveredUserCount",
+    "mfaDeviceCount",
+    "mfaDevicesInUse",
+    "accountMfaEnabled",
+    "accountAccessKeysPresent",
+    "activeUserAccessKeyCount",
+    "inactiveUserAccessKeyCount",
+    "otherUserAccessKeyStatusCount",
+    "usersWithActiveAccessKeys",
+    "unreadableAccessKeyUserCount",
+    "activeUserAccessKeyOlderThan90DaysCount",
+    "activeUserAccessKeyCreateDateUnknownCount",
+    "activeUserAccessKeyNeverUsedCount",
+    "activeUserAccessKeyLastUsedWithin90DaysCount",
+    "activeUserAccessKeyLastUsedOlderThan90DaysCount",
+    "activeUserAccessKeyLastUsedUnknownCount",
+    "unreadableAccessKeyLastUsedCount",
+)
+PRODUCTION_DR_OWNER_RESTORE_FIELDS = (
+    "workload",
+    "environment",
+    "completedAt",
+    "targetRestoreLocation",
+    "validationResult",
+    "cleanupConfirmed",
+)
 
 
 def load_report(path: Path) -> JsonObject:
