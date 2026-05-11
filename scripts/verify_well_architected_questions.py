@@ -180,10 +180,7 @@ def _expected_pillar_unresolved_question_counts(
     for item in items:
         if item.get("status") == "passed":
             continue
-        question_id = item.get("id")
-        pillar = (
-            aws_pillar_by_id.get(question_id) if isinstance(question_id, str) else None
-        )
+        pillar = _aws_pillar_for_question_id(item.get("id"), aws_pillar_by_id)
         if pillar is not None:
             counts[pillar] += 1
     return counts
@@ -195,25 +192,31 @@ def _expected_pillar_question_score_averages(
 ) -> dict[str, float]:
     scores_by_pillar: dict[str, list[int]] = {pillar: [] for pillar in PILLAR_ORDER}
     for item in items:
-        question_id = item.get("id")
-        pillar = (
-            aws_pillar_by_id.get(question_id) if isinstance(question_id, str) else None
-        )
-        score = item.get("score")
-        if (
-            pillar is None
-            or isinstance(score, bool)
-            or not isinstance(score, int)
-            or not 1 <= score <= 5
-        ):
-            continue
-        scores_by_pillar[pillar].append(score)
+        pillar = _aws_pillar_for_question_id(item.get("id"), aws_pillar_by_id)
+        score = _valid_question_score(item.get("score"))
+        if pillar is not None and score is not None:
+            scores_by_pillar[pillar].append(score)
     if any(not pillar_scores for pillar_scores in scores_by_pillar.values()):
         return {}
     return {
         pillar: _rounded_average(pillar_scores)
         for pillar, pillar_scores in scores_by_pillar.items()
     }
+
+
+def _aws_pillar_for_question_id(
+    question_id: object,
+    aws_pillar_by_id: dict[str, str],
+) -> str | None:
+    if not isinstance(question_id, str):
+        return None
+    return aws_pillar_by_id.get(question_id)
+
+
+def _valid_question_score(score: object) -> int | None:
+    if isinstance(score, bool) or not isinstance(score, int) or not 1 <= score <= 5:
+        return None
+    return score
 
 
 def _rounded_average(values: Sequence[int]) -> float:

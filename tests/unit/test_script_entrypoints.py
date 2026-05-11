@@ -2199,6 +2199,51 @@ def test_verify_well_architected_questions_rejects_score_summary_drift(
     assert "pillarUnresolvedQuestionCounts" in blockers  # nosec B101
     assert "questionScoreAverages" in blockers  # nosec B101
     assert "OPS1" in blockers  # nosec B101
+    assert module._question_id_sort_key("OPSX") == (0, 0, "OPSX")  # noqa: SLF001  # nosec B101
+    assert module._question_id_sort_key("WA99") == (6, 0, "WA99")  # noqa: SLF001  # nosec B101
+    assert module._aws_pillar_for_question_id(1, {}) is None  # noqa: SLF001  # nosec B101
+    assert module._valid_question_score(True) is None  # noqa: SLF001  # nosec B101
+    assert module._valid_question_score("5") is None  # noqa: SLF001  # nosec B101
+    assert module._valid_question_score(6) is None  # noqa: SLF001  # nosec B101
+    assert module._string_list(["OPS1", 2]) is None  # noqa: SLF001  # nosec B101
+    assert module._string_key_number_map({1: 5}) is None  # noqa: SLF001  # nosec B101
+    assert (  # noqa: SLF001  # nosec B101
+        module._string_key_number_map({"Security": True}) is None
+    )
+    assert module._string_key_number_map({"Security": "5"}) is None  # noqa: SLF001  # nosec B101
+    assert module._string_key_int_map({1: 5}) is None  # noqa: SLF001  # nosec B101
+    assert module._string_key_int_map({"Security": False}) is None  # noqa: SLF001  # nosec B101
+    assert module._string_key_int_map({"Security": 5.0}) is None  # noqa: SLF001  # nosec B101
+    assert (  # noqa: SLF001  # nosec B101
+        module._expected_pillar_unresolved_question_counts(
+            [{"id": "WA99", "status": "unresolved"}, {"id": 1, "status": "unresolved"}],
+            {"OPS1": "Operational Excellence"},
+        )
+        == {
+            "Operational Excellence": 0,
+            "Security": 0,
+            "Reliability": 0,
+            "Performance Efficiency": 0,
+            "Cost Optimization": 0,
+            "Sustainability": 0,
+        }
+    )
+    assert (  # noqa: SLF001  # nosec B101
+        module._expected_pillar_question_score_averages(
+            [
+                {"id": "OPS1", "score": 5},
+                {"id": "SEC1", "score": True},
+                {"id": "REL1", "score": 6},
+                {"id": 1, "score": 5},
+            ],
+            {
+                "OPS1": "Operational Excellence",
+                "SEC1": "Security",
+                "REL1": "Reliability",
+            },
+        )
+        == {}
+    )
 
 
 def test_verify_well_architected_questions_rejects_invalid_status_values(
