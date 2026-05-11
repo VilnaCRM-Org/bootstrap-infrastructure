@@ -13,6 +13,11 @@ DEFAULT_QUESTION_VERIFICATION = Path(
     ".artifacts/well-architected/question-verification.json"
 )
 DEFAULT_OUTPUT = Path(".artifacts/well-architected/owner-closeout-bundle.md")
+REQUIRED_EVIDENCE_PLACEHOLDER = "<path>"
+OPTIONAL_EVIDENCE_PLACEHOLDER = "<path-if-needed>"
+REVIEWER_LOGIN_PLACEHOLDER = "<reviewer-login>"
+APPROVAL_DECISION_PLACEHOLDER = "<approved|approved_exception|accepted_risk>"
+DATE_PLACEHOLDER = "<YYYY-MM-DD>"
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -97,13 +102,13 @@ def _collector_command(pr_number: object, topic_arn: object, trail_name: object)
         ("PR_NUMBER", pr_number),
         ("OPERATIONS_TOPIC_ARN", topic_arn),
         ("OPERATIONS_CLOUDTRAIL_NAME", trail_name),
-        ("RESTORE_DRILL_EVIDENCE", "<path>"),
-        ("QUESTION_MATRIX_EVIDENCE", "<path>"),
-        ("EXTERNAL_CONTROL_EVIDENCE", "<path>"),
-        ("DEPENDABOT_EXCEPTION_EVIDENCE", "<path-if-needed>"),
-        ("ALERT_ROUTE_OBSERVATION_EVIDENCE", "<path-if-needed>"),
-        ("SECURITY_ACCOUNT_ATTESTATION_EVIDENCE", "<path-if-needed>"),
-        ("PRODUCTION_DR_OWNER_EVIDENCE", "<path-if-needed>"),
+        ("RESTORE_DRILL_EVIDENCE", REQUIRED_EVIDENCE_PLACEHOLDER),
+        ("QUESTION_MATRIX_EVIDENCE", REQUIRED_EVIDENCE_PLACEHOLDER),
+        ("EXTERNAL_CONTROL_EVIDENCE", REQUIRED_EVIDENCE_PLACEHOLDER),
+        ("DEPENDABOT_EXCEPTION_EVIDENCE", OPTIONAL_EVIDENCE_PLACEHOLDER),
+        ("ALERT_ROUTE_OBSERVATION_EVIDENCE", OPTIONAL_EVIDENCE_PLACEHOLDER),
+        ("SECURITY_ACCOUNT_ATTESTATION_EVIDENCE", OPTIONAL_EVIDENCE_PLACEHOLDER),
+        ("PRODUCTION_DR_OWNER_EVIDENCE", OPTIONAL_EVIDENCE_PLACEHOLDER),
     ]
     prefix = " ".join(f"{key}={value}" for key, value in entries if value)
     return f"{prefix} make report-well-architected-evidence"
@@ -486,7 +491,7 @@ def render_closeout_bundle(
                         "SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT",
                         ".artifacts/well-architected/security-account-attestation.json",
                     ),
-                    ("SECURITY_ACCOUNT_REVIEWER", "<reviewer-login>"),
+                    ("SECURITY_ACCOUNT_REVIEWER", REVIEWER_LOGIN_PLACEHOLDER),
                     ("SECURITY_ACCOUNT_OWNER", "<security-owner-login-or-team>"),
                     (
                         "SECURITY_ACCOUNT_HUMAN_ACCESS",
@@ -502,9 +507,9 @@ def render_closeout_bundle(
                     ),
                     (
                         "SECURITY_ACCOUNT_APPROVAL",
-                        "<approved|approved_exception|accepted_risk>",
+                        APPROVAL_DECISION_PLACEHOLDER,
                     ),
-                    ("SECURITY_ACCOUNT_EXPIRY_DATE", "<YYYY-MM-DD>"),
+                    ("SECURITY_ACCOUNT_EXPIRY_DATE", DATE_PLACEHOLDER),
                     (
                         "SECURITY_ACCOUNT_ACTION",
                         "<non-secret remediation or exception note>",
@@ -534,11 +539,11 @@ def render_closeout_bundle(
                         "DEPENDABOT_EXCEPTION_JSON_OUTPUT",
                         ".artifacts/well-architected/dependabot-exception.json",
                     ),
-                    ("DEPENDABOT_EXCEPTION_REVIEWER", "<reviewer-login>"),
+                    ("DEPENDABOT_EXCEPTION_REVIEWER", REVIEWER_LOGIN_PLACEHOLDER),
                     ("DEPENDABOT_EXCEPTION_OWNER", "<security-owner-login-or-team>"),
                     (
                         "DEPENDABOT_EXCEPTION_APPROVAL",
-                        "<approved|approved_exception|accepted_risk>",
+                        APPROVAL_DECISION_PLACEHOLDER,
                     ),
                     (
                         "DEPENDABOT_EXCEPTION_REASON",
@@ -548,7 +553,7 @@ def render_closeout_bundle(
                         "DEPENDABOT_EXCEPTION_REMEDIATION",
                         "<non-secret remediation plan and target>",
                     ),
-                    ("DEPENDABOT_EXCEPTION_EXPIRY_DATE", "<YYYY-MM-DD>"),
+                    ("DEPENDABOT_EXCEPTION_EXPIRY_DATE", DATE_PLACEHOLDER),
                     (
                         "DEPENDABOT_EXCEPTION_EVIDENCE_NOTE",
                         "<non-secret owner evidence reference>",
@@ -572,7 +577,7 @@ def render_closeout_bundle(
                         "ALERT_ROUTE_OBSERVATION_JSON_OUTPUT",
                         ".artifacts/well-architected/alert-route-observation.json",
                     ),
-                    ("ALERT_ROUTE_REVIEWER", "<reviewer-login>"),
+                    ("ALERT_ROUTE_REVIEWER", REVIEWER_LOGIN_PLACEHOLDER),
                     ("ALERT_ROUTE_OWNER", "<route-owner-login-or-team>"),
                     (
                         "ALERT_ROUTE_DOWNSTREAM",
@@ -584,7 +589,7 @@ def render_closeout_bundle(
                     ),
                     ("ALERT_ROUTE_FALLBACK", "<non-secret fallback action>"),
                     ("ALERT_ROUTE_DECISION", "<approved|accepted_risk>"),
-                    ("ALERT_ROUTE_EXPIRY_DATE", "<YYYY-MM-DD>"),
+                    ("ALERT_ROUTE_EXPIRY_DATE", DATE_PLACEHOLDER),
                     (
                         "ALERT_ROUTE_ACTION",
                         "<non-secret follow-up or observation note>",
@@ -611,7 +616,7 @@ def render_closeout_bundle(
                         "PRODUCTION_DR_OWNER_JSON_OUTPUT",
                         ".artifacts/well-architected/production-dr-owner.json",
                     ),
-                    ("PRODUCTION_DR_REVIEWER", "<reviewer-login>"),
+                    ("PRODUCTION_DR_REVIEWER", REVIEWER_LOGIN_PLACEHOLDER),
                     ("PRODUCTION_DR_OWNER", "<production-owner-login-or-team>"),
                     (
                         "PRODUCTION_DR_ESCALATION_PATH",
@@ -631,16 +636,16 @@ def render_closeout_bundle(
                         "PRODUCTION_DR_LATEST_ACCEPTED_DRILL",
                         "<restore drill evidence id or date>",
                     ),
-                    ("PRODUCTION_DR_NEXT_REVIEW_DATE", "<YYYY-MM-DD>"),
+                    ("PRODUCTION_DR_NEXT_REVIEW_DATE", DATE_PLACEHOLDER),
                     (
                         "PRODUCTION_DR_EVIDENCE_RETENTION_LOCATION",
                         "<non-secret evidence location>",
                     ),
                     (
                         "PRODUCTION_DR_APPROVAL",
-                        "<approved|approved_exception|accepted_risk>",
+                        APPROVAL_DECISION_PLACEHOLDER,
                     ),
-                    ("PRODUCTION_DR_EXPIRY_DATE", "<YYYY-MM-DD>"),
+                    ("PRODUCTION_DR_EXPIRY_DATE", DATE_PLACEHOLDER),
                     (
                         "PRODUCTION_DR_ACTION",
                         "<non-secret follow-up or owner action>",

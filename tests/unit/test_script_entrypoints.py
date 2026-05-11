@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,56 @@ def load_script_module(monkeypatch: pytest.MonkeyPatch, module_name: str):
     importlib.invalidate_caches()
     sys.modules.pop(module_name, None)
     return importlib.import_module(module_name)
+
+
+CommandMatcher = Callable[[list[str]], bool]
+CommandResponse = Callable[[list[str]], subprocess.CompletedProcess[str]]
+
+
+def _starts_with(prefix: Sequence[str]) -> CommandMatcher:
+    expected = list(prefix)
+    return lambda command: command[: len(expected)] == expected
+
+
+def _last_arg_contains(fragment: str) -> CommandMatcher:
+    return lambda command: bool(command) and fragment in command[-1]
+
+
+def _last_arg_endswith(suffix: str) -> CommandMatcher:
+    return lambda command: bool(command) and command[-1].endswith(suffix)
+
+
+def _json_response(payload: object) -> CommandResponse:
+    def response(command: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    return response
+
+
+def _text_response(
+    stdout: str = "",
+    *,
+    returncode: int = 0,
+    stderr: str = "",
+) -> CommandResponse:
+    def response(command: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, returncode, stdout, stderr)
+
+    return response
+
+
+def _runner_from_cases(
+    cases: Sequence[tuple[CommandMatcher, CommandResponse]],
+) -> Callable[..., subprocess.CompletedProcess[str]]:
+    def runner(
+        command: list[str], **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        for matcher, response in cases:
+            if matcher(command):
+                return response(command)
+        raise AssertionError(command)
+
+    return runner
 
 
 def test_script_support_helpers_cover_local_script_utilities(
@@ -2044,7 +2095,9 @@ def test_verify_well_architected_questions_accepts_matching_toc(
     assert report["awsPillarQuestionCounts"]["Sustainability"] == 6  # nosec B101
     assert report["expectedUnresolvedQuestionIds"] == ["OPS1"]  # nosec B101
     assert report["evidenceUnresolvedQuestionIds"] == ["OPS1"]  # nosec B101
-    assert report["expectedQuestionScoreAverages"]["Operational Excellence"] == 4.91  # nosec B101
+    assert report["expectedQuestionScoreAverages"][  # nosec B101
+        "Operational Excellence"
+    ] == pytest.approx(4.91)
     assert (  # nosec B101
         report["evidenceFrameworkSourceVerification"]["officialTocUrlPresent"] is True
     )
@@ -4479,158 +4532,215 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
         encoding="utf-8",
     )
 
-    def runner(command, **_kwargs):  # noqa: C901
-        command_text = " ".join(command)
-        payload: object
-        if command[:4] == ["git", "-C", str(PROJECT_ROOT), "rev-parse"]:
-            return subprocess.CompletedProcess(command, 0, "abc123\n", "")
-        if command[:4] == ["git", "-C", str(PROJECT_ROOT), "status"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        if command[:3] == ["gh", "pr", "diff"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                "scripts/collect_well_architected_evidence.py\n"
-                "tests/unit/test_script_entrypoints.py\n",
-                "",
-            )
-        if command[:3] == ["gh", "pr", "view"]:
-            payload = {
-                "mergeStateStatus": "CLEAN",
-                "reviewDecision": "APPROVED",
-                "headRefOid": "abc123",
-                "headRefName": "feature",
-                "statusCheckRollup": [
+    runner = _runner_from_cases(
+        [
+            (
+                _starts_with(["git", "-C", str(PROJECT_ROOT), "rev-parse"]),
+                _text_response("abc123\n"),
+            ),
+            (
+                _starts_with(["git", "-C", str(PROJECT_ROOT), "status"]),
+                _text_response(),
+            ),
+            (
+                _starts_with(["gh", "pr", "diff"]),
+                _text_response(
+                    "scripts/collect_well_architected_evidence.py\n"
+                    "tests/unit/test_script_entrypoints.py\n"
+                ),
+            ),
+            (
+                _starts_with(["gh", "pr", "view"]),
+                _json_response(
                     {
-                        "__typename": "CheckRun",
-                        "name": "Unit",
-                        "status": "COMPLETED",
-                        "conclusion": "SUCCESS",
-                    },
+                        "mergeStateStatus": "CLEAN",
+                        "reviewDecision": "APPROVED",
+                        "headRefOid": "abc123",
+                        "headRefName": "feature",
+                        "statusCheckRollup": [
+                            {
+                                "__typename": "CheckRun",
+                                "name": "Unit",
+                                "status": "COMPLETED",
+                                "conclusion": "SUCCESS",
+                            },
+                            {
+                                "__typename": "CheckRun",
+                                "name": "Preview (Unprivileged)",
+                                "status": "COMPLETED",
+                                "conclusion": "SKIPPED",
+                            },
+                            {
+                                "__typename": "CheckRun",
+                                "name": "Evidence (Unprivileged)",
+                                "status": "COMPLETED",
+                                "conclusion": "SKIPPED",
+                            },
+                            {
+                                "__typename": "StatusContext",
+                                "context": "qlty check",
+                                "state": "SUCCESS",
+                            },
+                        ],
+                    }
+                ),
+            ),
+            (
+                _starts_with(["gh", "api", "graphql"]),
+                _json_response(
                     {
-                        "__typename": "CheckRun",
-                        "name": "Preview (Unprivileged)",
-                        "status": "COMPLETED",
-                        "conclusion": "SKIPPED",
-                    },
-                    {
-                        "__typename": "CheckRun",
-                        "name": "Evidence (Unprivileged)",
-                        "status": "COMPLETED",
-                        "conclusion": "SKIPPED",
-                    },
-                    {
-                        "__typename": "StatusContext",
-                        "context": "qlty check",
-                        "state": "SUCCESS",
-                    },
-                ],
-            }
-        elif command[:3] == ["gh", "api", "graphql"]:
-            payload = {
-                "data": {
-                    "repository": {
-                        "pullRequest": {
-                            "reviewThreads": {
-                                "nodes": [{"isResolved": True}, {"isResolved": True}]
+                        "data": {
+                            "repository": {
+                                "pullRequest": {
+                                    "reviewThreads": {
+                                        "nodes": [
+                                            {"isResolved": True},
+                                            {"isResolved": True},
+                                        ]
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
-        elif command[:2] == ["gh", "api"] and "/dependabot/alerts?" in command[-1]:
-            payload = []
-        elif command[:2] == ["gh", "api"] and command[-1].endswith(
-            "/environments/prod"
-        ):
-            payload = {
-                "name": "prod",
-                "protection_rules": [
+                ),
+            ),
+            (_last_arg_contains("/dependabot/alerts?"), _json_response([])),
+            (
+                _last_arg_endswith("/environments/prod"),
+                _json_response(
                     {
-                        "type": "required_reviewers",
-                        "prevent_self_review": True,
-                        "reviewers": [
+                        "name": "prod",
+                        "protection_rules": [
                             {
-                                "type": "User",
-                                "reviewer": {"login": "Kravalg"},
+                                "type": "required_reviewers",
+                                "prevent_self_review": True,
+                                "reviewers": [
+                                    {
+                                        "type": "User",
+                                        "reviewer": {"login": "Kravalg"},
+                                    }
+                                ],
                             }
                         ],
+                        "deployment_branch_policy": {
+                            "protected_branches": True,
+                            "custom_branch_policies": False,
+                        },
                     }
-                ],
-                "deployment_branch_policy": {
-                    "protected_branches": True,
-                    "custom_branch_policies": False,
-                },
-            }
-        elif command[:2] == ["gh", "api"]:
-            payload = {
-                "required_status_checks": {"contexts": ["Unit"]},
-                "required_pull_request_reviews": {"required_approving_review_count": 1},
-                "enforce_admins": {"enabled": True},
-            }
-        elif command[:3] == ["aws", "sts", "get-caller-identity"]:
-            payload = {"Account": "123456789012", "Arn": "arn:aws:iam::123:user/test"}
-        elif command[:3] == ["aws", "iam", "get-account-summary"]:
-            payload = {
-                "AccountAccessKeysPresent": 0,
-                "AccountMFAEnabled": 1,
-                "MFADevices": 1,
-                "MFADevicesInUse": 1,
-                "Users": 1,
-            }
-        elif command[:3] == ["aws", "iam", "list-users"]:
-            payload = ["automation"]
-        elif command[:3] == ["aws", "iam", "list-access-keys"]:
-            payload = []
-        elif command[:3] == ["aws", "budgets", "describe-budgets"]:
-            payload = 1
-        elif command[:3] == ["aws", "ce", "get-anomaly-monitors"]:
-            payload = 1
-        elif command[:3] == ["aws", "sns", "get-topic-attributes"]:
-            payload = "arn:aws:kms:us-east-1:123456789012:key/topic"
-        elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
-            payload = [
-                {
-                    "Protocol": "sqs",
-                    "Endpoint": (
-                        "arn:aws:sqs:us-east-1:123456789012:"
-                        "bootstrap-test-operations-alerts"
-                    ),
-                }
-            ]
-        elif command[:3] == ["aws", "sqs", "get-queue-url"]:
-            payload = (
-                "https://sqs.us-east-1.amazonaws.com/123456789012/"
-                "bootstrap-test-operations-alerts"
-            )
-        elif command[:3] == ["aws", "sqs", "get-queue-attributes"]:
-            payload = {
-                "ApproximateNumberOfMessages": "0",
-                "ApproximateNumberOfMessagesNotVisible": "0",
-                "ApproximateNumberOfMessagesDelayed": "0",
-                "MessageRetentionPeriod": "345600",
-                "VisibilityTimeout": "30",
-            }
-        elif command[:3] == ["aws", "cloudtrail", "get-trail"]:
-            payload = {
-                "Name": "bootstrap-test-management-events",
-                "IsMultiRegionTrail": True,
-                "IncludeGlobalServiceEvents": True,
-                "LogFileValidationEnabled": True,
-                "KmsKeyId": "arn:aws:kms:us-east-1:123456789012:key/cloudtrail",
-            }
-        elif command[:3] == ["aws", "cloudtrail", "get-trail-status"]:
-            payload = {
-                "IsLogging": True,
-                "LatestDeliveryTime": "2026-04-27T10:00:00Z",
-            }
-        elif command[:3] == ["aws", "cloudtrail", "get-event-selectors"]:
-            payload = [{"IncludeManagementEvents": True, "ReadWriteType": "All"}]
-        elif command[:3] == ["aws", "backup", "list-restore-jobs"]:
-            payload = ["COMPLETED"]
-        else:  # pragma: no cover - fail fast if the command contract changes.
-            raise AssertionError(command_text)
-        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+                ),
+            ),
+            (
+                _starts_with(["gh", "api"]),
+                _json_response(
+                    {
+                        "required_status_checks": {"contexts": ["Unit"]},
+                        "required_pull_request_reviews": {
+                            "required_approving_review_count": 1
+                        },
+                        "enforce_admins": {"enabled": True},
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "sts", "get-caller-identity"]),
+                _json_response(
+                    {
+                        "Account": "123456789012",
+                        "Arn": "arn:aws:iam::123:user/test",
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "iam", "get-account-summary"]),
+                _json_response(
+                    {
+                        "AccountAccessKeysPresent": 0,
+                        "AccountMFAEnabled": 1,
+                        "MFADevices": 1,
+                        "MFADevicesInUse": 1,
+                        "Users": 1,
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "iam", "list-users"]),
+                _json_response(["automation"]),
+            ),
+            (_starts_with(["aws", "iam", "list-access-keys"]), _json_response([])),
+            (_starts_with(["aws", "budgets", "describe-budgets"]), _json_response(1)),
+            (_starts_with(["aws", "ce", "get-anomaly-monitors"]), _json_response(1)),
+            (
+                _starts_with(["aws", "sns", "get-topic-attributes"]),
+                _json_response("arn:aws:kms:us-east-1:123456789012:key/topic"),
+            ),
+            (
+                _starts_with(["aws", "sns", "list-subscriptions-by-topic"]),
+                _json_response(
+                    [
+                        {
+                            "Protocol": "sqs",
+                            "Endpoint": (
+                                "arn:aws:sqs:us-east-1:123456789012:"
+                                "bootstrap-test-operations-alerts"
+                            ),
+                        }
+                    ]
+                ),
+            ),
+            (
+                _starts_with(["aws", "sqs", "get-queue-url"]),
+                _json_response(
+                    "https://sqs.us-east-1.amazonaws.com/123456789012/"
+                    "bootstrap-test-operations-alerts"
+                ),
+            ),
+            (
+                _starts_with(["aws", "sqs", "get-queue-attributes"]),
+                _json_response(
+                    {
+                        "ApproximateNumberOfMessages": "0",
+                        "ApproximateNumberOfMessagesNotVisible": "0",
+                        "ApproximateNumberOfMessagesDelayed": "0",
+                        "MessageRetentionPeriod": "345600",
+                        "VisibilityTimeout": "30",
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "cloudtrail", "get-trail"]),
+                _json_response(
+                    {
+                        "Name": "bootstrap-test-management-events",
+                        "IsMultiRegionTrail": True,
+                        "IncludeGlobalServiceEvents": True,
+                        "LogFileValidationEnabled": True,
+                        "KmsKeyId": (
+                            "arn:aws:kms:us-east-1:123456789012:key/cloudtrail"
+                        ),
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "cloudtrail", "get-trail-status"]),
+                _json_response(
+                    {
+                        "IsLogging": True,
+                        "LatestDeliveryTime": "2026-04-27T10:00:00Z",
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "cloudtrail", "get-event-selectors"]),
+                _json_response(
+                    [{"IncludeManagementEvents": True, "ReadWriteType": "All"}]
+                ),
+            ),
+            (
+                _starts_with(["aws", "backup", "list-restore-jobs"]),
+                _json_response(["COMPLETED"]),
+            ),
+        ]
+    )
 
     args = module.build_parser().parse_args(
         [
@@ -4674,7 +4784,9 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
         "5": "All evidence is current.",
     }
     assert question_evidence["questionScoreCount"] == 57  # nosec B101
-    assert question_evidence["questionScoreAverages"]["Security"] == 5.0  # nosec B101
+    assert question_evidence["questionScoreAverages"]["Security"] == pytest.approx(  # nosec B101
+        5.0
+    )
     assert (  # nosec B101
         question_evidence["pillarUnresolvedQuestionCounts"]["Security"] == 0
     )
@@ -4727,118 +4839,172 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
     """Collector should keep blockers explicit when metadata is insufficient."""
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
 
-    def runner(command, **_kwargs):  # noqa: C901
-        if command[0] == "git" and command[3:5] == ["rev-parse", "HEAD"]:
-            return subprocess.CompletedProcess(command, 0, "local123\n", "")
-        if command[0] == "git" and command[3] == "status":
-            return subprocess.CompletedProcess(command, 0, " M file.py\n", "")
-        if command[:3] == ["gh", "pr", "diff"]:
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                "pulumi/infra/bootstrap_infrastructure.py\nscripts/example.py\n",
-                "",
-            )
-        if command[:3] == ["gh", "pr", "view"]:
-            payload = {
-                "mergeStateStatus": "DIRTY",
-                "reviewDecision": "REVIEW_REQUIRED",
-                "headRefOid": "abc123",
-                "headRefName": "feature",
-                "statusCheckRollup": [
+    runner = _runner_from_cases(
+        [
+            (
+                lambda command: (
+                    command[0] == "git" and command[3:5] == ["rev-parse", "HEAD"]
+                ),
+                _text_response("local123\n"),
+            ),
+            (
+                lambda command: command[0] == "git" and command[3] == "status",
+                _text_response(" M file.py\n"),
+            ),
+            (
+                _starts_with(["gh", "pr", "diff"]),
+                _text_response(
+                    "pulumi/infra/bootstrap_infrastructure.py\nscripts/example.py\n"
+                ),
+            ),
+            (
+                _starts_with(["gh", "pr", "view"]),
+                _json_response(
                     {
-                        "__typename": "CheckRun",
-                        "name": "Unit",
-                        "status": "IN_PROGRESS",
-                        "conclusion": "",
-                    },
+                        "mergeStateStatus": "DIRTY",
+                        "reviewDecision": "REVIEW_REQUIRED",
+                        "headRefOid": "abc123",
+                        "headRefName": "feature",
+                        "statusCheckRollup": [
+                            {
+                                "__typename": "CheckRun",
+                                "name": "Unit",
+                                "status": "IN_PROGRESS",
+                                "conclusion": "",
+                            },
+                            {
+                                "__typename": "StatusContext",
+                                "context": "qlty check",
+                                "state": "ERROR",
+                            },
+                            {"__typename": "Unknown", "name": "mystery"},
+                        ],
+                    }
+                ),
+            ),
+            (
+                _starts_with(["gh", "api", "graphql"]),
+                _json_response(
                     {
-                        "__typename": "StatusContext",
-                        "context": "qlty check",
-                        "state": "ERROR",
-                    },
-                    {"__typename": "Unknown", "name": "mystery"},
-                ],
-            }
-        elif command[:3] == ["gh", "api", "graphql"]:
-            payload = {
-                "data": {
-                    "repository": {
-                        "pullRequest": {
-                            "reviewThreads": {
-                                "nodes": [{"isResolved": False}, {"isResolved": True}]
+                        "data": {
+                            "repository": {
+                                "pullRequest": {
+                                    "reviewThreads": {
+                                        "nodes": [
+                                            {"isResolved": False},
+                                            {"isResolved": True},
+                                        ]
+                                    }
+                                }
                             }
                         }
                     }
-                }
-            }
-        elif command[:2] == ["gh", "api"] and "/dependabot/alerts?" in command[-1]:
-            payload = [
-                {
-                    "number": 8,
-                    "state": "open",
-                    "dependency": {
-                        "package": {"name": "GitPython"},
-                        "manifest_path": "uv.lock",
-                    },
-                    "security_advisory": {"severity": "high"},
-                    "security_vulnerability": {
-                        "first_patched_version": {"identifier": "3.1.50"}
-                    },
-                }
-            ]
-        elif command[:2] == ["gh", "api"] and command[-1].endswith(
-            "/environments/prod"
-        ):
-            return subprocess.CompletedProcess(command, 1, "", "not found")
-        elif command[:2] == ["gh", "api"]:
-            payload = {
-                "required_status_checks": {"contexts": []},
-                "enforce_admins": {"enabled": False},
-            }
-        elif command[:3] == ["aws", "sts", "get-caller-identity"]:
-            payload = {"Account": "123456789012", "Arn": "arn:aws:iam::123:user/test"}
-        elif command[:3] == ["aws", "iam", "get-account-summary"]:
-            payload = {
-                "AccountAccessKeysPresent": 1,
-                "AccountMFAEnabled": 0,
-                "MFADevices": 0,
-                "MFADevicesInUse": 0,
-                "Users": 2,
-            }
-        elif command[:3] == ["aws", "iam", "list-users"]:
-            payload = ["automation", "maintainer"]
-        elif command[:3] == ["aws", "iam", "list-access-keys"] and (
-            command[command.index("--user-name") + 1] == "maintainer"
-        ):
-            return subprocess.CompletedProcess(command, 1, "", "denied")
-        elif command[:3] == ["aws", "iam", "list-access-keys"]:
-            payload = ["Active", "Inactive", "Unexpected"]
-        elif command[:3] == ["aws", "budgets", "describe-budgets"]:
-            payload = 0
-        elif command[:3] == ["aws", "ce", "get-anomaly-monitors"]:
-            payload = 0
-        elif command[:3] == ["aws", "sns", "get-topic-attributes"]:
-            payload = None
-        elif command[:3] == ["aws", "sns", "list-subscriptions-by-topic"]:
-            payload = []
-        elif command[:3] == ["aws", "cloudtrail", "get-trail"]:
-            payload = {
-                "Name": "bootstrap-test-management-events",
-                "IsMultiRegionTrail": False,
-                "IncludeGlobalServiceEvents": False,
-                "LogFileValidationEnabled": False,
-                "KmsKeyId": None,
-            }
-        elif command[:3] == ["aws", "cloudtrail", "get-trail-status"]:
-            payload = {"IsLogging": False}
-        elif command[:3] == ["aws", "cloudtrail", "get-event-selectors"]:
-            payload = []
-        elif command[:3] == ["aws", "backup", "list-restore-jobs"]:
-            payload = []
-        else:  # pragma: no cover - fail fast if the command contract changes.
-            raise AssertionError(command)
-        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+                ),
+            ),
+            (
+                _last_arg_contains("/dependabot/alerts?"),
+                _json_response(
+                    [
+                        {
+                            "number": 8,
+                            "state": "open",
+                            "dependency": {
+                                "package": {"name": "GitPython"},
+                                "manifest_path": "uv.lock",
+                            },
+                            "security_advisory": {"severity": "high"},
+                            "security_vulnerability": {
+                                "first_patched_version": {"identifier": "3.1.50"}
+                            },
+                        }
+                    ]
+                ),
+            ),
+            (
+                _last_arg_endswith("/environments/prod"),
+                _text_response(returncode=1, stderr="not found"),
+            ),
+            (
+                _starts_with(["gh", "api"]),
+                _json_response(
+                    {
+                        "required_status_checks": {"contexts": []},
+                        "enforce_admins": {"enabled": False},
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "sts", "get-caller-identity"]),
+                _json_response(
+                    {
+                        "Account": "123456789012",
+                        "Arn": "arn:aws:iam::123:user/test",
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "iam", "get-account-summary"]),
+                _json_response(
+                    {
+                        "AccountAccessKeysPresent": 1,
+                        "AccountMFAEnabled": 0,
+                        "MFADevices": 0,
+                        "MFADevicesInUse": 0,
+                        "Users": 2,
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "iam", "list-users"]),
+                _json_response(["automation", "maintainer"]),
+            ),
+            (
+                lambda command: (
+                    command[:3] == ["aws", "iam", "list-access-keys"]
+                    and command[command.index("--user-name") + 1] == "maintainer"
+                ),
+                _text_response(returncode=1, stderr="denied"),
+            ),
+            (
+                _starts_with(["aws", "iam", "list-access-keys"]),
+                _json_response(["Active", "Inactive", "Unexpected"]),
+            ),
+            (_starts_with(["aws", "budgets", "describe-budgets"]), _json_response(0)),
+            (_starts_with(["aws", "ce", "get-anomaly-monitors"]), _json_response(0)),
+            (
+                _starts_with(["aws", "sns", "get-topic-attributes"]),
+                _json_response(None),
+            ),
+            (
+                _starts_with(["aws", "sns", "list-subscriptions-by-topic"]),
+                _json_response([]),
+            ),
+            (
+                _starts_with(["aws", "cloudtrail", "get-trail"]),
+                _json_response(
+                    {
+                        "Name": "bootstrap-test-management-events",
+                        "IsMultiRegionTrail": False,
+                        "IncludeGlobalServiceEvents": False,
+                        "LogFileValidationEnabled": False,
+                        "KmsKeyId": None,
+                    }
+                ),
+            ),
+            (
+                _starts_with(["aws", "cloudtrail", "get-trail-status"]),
+                _json_response({"IsLogging": False}),
+            ),
+            (
+                _starts_with(["aws", "cloudtrail", "get-event-selectors"]),
+                _json_response([]),
+            ),
+            (
+                _starts_with(["aws", "backup", "list-restore-jobs"]),
+                _json_response([]),
+            ),
+        ]
+    )
 
     args = module.build_parser().parse_args(
         [
@@ -6838,64 +7004,72 @@ def test_collect_well_architected_evidence_reads_iam_access_metadata(
         module.dt.datetime.now(module.dt.timezone.utc) - module.dt.timedelta(days=1)
     ).isoformat()
 
-    def runner(command, **_kwargs):
-        if command[:3] == ["aws", "iam", "get-account-summary"]:
-            payload = {
-                "AccountAccessKeysPresent": 1,
-                "AccountMFAEnabled": 0,
-                "MFADevices": 1,
-                "MFADevicesInUse": 1,
-                "Users": 3,
-            }
-            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
-        if command[:3] == ["aws", "iam", "list-users"]:
-            return subprocess.CompletedProcess(
-                command, 0, json.dumps(["automation", "maintainer", "auditor"]), ""
-            )
-        if command[:3] == ["aws", "iam", "list-access-keys"] and (
-            command[command.index("--user-name") + 1] == "auditor"
-        ):
+    def access_keys_response(command: list[str]) -> subprocess.CompletedProcess[str]:
+        user_name = command[command.index("--user-name") + 1]
+        if user_name == "auditor":
             return subprocess.CompletedProcess(command, 1, "", "denied")
-        if command[:3] == ["aws", "iam", "list-access-keys"]:
-            user_name = command[command.index("--user-name") + 1]
-            active_key_id = f"{user_name}-active-key"
-            return subprocess.CompletedProcess(
-                command,
-                0,
-                json.dumps(
-                    [
-                        {
-                            "AccessKeyId": active_key_id,
-                            "CreateDate": (
-                                old_timestamp
-                                if user_name == "automation"
-                                else recent_timestamp
-                            ),
-                            "Status": "Active",
-                        },
-                        {
-                            "AccessKeyId": f"{user_name}-inactive-key",
-                            "CreateDate": old_timestamp,
-                            "Status": "Inactive",
-                        },
-                        {
-                            "AccessKeyId": f"{user_name}-unknown-key",
-                            "CreateDate": old_timestamp,
-                            "Status": "Other",
-                        },
-                    ]
+        active_created_at = (
+            old_timestamp if user_name == "automation" else recent_timestamp
+        )
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(
+                [
+                    {
+                        "AccessKeyId": f"{user_name}-active-key",
+                        "CreateDate": active_created_at,
+                        "Status": "Active",
+                    },
+                    {
+                        "AccessKeyId": f"{user_name}-inactive-key",
+                        "CreateDate": old_timestamp,
+                        "Status": "Inactive",
+                    },
+                    {
+                        "AccessKeyId": f"{user_name}-unknown-key",
+                        "CreateDate": old_timestamp,
+                        "Status": "Other",
+                    },
+                ]
+            ),
+            "",
+        )
+
+    def last_used_response(command: list[str]) -> subprocess.CompletedProcess[str]:
+        key_id = command[command.index("--access-key-id") + 1]
+        payload = (
+            {"LastUsedDate": old_timestamp}
+            if key_id == "automation-active-key"
+            else {"LastUsedDate": recent_timestamp}
+        )
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    runner = _runner_from_cases(
+        [
+            (
+                _starts_with(["aws", "iam", "get-account-summary"]),
+                _json_response(
+                    {
+                        "AccountAccessKeysPresent": 1,
+                        "AccountMFAEnabled": 0,
+                        "MFADevices": 1,
+                        "MFADevicesInUse": 1,
+                        "Users": 3,
+                    }
                 ),
-                "",
-            )
-        if command[:3] == ["aws", "iam", "get-access-key-last-used"]:
-            key_id = command[command.index("--access-key-id") + 1]
-            payload = (
-                {"LastUsedDate": old_timestamp}
-                if key_id == "automation-active-key"
-                else {"LastUsedDate": recent_timestamp}
-            )
-            return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
-        raise AssertionError(command)  # pragma: no cover
+            ),
+            (
+                _starts_with(["aws", "iam", "list-users"]),
+                _json_response(["automation", "maintainer", "auditor"]),
+            ),
+            (_starts_with(["aws", "iam", "list-access-keys"]), access_keys_response),
+            (
+                _starts_with(["aws", "iam", "get-access-key-last-used"]),
+                last_used_response,
+            ),
+        ]
+    )
 
     evidence = module.aws_iam_account_access(runner=runner)
 
@@ -7842,27 +8016,38 @@ def test_run_pulumi_command_plan_handles_multiple_configured_stacks(
 
     calls: list[list[str]] = []
 
+    def preview_response(
+        command: list[str], stdout: object
+    ) -> subprocess.CompletedProcess:
+        if stdout is not None:
+            stdout.write('{"changeSummary": {"create": 1}, "steps": []}')
+        if "--save-plan" in command:
+            plan_path = Path(command[command.index("--save-plan") + 1])
+            plan_path.write_text(
+                f"plan for {command[command.index('--stack') + 1]}",
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(command, 0)
+
     def fake_run(command, **kwargs):
         calls.append(command)
-        if command[0] == "pulumi" and command[3:6] == ["stack", "select", "test"]:
-            return subprocess.CompletedProcess(command, 1, stderr="missing test\n")
-        if command[0] == "pulumi" and command[3:6] == [
-            "stack",
-            "select",
-            "prod/eu",
-        ]:
-            return subprocess.CompletedProcess(command, 1, stderr="missing prod\n")
+        missing_stack_errors = {"test": "missing test\n", "prod/eu": "missing prod\n"}
+        selected_stack = (
+            command[5]
+            if command[0] == "pulumi"
+            and command[3:5]
+            == [
+                "stack",
+                "select",
+            ]
+            else ""
+        )
+        if selected_stack in missing_stack_errors:
+            return subprocess.CompletedProcess(
+                command, 1, stderr=missing_stack_errors[selected_stack]
+            )
         if command[0] == "pulumi" and command[3] == "preview":
-            stdout = kwargs.get("stdout")
-            if stdout is not None:
-                stdout.write('{"changeSummary": {"create": 1}, "steps": []}')
-            if "--save-plan" in command:
-                plan_path = Path(command[command.index("--save-plan") + 1])
-                plan_path.write_text(
-                    f"plan for {command[command.index('--stack') + 1]}",
-                    encoding="utf-8",
-                )
-            return subprocess.CompletedProcess(command, 0)
+            return preview_response(command, kwargs.get("stdout"))
         if command[:3] == ["uv", "--project", str(repo_dir)]:
             return subprocess.CompletedProcess(
                 command, 0, stdout=f"summary for {Path(command[-1]).stem}\n"

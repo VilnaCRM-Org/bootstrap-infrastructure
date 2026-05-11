@@ -8,6 +8,7 @@ import re
 import sys
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -20,12 +21,13 @@ AWS_WELL_ARCHITECTED_DOC_BASE = (
     "https://docs.aws.amazon.com/wellarchitected/latest/framework/"
 )
 QUESTION_RE = re.compile(
-    r"^(?P<prefix>OPS|SEC|REL|PERF|COST|SUS)\s+0*(?P<number>[1-9][0-9]?)"
+    r"^(?P<prefix>OPS|SEC|REL|PERF|COST|SUS)\s+0*(?P<number>[1-9]\d?)"
     r"\.?\s+(?P<title>.+)$"
 )
 MARKDOWN_QUESTION_ROW_RE = re.compile(
-    r"^\|\s*(?P<id>(?:OPS|SEC|REL|PERF|COST|SUS)[1-9][0-9]?)\s*\|"
+    r"^\|\s*(?P<id>(?:OPS|SEC|REL|PERF|COST|SUS)[1-9]\d?)\s*\|"
 )
+MISSING_QUESTION_ID = "<missing>"
 PILLAR_BY_PREFIX = {
     "OPS": "Operational Excellence",
     "SEC": "Security",
@@ -38,6 +40,30 @@ PILLAR_ORDER = tuple(PILLAR_BY_PREFIX.values())
 MARKDOWN_PILLAR_RE = re.compile(
     rf"^## (?P<pillar>{'|'.join(re.escape(pillar) for pillar in PILLAR_ORDER)})$"
 )
+
+
+@dataclass(frozen=True)
+class VerificationBlockerInputs:
+    """Derived mismatch sets used to render verification blockers."""
+
+    duplicate_aws_ids: Sequence[str]
+    duplicate_evidence_ids: Sequence[str]
+    missing_ids: Sequence[str]
+    extra_ids: Sequence[str]
+    invalid_score_ids: Sequence[str]
+    invalid_status_ids: Sequence[str]
+    score_status_mismatch_ids: Sequence[str]
+    missing_evidence_ref_ids: Sequence[str]
+    pillar_mismatch_ids: Sequence[str]
+    evidence_question_count: object
+    aws_question_count: int
+    declared_counts: object
+    aws_counts: dict[str, int]
+    evidence_counts: dict[str, int]
+    duplicate_markdown_ids: Sequence[str]
+    missing_markdown_ids: Sequence[str]
+    extra_markdown_ids: Sequence[str]
+    markdown_pillar_mismatch_ids: Sequence[str]
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -127,13 +153,13 @@ def _invalid_score_ids(items: Sequence[dict[str, Any]]) -> list[str]:
     for item in items:
         score = item.get("score")
         if isinstance(score, bool) or not isinstance(score, int) or not 1 <= score <= 5:
-            invalid.append(str(item.get("id", "<missing>")))
+            invalid.append(str(item.get("id", MISSING_QUESTION_ID)))
     return invalid
 
 
 def _invalid_status_ids(items: Sequence[dict[str, Any]]) -> list[str]:
     return [
-        str(item.get("id", "<missing>"))
+        str(item.get("id", MISSING_QUESTION_ID))
         for item in items
         if item.get("status") not in {"passed", "unresolved"}
     ]
@@ -147,7 +173,7 @@ def _score_status_mismatch_ids(items: Sequence[dict[str, Any]]) -> list[str]:
             continue
         status = item.get("status")
         if (status == "passed" and score != 5) or (status != "passed" and score == 5):
-            mismatched.append(str(item.get("id", "<missing>")))
+            mismatched.append(str(item.get("id", MISSING_QUESTION_ID)))
     return mismatched
 
 
@@ -391,7 +417,7 @@ def _missing_evidence_ref_ids(items: Sequence[dict[str, Any]]) -> list[str]:
             and refs
             and all(isinstance(ref, str) and ref.strip() for ref in refs)
         ):
-            missing.append(str(item.get("id", "<missing>")))
+            missing.append(str(item.get("id", MISSING_QUESTION_ID)))
     return missing
 
 
@@ -433,107 +459,87 @@ def extract_markdown_questions(markdown: str) -> list[dict[str, str]]:
     return questions
 
 
-def _verification_blockers(
-    *,
-    duplicate_aws_ids: Sequence[str],
-    duplicate_evidence_ids: Sequence[str],
-    missing_ids: Sequence[str],
-    extra_ids: Sequence[str],
-    invalid_score_ids: Sequence[str],
-    invalid_status_ids: Sequence[str],
-    score_status_mismatch_ids: Sequence[str],
-    missing_evidence_ref_ids: Sequence[str],
-    pillar_mismatch_ids: Sequence[str],
-    evidence_question_count: object,
-    aws_question_count: int,
-    declared_counts: object,
-    aws_counts: dict[str, int],
-    evidence_counts: dict[str, int],
-    duplicate_markdown_ids: Sequence[str],
-    missing_markdown_ids: Sequence[str],
-    extra_markdown_ids: Sequence[str],
-    markdown_pillar_mismatch_ids: Sequence[str],
-) -> list[str]:
+def _verification_blockers(inputs: VerificationBlockerInputs) -> list[str]:
     blocker_checks = (
         (
-            bool(duplicate_aws_ids),
+            bool(inputs.duplicate_aws_ids),
             "AWS Well-Architected TOC contains duplicate question IDs: "
-            f"{', '.join(duplicate_aws_ids)}.",
+            f"{', '.join(inputs.duplicate_aws_ids)}.",
         ),
         (
-            bool(duplicate_evidence_ids),
+            bool(inputs.duplicate_evidence_ids),
             "Question-matrix evidence contains duplicate question IDs: "
-            f"{', '.join(duplicate_evidence_ids)}.",
+            f"{', '.join(inputs.duplicate_evidence_ids)}.",
         ),
         (
-            bool(missing_ids),
+            bool(inputs.missing_ids),
             "Question-matrix evidence is missing AWS questions: "
-            f"{', '.join(missing_ids)}.",
+            f"{', '.join(inputs.missing_ids)}.",
         ),
         (
-            bool(extra_ids),
+            bool(inputs.extra_ids),
             "Question-matrix evidence contains non-AWS question IDs: "
-            f"{', '.join(extra_ids)}.",
+            f"{', '.join(inputs.extra_ids)}.",
         ),
         (
-            bool(invalid_score_ids),
+            bool(inputs.invalid_score_ids),
             "Question-matrix evidence scores must be integers from 1 to 5 for: "
-            f"{', '.join(invalid_score_ids)}.",
+            f"{', '.join(inputs.invalid_score_ids)}.",
         ),
         (
-            bool(invalid_status_ids),
+            bool(inputs.invalid_status_ids),
             "Question-matrix evidence statuses must be one of passed, "
-            f"unresolved for: {', '.join(invalid_status_ids)}.",
+            f"unresolved for: {', '.join(inputs.invalid_status_ids)}.",
         ),
         (
-            bool(score_status_mismatch_ids),
+            bool(inputs.score_status_mismatch_ids),
             "Question-matrix passed entries must score 5 and non-passed entries "
-            f"must score below 5 for: {', '.join(score_status_mismatch_ids)}.",
+            f"must score below 5 for: {', '.join(inputs.score_status_mismatch_ids)}.",
         ),
         (
-            bool(missing_evidence_ref_ids),
+            bool(inputs.missing_evidence_ref_ids),
             "Question-matrix non-passed entries must include evidenceRefs for: "
-            f"{', '.join(missing_evidence_ref_ids)}.",
+            f"{', '.join(inputs.missing_evidence_ref_ids)}.",
         ),
         (
-            bool(pillar_mismatch_ids),
+            bool(inputs.pillar_mismatch_ids),
             "Question-matrix evidence pillar values must match AWS question IDs "
-            f"for: {', '.join(pillar_mismatch_ids)}.",
+            f"for: {', '.join(inputs.pillar_mismatch_ids)}.",
         ),
         (
-            evidence_question_count != aws_question_count,
+            inputs.evidence_question_count != inputs.aws_question_count,
             "Question-matrix evidence questionCount must match the AWS TOC "
-            f"question count ({aws_question_count}).",
+            f"question count ({inputs.aws_question_count}).",
         ),
         (
-            declared_counts != aws_counts,
+            inputs.declared_counts != inputs.aws_counts,
             "Question-matrix frameworkSourceVerification.questionCounts must "
             "match the AWS TOC pillar counts.",
         ),
         (
-            evidence_counts != aws_counts,
+            inputs.evidence_counts != inputs.aws_counts,
             "Question-matrix questionScores pillar counts must match the AWS "
             "TOC pillar counts.",
         ),
         (
-            bool(duplicate_markdown_ids),
+            bool(inputs.duplicate_markdown_ids),
             "Question-matrix Markdown contains duplicate question rows: "
-            f"{', '.join(duplicate_markdown_ids)}.",
+            f"{', '.join(inputs.duplicate_markdown_ids)}.",
         ),
         (
-            bool(missing_markdown_ids),
+            bool(inputs.missing_markdown_ids),
             "Question-matrix Markdown is missing AWS question rows: "
-            f"{', '.join(missing_markdown_ids)}.",
+            f"{', '.join(inputs.missing_markdown_ids)}.",
         ),
         (
-            bool(extra_markdown_ids),
+            bool(inputs.extra_markdown_ids),
             "Question-matrix Markdown contains non-AWS question rows: "
-            f"{', '.join(extra_markdown_ids)}.",
+            f"{', '.join(inputs.extra_markdown_ids)}.",
         ),
         (
-            bool(markdown_pillar_mismatch_ids),
+            bool(inputs.markdown_pillar_mismatch_ids),
             "Question-matrix Markdown sections must match AWS question pillars "
-            f"for: {', '.join(markdown_pillar_mismatch_ids)}.",
+            f"for: {', '.join(inputs.markdown_pillar_mismatch_ids)}.",
         ),
     )
     return [message for failed, message in blocker_checks if failed]
@@ -606,24 +612,26 @@ def verify_question_matrix(
         aws_pillar_by_id,
     )
     blockers = _verification_blockers(
-        duplicate_aws_ids=duplicate_aws_ids,
-        duplicate_evidence_ids=duplicate_evidence_ids,
-        missing_ids=missing_ids,
-        extra_ids=extra_ids,
-        invalid_score_ids=invalid_score_ids,
-        invalid_status_ids=invalid_status_ids,
-        score_status_mismatch_ids=score_status_mismatch_ids,
-        missing_evidence_ref_ids=missing_evidence_ref_ids,
-        pillar_mismatch_ids=pillar_mismatch_ids,
-        evidence_question_count=evidence.get("questionCount"),
-        aws_question_count=len(aws_ids),
-        declared_counts=declared_counts,
-        aws_counts=aws_counts,
-        evidence_counts=evidence_counts,
-        duplicate_markdown_ids=duplicate_markdown_ids,
-        missing_markdown_ids=missing_markdown_ids,
-        extra_markdown_ids=extra_markdown_ids,
-        markdown_pillar_mismatch_ids=markdown_pillar_mismatch_ids,
+        VerificationBlockerInputs(
+            duplicate_aws_ids=duplicate_aws_ids,
+            duplicate_evidence_ids=duplicate_evidence_ids,
+            missing_ids=missing_ids,
+            extra_ids=extra_ids,
+            invalid_score_ids=invalid_score_ids,
+            invalid_status_ids=invalid_status_ids,
+            score_status_mismatch_ids=score_status_mismatch_ids,
+            missing_evidence_ref_ids=missing_evidence_ref_ids,
+            pillar_mismatch_ids=pillar_mismatch_ids,
+            evidence_question_count=evidence.get("questionCount"),
+            aws_question_count=len(aws_ids),
+            declared_counts=declared_counts,
+            aws_counts=aws_counts,
+            evidence_counts=evidence_counts,
+            duplicate_markdown_ids=duplicate_markdown_ids,
+            missing_markdown_ids=missing_markdown_ids,
+            extra_markdown_ids=extra_markdown_ids,
+            markdown_pillar_mismatch_ids=markdown_pillar_mismatch_ids,
+        )
     )
     blockers.extend(
         _question_matrix_summary_blockers(
