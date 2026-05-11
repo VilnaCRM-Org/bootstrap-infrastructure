@@ -217,8 +217,12 @@ Optional or job-specific environment variables:
 | `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for preview |
 | `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks |
 | `AWS_APPLY_ROLE_ARN` | OIDC role used by test or production apply jobs |
+| `OPERATIONS_TOPIC_ARN` | Standard metadata input for evidence collection when the environment reuses an existing operations SNS topic |
 | `OPERATIONS_CLOUDTRAIL_NAME` | Standard metadata input for evidence collection when the environment reuses an existing operations CloudTrail |
 | `RESTORE_DRILL_EVIDENCE` | Standard metadata input pointing to the latest workload-scoped restore drill evidence record |
+| `DEPENDABOT_EXCEPTION_EVIDENCE` | Optional non-secret exception evidence covering exact open default-branch Dependabot alert numbers when remediation cannot land immediately |
+| `ALERT_ROUTE_OBSERVATION_EVIDENCE` | Optional non-secret SRE-approved downstream alert-route observation evidence matching the live operations route |
+| `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` | Optional non-secret security-owner attestation for aggregate IAM account-access posture, human MFA/SSO posture, active-key decision, and permissions-boundary or exemption decision |
 | `PRODUCTION_DR_OWNER_EVIDENCE` | Optional non-secret production-owner DR evidence that binds RTO/RPO, recovery ownership, escalation, communications, latest accepted drill, next review, and retention location to current restore-drill metadata |
 | `QUESTION_MATRIX_EVIDENCE` | Standard metadata input pointing to the structured 57-question review evidence record |
 | `EXTERNAL_CONTROL_EVIDENCE` | Standard metadata input pointing to the structured external-control owner and freshness evidence record |

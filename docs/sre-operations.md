@@ -255,8 +255,15 @@ secret-bearing dumps. Retain these non-secret handles when validating a stack:
 - `costAnomalyMonitorArn`
 - `costAnomalySubscriptionArn`
 - `backupVaultName` and `backupVaultArn`
+- `OPERATIONS_TOPIC_ARN` when an existing operations SNS topic is reused
 - `OPERATIONS_CLOUDTRAIL_NAME` when an existing operations trail is reused
 - `RESTORE_DRILL_EVIDENCE` for the latest workload-scoped restore drill record
+- `DEPENDABOT_EXCEPTION_EVIDENCE` for non-secret exact-alert exception
+  evidence when default-branch remediation cannot land immediately
+- `ALERT_ROUTE_OBSERVATION_EVIDENCE` for non-secret downstream alert-route
+  observation evidence
+- `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` for non-secret security-owner
+  attestation of aggregate IAM account-access posture
 - `PRODUCTION_DR_OWNER_EVIDENCE` for non-secret production DR owner approval,
   RTO/RPO, escalation, communications, drill, review, and retention evidence
 - `QUESTION_MATRIX_EVIDENCE` for the structured 57-question review record
