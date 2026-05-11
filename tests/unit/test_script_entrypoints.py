@@ -2751,6 +2751,7 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT" in text  # nosec B101
     assert "SECURITY_ACCOUNT_EXPIRY_DATE" in text  # nosec B101
     assert "SECURITY_ACCOUNT_ACTIVE_KEY_DECISION" in text  # nosec B101
+    assert "patched `uv.lock` for every open high-severity alert" in text  # nosec B101
     assert "make report-dependabot-exception" in text  # nosec B101
     assert "DEPENDABOT_EXCEPTION_JSON_OUTPUT" in text  # nosec B101
     assert "DEPENDABOT_EXCEPTION_EXPIRY_DATE" in text  # nosec B101

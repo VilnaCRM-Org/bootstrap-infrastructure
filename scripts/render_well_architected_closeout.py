@@ -525,7 +525,8 @@ def render_closeout_bundle(
             "",
             "### Vulnerability Owner",
             "",
-            "- Prefer merging the approved dependency-only Dependabot remediation PR.",
+            "- Prefer merging a default-branch dependency remediation that lands "
+            "the patched `uv.lock` for every open high-severity alert.",
             "- If remediation cannot merge immediately, generate a short exception "
             "with `make report-dependabot-exception` and re-run "
             "`DEPENDABOT_EXCEPTION_EVIDENCE=<path> "
