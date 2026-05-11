@@ -696,7 +696,11 @@ def _review_thread_counts(nodes: list[dict]) -> tuple[dict[str, int], int]:
 
 def _unresolved_review_threads(nodes: Sequence[object]) -> list[dict[str, Any]]:
     """Return unresolved review-thread nodes."""
-    return [node for node in nodes if _review_thread_unresolved(node)]
+    unresolved = []
+    for node in nodes:
+        if _review_thread_unresolved(node):
+            unresolved.append(cast("dict[str, Any]", node))
+    return unresolved
 
 
 def _review_thread_unresolved(node: object) -> bool:
