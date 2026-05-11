@@ -92,7 +92,7 @@ def _score_scale_summary(score_scale: object) -> str:
 
 
 def _collector_command(pr_number: object, topic_arn: object, trail_name: object) -> str:
-    """Return the final collector command with required evidence inputs visible."""
+    """Return the final collector command with closure evidence inputs visible."""
     entries = [
         ("PR_NUMBER", pr_number),
         ("OPERATIONS_TOPIC_ARN", topic_arn),
@@ -100,6 +100,10 @@ def _collector_command(pr_number: object, topic_arn: object, trail_name: object)
         ("RESTORE_DRILL_EVIDENCE", "<path>"),
         ("QUESTION_MATRIX_EVIDENCE", "<path>"),
         ("EXTERNAL_CONTROL_EVIDENCE", "<path>"),
+        ("DEPENDABOT_EXCEPTION_EVIDENCE", "<path-if-needed>"),
+        ("ALERT_ROUTE_OBSERVATION_EVIDENCE", "<path-if-needed>"),
+        ("SECURITY_ACCOUNT_ATTESTATION_EVIDENCE", "<path-if-needed>"),
+        ("PRODUCTION_DR_OWNER_EVIDENCE", "<path-if-needed>"),
     ]
     prefix = " ".join(f"{key}={value}" for key, value in entries if value)
     return f"{prefix} make report-well-architected-evidence"

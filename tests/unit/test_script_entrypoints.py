@@ -2702,6 +2702,10 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "RESTORE_DRILL_EVIDENCE=<path>" in text  # nosec B101
     assert "QUESTION_MATRIX_EVIDENCE=<path>" in text  # nosec B101
     assert "EXTERNAL_CONTROL_EVIDENCE=<path>" in text  # nosec B101
+    assert "DEPENDABOT_EXCEPTION_EVIDENCE=<path-if-needed>" in text  # nosec B101
+    assert "ALERT_ROUTE_OBSERVATION_EVIDENCE=<path-if-needed>" in text  # nosec B101
+    assert "SECURITY_ACCOUNT_ATTESTATION_EVIDENCE=<path-if-needed>" in text  # nosec B101
+    assert "PRODUCTION_DR_OWNER_EVIDENCE=<path-if-needed>" in text  # nosec B101
     assert "SecretString" not in text  # nosec B101
 
 
