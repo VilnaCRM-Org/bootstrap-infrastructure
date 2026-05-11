@@ -339,6 +339,28 @@ class DependabotAlertRequest:
     blocking_severities: frozenset[str] = BLOCKING_DEPENDABOT_SEVERITIES
 
 
+@dataclass(frozen=True)
+class OptionalOwnerEvidenceSpec:
+    """Validation hooks for optional owner evidence attached to live metadata."""
+
+    label: str
+    required_fields: Sequence[str]
+    payload_blockers: Callable[[dict[str, Any], dict[str, object]], list[str]]
+    summary: Callable[[Path, dict[str, Any]], dict[str, object]]
+
+
+@dataclass(frozen=True)
+class GitHubPrCheckEvidenceInputs:
+    """Inputs for rendering normalized PR check evidence."""
+
+    payload: dict[str, Any]
+    entries: Sequence[dict[str, Any]]
+    failing: Sequence[str]
+    files_ok: bool
+    changed_files: Sequence[str]
+    current_check_in_progress: Sequence[str] = ()
+
+
 def _check(
     name: str,
     *,
@@ -368,6 +390,25 @@ def _run_json(
         return True, json.loads(result.stdout or "null"), ""
     except json.JSONDecodeError as exc:
         return False, None, f"invalid JSON output: {exc.msg}"
+
+
+def _optional_owner_evidence_coverage(
+    evidence_path: Path | None,
+    *,
+    spec: OptionalOwnerEvidenceSpec,
+    live_evidence: dict[str, object],
+) -> tuple[dict[str, object], list[str]]:
+    """Return optional owner evidence summary and blockers."""
+    if evidence_path is None:
+        return {}, []
+
+    payload, blockers = _read_required_structured_evidence(
+        evidence_path,
+        spec.label,
+        spec.required_fields,
+    )
+    blockers.extend(spec.payload_blockers(payload, live_evidence))
+    return spec.summary(evidence_path, payload), blockers
 
 
 def _rollup_entry_passed(entry: dict[str, Any]) -> bool:
@@ -560,12 +601,14 @@ def github_pr_checks(
         "github_pr_checks",
         status="passed" if not blockers else "failed",
         evidence=_github_pr_check_evidence(
-            payload,
-            entries,
-            failing,
-            files_ok=files_ok,
-            changed_files=changed_files,
-            current_check_in_progress=current_check_in_progress,
+            GitHubPrCheckEvidenceInputs(
+                payload=payload,
+                entries=entries,
+                failing=failing,
+                files_ok=files_ok,
+                changed_files=changed_files,
+                current_check_in_progress=current_check_in_progress,
+            ),
         ),
         blockers=blockers,
     )
@@ -584,30 +627,24 @@ def _github_pr_check_blockers_with_files(
     return blockers
 
 
-def _github_pr_check_evidence(
-    payload: dict[str, Any],
-    entries: Sequence[dict[str, Any]],
-    failing: Sequence[str],
-    *,
-    files_ok: bool,
-    changed_files: Sequence[str],
-    current_check_in_progress: Sequence[str] = (),
-) -> dict[str, object]:
+def _github_pr_check_evidence(inputs: GitHubPrCheckEvidenceInputs) -> dict[str, object]:
     """Return PR check evidence including non-secret changed-file metadata."""
     return {
-        "headRefOid": payload.get("headRefOid"),
-        "mergeStateStatus": payload.get("mergeStateStatus"),
-        "mergeable": payload.get("mergeable"),
-        "reviewDecision": payload.get("reviewDecision"),
-        "checkCount": len(entries),
-        "nonPassingCheckCount": len(failing),
-        "currentCheckInProgressCount": len(current_check_in_progress),
-        "currentCheckInProgressNames": list(current_check_in_progress),
-        "changedFileCount": len(changed_files) if files_ok else None,
+        "headRefOid": inputs.payload.get("headRefOid"),
+        "mergeStateStatus": inputs.payload.get("mergeStateStatus"),
+        "mergeable": inputs.payload.get("mergeable"),
+        "reviewDecision": inputs.payload.get("reviewDecision"),
+        "checkCount": len(inputs.entries),
+        "nonPassingCheckCount": len(inputs.failing),
+        "currentCheckInProgressCount": len(inputs.current_check_in_progress),
+        "currentCheckInProgressNames": list(inputs.current_check_in_progress),
+        "changedFileCount": len(inputs.changed_files) if inputs.files_ok else None,
         "changedFileTopLevelPaths": (
-            _changed_file_top_level_paths(changed_files) if files_ok else []
+            _changed_file_top_level_paths(inputs.changed_files)
+            if inputs.files_ok
+            else []
         ),
-        "changedFilePaths": list(changed_files) if files_ok else [],
+        "changedFilePaths": list(inputs.changed_files) if inputs.files_ok else [],
     }
 
 
@@ -2187,17 +2224,11 @@ def _alert_route_observation_coverage(
     route_evidence: dict[str, object],
 ) -> tuple[dict[str, object], list[str]]:
     """Return approved alert-route observation metadata."""
-    if evidence_path is None:
-        return {}, []
-
-    label = "Alert-route observation evidence"
-    payload, blockers = _read_required_structured_evidence(
+    return _optional_owner_evidence_coverage(
         evidence_path,
-        label,
-        ALERT_ROUTE_OBSERVATION_REQUIRED_FIELDS,
+        spec=ALERT_ROUTE_OBSERVATION_SPEC,
+        live_evidence=route_evidence,
     )
-    blockers.extend(_alert_route_observation_payload_blockers(payload, route_evidence))
-    return _alert_route_observation_summary(evidence_path, payload), blockers
 
 
 def _alert_route_observation_payload_blockers(
@@ -2299,6 +2330,14 @@ def _alert_route_observation_summary(
         "downstreamRoute": str(payload.get("downstreamRoute") or ""),
         "severityExpectations": str(payload.get("severityExpectations") or ""),
     }
+
+
+ALERT_ROUTE_OBSERVATION_SPEC = OptionalOwnerEvidenceSpec(
+    label="Alert-route observation evidence",
+    required_fields=ALERT_ROUTE_OBSERVATION_REQUIRED_FIELDS,
+    payload_blockers=_alert_route_observation_payload_blockers,
+    summary=_alert_route_observation_summary,
+)
 
 
 def _sns_subscription_items(payload: object) -> list[dict[str, str]]:
@@ -2708,17 +2747,11 @@ def _production_dr_owner_coverage(
     restore_evidence: dict[str, object],
 ) -> tuple[dict[str, object], list[str]]:
     """Return approved production DR owner metadata for restore evidence."""
-    if evidence_path is None:
-        return {}, []
-
-    label = "Production DR owner evidence"
-    payload, blockers = _read_required_structured_evidence(
+    return _optional_owner_evidence_coverage(
         evidence_path,
-        label,
-        PRODUCTION_DR_OWNER_REQUIRED_FIELDS,
+        spec=PRODUCTION_DR_OWNER_SPEC,
+        live_evidence=restore_evidence,
     )
-    blockers.extend(_production_dr_owner_payload_blockers(payload, restore_evidence))
-    return _production_dr_owner_summary(evidence_path, payload), blockers
 
 
 def _production_dr_owner_payload_blockers(
@@ -2793,6 +2826,14 @@ def _production_dr_owner_summary(
             for field in PRODUCTION_DR_OWNER_SUMMARY_FIELDS
         },
     }
+
+
+PRODUCTION_DR_OWNER_SPEC = OptionalOwnerEvidenceSpec(
+    label="Production DR owner evidence",
+    required_fields=PRODUCTION_DR_OWNER_REQUIRED_FIELDS,
+    payload_blockers=_production_dr_owner_payload_blockers,
+    summary=_production_dr_owner_summary,
+)
 
 
 def repository_fanout_evidence(
