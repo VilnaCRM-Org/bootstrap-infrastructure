@@ -635,6 +635,42 @@ EOF
   [[ "$output" != *"Rotate active key"* ]]
 }
 
+@test "make report-production-dr-owner-evidence renders production DR owner evidence" {
+  run env \
+    PRODUCTION_DR_OWNER_OUTPUT=docs/production-dr-owner-2026-06-10.md \
+    PRODUCTION_DR_OWNER_JSON_OUTPUT=docs/production-dr-owner-2026-06-10.json \
+    PRODUCTION_DR_REVIEWER=sre-reviewer \
+    PRODUCTION_DR_OWNER=production-owner \
+    PRODUCTION_DR_ESCALATION_PATH=incident-commander \
+    PRODUCTION_DR_RTO_TARGET=4h \
+    PRODUCTION_DR_RPO_TARGET=1h \
+    PRODUCTION_DR_RECOVERY_ORDER='Restore state before deploy.' \
+    PRODUCTION_DR_COMMUNICATIONS_PLAN='Post updates in incident channel.' \
+    PRODUCTION_DR_LATEST_ACCEPTED_DRILL='restore drill 2026-04-27' \
+    PRODUCTION_DR_NEXT_REVIEW_DATE=2026-07-10 \
+    PRODUCTION_DR_EVIDENCE_RETENTION_LOCATION=docs/production-dr-owner-2026-06-10.md \
+    PRODUCTION_DR_APPROVAL=approved \
+    PRODUCTION_DR_ACTION='Run production tabletop before expiry.' \
+    PRODUCTION_DR_EXPIRY_DATE=2026-07-10T00:00:00Z \
+    PRODUCTION_DR_OWNER_FORCE=1 \
+    make -n report-production-dr-owner-evidence
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/record_production_dr_owner_evidence.py"* ]]
+  [[ "$output" == *'PRODUCTION_DR_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"PRODUCTION_DR_OWNER_JSON_OUTPUT"* ]]
+  [[ "$output" == *"--json-output"* ]]
+  [[ "$output" == *"--escalation-path"* ]]
+  [[ "$output" == *"PRODUCTION_DR_ESCALATION_PATH"* ]]
+  [[ "$output" == *"--latest-accepted-drill"* ]]
+  [[ "$output" == *"PRODUCTION_DR_LATEST_ACCEPTED_DRILL"* ]]
+  [[ "$output" == *"--action"* ]]
+  [[ "$output" == *"PRODUCTION_DR_OWNER_FORCE"* ]]
+  [[ "$output" == *"--force"* ]]
+  [[ "$output" != *"sre-reviewer"* ]]
+  [[ "$output" != *"Restore state"* ]]
+  [[ "$output" != *"Run production tabletop"* ]]
+}
+
 @test "make test-quality delegates to the Rust-based quality suite" {
   run make -n test-quality
   [ "$status" -eq 0 ]
