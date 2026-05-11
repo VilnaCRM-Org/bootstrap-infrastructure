@@ -58,6 +58,7 @@ ignore_notebooks = true
 known_first_party = [
     "_pulumi_command_support",
     "_script_support",
+    "_well_architected_recording",
     "app",
     "infra",
     "policy",

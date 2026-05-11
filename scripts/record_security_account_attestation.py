@@ -7,7 +7,9 @@ import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
+
+import _well_architected_recording as _recording
 
 SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS = (
     "summaryUserCount",
@@ -41,22 +43,13 @@ SECURITY_ACCOUNT_ALLOWED_ACTIVE_KEY = frozenset(
 SECURITY_ACCOUNT_ALLOWED_BOUNDARY = frozenset(
     {"boundary_verified", "approved_exemption", "accepted_risk", "not_required"}
 )
-STRUCTURED_EVIDENCE_MAX_AGE_DAYS = 30
-
-
-def _load_report(path: Path) -> dict[str, Any]:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("evidence report must be a JSON object")
-    return payload
-
-
-def _check_by_name(report: dict[str, Any], name: str) -> dict[str, Any]:
-    for item in report.get("checks", []):
-        check = cast("dict[str, Any]", item)
-        if check.get("name") == name:
-            return check
-    raise ValueError(f"evidence report does not contain check {name!r}")
+STRUCTURED_EVIDENCE_MAX_AGE_DAYS = _recording.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
+_load_report = _recording.load_report
+_check_by_name = _recording.check_by_name
+_markdown_cell = _recording.markdown_cell
+_table = _recording.markdown_table
+_parse_iso_date_or_timestamp = _recording.parse_iso_date_or_timestamp
+_validate_structured_dates = _recording.validate_structured_dates
 
 
 def _iam_access_check(report: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -76,18 +69,6 @@ def _identity_account(report: dict[str, Any]) -> object:
     if not isinstance(evidence, dict):
         return ""
     return evidence.get("account", "")
-
-
-def _markdown_cell(value: object) -> str:
-    return str(value).replace("\n", " ").replace("|", "\\|")
-
-
-def _table(rows: Sequence[tuple[str, object]]) -> str:
-    lines = ["| Field | Value |", "| --- | --- |"]
-    lines.extend(
-        f"| {_markdown_cell(key)} | {_markdown_cell(value)} |" for key, value in rows
-    )
-    return "\n".join(lines)
 
 
 def _blocker_lines(check: dict[str, Any]) -> str:
@@ -285,48 +266,6 @@ def _choice_blockers(
         return []
     allowed = ", ".join(sorted(allowed_values))
     return [f"{field} must be one of: {allowed}."]
-
-
-def _validate_structured_dates(
-    label: str, reviewed_at_value: str, expires_at_value: str
-) -> None:
-    """Reject structured evidence dates the collector would later reject."""
-    reviewed_at = _parse_iso_date_or_timestamp(reviewed_at_value)
-    if reviewed_at is None:
-        raise ValueError(f"{label} review-date must be an ISO-8601 date or timestamp.")
-    now = dt.datetime.now(dt.timezone.utc)
-    if reviewed_at > now + dt.timedelta(minutes=5):
-        raise ValueError(f"{label} review-date is in the future.")
-    if now - reviewed_at > dt.timedelta(days=STRUCTURED_EVIDENCE_MAX_AGE_DAYS):
-        raise ValueError(
-            f"{label} review-date is older than "
-            f"{STRUCTURED_EVIDENCE_MAX_AGE_DAYS} days."
-        )
-    if not expires_at_value.strip():
-        raise ValueError(f"{label} JSON output requires --expiry-date.")
-    expires_at = _parse_iso_date_or_timestamp(expires_at_value)
-    if expires_at is None:
-        raise ValueError(f"{label} expiry-date must be an ISO-8601 date or timestamp.")
-    if expires_at <= now:
-        raise ValueError(f"{label} expiry-date is expired.")
-
-
-def _parse_iso_date_or_timestamp(value: str) -> dt.datetime | None:
-    """Parse an ISO date or timestamp into an aware UTC datetime."""
-    try:
-        if "T" not in value:
-            parsed_date = dt.date.fromisoformat(value)
-            return dt.datetime.combine(
-                parsed_date,
-                dt.time.min,
-                tzinfo=dt.timezone.utc,
-            )
-        parsed_datetime = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed_datetime.tzinfo is None:
-        return parsed_datetime.replace(tzinfo=dt.timezone.utc)
-    return parsed_datetime.astimezone(dt.timezone.utc)
 
 
 def build_parser() -> argparse.ArgumentParser:
