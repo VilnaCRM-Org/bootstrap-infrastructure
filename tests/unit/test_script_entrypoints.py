@@ -7717,6 +7717,9 @@ def test_collect_well_architected_evidence_main_writes_report(
     assert "| None reported | - |" in blocked_markdown  # nosec B101
     assert "| Custom \\| Pillar | 3 |" in blocked_markdown  # nosec B101
     assert "| - | failed | blocked \\| escaped |" in blocked_markdown  # nosec B101
+    assert module._score_table_rows({"Security": 5.0}) == [  # noqa: SLF001  # nosec B101
+        "| Security | 5.0 |"
+    ]
     assert module._markdown_checks("invalid") == []  # noqa: SLF001  # nosec B101
     assert module._markdown_string_entries("invalid") == []  # noqa: SLF001  # nosec B101
 
