@@ -399,6 +399,16 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
         for step in evidence_steps
         if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
     )
+    checkout_step = next(
+        step
+        for step in evidence_steps
+        if step.get("uses", "").startswith("actions/checkout@")
+    )
+    wait_step = next(
+        step
+        for step in evidence_steps
+        if step.get("name") == "Wait for PR checks before evidence snapshot"
+    )
     collector_step = next(
         step
         for step in evidence_steps
@@ -435,7 +445,15 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
         "contents": "read",
         "id-token": "write",
         "pull-requests": "read",
+        "security-events": "read",
     }
+    assert (  # nosec B101
+        checkout_step["with"]["ref"]
+        == "${{ github.event.pull_request.head.sha || github.sha }}"
+    )
+    assert checkout_step["with"]["persist-credentials"] is False  # nosec B101
+    assert "expected_checks=(" in wait_step["run"]  # nosec B101
+    assert "Test Account Evidence (Advisory)" not in wait_step["run"]  # nosec B101
     assert "OPERATIONS_TOPIC_ARN" in preflight_step["run"]  # nosec B101
     assert "12-digit AWS account ID" in preflight_step["run"]  # nosec B101
     assert "SNS topic ARN" in preflight_step["run"]  # nosec B101

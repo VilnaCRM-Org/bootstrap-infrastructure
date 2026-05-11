@@ -55,6 +55,7 @@ jobs:
       contents: read
       id-token: write
       pull-requests: read
+      security-events: read
     env:
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
@@ -76,6 +77,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Validate evidence prerequisites
