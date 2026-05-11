@@ -63,6 +63,12 @@ def _table(rows: Sequence[tuple[str, object]]) -> str:
     return "\n".join(lines)
 
 
+def _score_summary(scores: object) -> str:
+    if not isinstance(scores, dict) or not scores:
+        return "None"
+    return ", ".join(f"{pillar}: {score}" for pillar, score in scores.items())
+
+
 def _collector_command(pr_number: object, topic_arn: object, trail_name: object) -> str:
     """Return the final collector command with required evidence inputs visible."""
     entries = [
@@ -75,6 +81,123 @@ def _collector_command(pr_number: object, topic_arn: object, trail_name: object)
     ]
     prefix = " ".join(f"{key}={value}" for key, value in entries if value)
     return f"{prefix} make report-well-architected-evidence"
+
+
+def _goal_status(
+    failed_check_names: Sequence[str],
+    unresolved_questions: Sequence[str],
+    unresolved_controls: Sequence[str],
+    score_blockers: Sequence[str],
+) -> str:
+    if (
+        failed_check_names
+        or unresolved_questions
+        or unresolved_controls
+        or score_blockers
+    ):
+        return "Not achieved"
+    return "Achieved"
+
+
+def _failed_check_rows(
+    failed_checks: Sequence[dict[str, Any]],
+) -> list[tuple[str, str, str]]:
+    return [
+        (
+            str(check.get("name", "")),
+            str(check.get("status", "")),
+            _comma_list(_string_entries(check.get("blockers"))),
+        )
+        for check in failed_checks
+    ] or [("None", "passed", "None")]
+
+
+def _objective_audit_lines(
+    evidence_report: dict[str, Any],
+    score_blockers: Sequence[str],
+    goal_status: str,
+) -> list[str]:
+    return [
+        "## Objective Audit",
+        "",
+        _table(
+            [
+                (
+                    "Success criteria",
+                    "All AWS Well-Architected questions checked, PR and project code "
+                    "checked, 1-5 scores assigned, and every question plus external "
+                    "condition honestly at 5/5.",
+                ),
+                ("Current result", goal_status),
+                (
+                    "Current final scores",
+                    _score_summary(evidence_report.get("pillarScores")),
+                ),
+                (
+                    "Proxy scores",
+                    _score_summary(evidence_report.get("proxyPillarScores")),
+                ),
+                ("Score blockers", _comma_list(score_blockers)),
+            ]
+        ),
+        "",
+    ]
+
+
+def _prompt_checklist_lines(
+    question_verification: dict[str, Any],
+    pr_checks: dict[str, Any],
+    local_state: dict[str, Any],
+    pr_head: object,
+    unresolved_questions: Sequence[str],
+    failed_check_names: Sequence[str],
+    goal_status: str,
+    evidence_report: dict[str, Any],
+) -> list[str]:
+    return [
+        "## Prompt-To-Artifact Checklist",
+        "",
+        "| Requirement | Artifact evidence | Coverage | Current result |",
+        "| --- | --- | --- | --- |",
+        (
+            "| Check all AWS Well-Architected Framework questions | "
+            f"`{question_verification.get('tocSource', '')}`; "
+            f"{question_verification.get('evidenceQuestionCount', '')} evidence rows; "
+            f"{question_verification.get('markdownQuestionCount', '')} Markdown rows | "
+            "Verifier compares structured evidence and reviewer Markdown with the "
+            "AWS public TOC | "
+            f"{question_verification.get('status', '') or 'verified'}; unresolved: "
+            f"{_comma_list(unresolved_questions)} |"
+        ),
+        (
+            "| Check PR code and whole project code | "
+            f"PR head `{pr_head}`; hosted checks "
+            f"{pr_checks.get('checkCount', '')}; non-passing hosted checks "
+            f"{pr_checks.get('nonPassingCheckCount', '')}; local dirty files "
+            f"{local_state.get('dirtyFileCount', '')} | "
+            "Hosted PR gates plus local evidence state cover the reviewed branch; "
+            "repository-owned tests still need to stay green after every new push | "
+            f"merge state {pr_checks.get('mergeStateStatus', '')}; review decision "
+            f"{pr_checks.get('reviewDecision', '') or 'empty'} |"
+        ),
+        (
+            "| Put scores from 1 to 5 | "
+            "Collector `pillarScores`, `proxyPillarScores`, and score blockers | "
+            "Final scores are capped by failed readiness gates; proxy scores are "
+            "not accepted as final | "
+            f"{_score_summary(evidence_report.get('pillarScores'))} |"
+        ),
+        (
+            "| Work until PR is 5/5 for all questions and conditions | "
+            "Collector failed gates, unresolved AWS questions, unresolved external "
+            "controls, and score blockers | "
+            "Completion requires no failed collector gates, no unresolved questions, "
+            "no unresolved external controls, no score blockers, and current PR "
+            "approval | "
+            f"{goal_status}; failed gates: {_comma_list(failed_check_names)} |"
+        ),
+        "",
+    ]
 
 
 def render_closeout_bundle(
@@ -91,18 +214,16 @@ def render_closeout_bundle(
     external_controls = _check_evidence(checks_by_name, "external_control_evidence")
 
     failed_checks = [check for check in checks if check.get("status") != "passed"]
-    failed_check_rows = [
-        (
-            str(check.get("name", "")),
-            str(check.get("status", "")),
-            _comma_list(_string_entries(check.get("blockers"))),
-        )
-        for check in failed_checks
-    ] or [("None", "passed", "None")]
+    failed_check_rows = _failed_check_rows(failed_checks)
     unresolved_questions = _string_entries(
         question_verification.get("evidenceUnresolvedQuestionIds")
     )
     unresolved_controls = _string_entries(external_controls.get("unresolvedControlIds"))
+    failed_check_names = [str(check.get("name", "")) for check in failed_checks]
+    score_blockers = _string_entries(evidence_report.get("scoreBlockers"))
+    goal_status = _goal_status(
+        failed_check_names, unresolved_questions, unresolved_controls, score_blockers
+    )
     repo = str(evidence_report.get("repo", ""))
     repo_arg = f" --repo {repo}" if repo else ""
     pr_head = pr_checks.get("headRefOid", "")
@@ -137,6 +258,17 @@ def render_closeout_bundle(
             ]
         ),
         "",
+        *_objective_audit_lines(evidence_report, score_blockers, goal_status),
+        *_prompt_checklist_lines(
+            question_verification,
+            pr_checks,
+            local_state,
+            pr_head,
+            unresolved_questions,
+            failed_check_names,
+            goal_status,
+            evidence_report,
+        ),
         "## Pull Request State",
         "",
         _table(

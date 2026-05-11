@@ -2506,6 +2506,15 @@ def test_render_well_architected_closeout_writes_owner_handoff(
                 "repo": "VilnaCRM-Org/bootstrap-infrastructure",
                 "pr": 22,
                 "branch": "main",
+                "pillarScores": {
+                    "Operational Excellence": 2.86,
+                    "Security": 2.5,
+                },
+                "proxyPillarScores": {
+                    "Operational Excellence": 2.86,
+                    "Security": 2.5,
+                },
+                "scoreBlockers": ["question_matrix_evidence must pass."],
                 "checks": [
                     {
                         "name": "github_pr_checks",
@@ -2616,6 +2625,15 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "2026-05-11T06:17:11.983255+00:00" in text  # nosec B101
     assert "2026-05-11T06:11:57.890809Z" in text  # nosec B101
     assert "https://docs.aws.amazon.com/wellarchitected/latest/" in text  # nosec B101
+    assert "## Objective Audit" in text  # nosec B101
+    assert "## Prompt-To-Artifact Checklist" in text  # nosec B101
+    assert "| Current result | Not achieved |" in text  # nosec B101
+    assert "Operational Excellence: 2.86, Security: 2.5" in text  # nosec B101
+    assert "question_matrix_evidence must pass." in text  # nosec B101
+    assert "Check all AWS Well-Architected Framework questions" in text  # nosec B101
+    assert "Check PR code and whole project code" in text  # nosec B101
+    assert "Put scores from 1 to 5" in text  # nosec B101
+    assert "Work until PR is 5/5" in text  # nosec B101
     assert "| github_branch_protection | failed | Branch protection" in text  # nosec B101
     assert "### Reviewer" in text  # nosec B101
     assert "latest PR head SHA" in text  # nosec B101
@@ -2662,6 +2680,7 @@ def test_render_well_architected_closeout_handles_clean_and_invalid_inputs(
     invalid.write_text("[]", encoding="utf-8")
 
     assert "| None | passed | None |" in text  # nosec B101
+    assert "| Current final scores | None |" in text  # nosec B101
     assert "| Unresolved question IDs | None |" in text  # nosec B101
     assert "| Unresolved control IDs | None |" in text  # nosec B101
     assert (  # nosec B101
