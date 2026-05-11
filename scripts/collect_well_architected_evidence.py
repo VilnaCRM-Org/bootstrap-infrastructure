@@ -17,6 +17,7 @@ import _github_repository_controls as _repository_controls
 import _well_architected_env as _env
 import _well_architected_markdown as _markdown
 import _well_architected_recording as _recording
+import _well_architected_scoring as _scoring
 from _script_support import repo_root, run
 from validate_repository_catalogs import (
     _fanout_failures,
@@ -161,10 +162,7 @@ RESTORE_DRILL_REQUIRED_FIELDS = (
     "validationResult",
     "cleanupConfirmed",
 )
-READINESS_GATES = (
-    "question_matrix_evidence",
-    "external_control_evidence",
-)
+READINESS_GATES = _scoring.READINESS_GATES
 QUESTION_MATRIX_REQUIRED_FIELDS = (
     "workload",
     "owner",
@@ -193,9 +191,9 @@ REQUIRED_EXTERNAL_CONTROL_IDS = (
     "sustainability_governance",
     "production_approval",
 )
-OPERATIONAL_EXCELLENCE_PILLAR = "Operational Excellence"
-PERFORMANCE_EFFICIENCY_PILLAR = "Performance Efficiency"
-COST_OPTIMIZATION_PILLAR = "Cost Optimization"
+OPERATIONAL_EXCELLENCE_PILLAR = _scoring.OPERATIONAL_EXCELLENCE_PILLAR
+PERFORMANCE_EFFICIENCY_PILLAR = _scoring.PERFORMANCE_EFFICIENCY_PILLAR
+COST_OPTIMIZATION_PILLAR = _scoring.COST_OPTIMIZATION_PILLAR
 MISSING_QUESTION_ID = "<missing>"
 EXPECTED_WELL_ARCHITECTED_QUESTION_PREFIX_PILLARS = (
     ("OPS", OPERATIONAL_EXCELLENCE_PILLAR, 11),
@@ -2866,91 +2864,11 @@ def _evidence_repository_catalog_paths(root_dir: Path) -> list[Path]:
     ]
 
 
-PILLAR_CHECKS = {
-    OPERATIONAL_EXCELLENCE_PILLAR: (
-        "github_pr_checks",
-        "github_pr_local_state",
-        "github_review_threads",
-        "github_branch_protection",
-        "github_production_environment",
-        "aws_sns_alert_route",
-        "aws_cloudtrail_management_events",
-    ),
-    "Security": (
-        "github_pr_checks",
-        "github_pr_local_state",
-        "github_review_threads",
-        "github_branch_protection",
-        "github_dependabot_alerts",
-        "aws_identity",
-        "aws_iam_account_access",
-        "aws_cloudtrail_management_events",
-    ),
-    "Reliability": (
-        "github_pr_checks",
-        "github_pr_local_state",
-        "github_production_environment",
-        "aws_sns_alert_route",
-        "restore_drill_evidence",
-        "repository_fanout",
-    ),
-    PERFORMANCE_EFFICIENCY_PILLAR: ("repository_fanout",),
-    COST_OPTIMIZATION_PILLAR: ("aws_cost_controls", "repository_fanout"),
-    "Sustainability": ("repository_fanout",),
-}
-WELL_ARCHITECTED_SCORE_CAP = 4.0
-
-
-def pillar_scores(checks: Sequence[dict[str, object]]) -> dict[str, float]:
-    """Calculate proxy readiness scores from normalized metadata checks."""
-    by_name = {str(check["name"]): check for check in checks}
-    scores: dict[str, float] = {}
-    for pillar, check_names in PILLAR_CHECKS.items():
-        passed = sum(
-            1
-            for check_name in check_names
-            if by_name.get(check_name, {}).get("status") == "passed"
-        )
-        scores[pillar] = round(5 * passed / len(check_names), 2)
-    return scores
-
-
-def well_architected_scores(
-    proxy_scores: dict[str, float],
-    checks: Sequence[dict[str, object]],
-) -> dict[str, float]:
-    """Cap final score claims until question-level evidence gates pass."""
-    by_name = {str(check["name"]): check for check in checks}
-    readiness_passed = all(
-        by_name.get(gate, {}).get("status") == "passed" for gate in READINESS_GATES
-    )
-    if readiness_passed:
-        return proxy_scores
-    return {
-        pillar: min(score, WELL_ARCHITECTED_SCORE_CAP)
-        for pillar, score in proxy_scores.items()
-    }
-
-
-def score_blockers(checks: Sequence[dict[str, object]]) -> list[str]:
-    """Return score-claim blockers for final Well-Architected scoring."""
-    by_name = {str(check["name"]): check for check in checks}
-    blockers: list[str] = []
-    for gate in READINESS_GATES:
-        status = by_name.get(gate, {}).get("status")
-        if status == "passed":
-            continue
-        if status == "missing" or gate not in by_name:
-            blockers.append(
-                f"{gate} is required before proxy readiness scores can be treated "
-                "as final Well-Architected scores."
-            )
-            continue
-        blockers.append(
-            f"{gate} must pass before proxy readiness scores can be treated "
-            "as final Well-Architected scores."
-        )
-    return blockers
+PILLAR_CHECKS = _scoring.PILLAR_CHECKS
+WELL_ARCHITECTED_SCORE_CAP = _scoring.WELL_ARCHITECTED_SCORE_CAP
+pillar_scores = _scoring.pillar_scores
+well_architected_scores = _scoring.well_architected_scores
+score_blockers = _scoring.score_blockers
 
 
 def question_matrix_evidence(args: argparse.Namespace) -> dict[str, object]:
