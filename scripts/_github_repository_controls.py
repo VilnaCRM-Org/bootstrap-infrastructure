@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+from typing import Any
+
 REQUIRED_STATUS_CHECKS = (
     "Ruff",
     "Ty",
@@ -25,3 +28,207 @@ REQUIRED_STATUS_CHECKS = (
     "CodeQL (python)",
     "CodeQL (actions)",
 )
+
+
+def required_status_checks_rule() -> dict[str, object]:
+    """Return the ruleset rule that enforces the documented PR gates."""
+    return {
+        "type": "required_status_checks",
+        "parameters": {
+            "strict_required_status_checks_policy": True,
+            "required_status_checks": [
+                {"context": context} for context in REQUIRED_STATUS_CHECKS
+            ],
+        },
+    }
+
+
+def default_pull_request_rule() -> dict[str, object]:
+    """Return the minimum pull-request review rule expected by the project."""
+    return {
+        "type": "pull_request",
+        "parameters": {
+            "allowed_merge_methods": ["squash"],
+            "dismiss_stale_reviews_on_push": False,
+            "require_code_owner_review": True,
+            "require_last_push_approval": False,
+            "required_approving_review_count": 1,
+            "required_review_thread_resolution": True,
+            "required_reviewers": [],
+        },
+    }
+
+
+def ruleset_payload(existing_rules: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+    """Build the branch ruleset payload while preserving known stronger rules."""
+    rules_by_type = {
+        rule.get("type"): dict(rule)
+        for rule in existing_rules
+        if isinstance(rule.get("type"), str)
+    }
+    rules = [
+        rules_by_type.get("deletion", {"type": "deletion"}),
+        rules_by_type.get("non_fast_forward", {"type": "non_fast_forward"}),
+        rules_by_type.get("pull_request", default_pull_request_rule()),
+        required_status_checks_rule(),
+    ]
+    for optional_rule_type in ("code_quality", "code_scanning"):
+        rule = rules_by_type.get(optional_rule_type)
+        if rule is not None:
+            rules.append(rule)
+
+    return {
+        "name": "main",
+        "target": "branch",
+        "enforcement": "active",
+        "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+        "rules": rules,
+    }
+
+
+def prod_environment_payload(reviewer_id: int) -> dict[str, Any]:
+    """Build the protected production GitHub environment payload."""
+    return {
+        "wait_timer": 0,
+        "prevent_self_review": True,
+        "reviewers": [{"type": "User", "id": reviewer_id}],
+        "deployment_branch_policy": {
+            "protected_branches": True,
+            "custom_branch_policies": False,
+        },
+    }
+
+
+def required_status_check_items(rule: object) -> Sequence[object]:
+    """Return required status check items from one ruleset rule."""
+    if not isinstance(rule, Mapping) or rule.get("type") != "required_status_checks":
+        return ()
+    parameters = rule.get("parameters")
+    if not isinstance(parameters, Mapping):
+        return ()
+    checks = parameters.get("required_status_checks")
+    return checks if isinstance(checks, list) else ()
+
+
+def status_check_context(check: object) -> str | None:
+    """Return the status-check context from GitHub ruleset metadata."""
+    if not isinstance(check, Mapping):
+        return None
+    context = check.get("context") or check.get("name")
+    return str(context) if context else None
+
+
+def required_status_contexts(ruleset: Mapping[str, Any]) -> set[str]:
+    """Return required status contexts from a ruleset payload."""
+    rules = ruleset.get("rules")
+    if not isinstance(rules, list):
+        return set()
+    contexts: set[str] = set()
+    for rule in rules:
+        for check in required_status_check_items(rule):
+            context = status_check_context(check)
+            if context:
+                contexts.add(context)
+    return contexts
+
+
+def ruleset_has_pull_request_reviews(ruleset: Mapping[str, Any]) -> bool:
+    """Return whether the ruleset requires PR reviews and thread resolution."""
+    rules = ruleset.get("rules")
+    if not isinstance(rules, list):
+        return False
+    for rule in rules:
+        if not isinstance(rule, Mapping) or rule.get("type") != "pull_request":
+            continue
+        parameters = rule.get("parameters")
+        if not isinstance(parameters, Mapping):
+            continue
+        review_count = parameters.get("required_approving_review_count")
+        return (
+            isinstance(review_count, int)
+            and review_count >= 1
+            and parameters.get("required_review_thread_resolution") is True
+        )
+    return False
+
+
+def ruleset_verification_blockers(ruleset: Mapping[str, Any] | None) -> list[str]:
+    """Return blockers when the active main ruleset does not match expectations."""
+    if ruleset is None:
+        return ["Active main branch ruleset was not found after apply."]
+    contexts = required_status_contexts(ruleset)
+    missing_contexts = sorted(set(REQUIRED_STATUS_CHECKS) - contexts)
+    blockers: list[str] = []
+    if missing_contexts:
+        blockers.append(
+            "Active main branch ruleset is missing required status checks: "
+            f"{', '.join(missing_contexts)}."
+        )
+    if not ruleset_has_pull_request_reviews(ruleset):
+        blockers.append(
+            "Active main branch ruleset does not require pull request reviews "
+            "and thread resolution."
+        )
+    return blockers
+
+
+def environment_reviewer_ids(environment: Mapping[str, Any]) -> set[int]:
+    """Return required reviewer user IDs from a GitHub environment payload."""
+    reviewer_ids: set[int] = set()
+    top_level_reviewers = environment.get("reviewers")
+    if isinstance(top_level_reviewers, list):
+        reviewer_ids.update(reviewer_ids_from_items(top_level_reviewers))
+
+    protection_rules = environment.get("protection_rules")
+    if isinstance(protection_rules, list):
+        for rule in protection_rules:
+            if not isinstance(rule, Mapping):
+                continue
+            reviewers = rule.get("reviewers")
+            if isinstance(reviewers, list):
+                reviewer_ids.update(reviewer_ids_from_items(reviewers))
+    return reviewer_ids
+
+
+def reviewer_ids_from_items(items: Sequence[object]) -> set[int]:
+    """Return user IDs from reviewer objects in environment metadata."""
+    reviewer_ids: set[int] = set()
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
+        reviewer_type = item.get("type")
+        reviewer_id = item.get("id")
+        if reviewer_type == "User" and isinstance(reviewer_id, int):
+            reviewer_ids.add(reviewer_id)
+            continue
+        nested_user = item.get("reviewer")
+        if isinstance(nested_user, Mapping) and isinstance(nested_user.get("id"), int):
+            reviewer_ids.add(nested_user["id"])
+    return reviewer_ids
+
+
+def prod_environment_verification_blockers(
+    environment: Mapping[str, Any] | None, reviewer_id: int
+) -> list[str]:
+    """Return blockers when the prod environment does not match expectations."""
+    if environment is None:
+        return ["Production environment was not readable after apply."]
+    blockers: list[str] = []
+    if environment.get("prevent_self_review") is not True:
+        blockers.append("Production environment does not prevent self-review.")
+    branch_policy = environment.get("deployment_branch_policy")
+    if not isinstance(branch_policy, Mapping):
+        blockers.append("Production environment does not report a branch policy.")
+    elif (
+        branch_policy.get("protected_branches") is not True
+        or branch_policy.get("custom_branch_policies") is not False
+    ):
+        blockers.append(
+            "Production environment does not restrict deployments to protected "
+            "branches."
+        )
+    if reviewer_id not in environment_reviewer_ids(environment):
+        blockers.append(
+            "Production environment does not require the configured reviewer."
+        )
+    return blockers
