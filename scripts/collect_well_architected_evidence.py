@@ -37,6 +37,7 @@ ALLOWED_SKIPPED_CHECKS = frozenset(
 COVERED_AGGREGATE_CHECKS = {
     "CodeQL": frozenset({"CodeQL (actions)", "CodeQL (python)"}),
 }
+ADVISORY_REVIEW_THREAD_AUTHORS = frozenset({"qltysh"})
 DEFAULT_REQUIRED_STATUS_CHECKS = (
     "Ruff",
     "Ty",
@@ -436,14 +437,29 @@ def github_pr_checks(
             "--repo",
             repo,
             "--json",
-            "mergeStateStatus,mergeable,reviewDecision,headRefOid,statusCheckRollup",
+            "mergeStateStatus,mergeable,reviewDecision,headRefOid",
         ],
         runner=runner,
     )
     if not ok or not isinstance(payload, dict):
         return _check("github_pr_checks", status="unknown", blockers=[error])
+    rollup_ok, rollup_payload, rollup_error = _run_json(
+        [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--repo",
+            repo,
+            "--json",
+            "statusCheckRollup",
+        ],
+        runner=runner,
+    )
+    if not rollup_ok or not isinstance(rollup_payload, dict):
+        return _check("github_pr_checks", status="unknown", blockers=[rollup_error])
 
-    rollup = payload.get("statusCheckRollup", [])
+    rollup = rollup_payload.get("statusCheckRollup", [])
     entries = [entry for entry in rollup if isinstance(entry, dict)]
     failing = _non_passing_rollup_labels(entries)
     blockers = _github_pr_check_blockers(payload, failing)
@@ -662,20 +678,62 @@ def github_review_threads(
 
 def _review_thread_counts(nodes: list[dict]) -> tuple[dict[str, int], int]:
     """Return review-thread evidence counts and current blocking count."""
-    unresolved = [
-        node for node in nodes if isinstance(node, dict) and not node.get("isResolved")
-    ]
+    unresolved = _unresolved_review_threads(nodes)
     outdated_count = sum(1 for node in unresolved if bool(node.get("isOutdated")))
-    blocking_count = len(unresolved) - outdated_count
+    advisory_count = sum(1 for node in unresolved if _review_thread_is_advisory(node))
+    blocking_count = sum(1 for node in unresolved if _review_thread_blocks(node))
     return (
         {
             "threadCount": len(nodes),
             "unresolvedThreadCount": len(unresolved),
             "outdatedUnresolvedThreadCount": outdated_count,
+            "advisoryUnresolvedThreadCount": advisory_count,
             "blockingThreadCount": blocking_count,
         },
         blocking_count,
     )
+
+
+def _unresolved_review_threads(nodes: Sequence[object]) -> list[dict[str, Any]]:
+    """Return unresolved review-thread nodes."""
+    return [node for node in nodes if _review_thread_unresolved(node)]
+
+
+def _review_thread_unresolved(node: object) -> bool:
+    """Return whether a review-thread node is unresolved."""
+    return isinstance(node, dict) and not node.get("isResolved")
+
+
+def _review_thread_blocks(node: dict[str, Any]) -> bool:
+    """Return whether an unresolved review thread blocks evidence."""
+    return not bool(node.get("isOutdated")) and not _review_thread_is_advisory(node)
+
+
+def _review_thread_is_advisory(node: dict) -> bool:
+    """Return whether an unresolved review thread is emitted by an advisory bot."""
+    first_comment = _review_thread_first_comment(node)
+    author = first_comment.get("author", {})
+    login = author.get("login") if isinstance(author, dict) else ""
+    body = first_comment.get("body", "")
+    return (
+        login in ADVISORY_REVIEW_THREAD_AUTHORS
+        and isinstance(body, str)
+        and "[qlty:" in body
+    )
+
+
+def _review_thread_first_comment(node: dict) -> dict[str, Any]:
+    """Return the first review-thread comment object, if present."""
+    comments = node.get("comments")
+    if not isinstance(comments, dict):
+        return {}
+    comment_nodes = comments.get("nodes")
+    if not isinstance(comment_nodes, list) or not comment_nodes:
+        return {}
+    first_comment = comment_nodes[0]
+    if not isinstance(first_comment, dict):
+        return {}
+    return first_comment
 
 
 def _review_thread_blockers(blocking_count: int) -> list[str]:
@@ -753,7 +811,9 @@ def _review_threads_query() -> str:
         "repository(owner:$owner, name:$name) { "
         "pullRequest(number:$number) { "
         "reviewThreads(first:100, after:$after) { "
-        "nodes { isResolved isOutdated } pageInfo { hasNextPage endCursor } } } } }"
+        "nodes { isResolved isOutdated "
+        "comments(first:1) { nodes { author { login } body } } } "
+        "pageInfo { hasNextPage endCursor } } } } }"
     )
 
 

@@ -4736,43 +4736,51 @@ def test_github_pr_checks_accepts_covered_codeql_aggregate(
 ) -> None:
     """Aggregate CodeQL is okay when concrete CodeQL checks pass."""
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    commands: list[list[str]] = []
 
     def runner(command, **_kwargs):
+        commands.append(command)
         assert command[:3] == ["gh", "pr", "view"]  # nosec B101
-        payload = {
-            "mergeStateStatus": "BLOCKED",
-            "mergeable": "MERGEABLE",
-            "reviewDecision": "APPROVED",
-            "headRefOid": "abc123",
-            "statusCheckRollup": [
-                {
-                    "__typename": "CheckRun",
-                    "name": "CodeQL",
-                    "status": "COMPLETED",
-                    "conclusion": "NEUTRAL",
-                },
-                {
-                    "__typename": "CheckRun",
-                    "name": "CodeQL (actions)",
-                    "status": "COMPLETED",
-                    "conclusion": "SUCCESS",
-                },
-                {
-                    "__typename": "CheckRun",
-                    "name": "CodeQL (python)",
-                    "status": "COMPLETED",
-                    "conclusion": "SUCCESS",
-                },
-            ],
-        }
+        if command[-1] == "statusCheckRollup":
+            payload = {
+                "statusCheckRollup": [
+                    {
+                        "__typename": "CheckRun",
+                        "name": "CodeQL",
+                        "status": "COMPLETED",
+                        "conclusion": "NEUTRAL",
+                    },
+                    {
+                        "__typename": "CheckRun",
+                        "name": "CodeQL (actions)",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                    },
+                    {
+                        "__typename": "CheckRun",
+                        "name": "CodeQL (python)",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                    },
+                ]
+            }
+        else:
+            payload = {
+                "mergeStateStatus": "BLOCKED",
+                "mergeable": "MERGEABLE",
+                "reviewDecision": "APPROVED",
+                "headRefOid": "abc123",
+            }
         return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
 
     check = module.github_pr_checks("org/repo", 1, runner=runner)
 
     assert check["status"] == "passed"  # nosec B101
+    assert len(commands) == 2  # nosec B101
     assert check["evidence"]["nonPassingCheckCount"] == 0  # nosec B101
     assert check["evidence"]["mergeStateStatus"] == "BLOCKED"  # nosec B101
     assert check["evidence"]["mergeable"] == "MERGEABLE"  # nosec B101
+    assert check["evidence"]["reviewDecision"] == "APPROVED"  # nosec B101
 
 
 def test_github_pr_checks_requires_concrete_codeql_checks_for_aggregate_allowance(
@@ -4868,6 +4876,28 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert module.aws_cloudtrail_management_events(None)["status"] == "missing"
     assert module.github_pr_checks("org/repo", 1, runner=failing_runner)["status"] == (
         "unknown"
+    )
+
+    def rollup_failing_runner(command, **_kwargs):
+        if command[-1] == "statusCheckRollup":
+            return subprocess.CompletedProcess(command, 1, "", "rollup unavailable")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(
+                {
+                    "mergeStateStatus": "CLEAN",
+                    "mergeable": "MERGEABLE",
+                    "reviewDecision": "APPROVED",
+                    "headRefOid": "abc123",
+                }
+            ),
+            "",
+        )
+
+    assert (  # nosec B101
+        module.github_pr_checks("org/repo", 1, runner=rollup_failing_runner)["status"]
+        == "unknown"
     )
     assert (
         module.github_pr_local_state("org/repo", 1, tmp_path, runner=failing_runner)[
@@ -6912,6 +6942,74 @@ def test_collect_well_architected_evidence_paginates_review_threads(
     assert outdated_evidence["evidence"]["unresolvedThreadCount"] == 1  # nosec B101
     assert outdated_evidence["evidence"]["outdatedUnresolvedThreadCount"] == 1  # nosec B101
     assert outdated_evidence["evidence"]["blockingThreadCount"] == 0  # nosec B101
+
+    def advisory_thread_runner(command, **_kwargs):
+        payload = {
+            "data": {
+                "repository": {
+                    "pullRequest": {
+                        "reviewThreads": {
+                            "nodes": [
+                                {
+                                    "isResolved": False,
+                                    "isOutdated": False,
+                                    "comments": {
+                                        "nodes": [
+                                            {
+                                                "author": {"login": "qltysh"},
+                                                "body": (
+                                                    "Found repeated code "
+                                                    "<i>[qlty:similar-code]</i>"
+                                                ),
+                                            }
+                                        ]
+                                    },
+                                },
+                                {
+                                    "isResolved": False,
+                                    "isOutdated": False,
+                                    "comments": {
+                                        "nodes": [
+                                            {
+                                                "author": {"login": "reviewer"},
+                                                "body": "Please fix this.",
+                                            }
+                                        ]
+                                    },
+                                },
+                                {
+                                    "isResolved": False,
+                                    "isOutdated": False,
+                                    "comments": {"nodes": ["not an object"]},
+                                },
+                                "ignored",
+                            ],
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                }
+            }
+        }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    advisory_evidence = module.github_review_threads(
+        "VilnaCRM-Org/bootstrap-infrastructure",
+        22,
+        runner=advisory_thread_runner,
+    )
+
+    assert advisory_evidence["status"] == "failed"  # nosec B101
+    assert advisory_evidence["evidence"]["unresolvedThreadCount"] == 3  # nosec B101
+    assert (  # nosec B101
+        advisory_evidence["evidence"]["advisoryUnresolvedThreadCount"] == 1
+    )
+    assert advisory_evidence["evidence"]["blockingThreadCount"] == 2  # nosec B101
+    assert (
+        module._review_thread_first_comment(  # noqa: SLF001  # nosec B101
+            {"comments": {"nodes": []}}
+        )
+        == {}
+    )
 
     def missing_cursor_runner(command, **_kwargs):
         payload = {
