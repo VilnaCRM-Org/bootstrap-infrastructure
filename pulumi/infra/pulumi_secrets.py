@@ -62,18 +62,6 @@ def _kms_alias_exists(name: str) -> bool:  # pragma: no mutate
     return True  # pragma: no mutate
 
 
-def _resource_options(  # pragma: no mutate
-    parent: pulumi.Resource,  # pragma: no mutate
-    *,  # pragma: no mutate
-    import_id: str | None = None,  # pragma: no mutate
-) -> pulumi.ResourceOptions:  # pragma: no mutate
-    """Build consistent resource options for Pulumi secrets resources."""
-    kwargs: dict[str, object] = {"parent": parent}  # pragma: no mutate
-    if import_id is not None:  # pragma: no mutate
-        kwargs["import_"] = import_id  # pragma: no mutate
-    return pulumi.ResourceOptions(**kwargs)  # pragma: no mutate
-
-
 class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
     """Create a customer-managed KMS key and alias for each managed repository."""
 
@@ -112,6 +100,14 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
             alias_name = configured_settings.pulumi_secrets_alias_name_for_repo(
                 repo.name
             )  # pragma: no mutate
+            alias_import_id = (  # pragma: no mutate
+                alias_name if _kms_alias_exists(alias_name) else None
+            )
+            alias_options = pulumi.ResourceOptions(parent=self)  # pragma: no mutate
+            if alias_import_id is not None:  # pragma: no mutate
+                alias_options = pulumi.ResourceOptions(  # pragma: no mutate
+                    parent=self, import_=alias_import_id
+                )
 
             key = aws.kms.Key(  # pragma: no mutate
                 f"{name}-key-{suffix}",  # pragma: no mutate
@@ -131,17 +127,14 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
                     },
                     settings=configured_settings,
                 ),  # pragma: no mutate
-                opts=_resource_options(self),  # pragma: no mutate
+                opts=pulumi.ResourceOptions(parent=self),  # pragma: no mutate
             )  # pragma: no mutate
 
             alias = aws.kms.Alias(  # pragma: no mutate
                 f"{name}-alias-{suffix}",  # pragma: no mutate
                 name=alias_name,  # pragma: no mutate
                 target_key_id=key.key_id,  # pragma: no mutate
-                opts=_resource_options(  # pragma: no mutate
-                    self,  # pragma: no mutate
-                    import_id=alias_name if _kms_alias_exists(alias_name) else None,
-                ),  # pragma: no mutate
+                opts=alias_options,  # pragma: no mutate
             )  # pragma: no mutate
 
             self.key_arns[repo.name] = key.arn  # pragma: no mutate
