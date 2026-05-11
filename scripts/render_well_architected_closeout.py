@@ -63,6 +63,20 @@ def _table(rows: Sequence[tuple[str, object]]) -> str:
     return "\n".join(lines)
 
 
+def _collector_command(pr_number: object, topic_arn: object, trail_name: object) -> str:
+    """Return the final collector command with required evidence inputs visible."""
+    entries = [
+        ("PR_NUMBER", pr_number),
+        ("OPERATIONS_TOPIC_ARN", topic_arn),
+        ("OPERATIONS_CLOUDTRAIL_NAME", trail_name),
+        ("RESTORE_DRILL_EVIDENCE", "<path>"),
+        ("QUESTION_MATRIX_EVIDENCE", "<path>"),
+        ("EXTERNAL_CONTROL_EVIDENCE", "<path>"),
+    ]
+    prefix = " ".join(f"{key}={value}" for key, value in entries if value)
+    return f"{prefix} make report-well-architected-evidence"
+
+
 def render_closeout_bundle(
     evidence_report: dict[str, Any], question_verification: dict[str, Any]
 ) -> str:
@@ -72,6 +86,8 @@ def render_closeout_bundle(
     pr_checks = _check_evidence(checks_by_name, "github_pr_checks")
     local_state = _check_evidence(checks_by_name, "github_pr_local_state")
     review_threads = _check_evidence(checks_by_name, "github_review_threads")
+    alert_route = _check_evidence(checks_by_name, "aws_sns_alert_route")
+    cloudtrail = _check_evidence(checks_by_name, "aws_cloudtrail_management_events")
     external_controls = _check_evidence(checks_by_name, "external_control_evidence")
 
     failed_checks = [check for check in checks if check.get("status") != "passed"]
@@ -89,6 +105,12 @@ def render_closeout_bundle(
     unresolved_controls = _string_entries(external_controls.get("unresolvedControlIds"))
     repo = str(evidence_report.get("repo", ""))
     repo_arg = f" --repo {repo}" if repo else ""
+    pr_head = pr_checks.get("headRefOid", "")
+    final_collector_command = _collector_command(
+        evidence_report.get("pr", ""),
+        alert_route.get("topicArn", ""),
+        cloudtrail.get("trailName", ""),
+    )
 
     lines = [
         "# Owner Closeout Bundle",
@@ -119,7 +141,7 @@ def render_closeout_bundle(
         "",
         _table(
             [
-                ("PR head SHA", pr_checks.get("headRefOid", "")),
+                ("PR head SHA", pr_head),
                 ("Local head SHA", local_state.get("localHead", "")),
                 ("Dirty file count", local_state.get("dirtyFileCount", "")),
                 ("Hosted check count", pr_checks.get("checkCount", "")),
@@ -199,6 +221,13 @@ def render_closeout_bundle(
             "",
             "## Required Owner Actions",
             "",
+            "### Reviewer",
+            "",
+            "- Review and approve the latest PR head SHA after checking the current "
+            f"diff and hosted checks: `{pr_head}`.",
+            "- Do not rely on approvals from earlier commits when GitHub reports an "
+            "empty review decision.",
+            "",
             "### Repository Admin",
             "",
             "- Apply and verify repository controls with "
@@ -241,7 +270,7 @@ def render_closeout_bundle(
             "## Final Verification",
             "",
             "- `make verify-well-architected-questions`",
-            "- `PR_NUMBER=22 make report-well-architected-evidence`",
+            f"- `{final_collector_command}`",
             "",
         ]
     )

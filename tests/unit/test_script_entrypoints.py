@@ -2539,6 +2539,23 @@ def test_render_well_architected_closeout_writes_owner_handoff(
                         "blockers": [],
                     },
                     {
+                        "name": "aws_sns_alert_route",
+                        "status": "passed",
+                        "evidence": {
+                            "topicArn": (
+                                "arn:aws:sns:eu-central-1:891377212104:"
+                                "bootstrap-test-operations"
+                            )
+                        },
+                        "blockers": [],
+                    },
+                    {
+                        "name": "aws_cloudtrail_management_events",
+                        "status": "passed",
+                        "evidence": {"trailName": "bootstrap-test-management-events"},
+                        "blockers": [],
+                    },
+                    {
                         "name": "github_branch_protection",
                         "status": "failed",
                         "evidence": {"missingRequiredStatusChecks": ["Ruff"]},
@@ -2600,6 +2617,8 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "2026-05-11T06:11:57.890809Z" in text  # nosec B101
     assert "https://docs.aws.amazon.com/wellarchitected/latest/" in text  # nosec B101
     assert "| github_branch_protection | failed | Branch protection" in text  # nosec B101
+    assert "### Reviewer" in text  # nosec B101
+    assert "latest PR head SHA" in text  # nosec B101
     assert "| Advisory unresolved review threads | 3 |" in text  # nosec B101
     assert "| Blocking review threads | 0 |" in text  # nosec B101
     assert "OPS5, SEC1" in text  # nosec B101
@@ -2617,7 +2636,11 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "make report-alert-route-observation" in text  # nosec B101
     assert "make report-production-dr-owner-evidence" in text  # nosec B101
     assert "make verify-well-architected-questions" in text  # nosec B101
-    assert "PR_NUMBER=22 make report-well-architected-evidence" in text  # nosec B101
+    assert "PR_NUMBER=22 OPERATIONS_TOPIC_ARN=arn:aws:sns" in text  # nosec B101
+    assert "OPERATIONS_CLOUDTRAIL_NAME=bootstrap-test-management-events" in text
+    assert "RESTORE_DRILL_EVIDENCE=<path>" in text  # nosec B101
+    assert "QUESTION_MATRIX_EVIDENCE=<path>" in text  # nosec B101
+    assert "EXTERNAL_CONTROL_EVIDENCE=<path>" in text  # nosec B101
     assert "SecretString" not in text  # nosec B101
 
 
