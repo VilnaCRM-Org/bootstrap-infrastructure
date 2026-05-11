@@ -1208,6 +1208,27 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
                         "Statement": [
                             {
                                 "Effect": "Allow",
+                                "Action": ["cloudtrail:DescribeTrails"],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
                                 "Action": ["kms:CreateKey"],
                                 "Resource": "*",
                                 "Condition": {
@@ -1341,6 +1362,30 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
                                     "config:DeleteDeliveryChannel",
                                     "config:DescribeDeliveryChannels",
                                     "config:PutDeliveryChannel",
+                                ],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "sns:GetSubscriptionAttributes",
+                                    "sns:Unsubscribe",
                                 ],
                                 "Resource": "*",
                             }

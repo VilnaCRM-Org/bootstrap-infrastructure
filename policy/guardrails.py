@@ -584,6 +584,7 @@ _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
         "ce:createanomalysubscription",
         "ce:listcostallocationtags",
         "ce:updatecostallocationtagsstatus",
+        "cloudtrail:describetrails",
         "config:deletedeliverychannel",
         "config:describedeliverychannels",
         "config:putdeliverychannel",
@@ -593,6 +594,8 @@ _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
         "iam:listopenidconnectproviders",
         "kms:createkey",
         "kms:listaliases",
+        "sns:getsubscriptionattributes",
+        "sns:unsubscribe",
         "sts:getcalleridentity",
     }
 )
