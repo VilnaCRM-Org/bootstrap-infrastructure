@@ -15,6 +15,7 @@ from urllib.parse import quote
 
 import _github_repository_controls as _repository_controls
 import _well_architected_env as _env
+import _well_architected_github_environment as _github_environment
 import _well_architected_markdown as _markdown
 import _well_architected_recording as _recording
 import _well_architected_scoring as _scoring
@@ -278,24 +279,6 @@ class StructuredEvidenceSpec:
     unresolved_field: str
     minimum_count: int
     required_control_ids: Sequence[str] = ()
-
-
-@dataclass(frozen=True)
-class ProductionEnvironmentMetadata:
-    """Protected production environment settings relevant to WAF evidence."""
-
-    environment: str
-    reviewer_login: str | None
-    reviewer_logins: Sequence[str]
-    reviewer_count: int
-    prevents_self_review: bool
-    protected_branches: bool
-    custom_branch_policies: bool
-
-    @property
-    def protected_branches_only(self) -> bool:
-        """Return whether deployment is limited to protected branches."""
-        return self.protected_branches and not self.custom_branch_policies
 
 
 def _check(
@@ -1512,131 +1495,17 @@ def github_production_environment(
             ],
         )
 
-    reviewer_logins = _environment_required_reviewer_logins(payload)
-    reviewer_count = _environment_required_reviewer_count(payload)
-    branch_policy = payload.get("deployment_branch_policy") or {}
-    protected_branches = bool(branch_policy.get("protected_branches"))
-    custom_branch_policies = bool(branch_policy.get("custom_branch_policies"))
-    prevents_self_review = _environment_prevents_self_review(payload)
-    metadata = ProductionEnvironmentMetadata(
+    metadata = _github_environment.production_environment_metadata(
+        payload,
         environment=environment,
         reviewer_login=reviewer_login,
-        reviewer_logins=reviewer_logins,
-        reviewer_count=reviewer_count,
-        prevents_self_review=prevents_self_review,
-        protected_branches=protected_branches,
-        custom_branch_policies=custom_branch_policies,
     )
-    blockers = _production_environment_blockers(metadata)
+    blockers = _github_environment.production_environment_blockers(metadata)
     return _check(
         "github_production_environment",
         status="passed" if not blockers else "failed",
-        evidence=_production_environment_evidence(metadata),
+        evidence=_github_environment.production_environment_evidence(metadata),
         blockers=blockers,
-    )
-
-
-def _production_environment_blockers(
-    metadata: ProductionEnvironmentMetadata,
-) -> list[str]:
-    """Return blockers for protected production environment metadata."""
-    blockers: list[str] = []
-    if metadata.reviewer_count < 1:
-        blockers.append(
-            f"GitHub environment {metadata.environment!r} does not require reviewers."
-        )
-    elif (
-        metadata.reviewer_login
-        and metadata.reviewer_logins
-        and metadata.reviewer_login not in metadata.reviewer_logins
-    ):
-        blockers.append(
-            f"GitHub environment {metadata.environment!r} required reviewers do not "
-            f"include {metadata.reviewer_login}."
-        )
-    if not metadata.prevents_self_review:
-        blockers.append(
-            f"GitHub environment {metadata.environment!r} does not prevent self-review."
-        )
-    if not metadata.protected_branches_only:
-        blockers.append(
-            f"GitHub environment {metadata.environment!r} is not limited to protected "
-            "branches."
-        )
-    return blockers
-
-
-def _production_environment_evidence(
-    metadata: ProductionEnvironmentMetadata,
-) -> dict[str, object]:
-    """Return non-secret protected production environment evidence."""
-    return {
-        "environment": metadata.environment,
-        "readable": True,
-        "requiredReviewerCount": metadata.reviewer_count,
-        "requiredReviewerLogins": list(metadata.reviewer_logins),
-        "expectedReviewerLogin": metadata.reviewer_login,
-        "preventSelfReview": metadata.prevents_self_review,
-        "protectedBranchesOnly": metadata.protected_branches_only,
-    }
-
-
-def _environment_required_reviewer_count(payload: dict[str, Any]) -> int:
-    """Return required reviewer count from either environment response shape."""
-    reviewers = _environment_required_reviewers(payload)
-    return len(reviewers)
-
-
-def _environment_required_reviewer_logins(payload: dict[str, Any]) -> list[str]:
-    """Return required reviewer logins exposed by the environment response."""
-    logins: set[str] = set()
-    for reviewer in _environment_required_reviewers(payload):
-        reviewer_payload = reviewer.get("reviewer")
-        if isinstance(reviewer_payload, dict) and isinstance(
-            reviewer_payload.get("login"), str
-        ):
-            logins.add(reviewer_payload["login"])
-        elif isinstance(reviewer.get("login"), str):
-            logins.add(reviewer["login"])
-    return sorted(logins)
-
-
-def _environment_required_reviewers(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return required reviewer entries from GitHub environment metadata."""
-    direct_reviewers = _dict_items(payload.get("reviewers"))
-    if direct_reviewers:
-        return direct_reviewers
-    for rule in _dict_items(payload.get("protection_rules")):
-        if rule.get("type") == "required_reviewers":
-            rule_reviewers = _dict_items(rule.get("reviewers"))
-            if rule_reviewers:
-                return rule_reviewers
-    return []
-
-
-def _dict_items(value: object) -> list[dict[str, Any]]:
-    """Return dictionary entries from a list-shaped API field."""
-    if not isinstance(value, list):
-        return []
-    items: list[dict[str, Any]] = []
-    for item in value:
-        if isinstance(item, dict):
-            items.append(cast(dict[str, Any], item))
-    return items
-
-
-def _environment_prevents_self_review(payload: dict[str, Any]) -> bool:
-    """Return whether the required-reviewer rule prevents self-review."""
-    if payload.get("prevent_self_review") is True:
-        return True
-    rules = payload.get("protection_rules")
-    if not isinstance(rules, list):
-        return False
-    return any(
-        isinstance(rule, dict)
-        and rule.get("type") == "required_reviewers"
-        and rule.get("prevent_self_review") is True
-        for rule in rules
     )
 
 

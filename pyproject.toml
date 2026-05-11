@@ -60,6 +60,7 @@ known_first_party = [
     "_pulumi_command_support",
     "_script_support",
     "_well_architected_env",
+    "_well_architected_github_environment",
     "_well_architected_markdown",
     "_well_architected_recording",
     "_well_architected_scoring",
