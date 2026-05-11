@@ -544,6 +544,7 @@ EOF
     DEPENDABOT_EXCEPTION_EVIDENCE=docs/dependabot-exception-2026-06-10.json \
     ALERT_ROUTE_OBSERVATION_EVIDENCE=docs/alert-route-observation-2026-06-10.json \
     SECURITY_ACCOUNT_ATTESTATION_EVIDENCE=docs/security-account-attestation-2026-06-10.json \
+    PRODUCTION_DR_OWNER_EVIDENCE=docs/production-dr-owner-2026-06-10.json \
     make -n report-well-architected-evidence
   [ "$status" -eq 0 ]
   [[ "$output" == *"./scripts/collect_well_architected_evidence.py"* ]]
@@ -557,10 +558,13 @@ EOF
   [[ "$output" == *"--alert-route-observation-evidence"* ]]
   [[ "$output" == *'SECURITY_ACCOUNT_ATTESTATION_EVIDENCE:-'* ]]
   [[ "$output" == *"--security-account-attestation-evidence"* ]]
+  [[ "$output" == *'PRODUCTION_DR_OWNER_EVIDENCE:-'* ]]
+  [[ "$output" == *"--production-dr-owner-evidence"* ]]
   [[ "$output" != *"bootstrap-test-operations"* ]]
   [[ "$output" != *"dependabot-exception-2026-06-10"* ]]
   [[ "$output" != *"alert-route-observation-2026-06-10"* ]]
   [[ "$output" != *"security-account-attestation-2026-06-10"* ]]
+  [[ "$output" != *"production-dr-owner-2026-06-10"* ]]
 }
 
 @test "make verify-well-architected-questions compares against AWS docs" {
