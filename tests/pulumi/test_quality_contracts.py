@@ -59,6 +59,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
     expected_first_party = [
         "_pulumi_command_support",
         "_script_support",
+        "_well_architected_recording",
         "app",
         "infra",
         "policy",
