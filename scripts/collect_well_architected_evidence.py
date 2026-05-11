@@ -3829,8 +3829,8 @@ def _control_ids(payload: dict[str, Any]) -> list[str]:
 def _question_matrix_payload_fields(payload: dict[str, Any]) -> dict[str, object]:
     """Return optional question-matrix summary fields."""
     fields: dict[str, object] = {}
-    score_scale = payload.get("scoreScale")
-    if isinstance(score_scale, str):
+    score_scale = _question_score_scale(payload.get("scoreScale"))
+    if score_scale is not None:
         fields["scoreScale"] = score_scale
     scores = payload.get("questionScores")
     if isinstance(scores, list):
@@ -3864,6 +3864,22 @@ def _question_matrix_payload_fields(payload: dict[str, Any]) -> dict[str, object
     if framework_source_verification:
         fields["frameworkSourceVerification"] = framework_source_verification
     return fields
+
+
+def _question_score_scale(value: object) -> object | None:
+    """Return a non-secret question score scale summary."""
+    if isinstance(value, str) and value.strip():
+        return value
+    if not isinstance(value, dict):
+        return None
+    scale = {
+        str(score): label.strip()
+        for score, label in value.items()
+        if isinstance(score, str) and isinstance(label, str) and label.strip()
+    }
+    if scale:
+        return scale
+    return None
 
 
 def _external_control_payload_fields(payload: dict[str, Any]) -> dict[str, object]:

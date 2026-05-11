@@ -2590,7 +2590,13 @@ def test_render_well_architected_closeout_writes_owner_handoff(
                         "name": "question_matrix_evidence",
                         "status": "failed",
                         "evidence": {
-                            "scoreScale": "1-5",
+                            "scoreScale": {
+                                "1": "No evidence.",
+                                "2": "Planning evidence only.",
+                                "3": "Partial controls.",
+                                "4": "Strong evidence with blockers.",
+                                "5": "All evidence current.",
+                            },
                             "questionScoreCount": 57,
                             "questionScoreAverages": {
                                 "Operational Excellence": 4.55,
@@ -2650,7 +2656,11 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "Put scores from 1 to 5" in text  # nosec B101
     assert "| Changed file count | 2 |" in text  # nosec B101
     assert "| Changed top-level paths | scripts, tests |" in text  # nosec B101
-    assert "Question score scale `1-5`; 57 question score rows" in text  # nosec B101
+    assert (  # nosec B101
+        "Question score scale `1: No evidence.; 2: Planning evidence only.; "
+        "3: Partial controls.; 4: Strong evidence with blockers.; "
+        "5: All evidence current.`; 57 question score rows" in text
+    )
     assert "| Question score rows | 57 |" in text  # nosec B101
     assert (  # nosec B101
         "| Question score averages | Operational Excellence: 4.55, Security: 4.64 |"
@@ -2706,6 +2716,12 @@ def test_render_well_architected_closeout_handles_clean_and_invalid_inputs(
     assert "| Current final scores | None |" in text  # nosec B101
     assert "| Unresolved question IDs | None |" in text  # nosec B101
     assert "| Unresolved control IDs | None |" in text  # nosec B101
+    assert module._score_scale_summary("1-5") == "1-5"  # noqa: SLF001  # nosec B101
+    assert (  # noqa: SLF001  # nosec B101
+        module._score_scale_summary({"high": "Evidence current."})
+        == "high: Evidence current."
+    )
+    assert module._score_scale_summary({"": ""}) == "None"  # noqa: SLF001  # nosec B101
     assert (  # nosec B101
         module._check_evidence(  # noqa: SLF001
             {"bad": {"evidence": "not an object"}}, "bad"
@@ -4335,7 +4351,13 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                 "workload": "bootstrap-infrastructure",
                 "owner": "platform",
                 "reviewedAt": reviewed_at,
-                "scoreScale": "1-5",
+                "scoreScale": {
+                    "1": "No meaningful repository or account evidence.",
+                    "2": "Planning evidence exists.",
+                    "3": "Partial repository controls exist.",
+                    "4": "Strong evidence exists with blockers.",
+                    "5": "All evidence is current.",
+                },
                 "questionCount": 57,
                 "unresolvedQuestionCount": 0,
                 "unresolvedQuestionIds": [],
@@ -4624,7 +4646,13 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
     checks = {check["name"]: check for check in report["checks"]}
     question_evidence = checks["question_matrix_evidence"]["evidence"]
     assert question_evidence["unresolvedQuestionIds"] == []  # nosec B101
-    assert question_evidence["scoreScale"] == "1-5"  # nosec B101
+    assert question_evidence["scoreScale"] == {  # nosec B101
+        "1": "No meaningful repository or account evidence.",
+        "2": "Planning evidence exists.",
+        "3": "Partial repository controls exist.",
+        "4": "Strong evidence exists with blockers.",
+        "5": "All evidence is current.",
+    }
     assert question_evidence["questionScoreCount"] == 57  # nosec B101
     assert question_evidence["questionScoreAverages"]["Security"] == 5.0  # nosec B101
     assert (  # nosec B101
@@ -4986,6 +5014,8 @@ def test_collect_well_architected_evidence_unknown_and_missing_paths(
     assert module._changed_file_top_level_paths(  # noqa: SLF001  # nosec B101
         ["", "README.md", "scripts/example.py"]
     ) == ["README.md", "scripts"]
+    assert module._question_score_scale("1-5") == "1-5"  # noqa: SLF001  # nosec B101
+    assert module._question_score_scale({"1": ""}) is None  # noqa: SLF001  # nosec B101
     assert module.github_pr_checks("org/repo", None)["status"] == "missing"
     assert (
         module.github_pr_local_state("org/repo", None, tmp_path)["status"] == "missing"

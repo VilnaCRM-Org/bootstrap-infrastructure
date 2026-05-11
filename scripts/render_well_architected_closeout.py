@@ -69,6 +69,28 @@ def _score_summary(scores: object) -> str:
     return ", ".join(f"{pillar}: {score}" for pillar, score in scores.items())
 
 
+def _score_scale_summary(score_scale: object) -> str:
+    if isinstance(score_scale, str) and score_scale.strip():
+        return score_scale
+    if not isinstance(score_scale, dict) or not score_scale:
+        return "None"
+
+    def sort_key(item: tuple[object, object]) -> tuple[int, str]:
+        key = str(item[0])
+        if key.isdecimal():
+            return (0, f"{int(key):02d}")
+        return (1, key)
+
+    entries = [
+        f"{key}: {value}"
+        for key, value in sorted(score_scale.items(), key=sort_key)
+        if str(key).strip() and str(value).strip()
+    ]
+    if not entries:
+        return "None"
+    return "; ".join(entries)
+
+
 def _collector_command(pr_number: object, topic_arn: object, trail_name: object) -> str:
     """Return the final collector command with required evidence inputs visible."""
     entries = [
@@ -158,6 +180,7 @@ def _prompt_checklist_lines(
     changed_top_level = _comma_list(
         _string_entries(pr_checks.get("changedFileTopLevelPaths"))
     )
+    score_scale = _score_scale_summary(question_matrix.get("scoreScale"))
     return [
         "## Prompt-To-Artifact Checklist",
         "",
@@ -189,7 +212,7 @@ def _prompt_checklist_lines(
         ),
         (
             "| Put scores from 1 to 5 | "
-            f"Question score scale `{question_matrix.get('scoreScale', '')}`; "
+            f"Question score scale `{score_scale}`; "
             f"{question_matrix.get('questionScoreCount', '')} question score rows; "
             "collector `pillarScores`, `proxyPillarScores`, and score blockers | "
             "Question rows carry 1-5 scores; final pillar scores are capped by "
@@ -339,7 +362,10 @@ def render_closeout_bundle(
             "",
             _table(
                 [
-                    ("Question score scale", question_matrix.get("scoreScale", "")),
+                    (
+                        "Question score scale",
+                        _score_scale_summary(question_matrix.get("scoreScale")),
+                    ),
                     (
                         "Question score rows",
                         question_matrix.get("questionScoreCount", ""),
