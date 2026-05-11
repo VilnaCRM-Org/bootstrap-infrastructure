@@ -72,6 +72,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       GH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
+      WELL_ARCHITECTED_CURRENT_CHECK_NAME: Test Account Evidence (Advisory)
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -133,6 +134,95 @@ jobs:
 
       - name: Install uv for host-side collector
         run: python3 -m pip install --user 'uv==0.9.21'
+
+      - name: Wait for PR checks before evidence snapshot
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          expected_checks=(
+            "Actionlint"
+            "Architecture"
+            "Bandit"
+            "CodeQL"
+            "CodeQL (actions)"
+            "CodeQL (python)"
+            "CodeRabbit"
+            "Coverage"
+            "Dependency Audit"
+            "Dependency Hygiene"
+            "Dependency Review"
+            "Destructive Diff Gate"
+            "Evidence Mode"
+            "Hadolint"
+            "IAM Validation"
+            "Integration"
+            "Local Battery"
+            "Maintainability"
+            "Mutation"
+            "Policy"
+            "Preview"
+            "Preview Mode"
+            "Ruff"
+            "Run Bats Tests"
+            "Secrets Scan"
+            "Structural"
+            "Ty"
+            "Unit"
+            "Yamllint"
+            "qlty check"
+            "qlty fmt"
+          )
+          deadline=$((SECONDS + 600))
+          while true; do
+            rollup="$(gh pr view "${PR_NUMBER}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json statusCheckRollup)"
+            missing=()
+            pending=()
+            failing=()
+            for check_name in "${expected_checks[@]}"; do
+              state="$(jq -r --arg name "${check_name}" '
+                [
+                  .statusCheckRollup[]
+                  | select((.name // .context) == $name)
+                  | if .__typename == "StatusContext" then
+                      .state
+                    elif .status == "COMPLETED" then
+                      (.conclusion // "UNKNOWN")
+                    else
+                      (.status // "UNKNOWN")
+                    end
+                ][-1] // ""
+              ' <<< "${rollup}")"
+              if [[ -z "${state}" ]]; then
+                missing+=("${check_name}")
+              elif [[ "${state}" == "SUCCESS" ]]; then
+                continue
+              elif [[ "${state}" =~ ^(PENDING|QUEUED|IN_PROGRESS|WAITING|REQUESTED)$ ]]; then
+                pending+=("${check_name}:${state}")
+              else
+                failing+=("${check_name}:${state}")
+              fi
+            done
+            if [[ "${#missing[@]}" -eq 0 && "${#pending[@]}" -eq 0 ]]; then
+              if [[ "${#failing[@]}" -gt 0 ]]; then
+                printf '::notice::PR checks reached terminal non-success states: %s\n' \
+                  "${failing[*]}"
+              else
+                echo "PR checks are settled for the evidence snapshot."
+              fi
+              break
+            fi
+            if [[ "${SECONDS}" -ge "${deadline}" ]]; then
+              printf '::notice::Timed out waiting for PR checks; missing: %s; pending: %s\n' \
+                "${missing[*]:-none}" \
+                "${pending[*]:-none}"
+              break
+            fi
+            printf 'Waiting for PR checks before evidence snapshot; missing: %s; pending: %s\n' \
+              "${missing[*]:-none}" \
+              "${pending[*]:-none}"
+            sleep 20
+          done
 
       - name: Collect Well-Architected evidence
         id: collector

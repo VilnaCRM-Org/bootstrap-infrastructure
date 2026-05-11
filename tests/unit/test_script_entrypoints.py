@@ -4965,6 +4965,81 @@ def test_github_pr_checks_requires_concrete_codeql_checks_for_aggregate_allowanc
     ]
 
 
+def test_github_pr_checks_omits_current_in_progress_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The hosted evidence job may ignore only its own in-progress check."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    monkeypatch.setenv(
+        "WELL_ARCHITECTED_CURRENT_CHECK_NAME",
+        "Test Account Evidence (Advisory)",
+    )
+
+    def runner(command, **_kwargs):
+        assert command[:2] == ["gh", "pr"]  # nosec B101
+        if command[2] == "diff":
+            return subprocess.CompletedProcess(command, 0, "scripts/example.py\n", "")
+        if command[-1] == "statusCheckRollup":
+            payload = {
+                "statusCheckRollup": [
+                    {
+                        "__typename": "CheckRun",
+                        "name": "Unit",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                    },
+                    {
+                        "__typename": "CheckRun",
+                        "name": "Test Account Evidence (Advisory)",
+                        "status": "IN_PROGRESS",
+                        "conclusion": None,
+                    },
+                ]
+            }
+        else:
+            payload = {
+                "mergeStateStatus": "CLEAN",
+                "mergeable": "MERGEABLE",
+                "reviewDecision": "APPROVED",
+                "headRefOid": "abc123",
+            }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    check = module.github_pr_checks("org/repo", 1, runner=runner)
+
+    assert check["status"] == "passed"  # nosec B101
+    assert check["evidence"]["nonPassingCheckCount"] == 0  # nosec B101
+    assert check["evidence"]["currentCheckInProgressCount"] == 1  # nosec B101
+    assert check["evidence"]["currentCheckInProgressNames"] == [  # nosec B101
+        "Test Account Evidence (Advisory)"
+    ]
+
+
+def test_github_pr_checks_does_not_omit_completed_current_check_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Self-check allowance is limited to in-progress status."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    monkeypatch.setenv(
+        "WELL_ARCHITECTED_CURRENT_CHECK_NAME",
+        "Test Account Evidence (Advisory)",
+    )
+
+    entries = [
+        {
+            "__typename": "CheckRun",
+            "name": "Test Account Evidence (Advisory)",
+            "status": "COMPLETED",
+            "conclusion": "FAILURE",
+        }
+    ]
+
+    assert module._non_passing_rollup_labels(  # noqa: SLF001  # nosec B101
+        entries,
+        current_check_names=module._current_check_names_from_env(),  # noqa: SLF001
+    ) == ["Test Account Evidence (Advisory)"]
+
+
 def test_score_blockers_distinguish_failed_and_missing_gates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

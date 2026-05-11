@@ -37,6 +37,7 @@ ALLOWED_SKIPPED_CHECKS = frozenset(
 COVERED_AGGREGATE_CHECKS = {
     "CodeQL": frozenset({"CodeQL (actions)", "CodeQL (python)"}),
 }
+CURRENT_CHECK_NAME_ENV = "WELL_ARCHITECTED_CURRENT_CHECK_NAME"
 ADVISORY_REVIEW_THREAD_AUTHORS = frozenset({"qltysh"})
 DEFAULT_REQUIRED_STATUS_CHECKS = (
     "Ruff",
@@ -380,7 +381,43 @@ def _rollup_entry_label(entry: dict[str, Any]) -> str:
     return str(entry.get("name") or entry.get("context") or "unknown")
 
 
-def _non_passing_rollup_labels(entries: Sequence[dict[str, Any]]) -> list[str]:
+def _current_check_names_from_env() -> frozenset[str]:
+    """Return current self-check names that may still be in progress."""
+    names = [
+        name.strip()
+        for name in os.environ.get(CURRENT_CHECK_NAME_ENV, "").split(",")
+        if name.strip()
+    ]
+    return frozenset(names)
+
+
+def _rollup_entry_current_check_in_progress(
+    entry: dict[str, Any], current_check_names: frozenset[str]
+) -> bool:
+    """Return whether a rollup entry is the current in-progress check."""
+    return (
+        entry.get("__typename") == "CheckRun"
+        and _rollup_entry_label(entry) in current_check_names
+        and str(entry.get("status", "")).upper() != "COMPLETED"
+    )
+
+
+def _current_check_in_progress_labels(
+    entries: Sequence[dict[str, Any]], current_check_names: frozenset[str]
+) -> list[str]:
+    """Return current self-check labels omitted from non-passing contexts."""
+    return sorted(
+        _rollup_entry_label(entry)
+        for entry in entries
+        if _rollup_entry_current_check_in_progress(entry, current_check_names)
+    )
+
+
+def _non_passing_rollup_labels(
+    entries: Sequence[dict[str, Any]],
+    *,
+    current_check_names: frozenset[str] = frozenset(),
+) -> list[str]:
     """Return non-passing GitHub status/check names."""
     passed_check_names = {
         _rollup_entry_label(entry)
@@ -393,6 +430,7 @@ def _non_passing_rollup_labels(entries: Sequence[dict[str, Any]]) -> list[str]:
         if not (
             _rollup_entry_passed(entry)
             or _rollup_entry_allowed_covered_aggregate(entry, passed_check_names)
+            or _rollup_entry_current_check_in_progress(entry, current_check_names)
         )
     ]
 
@@ -466,7 +504,15 @@ def github_pr_checks(
 
     rollup = rollup_payload.get("statusCheckRollup", [])
     entries = [entry for entry in rollup if isinstance(entry, dict)]
-    failing = _non_passing_rollup_labels(entries)
+    current_check_names = _current_check_names_from_env()
+    failing = _non_passing_rollup_labels(
+        entries,
+        current_check_names=current_check_names,
+    )
+    current_check_in_progress = _current_check_in_progress_labels(
+        entries,
+        current_check_names,
+    )
     blockers = _github_pr_check_blockers_with_files(
         payload,
         failing,
@@ -482,6 +528,7 @@ def github_pr_checks(
             failing,
             files_ok=files_ok,
             changed_files=changed_files,
+            current_check_in_progress=current_check_in_progress,
         ),
         blockers=blockers,
     )
@@ -507,6 +554,7 @@ def _github_pr_check_evidence(
     *,
     files_ok: bool,
     changed_files: Sequence[str],
+    current_check_in_progress: Sequence[str] = (),
 ) -> dict[str, object]:
     """Return PR check evidence including non-secret changed-file metadata."""
     return {
@@ -516,6 +564,8 @@ def _github_pr_check_evidence(
         "reviewDecision": payload.get("reviewDecision"),
         "checkCount": len(entries),
         "nonPassingCheckCount": len(failing),
+        "currentCheckInProgressCount": len(current_check_in_progress),
+        "currentCheckInProgressNames": list(current_check_in_progress),
         "changedFileCount": len(changed_files) if files_ok else None,
         "changedFileTopLevelPaths": (
             _changed_file_top_level_paths(changed_files) if files_ok else []
