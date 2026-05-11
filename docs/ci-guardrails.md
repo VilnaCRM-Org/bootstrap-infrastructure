@@ -343,7 +343,9 @@ per-pillar unresolved counts, score averages, 1-5 score values, status values,
 score/status consistency, and `frameworkSourceVerification` source metadata
 against the AWS public Framework TOC; the verification artifact records its own
 `checkedAt` timestamp for audit freshness and includes a sanitized copy of the
-validated framework-source metadata.
+validated framework-source metadata. By default the Make target writes this
+artifact to `.artifacts/well-architected/question-verification.json`; set
+`AWS_WA_QUESTION_VERIFY_OUTPUT` only when a different path is needed.
 Non-passed `questionScores` entries must also retain non-empty `evidenceRefs`
 so each remaining blocker maps to a concrete issue, collector check, script, workflow,
 or evidence artifact.

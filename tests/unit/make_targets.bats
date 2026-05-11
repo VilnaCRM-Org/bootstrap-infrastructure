@@ -572,19 +572,18 @@ EOF
     QUESTION_MATRIX_EVIDENCE=specs/question-matrix-evidence.json \
     QUESTION_MATRIX=specs/question-matrix.md \
     AWS_WA_TOC_JSON=docs/aws-wa-toc.json \
-    AWS_WA_QUESTION_VERIFY_OUTPUT=.artifacts/well-architected/question-verification.json \
     make -n verify-well-architected-questions
   [ "$status" -eq 0 ]
+  [[ "$output" == *"mkdir -p .artifacts/well-architected"* ]]
   [[ "$output" == *"./scripts/verify_well_architected_questions.py"* ]]
   [[ "$output" == *'QUESTION_MATRIX_EVIDENCE:-'* ]]
   [[ "$output" == *'QUESTION_MATRIX:-'* ]]
   [[ "$output" == *'AWS_WA_TOC_JSON:-'* ]]
-  [[ "$output" == *'AWS_WA_QUESTION_VERIFY_OUTPUT:-'* ]]
+  [[ "$output" == *'AWS_WA_QUESTION_VERIFY_OUTPUT:-.artifacts/well-architected/question-verification.json'* ]]
   [[ "$output" == *"--question-matrix"* ]]
   [[ "$output" == *"--toc-json"* ]]
   [[ "$output" == *"--output"* ]]
   [[ "$output" != *"docs/aws-wa-toc.json"* ]]
-  [[ "$output" != *"question-verification.json"* ]]
 }
 
 @test "make report-dependabot-exception renders owner exception evidence" {
