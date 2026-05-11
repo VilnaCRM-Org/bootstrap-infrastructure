@@ -346,7 +346,7 @@ The accepted shape is intentionally non-secret:
   "id": "branch_protection",
   "status": "passed",
   "evidence": [
-    "GitHub ruleset 13906584 requires Ruff, Ty, Maintainability, Architecture, Dependency Hygiene, Coverage, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
+    "GitHub ruleset 13906584 requires Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
   ]
 }
 ```

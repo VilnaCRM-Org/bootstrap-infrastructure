@@ -81,10 +81,11 @@ The current branch implements meaningful repo-owned controls, but a final 5/5
 claim is blocked until all of the following are current and non-secret:
 
 - Repository-admin proof that the active `main` ruleset requires Ruff, Ty,
-  Maintainability, Architecture, Dependency Hygiene, Coverage, Secrets Scan,
-  Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint,
-  Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and
-  CodeQL (actions).
+  Maintainability, Architecture, Structural, Dependency Hygiene, Coverage,
+  Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit,
+  Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview,
+  Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL
+  (actions).
 - Repository-admin proof that the protected `prod` environment exists, requires
   reviewer approval, prevents self-review, and limits deployments to protected
   branches.
