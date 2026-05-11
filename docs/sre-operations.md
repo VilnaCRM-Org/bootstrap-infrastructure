@@ -271,12 +271,15 @@ objects.
 
 Run `make report-well-architected-evidence` after privileged guardrails or a
 test-account smoke deploy to create the standard metadata-only evidence bundle.
-Set `PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
+The target writes `.artifacts/well-architected/evidence.json` and
+`.artifacts/well-architected/evidence.md`; the collector reads
+`PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
 `OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
 `QUESTION_MATRIX_EVIDENCE`, `EXTERNAL_CONTROL_EVIDENCE`, and optional
 owner-evidence paths such as `DEPENDABOT_EXCEPTION_EVIDENCE`,
 `ALERT_ROUTE_OBSERVATION_EVIDENCE`, `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE`,
-and `PRODUCTION_DR_OWNER_EVIDENCE` only when those non-secret identifiers or
+and `PRODUCTION_DR_OWNER_EVIDENCE` directly when the matching CLI flags are
+omitted. Set those variables only when the non-secret identifiers or
 evidence records are available; the collector records missing values as
 blockers so operators can close them without fabricating 5/5 evidence.
 External-control evidence must name the required control IDs for

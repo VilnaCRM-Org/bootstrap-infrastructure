@@ -271,7 +271,10 @@ It is advisory while the external controls tracked in #26-#30 remain open; set
 `WELL_ARCHITECTED_EVIDENCE_ENFORCE=true` only after those blockers are closed
 and the collector exits cleanly. Fork PRs do not receive AWS credentials and
 record an unprivileged skip summary instead.
-When set, `OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
+The Make target only creates the output artifact paths; the Python collector
+reads the standard environment variables directly when the matching CLI flags
+are omitted. When set, `PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
+`OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
 `QUESTION_MATRIX_EVIDENCE`, `EXTERNAL_CONTROL_EVIDENCE`, and
 `PRODUCTION_DR_OWNER_EVIDENCE` are standard evidence inputs, not secrets.
 Restore evidence must be scoped to this bootstrap workload and include cleanup

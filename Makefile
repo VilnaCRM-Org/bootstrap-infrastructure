@@ -377,38 +377,10 @@ report-sbom: ## Generate a CycloneDX SBOM for the synced Python environment.
 		&& uv run cyclonedx-py environment "$${python_env}" --pyproject pyproject.toml --output-reproducible --of JSON -o $(SBOM_ARTIFACT_DIR)/python-environment.cdx.json'
 
 report-well-architected-evidence: ## Collect metadata-only Well-Architected evidence.
-	@bash -lc '\
-		set -euo pipefail; \
-		mkdir -p .artifacts/well-architected; \
-		pr_arg=""; \
-		account_arg=""; \
-		topic_arg=""; \
-		cloudtrail_arg=""; \
-		restore_arg=""; \
-		question_matrix_arg=""; \
-		external_control_arg=""; \
-		dependabot_exception_arg=""; \
-		alert_route_observation_arg=""; \
-		security_account_attestation_arg=""; \
-		production_dr_owner_arg=""; \
-		if [ -n "$${PR_NUMBER:-}" ]; then pr_arg="--pr $${PR_NUMBER}"; fi; \
-		if [ -n "$${AWS_ACCOUNT_ID:-}" ]; then account_arg="--aws-account-id $${AWS_ACCOUNT_ID}"; fi; \
-		if [ -n "$${OPERATIONS_TOPIC_ARN:-}" ]; then topic_arg="--operations-topic-arn $${OPERATIONS_TOPIC_ARN}"; fi; \
-		if [ -n "$${OPERATIONS_CLOUDTRAIL_NAME:-}" ]; then cloudtrail_arg="--operations-cloudtrail-name $${OPERATIONS_CLOUDTRAIL_NAME}"; fi; \
-		if [ -n "$${RESTORE_DRILL_EVIDENCE:-}" ]; then restore_arg="--restore-drill-evidence $${RESTORE_DRILL_EVIDENCE}"; fi; \
-		if [ -n "$${QUESTION_MATRIX_EVIDENCE:-}" ]; then question_matrix_arg="--question-matrix-evidence $${QUESTION_MATRIX_EVIDENCE}"; fi; \
-		if [ -n "$${EXTERNAL_CONTROL_EVIDENCE:-}" ]; then external_control_arg="--external-control-evidence $${EXTERNAL_CONTROL_EVIDENCE}"; fi; \
-		if [ -n "$${DEPENDABOT_EXCEPTION_EVIDENCE:-}" ]; then dependabot_exception_arg="--dependabot-exception-evidence $${DEPENDABOT_EXCEPTION_EVIDENCE}"; fi; \
-		if [ -n "$${ALERT_ROUTE_OBSERVATION_EVIDENCE:-}" ]; then alert_route_observation_arg="--alert-route-observation-evidence $${ALERT_ROUTE_OBSERVATION_EVIDENCE}"; fi; \
-		if [ -n "$${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE:-}" ]; then security_account_attestation_arg="--security-account-attestation-evidence $${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE}"; fi; \
-		if [ -n "$${PRODUCTION_DR_OWNER_EVIDENCE:-}" ]; then production_dr_owner_arg="--production-dr-owner-evidence $${PRODUCTION_DR_OWNER_EVIDENCE}"; fi; \
-		$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
-			$$pr_arg $$account_arg $$topic_arg $$cloudtrail_arg $$restore_arg \
-			$$question_matrix_arg $$external_control_arg $$dependabot_exception_arg \
-			$$alert_route_observation_arg $$security_account_attestation_arg \
-			$$production_dr_owner_arg \
-			--output .artifacts/well-architected/evidence.json \
-			--markdown-output .artifacts/well-architected/evidence.md'
+	mkdir -p .artifacts/well-architected
+	$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
+		--output .artifacts/well-architected/evidence.json \
+		--markdown-output .artifacts/well-architected/evidence.md
 
 verify-well-architected-questions: ## Compare question evidence with AWS public docs.
 	@bash -lc '\

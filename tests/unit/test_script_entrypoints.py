@@ -6876,6 +6876,79 @@ def test_collect_well_architected_evidence_reports_missing_required_checks(
     assert "IAM Validation" in evidence["blockers"][0]  # nosec B101
 
 
+def test_collect_well_architected_evidence_reads_standard_env_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Collector CLI should own the documented environment-to-flag mapping."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    monkeypatch.setenv("PR_NUMBER", "22")
+    monkeypatch.setenv("AWS_ACCOUNT_ID", "123456789012")
+    monkeypatch.setenv("OPERATIONS_TOPIC_ARN", "arn:aws:sns:us-east-1:123:topic")
+    monkeypatch.setenv("OPERATIONS_CLOUDTRAIL_NAME", "bootstrap-test-trail")
+    monkeypatch.setenv(
+        "DEPENDABOT_EXCEPTION_EVIDENCE", "docs/dependabot-exception.json"
+    )
+    monkeypatch.setenv(
+        "SECURITY_ACCOUNT_ATTESTATION_EVIDENCE",
+        "docs/security-account-attestation.json",
+    )
+    monkeypatch.setenv(
+        "ALERT_ROUTE_OBSERVATION_EVIDENCE", "docs/alert-route-observation.json"
+    )
+    monkeypatch.setenv("PRODUCTION_DR_OWNER_EVIDENCE", "docs/production-dr-owner.json")
+    monkeypatch.setenv("RESTORE_DRILL_EVIDENCE", "specs/restore-drill.json")
+    monkeypatch.setenv(
+        "QUESTION_MATRIX_EVIDENCE", "specs/question-matrix-evidence.json"
+    )
+    monkeypatch.setenv(
+        "EXTERNAL_CONTROL_EVIDENCE", "specs/external-control-evidence.json"
+    )
+
+    args = module.apply_environment_defaults(  # noqa: SLF001
+        module.build_parser().parse_args(
+            [
+                "--pr",
+                "99",
+                "--operations-topic-arn",
+                "cli-topic",
+                "--external-control-evidence",
+                "specs/cli-external-control.json",
+            ]
+        )
+    )
+    env_args = module.apply_environment_defaults(  # noqa: SLF001
+        module.build_parser().parse_args([])
+    )
+
+    assert args.pr == 99  # nosec B101
+    assert env_args.pr == 22  # nosec B101
+    assert args.operations_topic_arn == "cli-topic"  # nosec B101
+    assert args.aws_account_id == "123456789012"  # nosec B101
+    assert args.operations_cloudtrail_name == "bootstrap-test-trail"  # nosec B101
+    assert args.dependabot_exception_evidence == Path(  # nosec B101
+        "docs/dependabot-exception.json"
+    )
+    assert args.security_account_attestation_evidence == Path(  # nosec B101
+        "docs/security-account-attestation.json"
+    )
+    assert args.alert_route_observation_evidence == Path(  # nosec B101
+        "docs/alert-route-observation.json"
+    )
+    assert args.production_dr_owner_evidence == Path(  # nosec B101
+        "docs/production-dr-owner.json"
+    )
+    assert args.restore_drill_evidence == Path("specs/restore-drill.json")  # nosec B101
+    assert args.question_matrix_evidence == Path(  # nosec B101
+        "specs/question-matrix-evidence.json"
+    )
+    assert args.external_control_evidence == Path(  # nosec B101
+        "specs/cli-external-control.json"
+    )
+    assert env_args.external_control_evidence == Path(  # nosec B101
+        "specs/external-control-evidence.json"
+    )
+
+
 def test_collect_well_architected_evidence_main_writes_report(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

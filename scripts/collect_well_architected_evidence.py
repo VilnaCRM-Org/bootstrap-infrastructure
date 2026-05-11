@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from decimal import ROUND_HALF_UP, Decimal
@@ -68,6 +69,20 @@ DEFAULT_DEPENDABOT_MANIFEST = "uv.lock"
 AWS_WELL_ARCHITECTED_TOC_URL = (
     "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json"
 )
+ENV_STRING_DEFAULTS = {
+    "aws_account_id": "AWS_ACCOUNT_ID",
+    "operations_topic_arn": "OPERATIONS_TOPIC_ARN",
+    "operations_cloudtrail_name": "OPERATIONS_CLOUDTRAIL_NAME",
+}
+ENV_PATH_DEFAULTS = {
+    "dependabot_exception_evidence": "DEPENDABOT_EXCEPTION_EVIDENCE",
+    "security_account_attestation_evidence": "SECURITY_ACCOUNT_ATTESTATION_EVIDENCE",
+    "alert_route_observation_evidence": "ALERT_ROUTE_OBSERVATION_EVIDENCE",
+    "production_dr_owner_evidence": "PRODUCTION_DR_OWNER_EVIDENCE",
+    "restore_drill_evidence": "RESTORE_DRILL_EVIDENCE",
+    "question_matrix_evidence": "QUESTION_MATRIX_EVIDENCE",
+    "external_control_evidence": "EXTERNAL_CONTROL_EVIDENCE",
+}
 BLOCKING_DEPENDABOT_SEVERITIES = frozenset({"critical", "high"})
 DEPENDABOT_EXCEPTION_ALLOWED_APPROVALS = frozenset(
     {"approved", "approved_exception", "accepted_risk"}
@@ -4116,9 +4131,34 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _environment_value(name: str) -> str | None:
+    """Return a non-empty environment variable value."""
+    value = os.environ.get(name)
+    return value if value else None
+
+
+def apply_environment_defaults(args: argparse.Namespace) -> argparse.Namespace:
+    """Populate omitted standard evidence flags from environment variables."""
+    if args.pr is None:
+        pr_number = _environment_value("PR_NUMBER")
+        if pr_number is not None:
+            args.pr = int(pr_number)
+    for attribute, variable in ENV_STRING_DEFAULTS.items():
+        if getattr(args, attribute) is None:
+            value = _environment_value(variable)
+            if value is not None:
+                setattr(args, attribute, value)
+    for attribute, variable in ENV_PATH_DEFAULTS.items():
+        if getattr(args, attribute) is None:
+            value = _environment_value(variable)
+            if value is not None:
+                setattr(args, attribute, Path(value))
+    return args
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run evidence collection and optionally persist report artifacts."""
-    args = build_parser().parse_args(argv)
+    args = apply_environment_defaults(build_parser().parse_args(argv))
     report = collect_evidence(args)
     payload = json.dumps(report, indent=2, sort_keys=True)
     if args.output:
