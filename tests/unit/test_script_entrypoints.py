@@ -2728,11 +2728,11 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "OPS5, SEC1" in text  # nosec B101
     assert "branch_protection, production_approval" in text  # nosec B101
     assert (  # nosec B101
-        "scripts/configure_github_repository_controls.py "
+        "python3 scripts/configure_github_repository_controls.py "
         "--repo VilnaCRM-Org/bootstrap-infrastructure --apply" in text
     )
     assert (  # nosec B101
-        "scripts/configure_github_repository_controls.py "
+        "python3 scripts/configure_github_repository_controls.py "
         "--repo VilnaCRM-Org/bootstrap-infrastructure --verify-only" in text
     )
     assert (  # nosec B101

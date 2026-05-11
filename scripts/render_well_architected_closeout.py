@@ -464,9 +464,10 @@ def render_closeout_bundle(
             "### Repository Admin",
             "",
             "- Apply and verify repository controls with "
-            f"`scripts/configure_github_repository_controls.py{repo_arg} --apply`, "
+            f"`python3 scripts/configure_github_repository_controls.py{repo_arg} "
+            "--apply`, "
             "then "
-            f"`scripts/configure_github_repository_controls.py{repo_arg} "
+            f"`python3 scripts/configure_github_repository_controls.py{repo_arg} "
             "--verify-only`.",
             "- Confirm `main` requires all PR checks and the `prod` environment "
             "requires an independent reviewer.",
