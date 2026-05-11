@@ -131,19 +131,32 @@ _AUTOMATION_S3_ACTIONS = (
     "s3:PutLifecycleConfiguration",
     "s3:PutReplicationConfiguration",
 )
+KMS_CREATE_ALIAS_ACTION = "kms:CreateAlias"
+KMS_CREATE_KEY_ACTION = "kms:CreateKey"
+KMS_DELETE_ALIAS_ACTION = "kms:DeleteAlias"
+KMS_LIST_ALIASES_ACTION = "kms:ListAliases"
+KMS_UPDATE_ALIAS_ACTION = "kms:UpdateAlias"
+KMS_ALIAS_ACTIONS = (
+    KMS_CREATE_ALIAS_ACTION,
+    KMS_DELETE_ALIAS_ACTION,
+    KMS_UPDATE_ALIAS_ACTION,
+)
+KMS_SEPARATE_STATEMENT_ACTIONS = frozenset(
+    (*KMS_ALIAS_ACTIONS, KMS_CREATE_KEY_ACTION, KMS_LIST_ALIASES_ACTION)
+)
 _AUTOMATION_KMS_ACTIONS = (
     "kms:CancelKeyDeletion",
-    "kms:CreateAlias",
+    KMS_CREATE_ALIAS_ACTION,
     "kms:CreateGrant",
-    "kms:CreateKey",
-    "kms:DeleteAlias",
+    KMS_CREATE_KEY_ACTION,
+    KMS_DELETE_ALIAS_ACTION,
     "kms:DescribeKey",
     "kms:DisableKey",
     "kms:EnableKey",
     "kms:EnableKeyRotation",
     "kms:GetKeyPolicy",
     "kms:GetKeyRotationStatus",
-    "kms:ListAliases",
+    KMS_LIST_ALIASES_ACTION,
     "kms:ListGrants",
     "kms:ListResourceTags",
     "kms:PutKeyPolicy",
@@ -152,7 +165,7 @@ _AUTOMATION_KMS_ACTIONS = (
     "kms:ScheduleKeyDeletion",
     "kms:TagResource",
     "kms:UntagResource",
-    "kms:UpdateAlias",
+    KMS_UPDATE_ALIAS_ACTION,
     "kms:UpdateKeyDescription",
 )
 _AUTOMATION_BACKUP_ACTIONS = (
@@ -647,24 +660,20 @@ def _automation_policy(
                 {
                     "Sid": "CreateBootstrapKmsKeys",
                     "Effect": "Allow",
-                    "Action": ["kms:CreateKey"],
+                    "Action": [KMS_CREATE_KEY_ACTION],
                     "Resource": "*",
                     "Condition": kms_request_tag_condition,
                 },
                 {
                     "Sid": "ListBootstrapKmsAliases",
                     "Effect": "Allow",
-                    "Action": ["kms:ListAliases"],
+                    "Action": [KMS_LIST_ALIASES_ACTION],
                     "Resource": "*",
                 },
                 {
                     "Sid": "ManageBootstrapKmsAliases",
                     "Effect": "Allow",
-                    "Action": [
-                        "kms:CreateAlias",
-                        "kms:DeleteAlias",
-                        "kms:UpdateAlias",
-                    ],
+                    "Action": list(KMS_ALIAS_ACTIONS),
                     "Resource": [
                         *_automation_kms_alias_resources(account_id, settings),
                         *_automation_kms_key_resources(account_id),
@@ -677,14 +686,7 @@ def _automation_policy(
                     "Action": [
                         action
                         for action in _AUTOMATION_KMS_ACTIONS
-                        if action
-                        not in {
-                            "kms:CreateAlias",
-                            "kms:CreateKey",
-                            "kms:DeleteAlias",
-                            "kms:ListAliases",
-                            "kms:UpdateAlias",
-                        }
+                        if action not in KMS_SEPARATE_STATEMENT_ACTIONS
                     ],
                     "Resource": _automation_kms_key_resources(account_id),
                     "Condition": kms_tag_condition,
