@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -356,38 +357,45 @@ def _sns_environment_resource_part(settings: BootstrapSettings) -> str:
     return _environment_resource_part(settings).replace(".", "-")
 
 
-def _ecr_repository_exists(name: str) -> bool:
-    """Return True when the ECR repository already exists."""
+def _is_missing_lookup_error(message: str, markers: tuple[str, ...]) -> bool:
+    """Return True when an AWS lookup error means the resource is absent."""
+    return (
+        any(marker in message for marker in markers)
+        or "not found" in message.lower()
+        or "couldn't find resource" in message
+    )
+
+
+def _aws_lookup_exists(
+    lookup: Callable[[], object],
+    *,
+    missing_markers: tuple[str, ...],
+) -> bool:
+    """Return True when an AWS lookup succeeds, False for known missing errors."""
     try:
-        aws.ecr.get_repository(name=name)
+        lookup()
     except Exception as exc:
         message = str(exc)
-        if (
-            "RepositoryNotFoundException" in message
-            or "RepositoryNotFound" in message
-            or "not found" in message.lower()
-            or "couldn't find resource" in message
-        ):
+        if _is_missing_lookup_error(message, missing_markers):
             return False
         raise
     return True
+
+
+def _ecr_repository_exists(name: str) -> bool:
+    """Return True when the ECR repository already exists."""
+    return _aws_lookup_exists(
+        lambda: aws.ecr.get_repository(name=name),
+        missing_markers=("RepositoryNotFoundException", "RepositoryNotFound"),
+    )
 
 
 def _iam_role_exists(name: str) -> bool:
     """Return True when the IAM role already exists."""
-    try:
-        aws.iam.get_role(name=name)
-    except Exception as exc:
-        message = str(exc)
-        if (
-            "NoSuchEntity" in message
-            or "NoSuchEntityException" in message
-            or "not found" in message.lower()
-            or "couldn't find resource" in message
-        ):
-            return False
-        raise
-    return True
+    return _aws_lookup_exists(
+        lambda: aws.iam.get_role(name=name),
+        missing_markers=("NoSuchEntity", "NoSuchEntityException"),
+    )
 
 
 def _resource_options(
