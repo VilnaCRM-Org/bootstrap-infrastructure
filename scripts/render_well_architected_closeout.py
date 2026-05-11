@@ -87,6 +87,8 @@ def render_closeout_bundle(
         question_verification.get("evidenceUnresolvedQuestionIds")
     )
     unresolved_controls = _string_entries(external_controls.get("unresolvedControlIds"))
+    repo = str(evidence_report.get("repo", ""))
+    repo_arg = f" --repo {repo}" if repo else ""
 
     lines = [
         "# Owner Closeout Bundle",
@@ -107,7 +109,7 @@ def render_closeout_bundle(
                     "AWS Well-Architected source",
                     question_verification.get("tocSource", ""),
                 ),
-                ("Repository", evidence_report.get("repo", "")),
+                ("Repository", repo),
                 ("Pull request", evidence_report.get("pr", "")),
                 ("Branch", evidence_report.get("branch", "")),
             ]
@@ -132,6 +134,18 @@ def render_closeout_bundle(
                 (
                     "Unresolved review threads",
                     review_threads.get("unresolvedThreadCount", ""),
+                ),
+                (
+                    "Advisory unresolved review threads",
+                    review_threads.get("advisoryUnresolvedThreadCount", ""),
+                ),
+                (
+                    "Blocking review threads",
+                    review_threads.get("blockingThreadCount", ""),
+                ),
+                (
+                    "Outdated unresolved review threads",
+                    review_threads.get("outdatedUnresolvedThreadCount", ""),
                 ),
             ]
         ),
@@ -188,8 +202,10 @@ def render_closeout_bundle(
             "### Repository Admin",
             "",
             "- Apply and verify repository controls with "
-            "`scripts/configure_github_repository_controls.py --apply`, then "
-            "`scripts/configure_github_repository_controls.py --verify-only`.",
+            f"`scripts/configure_github_repository_controls.py{repo_arg} --apply`, "
+            "then "
+            f"`scripts/configure_github_repository_controls.py{repo_arg} "
+            "--verify-only`.",
             "- Confirm `main` requires all PR checks and the `prod` environment "
             "requires an independent reviewer.",
             "",

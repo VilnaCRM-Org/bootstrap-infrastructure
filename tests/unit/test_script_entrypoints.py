@@ -2531,7 +2531,10 @@ def test_render_well_architected_closeout_writes_owner_handoff(
                         "status": "passed",
                         "evidence": {
                             "threadCount": 46,
-                            "unresolvedThreadCount": 0,
+                            "unresolvedThreadCount": 3,
+                            "advisoryUnresolvedThreadCount": 3,
+                            "blockingThreadCount": 0,
+                            "outdatedUnresolvedThreadCount": 0,
                         },
                         "blockers": [],
                     },
@@ -2597,9 +2600,18 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "2026-05-11T06:11:57.890809Z" in text  # nosec B101
     assert "https://docs.aws.amazon.com/wellarchitected/latest/" in text  # nosec B101
     assert "| github_branch_protection | failed | Branch protection" in text  # nosec B101
+    assert "| Advisory unresolved review threads | 3 |" in text  # nosec B101
+    assert "| Blocking review threads | 0 |" in text  # nosec B101
     assert "OPS5, SEC1" in text  # nosec B101
     assert "branch_protection, production_approval" in text  # nosec B101
-    assert "scripts/configure_github_repository_controls.py --apply" in text  # nosec B101
+    assert (  # nosec B101
+        "scripts/configure_github_repository_controls.py "
+        "--repo VilnaCRM-Org/bootstrap-infrastructure --apply" in text
+    )
+    assert (  # nosec B101
+        "scripts/configure_github_repository_controls.py "
+        "--repo VilnaCRM-Org/bootstrap-infrastructure --verify-only" in text
+    )
     assert "make report-security-account-attestation" in text  # nosec B101
     assert "make report-dependabot-exception" in text  # nosec B101
     assert "make report-alert-route-observation" in text  # nosec B101
