@@ -282,6 +282,12 @@ and `PRODUCTION_DR_OWNER_EVIDENCE` directly when the matching CLI flags are
 omitted. Set those variables only when the non-secret identifiers or
 evidence records are available; the collector records missing values as
 blockers so operators can close them without fabricating 5/5 evidence.
+After the collector and AWS question verifier run, use
+`make report-well-architected-closeout` to render
+`.artifacts/well-architected/owner-closeout-bundle.md`. The bundle keeps the
+owner/admin handoff non-secret and includes an Objective Audit plus
+Prompt-To-Artifact Checklist that maps the 5/5 goal to current evidence,
+scores, failed gates, unresolved questions, and unresolved external controls.
 External-control evidence must name the required control IDs for
 branch protection, alert route, backup/restore, FinOps, quota headroom,
 security account controls, sustainability governance, and production approval.

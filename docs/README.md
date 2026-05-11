@@ -62,7 +62,7 @@ nightly-quality   Run the scheduled quality-report battery locally.
 report-quality    Generate the scheduled maintainability, dead-code, docstring, and SBOM reports.
 report-sbom       Generate a CycloneDX SBOM for the synced Python environment.
 verify-well-architected-questions  Compare question evidence with AWS public docs.
-report-well-architected-closeout  Render a non-secret owner/admin Well-Architected closeout handoff.
+report-well-architected-closeout  Render a non-secret owner/admin closeout handoff and audit.
 report-dependabot-exception  Render a non-secret Dependabot exception review from collector evidence.
 report-alert-route-observation  Render a monthly alert-route observation from collector evidence.
 report-security-account-attestation  Render a non-secret security account attestation from collector evidence.

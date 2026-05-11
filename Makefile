@@ -397,7 +397,7 @@ verify-well-architected-questions: ## Compare question evidence with AWS public 
 			--question-matrix "$${QUESTION_MATRIX:-specs/issue-17-well-architected-5-of-5/question-matrix.md}" \
 			$$toc_arg $$toc_url_arg $$output_arg'
 
-report-well-architected-closeout: ## Render owner/admin Well-Architected closeout handoff.
+report-well-architected-closeout: ## Render owner/admin Well-Architected closeout handoff and audit.
 	mkdir -p .artifacts/well-architected
 	$(REPO_PYTHON) ./scripts/render_well_architected_closeout.py \
 		--evidence "$${WELL_ARCHITECTED_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
