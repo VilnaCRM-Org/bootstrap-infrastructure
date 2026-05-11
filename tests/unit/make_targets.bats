@@ -270,6 +270,17 @@ EOF
   [[ "$output" == *"--fail-under=100"* ]]
 }
 
+@test "make test-integration-unprivileged executes credential-free contracts" {
+  run make -n test-integration-unprivileged
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  [[ "$output" == *"rm -f .coverage.integration .coverage.integration.*"* ]]
+  [[ "$output" == *"coverage run --parallel-mode -m pytest -q"* ]]
+  [[ "$output" == *"tests/integration/test_guardrail_contracts.py"* ]]
+  [[ "$output" == *"coverage combine"* ]]
+  [[ "$output" != *"coverage report --show-missing"* ]]
+}
+
 @test "make test-pulumi executes the structural suite" {
   run make -n test-pulumi
   [ "$status" -eq 0 ]
@@ -458,6 +469,15 @@ EOF
   [[ "$output" == *"pulumi_ci_guardrails.py validate-iam"* ]]
 }
 
+@test "make test-iam-validation-unprivileged extracts IAM inputs" {
+  run make -n test-iam-validation-unprivileged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"make test-preview-unprivileged"* ]]
+  [[ "$output" == *"pulumi_ci_guardrails.py iam-inputs"* ]]
+  [[ "$output" == *".artifacts/pulumi-preview/iam-inputs.json"* ]]
+  [[ "$output" != *"validate-iam"* ]]
+}
+
 @test "make test-repository-fanout estimates static quota fanout" {
   run make -n test-repository-fanout
   [ "$status" -eq 0 ]
@@ -480,6 +500,16 @@ EOF
   [[ "$output" == *"make test-destructive-diff"* ]]
   [[ "$output" == *"make test-cost-proxy"* ]]
   [[ "$output" != *"make test-iam-validation"* ]]
+}
+
+@test "make test-guardrails-unprivileged delegates to credential-free guardrails" {
+  run make -n test-guardrails-unprivileged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"make test-preview-unprivileged"* ]]
+  [[ "$output" == *"make test-destructive-diff"* ]]
+  [[ "$output" == *"make test-cost-proxy"* ]]
+  [[ "$output" == *"make test-iam-validation-unprivileged"* ]]
+  [[ "$output" == *"pulumi_ci_guardrails.py iam-inputs"* ]]
 }
 
 @test "make test-battery runs the aggregate developer battery" {
@@ -731,6 +761,19 @@ EOF
   [[ "$output" == *"make doctor"* ]]
   [[ "$output" == *"make build"* ]]
   [[ "$output" == *"make test-battery"* ]]
+  [[ "$output" != *"make test-mutation"* ]]
+}
+
+@test "make ci-pr-unprivileged runs the credential-free PR battery" {
+  run make -n ci-pr-unprivileged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"make doctor"* ]]
+  [[ "$output" == *"make build"* ]]
+  [[ "$output" == *"make test-integration-unprivileged"* ]]
+  [[ "$output" == *"make test-guardrails-unprivileged"* ]]
+  [[ "$output" == *"make test-security"* ]]
+  ! grep -Fxq "make test-integration" <<<"$output"
+  ! grep -Fxq "make test-guardrails" <<<"$output"
   [[ "$output" != *"make test-mutation"* ]]
 }
 
