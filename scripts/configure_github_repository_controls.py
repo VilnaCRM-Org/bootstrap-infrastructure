@@ -332,7 +332,7 @@ def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
 
 def configure(
     repo: str, reviewer: str, *, apply: bool, verify_only: bool = False
-) -> int:
+) -> None:
     """Print or apply the GitHub repository controls."""
     if apply and not _repo_admin_allowed(repo):
         raise RuntimeError(
@@ -349,7 +349,7 @@ def configure(
                 sort_keys=True,
             )
         )
-        return 0
+        return
 
     existing = _main_ruleset(repo)
     existing_rules = existing.get("rules", []) if existing else []
@@ -379,7 +379,6 @@ def configure(
         payloads["prodEnvironmentReviewerLogin"] = reviewer
 
     print(json.dumps(payloads, indent=2, sort_keys=True))
-    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -416,12 +415,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line interface."""
     args = build_parser().parse_args(argv)
     try:
-        return configure(
+        configure(
             args.repo,
             args.prod_reviewer,
             apply=args.apply,
             verify_only=args.verify_only,
         )
+        return 0
     except (ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

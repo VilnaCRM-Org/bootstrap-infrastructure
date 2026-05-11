@@ -3065,9 +3065,7 @@ def test_configure_github_repository_controls_verify_only(
         ),
     )
 
-    assert (  # nosec B101
-        module.configure("example/repo", "Kravalg", apply=False, verify_only=True) == 0
-    )
+    module.configure("example/repo", "Kravalg", apply=False, verify_only=True)
     rendered = json.loads(capsys.readouterr().out)
     assert rendered == {  # nosec B101
         "verification": {"prodEnvironment": "prod", "prodReviewerId": 9444106}
@@ -3316,7 +3314,7 @@ def test_configure_github_repository_controls_apply_paths(
     monkeypatch.setattr(module, "_run_gh_api", fake_run_gh_api)
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: existing)
 
-    assert module.configure("example/repo", "Kravalg", apply=True) == 0  # nosec B101
+    module.configure("example/repo", "Kravalg", apply=True)
     assert calls[0][0] == [  # nosec B101
         "repos/example/repo/rulesets/123",
         "--method",
@@ -3335,7 +3333,7 @@ def test_configure_github_repository_controls_apply_paths(
     calls.clear()
     verifications.clear()
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
-    assert module.configure("example/repo", "Kravalg", apply=True) == 0  # nosec B101
+    module.configure("example/repo", "Kravalg", apply=True)
     assert calls[0][0] == ["repos/example/repo/rulesets", "--method", "POST"]  # nosec B101
     assert verifications == [("example/repo", 9444106)]  # nosec B101
 
