@@ -2821,6 +2821,7 @@ def test_render_well_architected_closeout_handles_clean_and_invalid_inputs(
     assert "| PR head SHA |" not in branch_text  # nosec B101
     assert "### Reviewer" not in branch_text  # nosec B101
     assert "### Vulnerability Owner" not in branch_text  # nosec B101
+    assert "DEPENDABOT_EXCEPTION_EVIDENCE" not in branch_text  # nosec B101
     assert "| Current final scores | None |" in text  # nosec B101
     assert "| Unresolved question IDs | None |" in text  # nosec B101
     assert "| Unresolved control IDs | None |" in text  # nosec B101

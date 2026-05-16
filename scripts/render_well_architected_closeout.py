@@ -97,7 +97,13 @@ def _score_scale_summary(score_scale: object) -> str:
     return "; ".join(entries)
 
 
-def _collector_command(pr_number: object, topic_arn: object, trail_name: object) -> str:
+def _collector_command(
+    pr_number: object,
+    topic_arn: object,
+    trail_name: object,
+    *,
+    include_dependabot_exception: bool = True,
+) -> str:
     """Return the final collector command with closure evidence inputs visible."""
     entries = [
         ("PR_NUMBER", pr_number),
@@ -106,11 +112,15 @@ def _collector_command(pr_number: object, topic_arn: object, trail_name: object)
         ("RESTORE_DRILL_EVIDENCE", REQUIRED_EVIDENCE_PLACEHOLDER),
         ("QUESTION_MATRIX_EVIDENCE", REQUIRED_EVIDENCE_PLACEHOLDER),
         ("EXTERNAL_CONTROL_EVIDENCE", REQUIRED_EVIDENCE_PLACEHOLDER),
-        ("DEPENDABOT_EXCEPTION_EVIDENCE", OPTIONAL_EVIDENCE_PLACEHOLDER),
         ("ALERT_ROUTE_OBSERVATION_EVIDENCE", OPTIONAL_EVIDENCE_PLACEHOLDER),
         ("SECURITY_ACCOUNT_ATTESTATION_EVIDENCE", OPTIONAL_EVIDENCE_PLACEHOLDER),
         ("PRODUCTION_DR_OWNER_EVIDENCE", OPTIONAL_EVIDENCE_PLACEHOLDER),
     ]
+    if include_dependabot_exception:
+        entries.insert(
+            6,
+            ("DEPENDABOT_EXCEPTION_EVIDENCE", OPTIONAL_EVIDENCE_PLACEHOLDER),
+        )
     prefix = " ".join(f"{key}={value}" for key, value in entries if value)
     return f"{prefix} make report-well-architected-evidence"
 
@@ -124,14 +134,12 @@ def _shell_template(assignments: Sequence[tuple[str, str]], make_target: str) ->
     return "\n".join(lines)
 
 
-def _github_variable_template(repo: str) -> str:
+def _github_variable_template(
+    repo: str, *, include_dependabot_exception: bool = True
+) -> str:
     """Return GitHub Actions variable commands for hosted owner evidence."""
     repo_arg = f" --repo {repo}" if repo else ""
     variables = [
-        (
-            "DEPENDABOT_EXCEPTION_EVIDENCE",
-            "<path-to-dependabot-exception.json>",
-        ),
         (
             "ALERT_ROUTE_OBSERVATION_EVIDENCE",
             "<path-to-alert-route-observation.json>",
@@ -145,6 +153,14 @@ def _github_variable_template(repo: str) -> str:
             "<path-to-production-dr-owner.json>",
         ),
     ]
+    if include_dependabot_exception:
+        variables.insert(
+            0,
+            (
+                "DEPENDABOT_EXCEPTION_EVIDENCE",
+                "<path-to-dependabot-exception.json>",
+            ),
+        )
     lines = ["```bash"]
     lines.extend(
         f"gh variable set {name}{repo_arg} --body '{value}'"
@@ -463,15 +479,15 @@ def render_closeout_bundle(
     reviewer_lines = (
         _reviewer_action_lines(pr_head) if evidence_report.get("pr") else []
     )
+    dependabot_alerts_failed = _failed_check(checks_by_name, "github_dependabot_alerts")
     vulnerability_owner_lines = (
-        _vulnerability_owner_lines()
-        if _failed_check(checks_by_name, "github_dependabot_alerts")
-        else []
+        _vulnerability_owner_lines() if dependabot_alerts_failed else []
     )
     final_collector_command = _collector_command(
         evidence_report.get("pr", ""),
         alert_route.get("topicArn", ""),
         cloudtrail.get("trailName", ""),
+        include_dependabot_exception=dependabot_alerts_failed,
     )
 
     lines = [
@@ -590,7 +606,10 @@ def render_closeout_bundle(
             "repository Actions variables for hosted evidence runs. Leave any "
             "variable unset until its owner evidence exists.",
             "",
-            _github_variable_template(repo),
+            _github_variable_template(
+                repo,
+                include_dependabot_exception=dependabot_alerts_failed,
+            ),
             "",
             "### Security Owner",
             "",
