@@ -2630,6 +2630,12 @@ def test_render_well_architected_closeout_writes_owner_handoff(
                         ],
                     },
                     {
+                        "name": "github_dependabot_alerts",
+                        "status": "failed",
+                        "evidence": {"openAlertNumbers": [4]},
+                        "blockers": ["Dependabot alerts remain open."],
+                    },
+                    {
                         "name": "external_control_evidence",
                         "status": "failed",
                         "evidence": {
@@ -2814,6 +2820,7 @@ def test_render_well_architected_closeout_handles_clean_and_invalid_inputs(
     assert "Not applicable in this branch evidence context" in branch_text  # nosec B101
     assert "| PR head SHA |" not in branch_text  # nosec B101
     assert "### Reviewer" not in branch_text  # nosec B101
+    assert "### Vulnerability Owner" not in branch_text  # nosec B101
     assert "| Current final scores | None |" in text  # nosec B101
     assert "| Unresolved question IDs | None |" in text  # nosec B101
     assert "| Unresolved control IDs | None |" in text  # nosec B101
