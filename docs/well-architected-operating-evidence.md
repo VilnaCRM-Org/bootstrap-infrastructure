@@ -37,17 +37,17 @@ owner attestations before any final 5/5 claim.
 
 ## External-Control Owner Registry
 
-PR #22 and issue #17 use the same assigned repository-admin set for external
-control routing: `Kravalg`, `pixelTM`, and `vilnacrm`. These assignments name
-the escalation owners for the current 5/5 closeout; they do not replace the
-required metadata or owner attestation for each control.
+Issue #17 uses the assigned repository-admin set for external control routing:
+`Kravalg`, `pixelTM`, and `vilnacrm`. These assignments name the escalation
+owners for the current 5/5 closeout; they do not replace the required metadata
+or owner attestation for each control.
 
 | Control | Tracking issue | Assigned owners | Required closeout evidence |
 | --- | --- | --- | --- |
 | Branch protection required checks | #26 | `Kravalg`, `pixelTM`, `vilnacrm` | Active `main` ruleset requires Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions). |
 | Production approval | #27 | `Kravalg`, `pixelTM`, `vilnacrm` | `prod` GitHub environment exists, blocks self-review, restricts deployment branches, and records required reviewer settings. |
 | Security account attestations | #28 | `Kravalg`, `pixelTM`, `vilnacrm` | Non-secret security-owner attestation records human MFA/SSO posture, static-key exception or remediation, and permissions-boundary or exemption approval. |
-| Default-branch vulnerability closeout | #29 | `Kravalg`, `pixelTM`, `vilnacrm` | Default-branch high-severity Dependabot alerts in `uv.lock` close after merge or receive owner-approved time-bound exceptions generated with `make report-dependabot-exception`. |
+| Default-branch vulnerability closeout | #29 | `Kravalg`, `pixelTM`, `vilnacrm` | Closed: current Dependabot metadata reports zero open high or critical default-branch alerts for `uv.lock`; future alerts must close or receive owner-approved time-bound exceptions generated with `make report-dependabot-exception`. |
 | Downstream alert consumption | #30 | `Kravalg`, `pixelTM`, `vilnacrm` | SRE records the downstream human alert route, route test or accepted operating proof, and monthly observation history. |
 
 ## Priority And Risk Register

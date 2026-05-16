@@ -318,7 +318,7 @@ can support a 5/5 claim.
 | Budget, anomaly, transfer-cost, and quota evidence | `platform-maintainers` for the test workload; FinOps owner for future shared or production workloads | Maintainer | SRE | Security reviewer |
 | Repository catalog owner and stale cleanup review | Maintainer | Repository owner | SRE, FinOps owner | Platform owner |
 
-Current external-control closeout for PR #22 is routed through issues #26-#30.
+Current external-control closeout for issue #17 is routed through issues #26-#30.
 Those issues are assigned to `Kravalg`, `pixelTM`, and `vilnacrm` because the
 remaining controls require repository admin, security-owner, or SRE evidence
 outside the current automation token.

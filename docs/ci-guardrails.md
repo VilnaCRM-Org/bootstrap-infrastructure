@@ -504,7 +504,7 @@ make configure-github-repository-controls
 
 The GraphQL preflight must report an admin-capable identity before `--apply`
 can update repository-owned rulesets or protected environments. The current
-non-admin evidence for PR #22 is `viewerPermission=WRITE` and
+non-admin evidence for issue #17 is `viewerPermission=WRITE` and
 `viewerCanAdminister=false`, so this command is intentionally expected to stop
 at the admin-rights preflight until a repository administrator runs it.
 
