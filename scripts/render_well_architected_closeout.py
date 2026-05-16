@@ -376,6 +376,59 @@ def _reviewer_action_lines(pr_head: object) -> list[str]:
     ]
 
 
+def _failed_check(checks_by_name: dict[str, dict[str, Any]], check_name: str) -> bool:
+    check = checks_by_name.get(check_name, {})
+    status = check.get("status")
+    return status is not None and status not in NON_BLOCKING_CHECK_STATUSES
+
+
+def _vulnerability_owner_lines() -> list[str]:
+    return [
+        "### Vulnerability Owner",
+        "",
+        "- Prefer merging a default-branch dependency remediation that lands "
+        "the patched `uv.lock` for every open high-severity alert.",
+        "- If remediation cannot merge immediately, generate a short exception "
+        "with `make report-dependabot-exception` and re-run "
+        "`DEPENDABOT_EXCEPTION_EVIDENCE=<path> "
+        "make report-well-architected-evidence`.",
+        "",
+        _shell_template(
+            [
+                (
+                    "DEPENDABOT_EXCEPTION_OUTPUT",
+                    ".artifacts/well-architected/dependabot-exception.md",
+                ),
+                (
+                    "DEPENDABOT_EXCEPTION_JSON_OUTPUT",
+                    ".artifacts/well-architected/dependabot-exception.json",
+                ),
+                ("DEPENDABOT_EXCEPTION_REVIEWER", REVIEWER_LOGIN_PLACEHOLDER),
+                ("DEPENDABOT_EXCEPTION_OWNER", "<security-owner-login-or-team>"),
+                (
+                    "DEPENDABOT_EXCEPTION_APPROVAL",
+                    APPROVAL_DECISION_PLACEHOLDER,
+                ),
+                (
+                    "DEPENDABOT_EXCEPTION_REASON",
+                    "<non-secret reason alerts cannot close immediately>",
+                ),
+                (
+                    "DEPENDABOT_EXCEPTION_REMEDIATION",
+                    "<non-secret remediation plan and target>",
+                ),
+                ("DEPENDABOT_EXCEPTION_EXPIRY_DATE", DATE_PLACEHOLDER),
+                (
+                    "DEPENDABOT_EXCEPTION_EVIDENCE_NOTE",
+                    "<non-secret owner evidence reference>",
+                ),
+            ],
+            "report-dependabot-exception",
+        ),
+        "",
+    ]
+
+
 def render_closeout_bundle(
     evidence_report: dict[str, Any], question_verification: dict[str, Any]
 ) -> str:
@@ -409,6 +462,11 @@ def render_closeout_bundle(
     pr_head = pr_checks.get("headRefOid", "")
     reviewer_lines = (
         _reviewer_action_lines(pr_head) if evidence_report.get("pr") else []
+    )
+    vulnerability_owner_lines = (
+        _vulnerability_owner_lines()
+        if _failed_check(checks_by_name, "github_dependabot_alerts")
+        else []
     )
     final_collector_command = _collector_command(
         evidence_report.get("pr", ""),
@@ -579,48 +637,7 @@ def render_closeout_bundle(
             "- Re-run `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE=<path> "
             "make report-well-architected-evidence`.",
             "",
-            "### Vulnerability Owner",
-            "",
-            "- Prefer merging a default-branch dependency remediation that lands "
-            "the patched `uv.lock` for every open high-severity alert.",
-            "- If remediation cannot merge immediately, generate a short exception "
-            "with `make report-dependabot-exception` and re-run "
-            "`DEPENDABOT_EXCEPTION_EVIDENCE=<path> "
-            "make report-well-architected-evidence`.",
-            "",
-            _shell_template(
-                [
-                    (
-                        "DEPENDABOT_EXCEPTION_OUTPUT",
-                        ".artifacts/well-architected/dependabot-exception.md",
-                    ),
-                    (
-                        "DEPENDABOT_EXCEPTION_JSON_OUTPUT",
-                        ".artifacts/well-architected/dependabot-exception.json",
-                    ),
-                    ("DEPENDABOT_EXCEPTION_REVIEWER", REVIEWER_LOGIN_PLACEHOLDER),
-                    ("DEPENDABOT_EXCEPTION_OWNER", "<security-owner-login-or-team>"),
-                    (
-                        "DEPENDABOT_EXCEPTION_APPROVAL",
-                        APPROVAL_DECISION_PLACEHOLDER,
-                    ),
-                    (
-                        "DEPENDABOT_EXCEPTION_REASON",
-                        "<non-secret reason alerts cannot close immediately>",
-                    ),
-                    (
-                        "DEPENDABOT_EXCEPTION_REMEDIATION",
-                        "<non-secret remediation plan and target>",
-                    ),
-                    ("DEPENDABOT_EXCEPTION_EXPIRY_DATE", DATE_PLACEHOLDER),
-                    (
-                        "DEPENDABOT_EXCEPTION_EVIDENCE_NOTE",
-                        "<non-secret owner evidence reference>",
-                    ),
-                ],
-                "report-dependabot-exception",
-            ),
-            "",
+            *vulnerability_owner_lines,
             "### SRE Owner",
             "",
             "- Generate monthly downstream alert-route evidence with "
