@@ -8,15 +8,26 @@ from infra import (
     BootstrapInfrastructure,
     BootstrapInfrastructureDependencies,
     CentralLoggingBuckets,
+    CostControlInputs,
+    CostControls,
     GitHubAutomation,
     ManagedRepositoryCatalog,
+    OperationsMonitoring,
     PulumiSecretsKeys,
     PulumiStateBuckets,
     S3BackupPlan,
+    SecurityAccountControls,
+    automation,
     config,
     logging_bucket,
+    operations_monitoring,
     pulumi_secrets,
     pulumi_state,
+    security_account_controls,
+)
+from infra.cost_controls import (
+    COST_ALLOCATION_TAG_KEYS,
+    managed_cost_allocation_tag_keys,
 )
 from infra.iam import GitHubOidcRoles, github_oidc
 from infra.utils.outputs import future_output
@@ -38,15 +49,18 @@ def _resource_state_by_name(pulumi_mocks, name: str) -> dict:
     pytest.fail(f"Expected mock resource {name!r} to be registered.")
 
 
-def test_central_logging_buckets_rejects_long_replica(  # noqa: ARG001
-    pulumi_mocks, monkeypatch
-):
-    monkeypatch.setattr(
-        logging_bucket, "central_logging_bucket_name", lambda _region: "a" * 60
-    )
-    monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
-    with pytest.raises(ValueError):
-        CentralLoggingBuckets("central-logs")
+def test_managed_cost_allocation_tag_keys_returns_stable_copy():
+    """Cost allocation tag helper should return a mutable copy of stable keys."""
+    tag_keys = managed_cost_allocation_tag_keys(("Owner", "CostCenter"))
+
+    assert tag_keys == ["Owner", "CostCenter"]  # nosec B101
+
+
+def test_central_logging_buckets_truncates_long_replica_name():
+    replica_name = logging_bucket._replica_bucket_name("a" * 60, "us-west-2")
+
+    assert len(replica_name) <= 63  # nosec B101
+    assert replica_name.endswith("-us-west-2-replication")  # nosec B101
 
 
 def test_central_logging_buckets_reject_same_replication_region(  # noqa: ARG001
@@ -54,6 +68,154 @@ def test_central_logging_buckets_reject_same_replication_region(  # noqa: ARG001
 ):
     with pytest.raises(ValueError, match="must differ from primary region"):
         CentralLoggingBuckets("central-logs", replication_region="us-east-1")
+
+
+def test_operations_monitoring_rejects_long_cloudtrail_bucket_name(monkeypatch):
+    monkeypatch.setattr(config.settings, "environment", "x" * 40)
+
+    with pytest.raises(ValueError, match="CloudTrail bucket name exceeds"):
+        operations_monitoring._cloudtrail_bucket_name(
+            config.settings,
+            "123456789012",
+            "eu-central-1",
+        )
+
+
+def test_operations_monitoring_topic_name_normalizes_dot_environment():
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="prod.eu",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    assert (  # nosec B101
+        operations_monitoring._topic_name(settings) == "bootstrap-prod-eu-operations"
+    )
+
+
+def test_security_account_controls_normalizes_dot_environment():
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="prod.eu",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    assert (  # nosec B101
+        security_account_controls._config_bucket_name(
+            settings, "123456789012", "eu-central-1"
+        )
+        == "bootstrap-123456789012-eu-central-1-prod-eu-aws-config"
+    )
+    assert (  # nosec B101
+        security_account_controls._config_recorder_name(settings)
+        == "bootstrap-prod.eu-configuration-recorder"
+    )
+
+
+def test_security_account_controls_reject_long_resource_names():
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="x" * 40,
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    with pytest.raises(ValueError, match="AWS Config bucket name exceeds"):
+        security_account_controls._config_bucket_name(
+            settings,
+            "123456789012",
+            "eu-central-1",
+        )
+    with pytest.raises(ValueError, match="AWS Config recorder role name exceeds"):
+        security_account_controls._config_role_name(settings)
+
+
+def test_github_automation_policy_normalizes_sns_environment_and_allocation_tags():
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="prod.eu",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+        manage_cost_allocation_tags=True,
+    )
+
+    policy = json.loads(
+        automation._automation_policy(
+            "123456789012",
+            settings,
+            "bootstrap-infrastructure",
+        )
+    )
+    statements = {statement["Sid"]: statement for statement in policy["Statement"]}
+
+    assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
+        "arn:aws:sns:*:123456789012:bootstrap-prod-eu-operations"
+    ]
+    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == "*"  # nosec B101
+    assert statements["ManageBootstrapCostAllocationTags"] == {  # nosec B101
+        "Sid": "ManageBootstrapCostAllocationTags",
+        "Effect": "Allow",
+        "Action": [
+            "ce:ListCostAllocationTags",
+            "ce:UpdateCostAllocationTagsStatus",
+        ],
+        "Resource": "*",
+    }
+    assert (  # nosec B101
+        "PassBootstrapRolesToConfig" in statements
+    )
+    assert (  # nosec B101
+        "CreateBootstrapGuardDutyDetector" in statements
+    )
+    assert (  # nosec B101
+        statements["CreateSecurityServiceLinkedRoles"]["Condition"]
+        == {
+            "StringEquals": {
+                "iam:AWSServiceName": [
+                    "guardduty.amazonaws.com",
+                    "securityhub.amazonaws.com",
+                ]
+            }
+        }
+    )
 
 
 def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
@@ -88,15 +250,21 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     S3BackupPlan(
         "backup", backup_target_arns=[logging.bucket.arn, *state.bucket_arns.values()]
     )
+    monitoring = OperationsMonitoring("operations-monitoring")
 
     assert logging.bucket is not None  # nosec B101
     assert state.backend_urls  # nosec B101
     assert secrets.provider_urls  # nosec B101
     assert oidc.deploy_role_arns  # nosec B101
     assert automation.repository.repository_url is not None  # nosec B101
+    assert monitoring.rules  # nosec B101
 
     _sync_await(future_output(logging.bucket.bucket))
     _sync_await(future_output(state.backend_urls["repo"]))
+    _sync_await(future_output(monitoring.topic.arn))
+    _sync_await(future_output(monitoring.alert_queue.arn))
+    _sync_await(future_output(monitoring.alert_queue.url))
+    _sync_await(future_output(monitoring.alert_queue_subscription.arn))
 
     resource_states = [state for _typ, _name, state in pulumi_mocks.resources]
     central_logging_state = next(
@@ -107,14 +275,79 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     central_logging_encryption_state = _resource_state_by_name(
         pulumi_mocks, "central-logging-primary-encryption"
     )
+    central_logging_replica_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "central-logging-replica-encryption"
+    )
     state_bucket_logging_state = _resource_state_by_name(
         pulumi_mocks, "pulumi-state-repo-logging"
+    )
+    state_bucket_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "pulumi-state-repo-encryption"
     )
     replica_state_bucket_logging_state = _resource_state_by_name(
         pulumi_mocks, "pulumi-state-replica-repo-logging"
     )
+    replica_state_bucket_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "pulumi-state-replica-repo-encryption"
+    )
+    alert_topic_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-topic"
+    )
+    alert_topic_key_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-topic-key"
+    )
+    alert_topic_key_alias_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-topic-key-alias"
+    )
+    cloudtrail_key_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-key"
+    )
+    cloudtrail_key_alias_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-key-alias"
+    )
+    alert_topic_policy_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-topic-policy"
+    )
+    alert_queue_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-alert-queue"
+    )
+    alert_queue_policy_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-alert-queue-policy"
+    )
+    alert_queue_subscription_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-alert-queue-subscription"
+    )
+    cloudtrail_bucket_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-bucket"
+    )
+    cloudtrail_bucket_encryption_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-bucket-encryption"
+    )
+    cloudtrail_bucket_policy_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail-bucket-policy"
+    )
+    cloudtrail_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-cloudtrail"
+    )
+    backup_restore_policy_state = _resource_state_by_name(
+        pulumi_mocks, "backup-restore-drill-policy"
+    )
+    backup_rule_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-backup-failed-rule"
+    )
+    kms_rule_state = _resource_state_by_name(
+        pulumi_mocks, "operations-monitoring-kms-risk-rule"
+    )
 
-    assert central_logging_encryption_state["rules"] is not None  # nosec B101
+    managed_bucket_encryption_rules = [
+        central_logging_encryption_state["rules"][0],
+        central_logging_replica_encryption_state["rules"][0],
+        state_bucket_encryption_state["rules"][0],
+        replica_state_bucket_encryption_state["rules"][0],
+    ]
+    for encryption_rule in managed_bucket_encryption_rules:
+        assert encryption_rule["blockedEncryptionTypes"] == ["SSE-C"]  # nosec B101
+        assert encryption_rule["bucketKeyEnabled"] is False  # nosec B101
     assert central_logging_state["tags"]["LoggingExempt"] == "true"  # nosec B101
     assert (
         central_logging_state["tags"]["LoggingExemptReason"]
@@ -126,8 +359,467 @@ def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     )  # nosec B101
     assert (
         replica_state_bucket_logging_state["targetBucket"]
-        == "company-central-logs-us-east-1-test-replication"
+        == "company-central-logs-us-east-1-test-us-west-2-replication"
     )  # nosec B101
+    assert alert_topic_state["name"] == "bootstrap-test-operations"  # nosec B101
+    assert (  # nosec B101
+        alert_topic_state["kmsMasterKeyId"]
+        == "arn:aws:kms:us-east-1:123456789012:key/operations-monitoring-topic-key"
+    )
+    alert_topic_key_policy = json.loads(alert_topic_key_state["policy"])
+    eventbridge_key_statement = next(
+        statement
+        for statement in alert_topic_key_policy["Statement"]
+        if statement["Sid"] == "AllowEventBridgeForEncryptedSns"
+    )
+    assert alert_topic_key_state["enableKeyRotation"] is True  # nosec B101
+    assert alert_topic_key_state["tags"]["Purpose"] == "operations-alerting"  # nosec B101
+    assert eventbridge_key_statement["Principal"]["Service"] == (  # nosec B101
+        "events.amazonaws.com"
+    )
+    assert "Condition" not in eventbridge_key_statement  # nosec B101
+    alert_topic_policy = json.loads(alert_topic_policy_state["policy"])
+    topic_statements = {
+        statement["Sid"]: statement for statement in alert_topic_policy["Statement"]
+    }
+    assert topic_statements["AllowAccountTopicAdministration"][  # nosec B101
+        "Principal"
+    ] == {"AWS": "arn:aws:iam::123456789012:root"}
+    topic_owner_actions = topic_statements["AllowAccountTopicAdministration"]["Action"]
+    expected_topic_owner_actions = list(operations_monitoring.SNS_TOPIC_OWNER_ACTIONS)
+    if topic_owner_actions != expected_topic_owner_actions:
+        raise AssertionError(
+            "SNS topic owner actions should stay explicit and service-scoped."
+        )
+    assert topic_statements["AllowEventBridgePublish"]["Condition"] == {  # nosec B101
+        "StringEquals": {"aws:SourceAccount": "123456789012"}
+    }
+    assert topic_statements["AllowBudgetsPublish"]["Condition"] == {  # nosec B101
+        "ArnLike": {
+            "aws:SourceArn": "arn:aws:budgets::123456789012:*",
+        },
+        "StringEquals": {"aws:SourceAccount": "123456789012"},
+    }
+    assert topic_statements["AllowCostAnomalyPublish"]["Condition"] == {  # nosec B101
+        "StringEquals": {"aws:SourceAccount": "123456789012"},
+    }
+    assert alert_queue_state["name"] == "bootstrap-test-operations-alerts"  # nosec B101
+    assert alert_queue_state["sqsManagedSseEnabled"] is True  # nosec B101
+    assert alert_queue_state["tags"]["Purpose"] == "operations-alerting"  # nosec B101
+    assert alert_queue_policy_state["queueUrl"] == (  # nosec B101
+        "https://sqs.us-east-1.amazonaws.com/123456789012/"
+        "bootstrap-test-operations-alerts"
+    )
+    alert_queue_policy = json.loads(alert_queue_policy_state["policy"])
+    queue_statements = {
+        statement["Sid"]: statement for statement in alert_queue_policy["Statement"]
+    }
+    assert queue_statements["AllowOperationsTopicSendMessage"] == {  # nosec B101
+        "Sid": "AllowOperationsTopicSendMessage",
+        "Effect": "Allow",
+        "Principal": {"Service": "sns.amazonaws.com"},
+        "Action": "sqs:SendMessage",
+        "Resource": (
+            "arn:aws:sqs:us-east-1:123456789012:bootstrap-test-operations-alerts"
+        ),
+        "Condition": {
+            "ArnEquals": {
+                "aws:SourceArn": (
+                    "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+                )
+            },
+            "StringEquals": {"aws:SourceAccount": "123456789012"},
+        },
+    }
+    assert alert_queue_subscription_state["topic"] == (  # nosec B101
+        "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+    )
+    assert alert_queue_subscription_state["protocol"] == "sqs"  # nosec B101
+    assert alert_queue_subscription_state["endpoint"] == (  # nosec B101
+        "arn:aws:sqs:us-east-1:123456789012:bootstrap-test-operations-alerts"
+    )
+    assert cloudtrail_bucket_state["bucket"] == (  # nosec B101
+        "bootstrap-123456789012-us-east-1-test-cloudtrail"
+    )
+    cloudtrail_key_policy = json.loads(cloudtrail_key_state["policy"])
+    cloudtrail_key_statements = {
+        statement["Sid"]: statement for statement in cloudtrail_key_policy["Statement"]
+    }
+    assert cloudtrail_key_state["enableKeyRotation"] is True  # nosec B101
+    assert cloudtrail_key_state["tags"]["Purpose"] == (  # nosec B101
+        "operations-cloudtrail"
+    )
+    assert cloudtrail_key_alias_state["name"] == (  # nosec B101
+        "alias/bootstrap-test-operations-cloudtrail"
+    )
+    assert cloudtrail_key_statements["AllowCloudTrailEncryptLogs"][  # nosec B101
+        "Condition"
+    ] == {
+        "StringEquals": {
+            "aws:SourceArn": (
+                "arn:aws:cloudtrail:us-east-1:123456789012:trail/"
+                "bootstrap-test-management-events"
+            )
+        },
+        "StringLike": {
+            "kms:EncryptionContext:aws:cloudtrail:arn": (
+                "arn:aws:cloudtrail:*:123456789012:trail/"
+                "bootstrap-test-management-events"
+            )
+        },
+    }
+    cloudtrail_bucket_encryption = json.dumps(
+        cloudtrail_bucket_encryption_state["rules"],
+        sort_keys=True,
+    )
+    assert (  # nosec B101
+        cloudtrail_bucket_encryption_state["rules"][0]["bucketKeyEnabled"] is False
+    )
+    assert cloudtrail_bucket_encryption_state["rules"][0][  # nosec B101
+        "blockedEncryptionTypes"
+    ] == ["SSE-C"]
+    assert "aws:kms" in cloudtrail_bucket_encryption  # nosec B101
+    assert (  # nosec B101
+        "arn:aws:kms:us-east-1:123456789012:key/"
+        "operations-monitoring-cloudtrail-key" in cloudtrail_bucket_encryption
+    )
+    cloudtrail_bucket_policy = json.loads(cloudtrail_bucket_policy_state["policy"])
+    cloudtrail_put_statement = next(
+        statement
+        for statement in cloudtrail_bucket_policy["Statement"]
+        if statement["Sid"] == "AllowCloudTrailPutObject"
+    )
+    assert cloudtrail_put_statement["Condition"] == {  # nosec B101
+        "ArnLike": {
+            "aws:SourceArn": (
+                "arn:aws:cloudtrail:us-east-1:123456789012:trail/"
+                "bootstrap-test-management-events"
+            )
+        },
+        "StringEquals": {
+            "aws:SourceAccount": "123456789012",
+            "s3:x-amz-acl": "bucket-owner-full-control",
+        },
+    }
+    assert cloudtrail_state["name"] == (  # nosec B101
+        "bootstrap-test-management-events"
+    )
+    assert cloudtrail_state["enableLogFileValidation"] is True  # nosec B101
+    assert cloudtrail_state["includeGlobalServiceEvents"] is True  # nosec B101
+    assert cloudtrail_state["isMultiRegionTrail"] is True  # nosec B101
+    assert cloudtrail_state["kmsKeyId"] == (  # nosec B101
+        "arn:aws:kms:us-east-1:123456789012:key/operations-monitoring-cloudtrail-key"
+    )
+    backup_restore_policy = json.loads(backup_restore_policy_state["policy"])
+    restore_policy_resources = {
+        resource
+        for statement in backup_restore_policy["Statement"]
+        for resource in (
+            statement["Resource"]
+            if isinstance(statement["Resource"], list)
+            else [statement["Resource"]]
+        )
+    }
+    assert (  # nosec B101
+        "arn:aws:s3:::awsbackup-restore-test-bootstrap-123456789012-*"
+        in restore_policy_resources
+    )
+    assert (  # nosec B101
+        "arn:aws:s3:::awsbackup-restore-test-bootstrap-123456789012-*/*"
+        in restore_policy_resources
+    )
+    assert (  # nosec B101
+        "arn:aws:kms:*:123456789012:key/*" in restore_policy_resources
+    )
+    kms_restore_statement = next(
+        statement
+        for statement in backup_restore_policy["Statement"]
+        if statement["Sid"] == "UseS3KmsKeysForIsolatedRestoreDrills"
+    )
+    assert kms_restore_statement["Condition"] == {  # nosec B101
+        "ForAnyValue:StringLike": {
+            "kms:ResourceAliases": [
+                "alias/pulumi-*-secrets",
+                "alias/bootstrap-*-operations-cloudtrail",
+            ]
+        },
+        "StringLike": {"kms:ViaService": ["s3.*.amazonaws.com"]},
+    }
+    restore_policy_attachments = [
+        state
+        for resource_type, _name, state in pulumi_mocks.resources
+        if resource_type == "aws:iam/rolePolicyAttachment:RolePolicyAttachment"
+        and state.get("policyArn")
+        == "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Restore"
+    ]
+    assert restore_policy_attachments == []  # nosec B101
+    assert (  # nosec B101
+        alert_topic_key_alias_state["name"]
+        == "alias/bootstrap-test-operations-alerting"
+    )
+    assert backup_rule_state["name"] == "bootstrap-test-backup-failed"  # nosec B101
+    assert "Backup Job State Change" in backup_rule_state["eventPattern"]  # nosec B101
+    assert kms_rule_state["name"] == "bootstrap-test-kms-risk"  # nosec B101
+    assert "ScheduleKeyDeletion" in kms_rule_state["eventPattern"]  # nosec B101
+
+
+def test_operations_monitoring_rule_name_guard(monkeypatch):
+    """Rule names must stay inside the EventBridge length limit."""
+    monkeypatch.setattr(config.settings, "environment", "e" * 60)
+
+    with pytest.raises(ValueError, match="EventBridge rule name"):
+        operations_monitoring._rule_name(config.settings, "backup-failed")  # noqa: SLF001
+
+
+def test_operations_monitoring_can_reuse_existing_cloudtrail(pulumi_mocks, monkeypatch):  # noqa: ARG001
+    """Existing management trails should avoid duplicate CloudTrail resources."""
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(
+        config.settings,
+        "operations_cloudtrail_name",
+        "existing-management-events",
+    )
+
+    monitoring = OperationsMonitoring("operations-monitoring-reuse")
+
+    assert monitoring.cloudtrail is None  # nosec B101
+    assert monitoring.cloudtrail_bucket is None  # nosec B101
+    assert _sync_await(future_output(monitoring.cloudtrail_name)) == (  # nosec B101
+        "existing-management-events"
+    )
+    assert _sync_await(future_output(monitoring.cloudtrail_bucket_name)) is None  # nosec B101
+    cloudtrail_resource_names = {
+        name
+        for resource_type, name, _state in pulumi_mocks.resources
+        if resource_type == "aws:cloudtrail/trail:Trail"
+    }
+    assert cloudtrail_resource_names == set()  # nosec B101
+
+
+def test_operations_monitoring_policies_are_partition_aware():
+    """Operations policies should support non-commercial AWS partitions."""
+    topic_policy = json.loads(
+        operations_monitoring._topic_policy(  # noqa: SLF001
+            "arn:aws-us-gov:sns:us-gov-west-1:123456789012:bootstrap-test-operations",
+            "123456789012",
+            "aws-us-gov",
+        )
+    )
+    queue_policy = json.loads(
+        operations_monitoring._queue_policy(  # noqa: SLF001
+            (
+                "arn:aws-us-gov:sqs:us-gov-west-1:123456789012:"
+                "bootstrap-test-operations-alerts"
+            ),
+            ("arn:aws-us-gov:sns:us-gov-west-1:123456789012:bootstrap-test-operations"),
+            "123456789012",
+        )
+    )
+    topic_key_policy = json.loads(
+        operations_monitoring._topic_key_policy("123456789012", "aws-us-gov")  # noqa: SLF001
+    )
+
+    topic_statements = {
+        statement["Sid"]: statement for statement in topic_policy["Statement"]
+    }
+    key_statements = {
+        statement["Sid"]: statement for statement in topic_key_policy["Statement"]
+    }
+    queue_statements = {
+        statement["Sid"]: statement for statement in queue_policy["Statement"]
+    }
+
+    assert topic_statements["AllowAccountTopicAdministration"]["Principal"] == {  # nosec B101
+        "AWS": "arn:aws-us-gov:iam::123456789012:root"
+    }
+    assert key_statements["EnableAccountPermissions"]["Principal"] == {  # nosec B101
+        "AWS": "arn:aws-us-gov:iam::123456789012:root"
+    }
+    assert topic_statements["AllowBudgetsPublish"]["Condition"]["ArnLike"] == {  # nosec B101
+        "aws:SourceArn": "arn:aws-us-gov:budgets::123456789012:*"
+    }
+    assert queue_statements["AllowOperationsTopicSendMessage"]["Resource"] == (  # nosec B101
+        "arn:aws-us-gov:sqs:us-gov-west-1:123456789012:bootstrap-test-operations-alerts"
+    )
+    assert queue_statements["AllowOperationsTopicSendMessage"]["Condition"] == {  # nosec B101
+        "ArnEquals": {
+            "aws:SourceArn": (
+                "arn:aws-us-gov:sns:us-gov-west-1:123456789012:"
+                "bootstrap-test-operations"
+            )
+        },
+        "StringEquals": {"aws:SourceAccount": "123456789012"},
+    }
+
+
+def test_cost_controls_emit_budget_and_anomaly_resources(pulumi_mocks, monkeypatch):  # noqa: ARG001
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "monthly_budget_limit_usd", "75")
+    monkeypatch.setattr(config.settings, "cost_anomaly_threshold_usd", "15")
+    monkeypatch.setattr(config.settings, "cost_anomaly_monitor_arn", None)
+    monkeypatch.setattr(config.settings, "manage_cost_allocation_tags", True)
+
+    start = len(pulumi_mocks.resources)
+    controls = CostControls(
+        "cost-controls",
+        CostControlInputs(
+            operations_topic_arn=(
+                "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+            )
+        ),
+    )
+
+    budget_name = _sync_await(future_output(controls.monthly_budget.name))
+    monitor_arn = _sync_await(future_output(controls.anomaly_monitor.arn))
+    subscription_arn = _sync_await(future_output(controls.anomaly_subscription.arn))
+
+    assert budget_name == "bootstrap-test-monthly-cost"  # nosec B101
+    assert monitor_arn is not None  # nosec B101
+    assert subscription_arn is not None  # nosec B101
+
+    new_resources = pulumi_mocks.resources[start:]
+    budget_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:budgets/budget:Budget"
+    )
+    monitor_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:costexplorer/anomalyMonitor:AnomalyMonitor"
+    )
+    subscription_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:costexplorer/anomalySubscription:AnomalySubscription"
+    )
+    allocation_tags = [
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:costexplorer/costAllocationTag:CostAllocationTag"
+    ]
+
+    assert budget_state["limitAmount"] == "75"  # nosec B101
+    assert budget_state["limitUnit"] == "USD"  # nosec B101
+    assert budget_state["notifications"][0]["subscriberSnsTopicArns"] == [  # nosec B101
+        "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+    ]
+    assert monitor_state["monitorDimension"] == "SERVICE"  # nosec B101
+    assert subscription_state["frequency"] == "IMMEDIATE"  # nosec B101
+    assert subscription_state["subscribers"][0]["type"] == "SNS"  # nosec B101
+    assert len(allocation_tags) == len(COST_ALLOCATION_TAG_KEYS)  # nosec B101
+
+
+def test_cost_controls_can_reuse_existing_anomaly_monitor(pulumi_mocks, monkeypatch):  # noqa: ARG001
+    existing_monitor_arn = "arn:aws:ce::123456789012:anomalymonitor/existing-service"
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(
+        config.settings, "cost_anomaly_monitor_arn", existing_monitor_arn
+    )
+    monkeypatch.setattr(config.settings, "manage_cost_allocation_tags", False)
+
+    start = len(pulumi_mocks.resources)
+    controls = CostControls(
+        "cost-controls-existing-monitor",
+        CostControlInputs(
+            operations_topic_arn=(
+                "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
+            )
+        ),
+    )
+
+    monitor_arn = _sync_await(future_output(controls.anomaly_monitor_arn))
+    _sync_await(future_output(controls.anomaly_subscription.arn))
+    assert monitor_arn == existing_monitor_arn  # nosec B101
+    assert controls.anomaly_monitor is None  # nosec B101
+
+    new_resources = pulumi_mocks.resources[start:]
+    assert not any(  # nosec B101
+        resource_type == "aws:costexplorer/anomalyMonitor:AnomalyMonitor"
+        for resource_type, _name, _state in new_resources
+    )
+    subscription_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:costexplorer/anomalySubscription:AnomalySubscription"
+    )
+    assert subscription_state["monitorArnLists"] == [existing_monitor_arn]  # nosec B101
+
+
+def test_security_account_controls_emit_detection_and_config_resources(
+    pulumi_mocks, monkeypatch
+):  # noqa: ARG001
+    monkeypatch.setattr(config.settings, "environment", "test")
+
+    start = len(pulumi_mocks.resources)
+    controls = SecurityAccountControls("security-account-controls")
+
+    detector_id = _sync_await(future_output(controls.guardduty_detector.id))
+    hub_arn = _sync_await(future_output(controls.security_hub_account.arn))
+    recorder_name = _sync_await(future_output(controls.config_recorder.name))
+    delivery_channel_name = _sync_await(
+        future_output(controls.config_delivery_channel.name)
+    )
+    bucket_name = _sync_await(future_output(controls.config_bucket.bucket))
+
+    assert detector_id is not None  # nosec B101
+    assert hub_arn == "arn:aws:securityhub:us-east-1:123456789012:hub/default"  # nosec B101
+    assert recorder_name == "bootstrap-test-configuration-recorder"  # nosec B101
+    assert (  # nosec B101
+        delivery_channel_name == "bootstrap-test-configuration-delivery"
+    )
+    assert bucket_name == "bootstrap-123456789012-us-east-1-test-aws-config"  # nosec B101
+
+    new_resources = pulumi_mocks.resources[start:]
+    detector_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:guardduty/detector:Detector"
+    )
+    security_hub_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:securityhub/account:Account"
+    )
+    recorder_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:cfg/recorder:Recorder"
+    )
+    delivery_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:cfg/deliveryChannel:DeliveryChannel"
+    )
+    role_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:iam/role:Role"
+        and state.get("name") == "aws-config-recorder-role-test"
+    )
+    bucket_policy_state = next(
+        state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:s3/bucketPolicy:BucketPolicy"
+    )
+
+    assert detector_state["enable"] is True  # nosec B101
+    assert detector_state["findingPublishingFrequency"] == "FIFTEEN_MINUTES"  # nosec B101
+    assert security_hub_state["autoEnableControls"] is True  # nosec B101
+    assert recorder_state["recordingGroup"]["allSupported"] is True  # nosec B101
+    assert recorder_state["recordingMode"]["recordingFrequency"] == "DAILY"  # nosec B101
+    assert delivery_state["snapshotDeliveryProperties"]["deliveryFrequency"] == (  # nosec B101
+        "TwentyFour_Hours"
+    )
+    assume_role_policy = json.loads(role_state["assumeRolePolicy"])
+    assume_role_statements = assume_role_policy["Statement"]
+    assert any(  # nosec B101
+        statement.get("Principal", {}).get("Service")
+        == security_account_controls.AWS_CONFIG_SERVICE_PRINCIPAL
+        and statement.get("Action") == "sts:AssumeRole"
+        for statement in assume_role_statements
+    )
+    assert "AWSConfigBucketDelivery" in bucket_policy_state["policy"]  # nosec B101
 
 
 def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypatch):  # noqa: ARG001
@@ -168,6 +860,22 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert bootstrap.outputs["managedRepositoryProjects"] == {
         "core-service-infrastructure": "core-service"
     }  # nosec B101
+    assert bootstrap.outputs["managedRepositoryMetadata"][  # nosec B101
+        "core-service-infrastructure"
+    ] == {
+        "defaultBranch": "main",
+        "project": "core-service",
+        "lifecycleState": "active",
+        "expectedEnvironments": 2,
+    }  # nosec B101
+    assert "operationsAlertTopicArn" in bootstrap.outputs  # nosec B101
+    assert "operationsAlertQueueArn" in bootstrap.outputs  # nosec B101
+    assert "operationsAlertQueueSubscriptionArn" in bootstrap.outputs  # nosec B101
+    assert "backupVaultArn" in bootstrap.outputs  # nosec B101
+    assert "backupRoleArn" in bootstrap.outputs  # nosec B101
+    assert "guardDutyDetectorId" in bootstrap.outputs  # nosec B101
+    assert "securityHubAccountArn" in bootstrap.outputs  # nosec B101
+    assert "awsConfigRecorderName" in bootstrap.outputs  # nosec B101
     log_delivery_dependencies = bootstrap.state._log_delivery_dependencies  # noqa: SLF001
     expected_log_delivery_dependencies = [
         bootstrap.logging.bucket,
@@ -179,6 +887,7 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert bootstrap.automation is not None  # nosec B101
     _sync_await(future_output(bootstrap.automation.repository.repository_url))
     _sync_await(future_output(bootstrap.automation.role.arn))
+    _sync_await(future_output(bootstrap.automation.policy.name))
 
     repository_state = next(
         state
@@ -191,9 +900,14 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
         if resource_type == "aws:iam/role:Role"
         and state.get("name") == "PulumiAutomation-core-service-infrastructure-test"
     )
+    policy_state = _resource_state_by_name(pulumi_mocks, "github-automation-policy")
 
     assert repository_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
     assert role_state["tags"]["RepositoryProject"] == "core-service"  # nosec B101
+    assert policy_state["name"] == "github-automation-policy"  # nosec B101
+
+    topic_state = _resource_state_by_name(pulumi_mocks, "operations-monitoring-topic")
+    assert topic_state["tags"]["Purpose"] == "operations-alerting"  # nosec B101
 
 
 def test_state_buckets_reject_same_replication_region(  # noqa: ARG001
@@ -227,6 +941,166 @@ def test_github_oidc_roles_with_existing_provider(  # noqa: ARG001
     repos = [config.ManagedRepository(name="repo2", default_branch="main")]
     roles = GitHubOidcRoles("github-oidc-existing", repositories=repos)
     assert roles.deploy_role_arns  # nosec B101
+
+
+def test_github_oidc_roles_reuse_discovered_provider(  # noqa: ARG001
+    monkeypatch, pulumi_mocks
+):
+    class FakeLookup:
+        arn = (
+            "arn:aws:iam::123456789012:oidc-provider/"
+            "token.actions.githubusercontent.com"
+        )
+
+    class FakeProvider:
+        arn = pulumi.Output.from_input(FakeLookup.arn)
+
+    captured = {}
+
+    def fake_get_provider(url):
+        captured["url"] = url
+        return FakeLookup()
+
+    def fake_get_resource(_name, provider_arn, **_kwargs):
+        captured["provider_arn"] = provider_arn
+        return FakeProvider()
+
+    monkeypatch.setattr(github_oidc.settings, "github_oidc_provider_arn", None)
+    monkeypatch.setattr(github_oidc, "_role_exists", lambda _name: False)
+    monkeypatch.setattr(
+        github_oidc.aws.iam,
+        "get_open_id_connect_provider",
+        fake_get_provider,
+    )
+    monkeypatch.setattr(
+        github_oidc.aws.iam.OpenIdConnectProvider,
+        "get",
+        fake_get_resource,
+    )
+
+    repos = [config.ManagedRepository(name="repo-discovered", default_branch="main")]
+    roles = GitHubOidcRoles("github-oidc-discovered", repositories=repos)
+
+    assert roles.deploy_role_arns  # nosec B101
+    assert captured == {  # nosec B101
+        "url": "https://token.actions.githubusercontent.com",
+        "provider_arn": FakeLookup.arn,
+    }
+    provider_resource_names = {
+        name
+        for resource_type, name, _state in pulumi_mocks.resources
+        if resource_type == "aws:iam/openIdConnectProvider:OpenIdConnectProvider"
+    }
+    assert "github-oidc-discovered-provider" not in provider_resource_names  # nosec B101
+
+
+def test_github_oidc_roles_scope_state_and_kms_per_repository():
+    secret_key_arns = {
+        "repo-one": "arn:aws:kms:us-east-1:123456789012:key/repo-one",
+        "repo-two": "arn:aws:kms:us-east-1:123456789012:key/repo-two",
+    }
+
+    repo_one_policy = json.loads(
+        github_oidc._deploy_policy(
+            "arn:aws:s3:::pulumi-repo-one-test-state",
+            "arn:aws:s3:::pulumi-repo-one-test-state/state/*",
+            secret_key_arns["repo-one"],
+        )
+    )
+    repo_two_policy = json.loads(
+        github_oidc._deploy_policy(
+            "arn:aws:s3:::pulumi-repo-two-test-state",
+            "arn:aws:s3:::pulumi-repo-two-test-state/state/*",
+            secret_key_arns["repo-two"],
+        )
+    )
+    repo_one_statements = repo_one_policy["Statement"]
+    repo_two_statements = repo_two_policy["Statement"]
+
+    assert repo_one_statements[0]["Resource"] == (  # nosec B101
+        "arn:aws:s3:::pulumi-repo-one-test-state"
+    )
+    assert repo_one_statements[1]["Resource"] == (  # nosec B101
+        "arn:aws:s3:::pulumi-repo-one-test-state/state/*"
+    )
+    assert repo_one_statements[2]["Resource"] == secret_key_arns["repo-one"]  # nosec B101
+    assert "repo-two" not in json.dumps(repo_one_statements)  # nosec B101
+
+    assert repo_two_statements[0]["Resource"] == (  # nosec B101
+        "arn:aws:s3:::pulumi-repo-two-test-state"
+    )
+    assert repo_two_statements[1]["Resource"] == (  # nosec B101
+        "arn:aws:s3:::pulumi-repo-two-test-state/state/*"
+    )
+    assert repo_two_statements[2]["Resource"] == secret_key_arns["repo-two"]  # nosec B101
+    assert "repo-one" not in json.dumps(repo_two_statements)  # nosec B101
+
+    provider_arn = (
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    )
+    repo_one_trust = json.loads(
+        github_oidc._assume_role_policy(
+            provider_arn,
+            "VilnaCRM-Org",
+            "repo-one",
+            "main",
+        )
+    )
+    repo_two_trust = json.loads(
+        github_oidc._assume_role_policy(
+            provider_arn,
+            "VilnaCRM-Org",
+            "repo-two",
+            "release",
+        )
+    )
+    assert repo_one_trust["Statement"][0]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+            "token.actions.githubusercontent.com:sub": (
+                "repo:VilnaCRM-Org/repo-one:ref:refs/heads/main"
+            )
+        },
+    }
+    assert repo_two_trust["Statement"][0]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+            "token.actions.githubusercontent.com:sub": (
+                "repo:VilnaCRM-Org/repo-two:ref:refs/heads/release"
+            )
+        },
+    }
+
+
+def test_github_oidc_existing_provider_lookup_handles_missing(monkeypatch):
+    def raise_missing(**_kwargs):
+        raise RuntimeError("couldn't find resource")
+
+    monkeypatch.setattr(
+        github_oidc.aws.iam,
+        "get_open_id_connect_provider",
+        raise_missing,
+    )
+
+    assert github_oidc._existing_github_oidc_provider_arn() is None  # nosec B101
+
+
+def test_github_oidc_existing_provider_lookup_raises_unexpected(monkeypatch):
+    def raise_unexpected(**_kwargs):
+        raise RuntimeError("throttled")
+
+    monkeypatch.setattr(
+        github_oidc.aws.iam,
+        "get_open_id_connect_provider",
+        raise_unexpected,
+    )
+
+    with pytest.raises(RuntimeError, match="throttled"):
+        github_oidc._existing_github_oidc_provider_arn()
 
 
 def test_pulumi_secrets_keys_emit_expected_resources_and_outputs(
@@ -302,6 +1176,9 @@ def test_pulumi_secrets_keys_derives_repositories_without_explicit_list(
         environment="review",
         owner="platform",
         cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
         github_branch="release",
         logging_prefix="company",
         replication_region="us-west-2",
@@ -348,10 +1225,12 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     )
 
     start = len(pulumi_mocks.resources)
-    automation = GitHubAutomation("github-automation")
+    automation_resource = GitHubAutomation("github-automation")
 
-    repository_url = _sync_await(future_output(automation.repository.repository_url))
-    role_arn = _sync_await(future_output(automation.role.arn))
+    repository_url = _sync_await(
+        future_output(automation_resource.repository.repository_url)
+    )
+    role_arn = _sync_await(future_output(automation_resource.role.arn))
     assert repository_url is not None  # nosec B101
     assert role_arn is not None  # nosec B101
     assert repository_url.endswith("/pulumi-runner/bootstrap-infrastructure-test")  # nosec B101
@@ -369,7 +1248,22 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         if type_ == "aws:iam/role:Role"
         and state.get("name") == "PulumiAutomation-bootstrap-infrastructure-test"
     )
-    policy_state = _resource_state_by_name(pulumi_mocks, "github-automation-policy")
+    policy_names = [
+        "github-automation-policy",
+        "github-automation-iam-policy",
+        "github-automation-operations-policy",
+        "github-automation-cost-policy",
+        "github-automation-security-policy",
+    ]
+    managed_policy_names = policy_names[1:]
+    policy_states = [
+        _resource_state_by_name(pulumi_mocks, policy_name)
+        for policy_name in policy_names
+    ]
+    attachment_states = [
+        _resource_state_by_name(pulumi_mocks, f"{policy_name}-attachment")
+        for policy_name in managed_policy_names
+    ]
 
     assert repository_type == "aws:ecr/repository:Repository"  # nosec B101
     assert repository_state["name"] == "pulumi-runner/bootstrap-infrastructure-test"  # nosec B101
@@ -380,10 +1274,33 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
         in role_state["assumeRolePolicy"]
     )  # nosec B101
-    automation_policy = json.loads(policy_state["policy"])
+    assert (  # nosec B101
+        len(policy_states[0]["policy"].encode("utf-8"))
+        <= automation.IAM_ROLE_INLINE_POLICY_MAX_BYTES
+    )
+    for managed_policy_state in policy_states[1:]:
+        assert (  # nosec B101
+            len(managed_policy_state["policy"].encode("utf-8"))
+            <= automation.IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES
+        )
+    for attachment_state in attachment_states:
+        assert (  # nosec B101
+            attachment_state["role"] == "PulumiAutomation-bootstrap-infrastructure-test"
+        )
+    automation_policies = [
+        json.loads(policy_state["policy"]) for policy_state in policy_states
+    ]
     statements = {
-        statement["Sid"]: statement for statement in automation_policy["Statement"]
+        statement["Sid"]: statement
+        for document in automation_policies
+        for statement in document["Statement"]
     }
+    account_control_sids = {
+        statement["Sid"] for statement in automation_policies[-1]["Statement"]
+    }
+    assert "ManageSecurityHubAccount" in account_control_sids  # nosec B101
+    assert "ManageAwsConfigRecorder" in account_control_sids  # nosec B101
+    assert "CreateBootstrapGuardDutyDetector" in account_control_sids  # nosec B101
     assert statements["ManageBootstrapEcr"]["Resource"] == [  # nosec B101
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
         "bootstrap-infrastructure-test"
@@ -394,10 +1311,117 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     )
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
-        "arn:aws:s3:::pulumi-*-test-state-replication",
+        "arn:aws:s3:::pulumi-*-test-state-*-replication",
         "arn:aws:s3:::company-central-logs-*-test",
-        "arn:aws:s3:::company-central-logs-*-test-replication",
+        "arn:aws:s3:::company-central-logs-*-test-*-replication",
+        "arn:aws:s3:::bootstrap-*-test-cloudtrail",
+        "arn:aws:s3:::bootstrap-*-test-aws-config",
     ]
+    all_actions = {
+        action
+        for document in automation_policies
+        for statement in document["Statement"]
+        for action in statement["Action"]
+    }
+    assert "kms:Decrypt" not in all_actions  # nosec B101
+    assert "kms:Encrypt" not in all_actions  # nosec B101
+    assert "kms:GenerateDataKey" not in all_actions  # nosec B101
+    assert "kms:ReEncryptFrom" not in all_actions  # nosec B101
+    assert "cloudtrail:*" not in all_actions  # nosec B101
+    assert "cloudtrail:CreateTrail" in all_actions  # nosec B101
+    assert "cloudtrail:DescribeTrails" in all_actions  # nosec B101
+    assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
+        "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
+    ]
+    assert statements["ManageBootstrapCloudTrail"]["Resource"] == [  # nosec B101
+        "arn:aws:cloudtrail:*:123456789012:trail/bootstrap-test-management-events"
+    ]
+    assert statements["ReadCloudTrailTrailsForRefresh"] == {  # nosec B101
+        "Sid": "ReadCloudTrailTrailsForRefresh",
+        "Effect": "Allow",
+        "Action": ["cloudtrail:DescribeTrails"],
+        "Resource": "*",
+    }
+    assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
+        "arn:aws:sns:*:123456789012:bootstrap-test-operations"
+    ]
+    assert "sns:Subscribe" in statements["ManageBootstrapSns"]["Action"]  # nosec B101
+    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == "*"  # nosec B101
+    assert statements["ManageBootstrapSnsSubscriptions"]["Action"] == [  # nosec B101
+        "sns:GetSubscriptionAttributes",
+        "sns:Unsubscribe",
+    ]
+    assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
+        "arn:aws:budgets::123456789012:budget/bootstrap-test-*"
+    ]
+    assert statements["ReadAccountBudgetsForEvidence"] == {  # nosec B101
+        "Sid": "ReadAccountBudgetsForEvidence",
+        "Effect": "Allow",
+        "Action": ["budgets:ViewBudget"],
+        "Resource": ["arn:aws:budgets::123456789012:budget/*"],
+    }
+    assert statements["CreateBudgetServiceLinkedRole"]["Resource"] == (  # nosec B101
+        "arn:aws:iam::123456789012:role/aws-service-role/"
+        "budgets.amazonaws.com/AWSServiceRoleForBudgets"
+    )
+    assert statements["CreateBudgetServiceLinkedRole"]["Condition"] == {  # nosec B101
+        "StringEquals": {"iam:AWSServiceName": "budgets.amazonaws.com"}
+    }
+    assert statements["ReadBillingViewDataForBudgets"] == {  # nosec B101
+        "Sid": "ReadBillingViewDataForBudgets",
+        "Effect": "Allow",
+        "Action": ["billing:GetBillingViewData"],
+        "Resource": "*",
+    }
+    assert statements["CreateBootstrapCostAnomalyMonitor"]["Resource"] == "*"  # nosec B101
+    assert statements["CreateBootstrapCostAnomalyMonitor"]["Action"] == [  # nosec B101
+        "ce:CreateAnomalyMonitor"
+    ]
+    assert statements["CreateBootstrapCostAnomalyMonitor"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:RequestTag/Environment": "test",
+            "aws:RequestTag/Purpose": "cost-anomaly-monitor",
+        }
+    }
+    assert statements["CreateBootstrapCostAnomalySubscription"]["Resource"] == "*"  # nosec B101
+    assert statements["CreateBootstrapCostAnomalySubscription"]["Action"] == [  # nosec B101
+        "ce:CreateAnomalySubscription"
+    ]
+    assert statements["CreateBootstrapCostAnomalySubscription"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:RequestTag/Environment": "test",
+            "aws:RequestTag/Purpose": "cost-anomaly-subscription",
+        }
+    }
+    assert statements["ReadCostAnomalyMonitorsForEvidence"] == {  # nosec B101
+        "Sid": "ReadCostAnomalyMonitorsForEvidence",
+        "Effect": "Allow",
+        "Action": ["ce:GetAnomalyMonitors"],
+        "Resource": ["arn:aws:ce::123456789012:anomalymonitor/*"],
+    }
+    assert statements["ManageBootstrapCostAnomalyMonitors"]["Resource"] == [  # nosec B101
+        "arn:aws:ce::123456789012:anomalymonitor/*",
+    ]
+    assert statements["ManageBootstrapCostAnomalyMonitors"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": "cost-anomaly-monitor",
+        }
+    }
+    assert statements["ManageBootstrapCostAnomalySubscriptions"]["Resource"] == [  # nosec B101
+        "arn:aws:ce::123456789012:anomalysubscription/*",
+    ]
+    assert statements["ManageBootstrapCostAnomalySubscriptions"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": "cost-anomaly-subscription",
+        }
+    }
+    assert (  # nosec B101
+        "ManageBootstrapCostAllocationTags" not in statements
+    )
+    assert "budgets:ModifyBudget" in statements["ManageBootstrapBudgets"]["Action"]  # nosec B101
+    assert "budgets:DescribeBudget" in statements["ManageBootstrapBudgets"]["Action"]  # nosec B101
 
 
 def test_github_automation_requires_repo(monkeypatch):
@@ -448,6 +1472,7 @@ def test_github_oidc_roles_create_provider_when_missing(monkeypatch, pulumi_mock
     monkeypatch.setattr(github_oidc.settings, "github_oidc_provider_arn", None)
     monkeypatch.setattr(github_oidc.settings, "org", "VilnaCRM-Org")
     monkeypatch.setattr(github_oidc.settings, "environment", "test")
+    monkeypatch.setattr(github_oidc, "_existing_github_oidc_provider_arn", lambda: None)
 
     repos = [config.ManagedRepository(name="repo3", default_branch="main")]
     roles = GitHubOidcRoles("github-oidc-created", repositories=repos)
@@ -478,6 +1503,9 @@ def test_github_oidc_roles_use_injected_settings_repositories(
         environment="test",
         owner="platform",
         cost_center="engineering",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
         github_branch=None,
         logging_prefix="company",
         replication_region="us-west-2",

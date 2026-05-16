@@ -176,7 +176,15 @@ def test_repo_policy_config_declares_expected_defaults(
     """Keep the committed policy config aligned with the documented guardrails."""
     config = policy_runtime.load_policy_config()
 
-    assert config.required_tags == ("Project", "Environment", "Owner", "CostCenter")
+    assert config.required_tags == (  # nosec B101
+        "Project",
+        "Environment",
+        "Owner",
+        "CostCenter",
+        "DataClassification",
+        "Criticality",
+        "RetentionClass",
+    )
     assert config.allowed_regions == ("eu-central-1", "eu-west-1")
     assert config.production_environments == ("prod", "production", "live")
     assert config.annotations["public_s3_tag"] == "AllowPublicBucket"
@@ -1190,7 +1198,28 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
         )
         == []
     )
-    assert (
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["cloudtrail:DescribeTrails"],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
         policy_runtime.wildcard_iam_violations(
             "aws:iam/policy:Policy",
             {
@@ -1208,6 +1237,214 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
                                         "aws:RequestTag/Purpose": "pulumi-secrets",
                                     }
                                 },
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["billing:GetBillingViewData"],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ce:CreateAnomalyMonitor",
+                                    "ce:CreateAnomalySubscription",
+                                ],
+                                "Resource": "*",
+                                "Condition": {
+                                    "StringEquals": {
+                                        "aws:RequestTag/Environment": "test",
+                                        "aws:RequestTag/Purpose": [
+                                            "cost-anomaly-monitor",
+                                            "cost-anomaly-subscription",
+                                        ],
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["guardduty:ListDetectors"],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["guardduty:CreateDetector"],
+                                "Resource": "*",
+                                "Condition": {
+                                    "StringEquals": {
+                                        "aws:RequestTag/Environment": "test",
+                                        "aws:RequestTag/Purpose": "security-detection",
+                                    }
+                                },
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "config:DeleteDeliveryChannel",
+                                    "config:DescribeDeliveryChannels",
+                                    "config:PutDeliveryChannel",
+                                ],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "sns:GetSubscriptionAttributes",
+                                    "sns:Unsubscribe",
+                                ],
+                                "Resource": "*",
+                            }
+                        ],
+                    }
+                )
+            },
+            config,
+        )
+        == []
+    )
+    assert policy_runtime.wildcard_iam_violations(  # nosec B101
+        "aws:iam/policy:Policy",
+        {
+            "policy": _json(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["guardduty:CreateDetector"],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+        },
+        config,
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
+    assert policy_runtime.wildcard_iam_violations(  # nosec B101
+        "aws:iam/policy:Policy",
+        {
+            "policy": _json(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": ["ce:CreateAnomalyMonitor"],
+                            "Resource": "*",
+                        }
+                    ],
+                }
+            )
+        },
+        config,
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
+    assert (  # nosec B101
+        policy_runtime.wildcard_iam_violations(
+            "aws:iam/policy:Policy",
+            {
+                "policy": _json(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["ce:ListCostAllocationTags"],
+                                "Resource": "*",
                             }
                         ],
                     }
@@ -1546,7 +1783,7 @@ def test_pack_validators_report_expected_messages(
         props={"tags": {"Project": "svc"}},
     )
     assert "Owner" in violations[0]
-    assert (
+    assert (  # nosec B101
         _collect_violations(
             policy_runtime.require_default_tags,
             resource_type="aws:s3/bucket:Bucket",
@@ -1556,6 +1793,9 @@ def test_pack_validators_report_expected_messages(
                     "Environment": "dev",
                     "Owner": "platform",
                     "CostCenter": "eng",
+                    "DataClassification": "internal",
+                    "Criticality": "high",
+                    "RetentionClass": "standard",
                 }
             },
         )
@@ -1739,11 +1979,14 @@ def test_guardrails_support_direct_script_import(
     monkeypatch.setitem(sys.modules, "guardrails", guardrails_module)
     guardrails_spec.loader.exec_module(guardrails_module)
 
-    assert guardrails_module.CONFIG.required_tags == (
+    assert guardrails_module.CONFIG.required_tags == (  # nosec B101
         "Project",
         "Environment",
         "Owner",
         "CostCenter",
+        "DataClassification",
+        "Criticality",
+        "RetentionClass",
     )
 
 

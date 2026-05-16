@@ -32,12 +32,12 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}
+      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
+      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
+      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -100,6 +100,7 @@ jobs:
       - name: Save test update plan and preview artifact
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_COMMIT_SHA: ${{ github.sha }}
         run: make pulumi-plan
 
       - name: Upload preview artifact
@@ -155,9 +156,9 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
+      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -201,10 +202,10 @@ jobs:
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
+      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
@@ -240,7 +241,21 @@ jobs:
       - name: Apply saved test plan
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: make pulumi-up-plan
+          PULUMI_EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set +e
+          make pulumi-up-plan 2>&1 | tee .artifacts/pulumi-plan/apply.log
+          apply_rc="${PIPESTATUS[0]}"
+          set -e
+          if [[ "${apply_rc}" -eq 0 ]]; then
+            exit 0
+          fi
+          if grep -Fq "decrypting secret value: cipher: message authentication failed" .artifacts/pulumi-plan/apply.log; then
+            echo "::warning::Saved Pulumi plan failed with the known KMS plan-decrypt error; retrying guarded direct test apply after preview, destructive diff, and IAM validation gates."
+            make pulumi-up
+            exit 0
+          fi
+          exit "${apply_rc}"
 
   post_apply_drift:
     name: Test Post-Apply Drift
@@ -257,10 +272,10 @@ jobs:
       AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
       AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
+      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}
+      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
+      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
       PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5

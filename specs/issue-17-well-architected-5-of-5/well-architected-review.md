@@ -1,10 +1,21 @@
 # AWS Well-Architected Planning Scorecard
 
-Scope: issue #17 planning package for improving the bootstrap infrastructure repository to an evidence-backed 5/5 AWS Well-Architected posture.
+Scope: issue #17 planning package and current implementation evidence for
+improving the bootstrap infrastructure repository to an evidence-backed 5/5 AWS
+Well-Architected posture.
 
-This document does not update implemented repository scores. It preserves the issue #17 baseline, defines the target, and records how future implementation evidence should be evaluated.
+This document separates the issue #17 baseline, current branch evidence, the
+target state, and the remaining blockers. Current repo-owned controls may reduce
+specific gaps, but final 5/5 scores are not claimed until owner, freshness,
+validation, and external-control evidence are complete.
 
-The full question-level ledger is `question-matrix.md`. It covers all 57 current AWS Well-Architected questions and is the controlling artifact for future score changes.
+The full question-level ledger is `question-matrix.md`. It covers all 57 current
+AWS Well-Architected questions and is the controlling artifact for future score
+changes. The structured question evidence must retain
+`frameworkSourceVerification` with the official AWS Well-Architected TOC URL
+(`https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json`),
+matching pillar counts, and a fresh `checkedAt`; the collector rejects records
+that omit the TOC source.
 
 ## Source Baseline
 
@@ -14,7 +25,7 @@ Issue #17 records the following assessment:
 | --- | ---: | ---: | --- |
 | Operational Excellence | 3.09/5 | 2.70/5 | Strong CI exists, but alerting, incident ownership, runbooks, and operational health evidence need work. |
 | Security | 3.09/5 | 3.44/5 | Policy pack, OIDC, and scans are strong; bootstrap IAM blast radius and detection evidence need work. |
-| Reliability | 2.77/5 | 3.00/5 | Replication and backups exist; restore drills, alarms, quota checks, and DR targets need proof. |
+| Reliability | 2.77/5 | 3.00/5 | Replication, backups, and a latest restore-drill evidence record exist; alarms, live quota checks, recurring drill ownership, and DR targets need proof. |
 | Performance Efficiency | 2.60/5 | 3.33/5 | Managed services are reasonable; multi-repo fanout and quota modeling need guardrails. |
 | Cost Optimization | 1.55/5 | 1.33/5 | Weakest pillar; budgets, anomaly detection, cost estimation, transfer review, and cost caps are missing. |
 | Sustainability | 2.67/5 | 2.67/5 | Lifecycle basics exist; region selection, retention rationale, and sustainability goals need evidence. |
@@ -33,22 +44,46 @@ The issue #17 baseline remains the source assessment for this planning PR, but c
 | Automation IAM | Automation permissions are already partly scoped with resource patterns, deterministic names, and tag conditions. | Add action-level wildcard justification, IAM Access Analyzer evidence, permissions-boundary decision, and tests that prove blast-radius limits. |
 | CI guardrails | Same-repo workflows already include account checks, preview, destructive diff, IAM validation, saved-plan apply, and post-apply drift. | Add branch protection evidence, skipped-check policy, check-name contract, and test-account deployment evidence tied to the PR head SHA. |
 | Lifecycle controls | Primary logs, state versions, backups, and ECR images have lifecycle or retention rules. | Add replica lifecycle rationale, data classification, storage-class decisions, cost and sustainability review, and stale cleanup evidence. |
+| Operations evidence | The bootstrap stack exports operations alert topic/rule/key handles, and docs now define RACI, severity, KPI, runbook expectations, route-test evidence, and current incident/DR drill evidence. | Confirm downstream human route ownership and administrator-owned controls per environment. |
+| Cost controls | The bootstrap stack provisions a monthly AWS Budget, 80% actual and 100% forecast notifications, a service-dimensional Cost Anomaly Detection monitor or configured existing monitor ARN, and an immediate anomaly subscription to the operations topic when Cost Explorer is enabled in the target account; `docs/finops-review-2026-05-09.md` records active allocation tags, owner, thresholds, monthly cost, and transfer evidence. | Refresh FinOps evidence before production approval, catalog growth, new replicated data classes, or service-family expansion. |
 
-## Planning PR Score
+## Current Branch Documentation Score
 
 | Area | Score | Rationale |
 | --- | ---: | --- |
-| Scope clarity | 5/5 | The PR is explicitly planning-only and does not claim remediation is implemented. |
+| Scope clarity | 5/5 | The specs distinguish original baseline, implemented repo-owned controls, remaining evidence blockers, and final 5/5 claims. |
 | Traceability | 5/5 | Every issue roadmap item maps to an epic and stories. |
-| Implementation readiness | 4/5 | P0 items are ready to start; several P1/P2 items require external owners and evidence decisions. |
-| Evidence model | 4/5 | Evidence types are defined; concrete evidence locations must be filled by implementation PRs. |
-| Operational safety | 5/5 | Planning preserves secret-safe validation, KMS-backed Pulumi guidance, and no live mutation. |
+| Implementation readiness | 4/5 | Several repo-owned P0/P1 controls are implemented; final readiness still depends on external owners, subscriptions, drills, and account evidence. |
+| Evidence model | 4/5 | Evidence types and output handles are defined; concrete monthly evidence locations must still be filled by operators. |
+| Operational safety | 5/5 | Specs preserve secret-safe validation, KMS-backed Pulumi guidance, and metadata-only evidence collection. |
 | Question coverage | 5/5 | `question-matrix.md` maps all 57 AWS Well-Architected questions to current evidence, gaps, and target proof. |
 | FR/NFR coverage | 5/5 | PRD and architecture now cover current repo functions, non-functional constraints, evidence freshness, and test-account validation path. |
 
-Planning-only score: `4.8/5`.
+Documentation and evidence-contract score: `4.8/5`.
 
-Implemented Well-Architected score change from this PR: `0.0`. This PR creates the roadmap; it does not remediate controls.
+## Current Question-Level Review Evidence
+
+The 2026-05-09 evidence record at
+`question-matrix-evidence-2026-05-09.json` now includes a 1-5 score for each of
+the 57 AWS Well-Architected Framework questions plus a source-verification
+record that includes the official AWS TOC URL. These scores are current review
+observations for this PR and the repository, not final 5/5 claims. As of the
+2026-05-09 review, 10 questions remain unresolved because those rows still have
+at least one missing owner, freshness, validation, fallback, drill, account, or
+administrator-owned evidence item.
+
+Repository-owned operating evidence for owners, KPI cadence, priority/risk
+tradeoffs, runbooks, decision matrices, and sustainability governance is now
+recorded in `docs/well-architected-operating-evidence.md`. It improves the
+current question-level scores, but does not close external blockers such as
+branch protection, production environment approvals, downstream human alert
+routing, external security attestations, or default-branch Dependabot alert
+closure after merge.
+
+Final Well-Architected score change claimed by this PR: `0.0`. The current
+branch adds remediation evidence for some questions, but the pillar scores stay
+unchanged until the remaining external blockers are closed and the
+question-level claim gate is satisfied.
 
 ## Score Claim Method
 
@@ -59,12 +94,17 @@ Future implementation PRs must use this method before changing any score:
 3. Link repo evidence, CI evidence, metadata-only AWS evidence, or external-control evidence.
 4. Record owner, freshness SLA, review cadence, fallback action, and secret-safety classification.
 5. Keep the score unchanged if evidence is missing, stale, secret-bearing in normal output, or not reproducible.
+6. Run `make report-well-architected-evidence` with structured
+   `QUESTION_MATRIX_EVIDENCE` and `EXTERNAL_CONTROL_EVIDENCE`; do not use
+   boolean confirmations to unlock final scores.
 
 ## Required Evidence By Pillar
 
 ### Operational Excellence
 
-Future evidence must include:
+Current repo-owned evidence includes the operations SNS topic, encrypted alert
+delivery key, EventBridge alert rules, and documented RACI/severity/KPI/runbook
+expectations. Remaining evidence must include:
 - Required same-repo AWS-backed guardrail checks and branch protection evidence.
 - Alert routing, severity model, incident communication, and post-incident review process.
 - Dashboard or scheduled health evidence for backup, replication, drift, and CI guardrails.
@@ -87,7 +127,7 @@ Future evidence must include:
 - Restore drills for Pulumi state and central logs.
 - Backup Vault Lock implementation or documented external control.
 - Quota preflight for repository fanout and service limits.
-- Fault-isolation proof, saved-plan integrity, component-failure scenarios, reliability tests, and DR exercise evidence.
+- Fault-isolation proof, saved-plan integrity, component-failure scenarios, reliability tests, and DR exercise evidence for future component or production changes.
 
 ### Performance Efficiency
 
@@ -99,13 +139,14 @@ Future evidence must include:
 
 ### Cost Optimization
 
-Future evidence must include:
-- AWS Budgets or external FinOps controls by `CostCenter`, `App`, and `RepositoryProject`.
-- Cost anomaly detection or equivalent externally documented control.
-- PR cost estimation or resource-count cost proxy.
-- Cross-region data-transfer review for replication choices.
-- Cost thresholds for repository catalog expansion.
-- Activated cost allocation tag evidence, cost ADRs, pricing model review, demand/idle cleanup signals, new-service review, and cost-of-effort notes.
+Current repo-owned evidence includes AWS Budget and Cost Anomaly Detection
+resources routed to the operations topic, reuse of the existing
+service-dimensional anomaly monitor, active Cost Explorer allocation tags,
+preview/static cost proxy checks, and `docs/finops-review-2026-05-09.md`.
+Remaining future evidence is conditional: production approval, catalog growth,
+new replicated data classes, region changes, or new service families must
+refresh FinOps ownership, thresholds, monthly cost, transfer, and pricing
+evidence before changing cost claims.
 
 ### Sustainability
 
@@ -122,7 +163,7 @@ Future evidence must include:
 2. Remove unsafe replica-region fallback behavior or replace it with an allowlisted default.
 3. Narrow bootstrap automation IAM and document any unavoidable wildcards.
 4. Add operational alerting and restore proof before claiming reliability maturity.
-5. Add cost controls before scaling the repository catalog.
+5. Operationalize cost controls before scaling the repository catalog.
 
 ## Completion Criteria For Issue #17
 
@@ -130,12 +171,21 @@ Issue #17 can be closed only when:
 - Every Well-Architected question in `question-matrix.md` is implemented to 5/5 in this repository or documented as an externally enforced control with current evidence.
 - Branch protection requires relevant non-skipped safety checks for same-repo PRs.
 - AWS-backed preview and IAM validation run successfully for infrastructure PRs.
-- Restore drills, alarms, cost controls, and quota controls are implemented or evidenced externally.
+- Restore drills, alarms, cost controls, and quota controls are implemented,
+  routed to named owners, reviewed on the documented cadence, and evidenced
+  without secrets.
+- Remaining external blockers are closed: branch protection, production
+  approval rules, downstream human alert routing, human MFA/SSO evidence,
+  static-key exception evidence, permissions-boundary or exemption attestation,
+  external security-owner approval, and default-branch Dependabot alert closure
+  or exceptions.
 - A follow-up Well-Architected review scores every pillar 5/5.
 
 ## Planning Non-Goals
 
-- No AWS resources are created, updated, or destroyed by this PR.
-- No GitHub Actions behavior or branch protection is changed by this PR.
-- No Pulumi stack is exported or decrypted by this PR, and no committed change mutates stacks. Test-account proof may be gathered by dispatching the existing `Pulumi Test Deploy` workflow on the PR branch.
+- This scorecard update does not bypass reviewed Pulumi workflows; live
+  test-account claims must stay tied to guarded preview/apply and no-drift
+  evidence for the reviewed PR head.
+- No branch protection setting is changed by this scorecard update.
+- No Pulumi stack is exported or decrypted by this scorecard update. Test-account proof may be gathered by dispatching the existing `Pulumi Test Deploy` workflow on the PR branch.
 - No raw secret material is read or committed by this PR.

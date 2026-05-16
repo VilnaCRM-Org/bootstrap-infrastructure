@@ -12,6 +12,7 @@ We follow a docs-as-code workflow: every guide lives alongside the source and ev
 - [CI Quality Gates](#ci-quality-gates)
 - [CI Guardrails](#ci-guardrails)
 - [CI Architecture](#ci-architecture)
+- [Cost, Performance, and Sustainability](#cost-performance-and-sustainability)
 - [Pulumi Guardrails](#pulumi-guardrails)
 - [Security Baseline](#security-baseline)
 - [Project Structure](#project-structure)
@@ -60,6 +61,12 @@ help              Print the available make targets.
 nightly-quality   Run the scheduled quality-report battery locally.
 report-quality    Generate the scheduled maintainability, dead-code, docstring, and SBOM reports.
 report-sbom       Generate a CycloneDX SBOM for the synced Python environment.
+verify-well-architected-questions  Compare question evidence with AWS public docs.
+report-well-architected-closeout  Render a non-secret owner/admin closeout handoff and audit.
+report-dependabot-exception  Render a non-secret Dependabot exception review from collector evidence.
+report-alert-route-observation  Render a monthly alert-route observation from collector evidence.
+report-security-account-attestation  Render a non-secret security account attestation from collector evidence.
+report-production-dr-owner-evidence  Render non-secret production DR owner evidence from collector evidence.
 start             Initialize and start the Pulumi development environment.
 pulumi-preview    Preview infrastructure changes with the policy pack enforced.
 pulumi-up         Apply the current infrastructure plan with the policy pack enforced.
@@ -72,6 +79,7 @@ test-coverage     Combined 100% branch-coverage gate after unit, integration, an
 test-crossguard   Alias for the Pulumi CrossGuard policy-pack suite.
 test-pulumi       Structural validation for manifests, workflows, and supply-chain guards.
 test-repository-catalogs  Validate repository catalog JSON against schema and loader rules.
+test-repository-fanout  Estimate repository catalog resource fanout against thresholds.
 test-policy       Pulumi policy-pack tests and guardrail coverage.
 test-quality      Blocking Python quality, maintainability, architecture, and dependency checks.
 test-repo-hygiene Workflow, YAML, and Dockerfile linting.
@@ -161,6 +169,43 @@ Use the dedicated [CI architecture guide](ci-architecture.md) when you need the
 workflow matrix, local-to-GitHub mapping, or the checklist for adding a new CI
 job safely.
 
+## Cost, Performance, and Sustainability
+
+Use the [cost, performance, and sustainability guide](cost-performance-sustainability.md)
+for repository catalog fanout, preview cost proxy evidence, and review
+expectations before durable AWS resources are applied.
+Use the [2026-05-09 FinOps review](finops-review-2026-05-09.md) for the current
+budget, anomaly, active cost allocation tag, monthly cost, and data transfer
+evidence.
+Use the [performance operating evidence](performance-operating-evidence.md) for
+resource-selection, storage, region, network, and fanout ADRs.
+Use the [workload applicability evidence](workload-applicability-evidence.md)
+for the no-VPC, no-public-endpoint, dependency, and no-idle-compute record.
+Use the [data protection and recovery evidence](data-protection-recovery-evidence.md)
+for at-rest protection, Vault Lock/Object Lock posture, restore runbooks, and
+backup review cadence.
+Use the [2026-05-09 incident and DR drill evidence](incident-drill-evidence-2026-05-09.md)
+for the current metadata-only scenario drill, replication samples, and
+degraded-mode decisions.
+Use the [2026-05-09 operating review](operating-review-2026-05-09.md) for the
+current KPI observations, demand review, service review, cost-of-effort notes,
+and sustainability governance record.
+Use the [region sustainability evidence](region-sustainability-evidence.md) for
+the primary/replica region decision matrix and exception gates.
+Use the [fault isolation evidence](fault-isolation-evidence.md) for
+per-repository state, KMS, IAM, OIDC, and environment boundary tests.
+Use the [alert routing evidence](alert-routing-evidence.md) for the current
+EventBridge/SNS/SQS inventory, route-test evidence, monthly observation
+command, and alert fallback rules.
+Use the [compute runner evidence](compute-runner-evidence.md) for the optional
+ECR runner repository posture and future-image SEC6 gate.
+
+## Well-Architected Evidence
+
+Use the [Well-Architected operating evidence register](well-architected-operating-evidence.md)
+for the current owner registry, KPI cadence, runbooks, decision matrices, and
+fallback actions that support repository-owned Well-Architected score evidence.
+
 ## Security Baseline
 
 Use the [security baseline](security-baseline.md) for the template's enforced
@@ -185,7 +230,7 @@ them enforced.
 Continuous integration runs automatically on every pull request. You can also validate locally:
 
 - Start with `make doctor` if you need a quick sanity check of Docker, Compose, and the effective env file.
-- Use the focused suites when you only need one slice: `make build`, `make test-pulumi`, `make test-policy`, `make test-crossguard`, `make test-quality`, `make test-repo-hygiene`, `make test-unit`, `make test-integration`, `make test-coverage`, `make test-mutation`, `make test-cli`, `make test-security`, `make test-guardrails`.
+- Use the focused suites when you only need one slice: `make build`, `make test-pulumi`, `make test-repository-fanout`, `make test-policy`, `make test-crossguard`, `make test-quality`, `make test-repo-hygiene`, `make test-unit`, `make test-integration`, `make test-coverage`, `make test-mutation`, `make test-cli`, `make test-security`, `make test-guardrails`.
 - Use `make test-policy` when you are changing guardrails or adding new AWS resource types that should be covered by the policy pack.
 - `make test-mutation` intentionally uses the focused `pulumi/app` unit-test surface by default so the PR mutation check stays fast; override `MUTATION_TEST_TARGETS` or `MUTATION_TESTS_DIR` only when you explicitly need a broader, slower mutation run.
 - `make pulumi-preview` and `make pulumi-up` sync the shared `uv` environment if needed, refresh `policy/.venv`, and then run Pulumi with the repository policy pack enabled.

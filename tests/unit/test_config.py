@@ -13,7 +13,13 @@ os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
 sys.path.append(str(Path(__file__).resolve().parents[2] / "pulumi"))
 
-from infra import BootstrapSettings, ManagedRepositoryCatalog, config, logging_bucket
+from infra import (
+    BootstrapSettings,
+    ManagedRepositoryCatalog,
+    config,
+    logging_bucket,
+    repository_catalog,
+)
 from infra.config import (
     _sanitize_bucket_component,
     automation_role_name,
@@ -49,6 +55,9 @@ def _bootstrap_settings(**overrides) -> BootstrapSettings:
         "environment": "dev",
         "owner": "platform",
         "cost_center": "engineering",
+        "data_classification": "internal",
+        "criticality": "high",
+        "retention_class": "standard",
         "github_branch": None,
         "logging_prefix": "company",
         "replication_region": "us-west-2",
@@ -207,12 +216,20 @@ def test_bootstrap_settings_from_pulumi_config_uses_defaults_and_stack_fallback(
     assert settings_obj.environment == "test"  # nosec B101
     assert settings_obj.owner == "platform"  # nosec B101
     assert settings_obj.cost_center == "core"  # nosec B101
+    assert settings_obj.data_classification == "internal"  # nosec B101
+    assert settings_obj.criticality == "high"  # nosec B101
+    assert settings_obj.retention_class == "standard"  # nosec B101
     assert settings_obj.github_branch is None  # nosec B101
     assert settings_obj.logging_prefix == "company"  # nosec B101
     assert settings_obj.replication_region is None  # nosec B101
     assert settings_obj.github_token is github_token  # nosec B101
     assert settings_obj.github_oidc_provider_arn is None  # nosec B101
     assert settings_obj.repository_catalog_path is None  # nosec B101
+    assert settings_obj.monthly_budget_limit_usd == "100"  # nosec B101
+    assert settings_obj.cost_anomaly_threshold_usd == "10"  # nosec B101
+    assert settings_obj.cost_anomaly_monitor_arn is None  # nosec B101
+    assert settings_obj.manage_cost_allocation_tags is False  # nosec B101
+    assert settings_obj.operations_cloudtrail_name is None  # nosec B101
 
 
 def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch):
@@ -225,9 +242,20 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
             "environment": "prod.eu",
             "owner": "sre",
             "costCenter": "platform",
+            "dataClassification": "confidential",
+            "criticality": "mission-critical",
+            "retentionClass": "regulated",
             "githubBranch": "release",
             "loggingPrefix": "vilna",
             "replicationRegion": "eu-west-1",
+            "monthlyBudgetLimitUsd": "250.50",
+            "costAnomalyThresholdUsd": "25",
+            "costAnomalyMonitorArn": (
+                "arn:aws:ce::123456789012:anomalymonitor/"
+                "e5509927-1fcc-400c-9536-0fdd01314bc9"
+            ),
+            "operationsCloudTrailName": "existing-management-events",
+            "manageCostAllocationTags": "true",
             "githubOidcProviderArn": "arn:aws:iam::123456789012:oidc-provider/test",
             "repositoryCatalogPath": "repositories.json",
         },
@@ -243,6 +271,9 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
     assert settings_obj.environment == "prod.eu"  # nosec B101
     assert settings_obj.owner == "sre"  # nosec B101
     assert settings_obj.cost_center == "platform"  # nosec B101
+    assert settings_obj.data_classification == "confidential"  # nosec B101
+    assert settings_obj.criticality == "mission-critical"  # nosec B101
+    assert settings_obj.retention_class == "regulated"  # nosec B101
     assert settings_obj.github_branch == "release"  # nosec B101
     assert settings_obj.logging_prefix == "vilna"  # nosec B101
     assert settings_obj.replication_region == "eu-west-1"  # nosec B101
@@ -252,6 +283,59 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
         == "arn:aws:iam::123456789012:oidc-provider/test"
     )  # nosec B101
     assert settings_obj.repository_catalog_path == "repositories.json"  # nosec B101
+    assert settings_obj.monthly_budget_limit_usd == "250.50"  # nosec B101
+    assert settings_obj.cost_anomaly_threshold_usd == "25"  # nosec B101
+    assert settings_obj.cost_anomaly_monitor_arn == (  # nosec B101
+        "arn:aws:ce::123456789012:anomalymonitor/e5509927-1fcc-400c-9536-0fdd01314bc9"
+    )
+    assert settings_obj.operations_cloudtrail_name == (  # nosec B101
+        "existing-management-events"
+    )
+    assert settings_obj.manage_cost_allocation_tags is True  # nosec B101
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "match"),
+    [
+        ("monthlyBudgetLimitUsd", "not-a-number", "positive decimal"),
+        ("monthlyBudgetLimitUsd", "0", "positive decimal"),
+        ("costAnomalyThresholdUsd", "-1", "positive decimal"),
+        ("monthlyBudgetLimitUsd", "nan", "finite positive decimal"),
+        ("costAnomalyThresholdUsd", "inf", "finite positive decimal"),
+    ],
+)
+def test_bootstrap_settings_rejects_invalid_cost_thresholds(key, value, match):
+    """Cost thresholds should fail before AWS receives invalid numeric strings."""
+    values = {"githubOrg": "VilnaCRM-Org", key: value}
+
+    with pytest.raises(ValueError, match=match):
+        BootstrapSettings.from_pulumi_config(DummyPulumiConfig(values=values))
+
+
+def test_bootstrap_settings_rejects_invalid_cost_anomaly_monitor_arn():
+    """Existing monitor reuse should fail fast when the configured ARN is malformed."""
+    config_obj = DummyPulumiConfig(
+        values={
+            "githubOrg": "VilnaCRM-Org",
+            "costAnomalyMonitorArn": "arn:aws:sns:eu-central-1:123456789012:topic",
+        }
+    )
+
+    with pytest.raises(ValueError, match="Cost Anomaly monitor ARN"):
+        BootstrapSettings.from_pulumi_config(config_obj)
+
+
+def test_bootstrap_settings_rejects_invalid_cloudtrail_name():
+    """Existing trail reuse should fail fast when the name is malformed."""
+    config_obj = DummyPulumiConfig(
+        values={
+            "githubOrg": "VilnaCRM-Org",
+            "operationsCloudTrailName": "invalid trail name",
+        }
+    )
+
+    with pytest.raises(ValueError, match="valid CloudTrail trail name"):
+        BootstrapSettings.from_pulumi_config(config_obj)
 
 
 @pytest.mark.parametrize(
@@ -319,6 +403,10 @@ def test_load_managed_repo_overrides_success():
                 "name": "repo2",
                 "defaultBranch": "dev",
                 "project": "core-service",
+                "owner": "team-core",
+                "lifecycleState": "planned",
+                "lastReviewed": "2026-04-27",
+                "expectedEnvironments": 3,
             },
         ]
     )
@@ -329,6 +417,10 @@ def test_load_managed_repo_overrides_success():
     assert overrides[1].name == "repo2"  # nosec B101
     assert overrides[1].default_branch == "dev"  # nosec B101
     assert overrides[1].project_name == "core-service"  # nosec B101
+    assert overrides[1].owner == "team-core"  # nosec B101
+    assert overrides[1].lifecycle_state == "planned"  # nosec B101
+    assert overrides[1].last_reviewed == "2026-04-27"  # nosec B101
+    assert overrides[1].expected_environments == 3  # nosec B101
 
 
 def test_state_bucket_name_requires_repo(monkeypatch):
@@ -381,6 +473,10 @@ def test_managed_repositories_support_repository_catalog_path(tmp_path, monkeypa
                         "name": "user-service-infrastructure",
                         "defaultBranch": "main",
                         "project": "user-service",
+                        "owner": "team-user",
+                        "lifecycleState": "active",
+                        "lastReviewed": "2026-04-27",
+                        "expectedEnvironments": 2,
                     }
                 ]
             }
@@ -397,6 +493,8 @@ def test_managed_repositories_support_repository_catalog_path(tmp_path, monkeypa
     assert repos[0].name == "user-service-infrastructure"  # nosec B101
     assert repos[0].default_branch == "main"  # nosec B101
     assert repos[0].project_name == "user-service"  # nosec B101
+    assert repos[0].owner == "team-user"  # nosec B101
+    assert repos[0].last_reviewed == "2026-04-27"  # nosec B101
 
     config.managed_repositories.cache_clear()
     monkeypatch.setattr(settings, "repository_catalog_path", None)
@@ -434,6 +532,12 @@ def test_managed_repository_catalog_from_settings_uses_inline_config():
     )
 
     assert catalog.project_mapping() == {"core-service-infrastructure": "core-service"}  # nosec B101
+    assert catalog.metadata_mapping()["core-service-infrastructure"] == {  # nosec B101
+        "defaultBranch": "main",
+        "project": "core-service",
+        "lifecycleState": "active",
+        "expectedEnvironments": 2,
+    }
 
 
 def test_managed_repository_catalog_load_from_json_relative_path(tmp_path, monkeypatch):
@@ -533,6 +637,64 @@ def test_managed_repository_catalog_rejects_explicit_empty_project():
         )
 
 
+def test_managed_repository_catalog_rejects_invalid_metadata():
+    """Repository metadata must be structured enough for evidence automation."""
+    with pytest.raises(ValueError, match="lifecycle_state"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            lifecycle_state="unknown",
+        )
+    with pytest.raises(ValueError, match="last_reviewed"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            last_reviewed="27-04-2026",
+        )
+    with pytest.raises(ValueError, match="last_reviewed"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            last_reviewed="20260427",
+        )
+    with pytest.raises(ValueError, match="last_reviewed"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            last_reviewed="2026-02-30",
+        )
+    with pytest.raises(ValueError, match="expected_environments"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            expected_environments=0,
+        )
+    with pytest.raises(ValueError, match="lifecycle_state"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            lifecycle_state=" ",
+        )
+    with pytest.raises(ValueError, match="owner"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            owner=" ",
+        )
+    with pytest.raises(TypeError, match="expected_environments"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            expected_environments="2",  # type: ignore[arg-type]
+        )
+    with pytest.raises(TypeError, match="expected_environments"):
+        config.ManagedRepository(
+            name="repo",
+            default_branch="main",
+            expected_environments=True,  # type: ignore[arg-type]
+        )
+
+
 def test_managed_repository_catalog_normalizes_string_entries():
     """Bare repository names should be trimmed before use."""
     repository = ManagedRepositoryCatalog.repository_from_item(" repo ")
@@ -561,6 +723,66 @@ def test_managed_repository_catalog_normalizes_mapping_entries():
     assert repository.name == "repo"  # nosec B101
     assert repository.default_branch == "main"  # nosec B101
     assert repository.project_name == "platform"  # nosec B101
+
+
+def test_managed_repository_metadata_helpers_include_optional_fields():
+    """Evidence and tag metadata include non-secret ownership fields."""
+    repository = config.ManagedRepository(
+        name=" repo ",
+        default_branch=" main ",
+        project=" platform ",
+        owner=" team-platform ",
+        lifecycle_state="Deprecated",
+        last_reviewed="2026-04-27",
+        expected_environments=3,
+    )
+
+    assert repository.evidence_metadata() == {  # nosec B101
+        "defaultBranch": "main",
+        "project": "platform",
+        "lifecycleState": "deprecated",
+        "expectedEnvironments": 3,
+        "owner": "team-platform",
+        "lastReviewed": "2026-04-27",
+    }
+    assert repository.tag_metadata() == {  # nosec B101
+        "RepositoryLifecycle": "deprecated",
+        "ExpectedEnvironments": "3",
+        "RepositoryOwner": "team-platform",
+        "RepositoryLastReviewed": "2026-04-27",
+    }
+
+
+def test_managed_repository_catalog_rejects_non_integer_expected_environments():
+    """Loader rejects expectedEnvironments values that cannot feed fanout math."""
+    with pytest.raises(TypeError, match="expectedEnvironments"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "expectedEnvironments": "2"}
+        )
+    with pytest.raises(TypeError, match="expectedEnvironments"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "expectedEnvironments": True}
+        )
+
+
+def test_managed_repository_catalog_rejects_invalid_metadata_with_catalog_fields():
+    """Catalog metadata errors should name the JSON-facing field."""
+    with pytest.raises(ValueError, match="repo.*lifecycleState"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "lifecycleState": "unknown"}
+        )
+    with pytest.raises(ValueError, match="repo.*lastReviewed"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "lastReviewed": "20260427"}
+        )
+    with pytest.raises(ValueError, match="repo.*expectedEnvironments"):
+        ManagedRepositoryCatalog.repository_from_item(
+            {"name": "repo", "expectedEnvironments": 0}
+        )
+    error = repository_catalog._metadata_validation_error(  # noqa: SLF001
+        "repo", ValueError("unexpected validation failure")
+    )
+    assert "repo" in str(error) and "metadata" in str(error)  # nosec B101
 
 
 def test_managed_repository_catalog_rejects_duplicate_names():

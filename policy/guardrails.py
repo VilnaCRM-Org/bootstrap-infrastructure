@@ -579,20 +579,53 @@ def _wildcard_iam_document_exempt(resource_type: str, field_name: str) -> bool:
 
 _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
     {
+        "billing:getbillingviewdata",
+        "ce:createanomalymonitor",
+        "ce:createanomalysubscription",
+        "ce:listcostallocationtags",
+        "ce:updatecostallocationtagsstatus",
+        "cloudtrail:describetrails",
+        "config:deletedeliverychannel",
+        "config:describedeliverychannels",
+        "config:putdeliverychannel",
+        "guardduty:createdetector",
+        "guardduty:listdetectors",
         "iam:createopenidconnectprovider",
         "iam:listopenidconnectproviders",
         "kms:createkey",
         "kms:listaliases",
+        "sns:getsubscriptionattributes",
+        "sns:unsubscribe",
         "sts:getcalleridentity",
     }
 )
+REQUEST_TAG_ENVIRONMENT_KEY = "aws:RequestTag/Environment"
+REQUEST_TAG_PURPOSE_KEY = "aws:RequestTag/Purpose"
 _RESOURCE_WILDCARD_ACTION_REQUIRED_CONDITION_KEYS = {
+    "ce:createanomalymonitor": frozenset(
+        {
+            REQUEST_TAG_ENVIRONMENT_KEY,
+            REQUEST_TAG_PURPOSE_KEY,
+        }
+    ),
+    "ce:createanomalysubscription": frozenset(
+        {
+            REQUEST_TAG_ENVIRONMENT_KEY,
+            REQUEST_TAG_PURPOSE_KEY,
+        }
+    ),
     "kms:createkey": frozenset(
         {
-            "aws:RequestTag/Environment",
-            "aws:RequestTag/Purpose",
+            REQUEST_TAG_ENVIRONMENT_KEY,
+            REQUEST_TAG_PURPOSE_KEY,
         }
-    )
+    ),
+    "guardduty:createdetector": frozenset(
+        {
+            REQUEST_TAG_ENVIRONMENT_KEY,
+            REQUEST_TAG_PURPOSE_KEY,
+        }
+    ),
 }
 
 

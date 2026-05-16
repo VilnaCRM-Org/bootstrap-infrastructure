@@ -10,6 +10,8 @@ COMPOSE_ENV_FILE := $(if $(EFFECTIVE_ENV_FILE),$(EFFECTIVE_ENV_FILE),$(EMPTY_ENV
 UID ?= $(shell id -u 2>/dev/null || echo 1000)
 GID ?= $(shell id -g 2>/dev/null || echo 1000)
 USER ?= $(shell id -un 2>/dev/null || echo dev)
+GIT_COMMON_DIR ?= $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+GITLEAKS_GIT_MOUNTS = $(if $(GIT_COMMON_DIR),-v $(GIT_COMMON_DIR):$(GIT_COMMON_DIR):ro,)
 
 export UID
 export GID
@@ -28,6 +30,8 @@ COMPOSE_PULUMI_ENV = -e PULUMI_DIR="$(PULUMI_DIR)" \
 	-e PULUMI_DRIFT_STACKS="$(PULUMI_DRIFT_STACKS)" \
 	-e PULUMI_PLAN_FILE="$(PULUMI_PLAN_FILE)" \
 	-e PULUMI_PLAN_DIR="$(PULUMI_PLAN_DIR)" \
+	-e PULUMI_COMMIT_SHA="$(PULUMI_COMMIT_SHA)" \
+	-e PULUMI_EXPECTED_SHA="$(PULUMI_EXPECTED_SHA)" \
 	-e POLICY_PACK_DIR="$(POLICY_PACK_DIR)"
 REPO_PYTHON      ?= python3
 PULUMI_CWD_FLAG   = -C $(PULUMI_DIR)
@@ -43,6 +47,7 @@ DEFAULT_PULUMI_STACK ?= $(shell \
 	fi)
 PULUMI_STACK     ?= $(DEFAULT_PULUMI_STACK)
 PULUMI_SECRETS_PROVIDER ?=
+PULUMI_PLAN_DIR ?= .artifacts/pulumi-plan
 export PULUMI_STACK
 PULUMI_LOGIN_CMD  = pulumi $(PULUMI_CWD_FLAG) login "$${PULUMI_BACKEND_URL:-file:///workspace/.pulumi-backend}" >/dev/null
 COVERAGE_OPTS            ?= --cov=./pulumi --cov-report=term-missing
@@ -54,9 +59,12 @@ TOTAL_COVERAGE_INCLUDE   ?= pulumi/*,policy/*,scripts/*
 BRANCH_COVERAGE_MIN      ?= 100
 QUALITY_ARTIFACT_DIR     ?= .artifacts/quality
 SBOM_ARTIFACT_DIR        ?= .artifacts/sbom
+GITHUB_REPOSITORY_CONTROLS_REPO ?= VilnaCRM-Org/$(PROJECT)
+GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER ?= Kravalg
+GITHUB_REPOSITORY_CONTROLS_MODE ?= --dry-run
 DOCSTRING_PATHS          ?= pulumi/app policy scripts/pulumi_ci_guardrails.py
 WILY_TARGETS             ?= pulumi policy scripts
-YAML_LINT_PATHS          ?= .github/workflows docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
+YAML_LINT_PATHS          ?= .github/workflows .github/actionlint.yaml docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
 MUTATION_TEST_TARGETS    ?= tests/unit/test_environment_component.py tests/unit/test_guardrails.py
 MUTATION_TESTS_DIR       ?= tests/unit
 INTEGRATION_COVERAGE_ENV  = -e COVERAGE_FILE=/workspace/.coverage.integration \
@@ -75,14 +83,20 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
 .PHONY: help doctor build start publish-pulumi-preview-summary pulumi-preview pulumi-plan \
         pulumi-up pulumi-up-plan pulumi-refresh \
         pulumi-destroy sh down ci ci-pr ci-pr-unprivileged nightly-quality report-quality \
+        configure-github-repository-controls \
         report-maintainability-trends report-dead-code report-docstrings \
-        report-sbom test-quality test-ruff test-ty test-maintainability \
+        report-sbom report-well-architected-evidence verify-well-architected-questions \
+        report-well-architected-closeout \
+        report-dependabot-exception report-alert-route-observation \
+        report-security-account-attestation report-production-dr-owner-evidence \
+        test-quality test-ruff test-ty test-maintainability \
         test-architecture test-dependency-hygiene test-lockfile test-coverage \
         test-bandit test-actionlint test-yaml test-dockerfile \
-        test-deps-security test-destructive-diff test-drift test-guardrails \
+        test-deps-security test-destructive-diff test-cost-proxy test-drift test-guardrails \
         test-guardrails-unprivileged test-iam-validation \
         test-iam-validation-unprivileged test-preview test-preview-unprivileged \
         test-security test-secrets test-repo-hygiene test-repository-catalogs \
+        test-repository-fanout \
         test-unit test-integration test-integration-unprivileged test-pulumi test-policy \
         test-crossguard test-mutation test-battery test-cli test all clean
 
@@ -148,7 +162,7 @@ test-unit: ## Execute fast unit tests for the Pulumi application layer.
 test-integration: ## Execute Pulumi automation-based integration tests.
 	rm -f .coverage.integration .coverage.integration.*
 	$(COMPOSE) run --rm $(INTEGRATION_COVERAGE_ENV) \
-		$(COMPOSE_SERVICE) uv run pytest -q tests/integration
+		$(COMPOSE_SERVICE) uv run coverage run --parallel-mode -m pytest -q tests/integration
 	$(COMPOSE) run --rm -e COVERAGE_FILE=/workspace/.coverage.integration \
 		-e COVERAGE_RCFILE=/workspace/.coveragerc \
 		$(COMPOSE_SERVICE) uv run coverage combine
@@ -170,6 +184,9 @@ test-pulumi: ## Perform structural checks on Pulumi project configuration.
 
 test-repository-catalogs: ## Validate repository catalog JSON files against schema and loader rules.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run python ./scripts/validate_repository_catalogs.py
+
+test-repository-fanout: ## Estimate repository catalog resource fanout against static quota thresholds.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run python ./scripts/validate_repository_catalogs.py --fanout-report
 
 test-policy: ## Execute Pulumi policy-pack tests and guardrail coverage.
 	rm -f .coverage.policy .coverage.policy.*
@@ -235,7 +252,7 @@ test-dockerfile: ## Lint the development Dockerfile with hadolint.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) hadolint --config .hadolint.yaml Dockerfile
 
 test-secrets: ## Scan tracked Git content for accidentally committed secrets.
-	$(COMPOSE) run --rm $(COMPOSE_SERVICE) gitleaks git . --config .gitleaks.toml --no-banner --redact
+	$(COMPOSE) run --rm $(GITLEAKS_GIT_MOUNTS) $(COMPOSE_SERVICE) gitleaks git . --log-opts="-1" --config .gitleaks.toml --no-banner --redact
 
 test-deps-security: ## Audit Python dependencies for known vulnerabilities.
 	$(COMPOSE) run --rm -e XDG_CACHE_HOME=/tmp/xdg-cache $(COMPOSE_SERVICE) bash -lc 'uv export --all-groups --format requirements.txt --no-hashes --no-emit-project --frozen -o /tmp/pip-audit-requirements.txt >/dev/null && uv run pip-audit --strict -r /tmp/pip-audit-requirements.txt'
@@ -246,7 +263,8 @@ test-preview: ## Generate non-destructive Pulumi previews for configured stacks.
 
 test-preview-unprivileged: ## Generate an unprivileged placeholder preview artifact.
 	mkdir -p .artifacts/pulumi-preview
-	rm -f .artifacts/pulumi-preview/*.json .artifacts/pulumi-preview/summary.md
+	rm -f .artifacts/pulumi-preview/*.json .artifacts/pulumi-preview/summary.md .artifacts/pulumi-preview/cost-proxy.md
+	rm -rf .artifacts/pulumi-preview/reports
 	printf '%s\n' '{"changeSummary": {}, "steps": []}' > .artifacts/pulumi-preview/unprivileged.json
 	$(REPO_PYTHON) ./scripts/pulumi_ci_guardrails.py summarize \
 		.artifacts/pulumi-preview/unprivileged.json | tee .artifacts/pulumi-preview/summary.md
@@ -261,6 +279,21 @@ test-destructive-diff: ## Fail when Pulumi previews delete or replace critical r
 			$(REPO_PYTHON) ./scripts/run_pulumi_preview.py >/dev/null; \
 		fi; \
 		uv run python ./scripts/pulumi_ci_guardrails.py destructive-gate $$event_arg .artifacts/pulumi-preview/*.json'
+
+# Intended for the guardrails sequence documented in docs/testing.md. When
+# invoked without preview artifacts, this target generates a preview first and
+# therefore requires the same AWS credentials as test-preview.
+test-cost-proxy: ## Fail when Pulumi previews exceed static cost and quota fanout thresholds.
+	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) bash -lc '\
+		mkdir -p .artifacts/pulumi-preview/reports; \
+		rm -f .artifacts/pulumi-preview/reports/cost-proxy.json .artifacts/pulumi-preview/reports/cost-proxy.md .artifacts/pulumi-preview/cost-proxy.md; \
+		if ! compgen -G ".artifacts/pulumi-preview/*.json" >/dev/null; then \
+			$(REPO_PYTHON) ./scripts/run_pulumi_preview.py >/dev/null; \
+		fi; \
+		uv run python ./scripts/pulumi_ci_guardrails.py cost-proxy \
+			--output-json .artifacts/pulumi-preview/reports/cost-proxy.json \
+			--output-md .artifacts/pulumi-preview/reports/cost-proxy.md \
+			.artifacts/pulumi-preview/*.json'
 
 test-iam-validation: ## Validate previewed IAM policies with AWS IAM Access Analyzer.
 	$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) $(COMPOSE_SERVICE) bash -lc '\
@@ -284,10 +317,12 @@ test-security: ## Run secret, dependency, and workflow security checks.
 test-guardrails: ## Run real preview generation and destructive-diff guardrails.
 	$(MAKE) test-preview
 	$(MAKE) test-destructive-diff
+	$(MAKE) test-cost-proxy
 
 test-guardrails-unprivileged: ## Run guardrails without AWS-backed Pulumi credentials.
 	$(MAKE) test-preview-unprivileged
 	$(MAKE) test-destructive-diff
+	$(MAKE) test-cost-proxy
 	$(MAKE) test-iam-validation-unprivileged
 
 test-drift: ## Perform a non-destructive drift check against configured shared stacks.
@@ -337,13 +372,195 @@ report-dead-code: ## Run the advisory dead-code report for reusable Python modul
 report-docstrings: ## Run the advisory docstring coverage report for reusable modules.
 	mkdir -p $(QUALITY_ARTIFACT_DIR)
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc '\
-		uv run docstr-coverage $(DOCSTRING_PATHS) > $(QUALITY_ARTIFACT_DIR)/docstr-coverage.txt'
+		set -o pipefail; \
+		uv run docstr-coverage $(DOCSTRING_PATHS) 2>&1 | tee $(QUALITY_ARTIFACT_DIR)/docstr-coverage.txt'
 
 report-sbom: ## Generate a CycloneDX SBOM for the synced Python environment.
 	mkdir -p $(SBOM_ARTIFACT_DIR)
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) bash -lc '\
 		python_env="$${UV_PROJECT_ENVIRONMENT:-.venv}" \
 		&& uv run cyclonedx-py environment "$${python_env}" --pyproject pyproject.toml --output-reproducible --of JSON -o $(SBOM_ARTIFACT_DIR)/python-environment.cdx.json'
+
+report-well-architected-evidence: ## Collect metadata-only Well-Architected evidence.
+	mkdir -p .artifacts/well-architected
+	$(REPO_PYTHON) ./scripts/collect_well_architected_evidence.py \
+		--output .artifacts/well-architected/evidence.json \
+		--markdown-output .artifacts/well-architected/evidence.md
+
+verify-well-architected-questions: ## Compare question evidence with AWS public docs.
+	@bash -lc '\
+		set -euo pipefail; \
+		mkdir -p .artifacts/well-architected; \
+		toc_arg=""; \
+		toc_url_arg=""; \
+		output_arg="--output $${AWS_WA_QUESTION_VERIFY_OUTPUT:-.artifacts/well-architected/question-verification.json}"; \
+		if [ -n "$${AWS_WA_TOC_JSON:-}" ]; then toc_arg="--toc-json $${AWS_WA_TOC_JSON}"; fi; \
+		if [ -n "$${AWS_WA_TOC_URL:-}" ]; then toc_url_arg="--toc-url $${AWS_WA_TOC_URL}"; fi; \
+		$(REPO_PYTHON) ./scripts/verify_well_architected_questions.py \
+			--question-matrix-evidence "$${QUESTION_MATRIX_EVIDENCE:-specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-05-09.json}" \
+			--question-matrix "$${QUESTION_MATRIX:-specs/issue-17-well-architected-5-of-5/question-matrix.md}" \
+			$$toc_arg $$toc_url_arg $$output_arg'
+
+report-well-architected-closeout: ## Render owner/admin Well-Architected closeout handoff and audit.
+	mkdir -p .artifacts/well-architected
+	$(REPO_PYTHON) ./scripts/render_well_architected_closeout.py \
+		--evidence "$${WELL_ARCHITECTED_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+		--question-verification "$${WELL_ARCHITECTED_QUESTION_VERIFICATION:-.artifacts/well-architected/question-verification.json}" \
+		--output "$${WELL_ARCHITECTED_CLOSEOUT_OUTPUT:-.artifacts/well-architected/owner-closeout-bundle.md}"
+
+configure-github-repository-controls: ## Print, apply, or verify GitHub ruleset and prod environment controls.
+	$(REPO_PYTHON) ./scripts/configure_github_repository_controls.py \
+		--repo "$(GITHUB_REPOSITORY_CONTROLS_REPO)" \
+		--prod-reviewer "$(GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER)" \
+		$(GITHUB_REPOSITORY_CONTROLS_MODE)
+
+report-dependabot-exception: ## Render Dependabot exception evidence.
+	@bash -lc '\
+		set -euo pipefail; \
+		output="$${DEPENDABOT_EXCEPTION_OUTPUT:-}"; \
+		if [ -z "$${output}" ]; then \
+			echo "error: DEPENDABOT_EXCEPTION_OUTPUT is required." >&2; \
+			exit 2; \
+		fi; \
+		for name in \
+			DEPENDABOT_EXCEPTION_REVIEWER \
+			DEPENDABOT_EXCEPTION_OWNER \
+			DEPENDABOT_EXCEPTION_APPROVAL \
+			DEPENDABOT_EXCEPTION_REASON \
+			DEPENDABOT_EXCEPTION_REMEDIATION; do \
+			if [ -z "$${!name:-}" ]; then \
+				printf "error: %s is required.\\n" "$${name}" >&2; \
+				exit 2; \
+			fi; \
+		done; \
+		$(REPO_PYTHON) ./scripts/record_dependabot_exception.py \
+			--evidence "$${DEPENDABOT_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+			--output "$${output}" \
+			$${DEPENDABOT_EXCEPTION_JSON_OUTPUT:+--json-output "$${DEPENDABOT_EXCEPTION_JSON_OUTPUT}"} \
+			$${DEPENDABOT_EXCEPTION_REVIEW_DATE:+--review-date "$${DEPENDABOT_EXCEPTION_REVIEW_DATE}"} \
+			$${DEPENDABOT_EXCEPTION_EXPIRY_DATE:+--expiry-date "$${DEPENDABOT_EXCEPTION_EXPIRY_DATE}"} \
+			--reviewer "$${DEPENDABOT_EXCEPTION_REVIEWER}" \
+			--owner "$${DEPENDABOT_EXCEPTION_OWNER}" \
+			--approval "$${DEPENDABOT_EXCEPTION_APPROVAL}" \
+			--reason "$${DEPENDABOT_EXCEPTION_REASON}" \
+			--remediation-plan "$${DEPENDABOT_EXCEPTION_REMEDIATION}" \
+			$${DEPENDABOT_EXCEPTION_EVIDENCE_NOTE:+--evidence-note "$${DEPENDABOT_EXCEPTION_EVIDENCE_NOTE}"} \
+			$${DEPENDABOT_EXCEPTION_FORCE:+--force}'
+
+report-alert-route-observation: ## Render monthly alert-route observation evidence.
+	@bash -lc '\
+		set -euo pipefail; \
+		output="$${ALERT_ROUTE_OBSERVATION_OUTPUT:-}"; \
+		if [ -z "$${output}" ]; then \
+			echo "error: ALERT_ROUTE_OBSERVATION_OUTPUT is required." >&2; \
+			exit 2; \
+		fi; \
+		for name in \
+			ALERT_ROUTE_REVIEWER \
+			ALERT_ROUTE_OWNER \
+			ALERT_ROUTE_DOWNSTREAM \
+			ALERT_ROUTE_SEVERITY \
+			ALERT_ROUTE_FALLBACK \
+			ALERT_ROUTE_DECISION; do \
+			if [ -z "$${!name:-}" ]; then \
+				printf "error: %s is required.\\n" "$${name}" >&2; \
+				exit 2; \
+			fi; \
+		done; \
+		$(REPO_PYTHON) ./scripts/record_alert_route_observation.py \
+			--evidence "$${ALERT_ROUTE_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+			--output "$${output}" \
+			$${ALERT_ROUTE_OBSERVATION_JSON_OUTPUT:+--json-output "$${ALERT_ROUTE_OBSERVATION_JSON_OUTPUT}"} \
+			$${ALERT_ROUTE_REVIEW_DATE:+--review-date "$${ALERT_ROUTE_REVIEW_DATE}"} \
+			$${ALERT_ROUTE_EXPIRY_DATE:+--expiry-date "$${ALERT_ROUTE_EXPIRY_DATE}"} \
+			--reviewer "$${ALERT_ROUTE_REVIEWER}" \
+			--route-owner "$${ALERT_ROUTE_OWNER}" \
+			--downstream-route "$${ALERT_ROUTE_DOWNSTREAM}" \
+			--severity-expectations "$${ALERT_ROUTE_SEVERITY}" \
+			--fallback "$${ALERT_ROUTE_FALLBACK}" \
+			--decision "$${ALERT_ROUTE_DECISION}" \
+			$${ALERT_ROUTE_ACTION:+--action "$${ALERT_ROUTE_ACTION}"} \
+			$${ALERT_ROUTE_OBSERVATION_FORCE:+--force}'
+
+report-security-account-attestation: ## Render security account attestation evidence.
+	@bash -lc '\
+		set -euo pipefail; \
+		output="$${SECURITY_ACCOUNT_ATTESTATION_OUTPUT:-}"; \
+		if [ -z "$${output}" ]; then \
+			echo "error: SECURITY_ACCOUNT_ATTESTATION_OUTPUT is required." >&2; \
+			exit 2; \
+		fi; \
+		for name in \
+			SECURITY_ACCOUNT_REVIEWER \
+			SECURITY_ACCOUNT_OWNER \
+			SECURITY_ACCOUNT_HUMAN_ACCESS \
+			SECURITY_ACCOUNT_ACTIVE_KEY_DECISION \
+			SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY \
+			SECURITY_ACCOUNT_APPROVAL; do \
+			if [ -z "$${!name:-}" ]; then \
+				printf "error: %s is required.\\n" "$${name}" >&2; \
+				exit 2; \
+			fi; \
+		done; \
+		$(REPO_PYTHON) ./scripts/record_security_account_attestation.py \
+			--evidence "$${SECURITY_ACCOUNT_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+			--output "$${output}" \
+			$${SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT:+--json-output "$${SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT}"} \
+			$${SECURITY_ACCOUNT_REVIEW_DATE:+--review-date "$${SECURITY_ACCOUNT_REVIEW_DATE}"} \
+			$${SECURITY_ACCOUNT_EXPIRY_DATE:+--expiry-date "$${SECURITY_ACCOUNT_EXPIRY_DATE}"} \
+			--reviewer "$${SECURITY_ACCOUNT_REVIEWER}" \
+			--security-owner "$${SECURITY_ACCOUNT_OWNER}" \
+			--human-access-posture "$${SECURITY_ACCOUNT_HUMAN_ACCESS}" \
+			--active-key-decision "$${SECURITY_ACCOUNT_ACTIVE_KEY_DECISION}" \
+			--permissions-boundary-decision "$${SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY}" \
+			--approval-decision "$${SECURITY_ACCOUNT_APPROVAL}" \
+			$${SECURITY_ACCOUNT_ACTION:+--action "$${SECURITY_ACCOUNT_ACTION}"} \
+			$${SECURITY_ACCOUNT_ATTESTATION_FORCE:+--force}'
+
+report-production-dr-owner-evidence: ## Render production DR owner evidence.
+	@bash -lc '\
+		set -euo pipefail; \
+		output="$${PRODUCTION_DR_OWNER_OUTPUT:-}"; \
+		if [ -z "$${output}" ]; then \
+			echo "error: PRODUCTION_DR_OWNER_OUTPUT is required." >&2; \
+			exit 2; \
+		fi; \
+		for name in \
+			PRODUCTION_DR_REVIEWER \
+			PRODUCTION_DR_OWNER \
+			PRODUCTION_DR_ESCALATION_PATH \
+			PRODUCTION_DR_RTO_TARGET \
+			PRODUCTION_DR_RPO_TARGET \
+			PRODUCTION_DR_RECOVERY_ORDER \
+			PRODUCTION_DR_COMMUNICATIONS_PLAN \
+			PRODUCTION_DR_LATEST_ACCEPTED_DRILL \
+			PRODUCTION_DR_NEXT_REVIEW_DATE \
+			PRODUCTION_DR_EVIDENCE_RETENTION_LOCATION \
+			PRODUCTION_DR_APPROVAL; do \
+			if [ -z "$${!name:-}" ]; then \
+				printf "error: %s is required.\\n" "$${name}" >&2; \
+				exit 2; \
+			fi; \
+		done; \
+		$(REPO_PYTHON) ./scripts/record_production_dr_owner_evidence.py \
+			--evidence "$${PRODUCTION_DR_EVIDENCE:-.artifacts/well-architected/evidence.json}" \
+			--output "$${output}" \
+			$${PRODUCTION_DR_OWNER_JSON_OUTPUT:+--json-output "$${PRODUCTION_DR_OWNER_JSON_OUTPUT}"} \
+			$${PRODUCTION_DR_REVIEW_DATE:+--review-date "$${PRODUCTION_DR_REVIEW_DATE}"} \
+			$${PRODUCTION_DR_EXPIRY_DATE:+--expiry-date "$${PRODUCTION_DR_EXPIRY_DATE}"} \
+			--reviewer "$${PRODUCTION_DR_REVIEWER}" \
+			--production-owner "$${PRODUCTION_DR_OWNER}" \
+			--escalation-path "$${PRODUCTION_DR_ESCALATION_PATH}" \
+			--rto-target "$${PRODUCTION_DR_RTO_TARGET}" \
+			--rpo-target "$${PRODUCTION_DR_RPO_TARGET}" \
+			--recovery-order "$${PRODUCTION_DR_RECOVERY_ORDER}" \
+			--communications-plan "$${PRODUCTION_DR_COMMUNICATIONS_PLAN}" \
+			--latest-accepted-drill "$${PRODUCTION_DR_LATEST_ACCEPTED_DRILL}" \
+			--next-review-date "$${PRODUCTION_DR_NEXT_REVIEW_DATE}" \
+			--evidence-retention-location "$${PRODUCTION_DR_EVIDENCE_RETENTION_LOCATION}" \
+			--approval "$${PRODUCTION_DR_APPROVAL}" \
+			$${PRODUCTION_DR_ACTION:+--action "$${PRODUCTION_DR_ACTION}"} \
+			$${PRODUCTION_DR_OWNER_FORCE:+--force}'
 
 report-quality: ## Run scheduled quality reports and generate fresh artifacts.
 	$(MAKE) report-maintainability-trends
@@ -357,6 +574,7 @@ nightly-quality: ## Alias for the scheduled quality-report battery.
 test-battery:
 	$(MAKE) test-pulumi
 	$(MAKE) test-repository-catalogs
+	$(MAKE) test-repository-fanout
 	$(MAKE) test-policy
 	$(MAKE) test-quality
 	$(MAKE) test-repo-hygiene
@@ -381,6 +599,7 @@ ci-pr-unprivileged: ## Run the PR battery without AWS-backed Pulumi credentials.
 	$(MAKE) build
 	$(MAKE) test-pulumi
 	$(MAKE) test-repository-catalogs
+	$(MAKE) test-repository-fanout
 	$(MAKE) test-policy
 	$(MAKE) test-quality
 	$(MAKE) test-repo-hygiene

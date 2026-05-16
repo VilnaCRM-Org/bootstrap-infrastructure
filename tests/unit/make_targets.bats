@@ -34,6 +34,7 @@ assert_help_target() {
     ci-pr
     ci-pr-unprivileged
     clean
+    configure-github-repository-controls
     doctor
     down
     help
@@ -46,10 +47,16 @@ assert_help_target() {
     pulumi-refresh
     pulumi-destroy
     report-dead-code
+    report-dependabot-exception
     report-docstrings
     report-maintainability-trends
     report-quality
     report-sbom
+    report-alert-route-observation
+    report-production-dr-owner-evidence
+    report-security-account-attestation
+    report-well-architected-closeout
+    report-well-architected-evidence
     sh
     start
     test
@@ -59,6 +66,7 @@ assert_help_target() {
     test-bandit
     test-coverage
     test-crossguard
+    test-cost-proxy
     test-dependency-hygiene
     test-deps-security
     test-dockerfile
@@ -80,17 +88,34 @@ assert_help_target() {
     test-preview-unprivileged
     test-repo-hygiene
     test-repository-catalogs
+    test-repository-fanout
     test-ruff
     test-security
     test-secrets
     test-ty
     test-unit
     test-yaml
+    verify-well-architected-questions
   )
 
   for target in "${expected_targets[@]}"; do
     assert_help_target "$target"
   done
+}
+
+@test "make configure-github-repository-controls wraps admin helper" {
+  run env \
+    GITHUB_REPOSITORY_CONTROLS_REPO=VilnaCRM-Org/bootstrap-infrastructure \
+    GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER=Kravalg \
+    GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only \
+    make -n configure-github-repository-controls
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/configure_github_repository_controls.py"* ]]
+  [[ "$output" == *"--repo"* ]]
+  [[ "$output" == *"VilnaCRM-Org/bootstrap-infrastructure"* ]]
+  [[ "$output" == *"--prod-reviewer"* ]]
+  [[ "$output" == *"Kravalg"* ]]
+  [[ "$output" == *"--verify-only"* ]]
 }
 
 @test "make all delegates to the help output" {
@@ -184,6 +209,8 @@ EOF
   [ "$status" -eq 0 ]
   assert_compose_env_file
   assert_pulumi_secrets_provider_passthrough
+  [[ "$output" == *"-e PULUMI_PLAN_DIR=\".artifacts/pulumi-plan\""* ]]
+  [[ "$output" == *"-e PULUMI_COMMIT_SHA=\"\""* ]]
   [[ "$output" == *"./scripts/run_pulumi_command.py plan"* ]]
 }
 
@@ -200,6 +227,8 @@ EOF
   [ "$status" -eq 0 ]
   assert_compose_env_file
   assert_pulumi_secrets_provider_passthrough
+  [[ "$output" == *"-e PULUMI_PLAN_DIR=\".artifacts/pulumi-plan\""* ]]
+  [[ "$output" == *"-e PULUMI_EXPECTED_SHA=\"\""* ]]
   [[ "$output" == *"./scripts/run_pulumi_command.py up-plan"* ]]
 }
 
@@ -253,10 +282,21 @@ EOF
   [ "$status" -eq 0 ]
   assert_compose_env_file
   [[ "$output" == *"rm -f .coverage.integration .coverage.integration.*"* ]]
-  [[ "$output" == *"pytest -q tests/integration"* ]]
+  [[ "$output" == *"coverage run --parallel-mode -m pytest -q tests/integration"* ]]
   [[ "$output" == *"coverage combine"* ]]
   [[ "$output" == *"coverage report --show-missing"* ]]
   [[ "$output" == *"--fail-under=100"* ]]
+}
+
+@test "make test-integration-unprivileged executes credential-free contracts" {
+  run make -n test-integration-unprivileged
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  [[ "$output" == *"rm -f .coverage.integration .coverage.integration.*"* ]]
+  [[ "$output" == *"coverage run --parallel-mode -m pytest -q"* ]]
+  [[ "$output" == *"tests/integration/test_guardrail_contracts.py"* ]]
+  [[ "$output" == *"coverage combine"* ]]
+  [[ "$output" != *"coverage report --show-missing"* ]]
 }
 
 @test "make test-pulumi executes the structural suite" {
@@ -388,7 +428,7 @@ EOF
   run make -n test-secrets
   [ "$status" -eq 0 ]
   assert_compose_env_file
-  [[ "$output" == *"gitleaks git . --config .gitleaks.toml --no-banner --redact"* ]]
+  [[ "$output" == *"gitleaks git . --log-opts=\"-1\" --config .gitleaks.toml --no-banner --redact"* ]]
 }
 
 @test "make test-deps-security executes pip-audit in strict mode" {
@@ -408,6 +448,14 @@ EOF
   [[ "$output" == *"./scripts/run_pulumi_preview.py"* ]]
 }
 
+@test "make test-preview-unprivileged clears stale cost proxy artifacts" {
+  run make -n test-preview-unprivileged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"rm -f .artifacts/pulumi-preview/*.json .artifacts/pulumi-preview/summary.md .artifacts/pulumi-preview/cost-proxy.md"* ]]
+  [[ "$output" == *"rm -rf .artifacts/pulumi-preview/reports"* ]]
+  [[ "$output" == *"pulumi_ci_guardrails.py summarize"* ]]
+}
+
 @test "make test-destructive-diff enforces destructive resource guardrails" {
   run env GITHUB_TOKEN=ghs_test_token make -n test-destructive-diff
   [ "$status" -eq 0 ]
@@ -417,6 +465,19 @@ EOF
   [[ "$output" == *"pulumi_ci_guardrails.py destructive-gate"* ]]
 }
 
+@test "make test-cost-proxy enforces static cost and quota guardrails" {
+  run make -n test-cost-proxy
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  [[ "$output" == *"-e PULUMI_SECRETS_PROVIDER"* ]]
+  [[ "$output" == *"-e PULUMI_BACKEND_URL"* ]]
+  [[ "$output" == *"-e PULUMI_PREVIEW_STACKS"* ]]
+  [[ "$output" == *"rm -f .artifacts/pulumi-preview/reports/cost-proxy.json .artifacts/pulumi-preview/reports/cost-proxy.md .artifacts/pulumi-preview/cost-proxy.md"* ]]
+  [[ "$output" == *"pulumi_ci_guardrails.py cost-proxy"* ]]
+  [[ "$output" == *"reports/cost-proxy.json"* ]]
+  [[ "$output" == *"reports/cost-proxy.md"* ]]
+}
+
 @test "make test-iam-validation validates previewed IAM policies" {
   run env GITHUB_TOKEN=ghs_test_token make -n test-iam-validation
   [ "$status" -eq 0 ]
@@ -424,6 +485,22 @@ EOF
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
   [[ "$output" == *"pulumi_ci_guardrails.py validate-iam"* ]]
+}
+
+@test "make test-iam-validation-unprivileged extracts IAM inputs" {
+  run make -n test-iam-validation-unprivileged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"make test-preview-unprivileged"* ]]
+  [[ "$output" == *"pulumi_ci_guardrails.py iam-inputs"* ]]
+  [[ "$output" == *".artifacts/pulumi-preview/iam-inputs.json"* ]]
+  [[ "$output" != *"validate-iam"* ]]
+}
+
+@test "make test-repository-fanout estimates static quota fanout" {
+  run make -n test-repository-fanout
+  [ "$status" -eq 0 ]
+  assert_compose_env_file
+  [[ "$output" == *"validate_repository_catalogs.py --fanout-report"* ]]
 }
 
 @test "make test-security delegates to the security scan battery" {
@@ -439,7 +516,18 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"make test-preview"* ]]
   [[ "$output" == *"make test-destructive-diff"* ]]
+  [[ "$output" == *"make test-cost-proxy"* ]]
   [[ "$output" != *"make test-iam-validation"* ]]
+}
+
+@test "make test-guardrails-unprivileged delegates to credential-free guardrails" {
+  run make -n test-guardrails-unprivileged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"make test-preview-unprivileged"* ]]
+  [[ "$output" == *"make test-destructive-diff"* ]]
+  [[ "$output" == *"make test-cost-proxy"* ]]
+  [[ "$output" == *"make test-iam-validation-unprivileged"* ]]
+  [[ "$output" == *"pulumi_ci_guardrails.py iam-inputs"* ]]
 }
 
 @test "make test-battery runs the aggregate developer battery" {
@@ -447,6 +535,7 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"make test-pulumi"* ]]
   [[ "$output" == *"make test-policy"* ]]
+  [[ "$output" == *"make test-repository-fanout"* ]]
   [[ "$output" == *"make test-quality"* ]]
   [[ "$output" == *"make test-repo-hygiene"* ]]
   [[ "$output" == *"make test-unit"* ]]
@@ -462,6 +551,192 @@ EOF
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
   [[ "$output" == *"./scripts/run_pulumi_drift_check.py"* ]]
+}
+
+@test "make report-well-architected-evidence executes metadata collector" {
+  run env \
+    PR_NUMBER=22 \
+    AWS_ACCOUNT_ID=123456789012 \
+    OPERATIONS_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations \
+    DEPENDABOT_EXCEPTION_EVIDENCE=docs/dependabot-exception-2026-06-10.json \
+    ALERT_ROUTE_OBSERVATION_EVIDENCE=docs/alert-route-observation-2026-06-10.json \
+    SECURITY_ACCOUNT_ATTESTATION_EVIDENCE=docs/security-account-attestation-2026-06-10.json \
+    PRODUCTION_DR_OWNER_EVIDENCE=docs/production-dr-owner-2026-06-10.json \
+    make -n report-well-architected-evidence
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/collect_well_architected_evidence.py"* ]]
+  [[ "$output" == *".artifacts/well-architected/evidence.json"* ]]
+  [[ "$output" == *".artifacts/well-architected/evidence.md"* ]]
+  [[ "$output" != *'PR_NUMBER:-'* ]]
+  [[ "$output" != *'OPERATIONS_TOPIC_ARN:-'* ]]
+  [[ "$output" != *'DEPENDABOT_EXCEPTION_EVIDENCE:-'* ]]
+  [[ "$output" != *"--dependabot-exception-evidence"* ]]
+  [[ "$output" != *'ALERT_ROUTE_OBSERVATION_EVIDENCE:-'* ]]
+  [[ "$output" != *"--alert-route-observation-evidence"* ]]
+  [[ "$output" != *'SECURITY_ACCOUNT_ATTESTATION_EVIDENCE:-'* ]]
+  [[ "$output" != *"--security-account-attestation-evidence"* ]]
+  [[ "$output" != *'PRODUCTION_DR_OWNER_EVIDENCE:-'* ]]
+  [[ "$output" != *"--production-dr-owner-evidence"* ]]
+  [[ "$output" != *"bootstrap-test-operations"* ]]
+  [[ "$output" != *"dependabot-exception-2026-06-10"* ]]
+  [[ "$output" != *"alert-route-observation-2026-06-10"* ]]
+  [[ "$output" != *"security-account-attestation-2026-06-10"* ]]
+  [[ "$output" != *"production-dr-owner-2026-06-10"* ]]
+}
+
+@test "make verify-well-architected-questions compares against AWS docs" {
+  run env \
+    QUESTION_MATRIX_EVIDENCE=specs/question-matrix-evidence.json \
+    QUESTION_MATRIX=specs/question-matrix.md \
+    AWS_WA_TOC_JSON=docs/aws-wa-toc.json \
+    make -n verify-well-architected-questions
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mkdir -p .artifacts/well-architected"* ]]
+  [[ "$output" == *"./scripts/verify_well_architected_questions.py"* ]]
+  [[ "$output" == *'QUESTION_MATRIX_EVIDENCE:-'* ]]
+  [[ "$output" == *'QUESTION_MATRIX:-'* ]]
+  [[ "$output" == *'AWS_WA_TOC_JSON:-'* ]]
+  [[ "$output" == *'AWS_WA_QUESTION_VERIFY_OUTPUT:-.artifacts/well-architected/question-verification.json'* ]]
+  [[ "$output" == *"--question-matrix"* ]]
+  [[ "$output" == *"--toc-json"* ]]
+  [[ "$output" == *"--output"* ]]
+  [[ "$output" != *"docs/aws-wa-toc.json"* ]]
+}
+
+@test "make report-well-architected-closeout renders owner handoff bundle" {
+  run env \
+    WELL_ARCHITECTED_EVIDENCE=docs/evidence.json \
+    WELL_ARCHITECTED_QUESTION_VERIFICATION=docs/question-verification.json \
+    WELL_ARCHITECTED_CLOSEOUT_OUTPUT=docs/owner-closeout-bundle.md \
+    make -n report-well-architected-closeout
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"mkdir -p .artifacts/well-architected"* ]]
+  [[ "$output" == *"./scripts/render_well_architected_closeout.py"* ]]
+  [[ "$output" == *'WELL_ARCHITECTED_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *'WELL_ARCHITECTED_QUESTION_VERIFICATION:-.artifacts/well-architected/question-verification.json'* ]]
+  [[ "$output" == *'WELL_ARCHITECTED_CLOSEOUT_OUTPUT:-.artifacts/well-architected/owner-closeout-bundle.md'* ]]
+  [[ "$output" != *"docs/evidence.json"* ]]
+  [[ "$output" != *"docs/question-verification.json"* ]]
+  [[ "$output" != *"docs/owner-closeout-bundle.md"* ]]
+}
+
+@test "make report-dependabot-exception renders owner exception evidence" {
+  run env \
+    DEPENDABOT_EXCEPTION_OUTPUT=docs/dependabot-exception-2026-06-10.md \
+    DEPENDABOT_EXCEPTION_JSON_OUTPUT=docs/dependabot-exception-2026-06-10.json \
+    DEPENDABOT_EXCEPTION_REVIEWER=security-reviewer \
+    DEPENDABOT_EXCEPTION_OWNER=security-owner \
+    DEPENDABOT_EXCEPTION_APPROVAL=approved_exception \
+    DEPENDABOT_EXCEPTION_REASON='Patched lockfile is staged.' \
+    DEPENDABOT_EXCEPTION_REMEDIATION='Merge patched lockfile before expiry.' \
+    DEPENDABOT_EXCEPTION_EXPIRY_DATE=2026-06-17T00:00:00Z \
+    DEPENDABOT_EXCEPTION_EVIDENCE_NOTE='Security owner approved exception.' \
+    DEPENDABOT_EXCEPTION_FORCE=1 \
+    make -n report-dependabot-exception
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/record_dependabot_exception.py"* ]]
+  [[ "$output" == *'DEPENDABOT_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"DEPENDABOT_EXCEPTION_JSON_OUTPUT"* ]]
+  [[ "$output" == *"--json-output"* ]]
+  [[ "$output" == *"--evidence-note"* ]]
+  [[ "$output" == *"DEPENDABOT_EXCEPTION_FORCE"* ]]
+  [[ "$output" == *"--force"* ]]
+  [[ "$output" != *"security-reviewer"* ]]
+  [[ "$output" != *"Patched lockfile"* ]]
+  [[ "$output" != *"Security owner approved"* ]]
+}
+
+@test "make report-alert-route-observation renders monthly alert route evidence" {
+  run env \
+    ALERT_ROUTE_OBSERVATION_OUTPUT=docs/alert-route-observation-2026-06-09.md \
+    ALERT_ROUTE_OBSERVATION_JSON_OUTPUT=docs/alert-route-observation-2026-06-09.json \
+    ALERT_ROUTE_REVIEWER=sre-reviewer \
+    ALERT_ROUTE_OWNER=sre \
+    ALERT_ROUTE_DOWNSTREAM=incident-route \
+    ALERT_ROUTE_SEVERITY=sev2 \
+    ALERT_ROUTE_FALLBACK=queue-owner-review \
+    ALERT_ROUTE_DECISION=accepted \
+    ALERT_ROUTE_EXPIRY_DATE=2026-07-09T00:00:00Z \
+    ALERT_ROUTE_ACTION='Review queue consumption monthly.' \
+    ALERT_ROUTE_OBSERVATION_FORCE=1 \
+    make -n report-alert-route-observation
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/record_alert_route_observation.py"* ]]
+  [[ "$output" == *'ALERT_ROUTE_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"ALERT_ROUTE_OBSERVATION_JSON_OUTPUT"* ]]
+  [[ "$output" == *"--json-output"* ]]
+  [[ "$output" == *"--downstream-route"* ]]
+  [[ "$output" == *"ALERT_ROUTE_DOWNSTREAM"* ]]
+  [[ "$output" == *"--action"* ]]
+  [[ "$output" == *"ALERT_ROUTE_OBSERVATION_FORCE"* ]]
+  [[ "$output" == *"--force"* ]]
+  [[ "$output" != *"incident-route"* ]]
+  [[ "$output" != *"sre-reviewer"* ]]
+  [[ "$output" != *"Review queue"* ]]
+}
+
+@test "make report-security-account-attestation renders security evidence" {
+  run env \
+    SECURITY_ACCOUNT_ATTESTATION_OUTPUT=docs/security-account-attestation-2026-06-10.md \
+    SECURITY_ACCOUNT_REVIEWER=security-reviewer \
+    SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT=docs/security-account-attestation-2026-06-10.json \
+    SECURITY_ACCOUNT_OWNER=security-owner \
+    SECURITY_ACCOUNT_HUMAN_ACCESS=accepted \
+    SECURITY_ACCOUNT_ACTIVE_KEY_DECISION=exception \
+    SECURITY_ACCOUNT_PERMISSIONS_BOUNDARY=exemption \
+    SECURITY_ACCOUNT_APPROVAL=approved \
+    SECURITY_ACCOUNT_ACTION='Rotate active key before exception expiry.' \
+    SECURITY_ACCOUNT_ATTESTATION_FORCE=1 \
+    make -n report-security-account-attestation
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/record_security_account_attestation.py"* ]]
+  [[ "$output" == *'SECURITY_ACCOUNT_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT"* ]]
+  [[ "$output" == *"--json-output"* ]]
+  [[ "$output" == *"--human-access-posture"* ]]
+  [[ "$output" == *"SECURITY_ACCOUNT_HUMAN_ACCESS"* ]]
+  [[ "$output" == *"--action"* ]]
+  [[ "$output" == *"SECURITY_ACCOUNT_ATTESTATION_FORCE"* ]]
+  [[ "$output" == *"--force"* ]]
+  [[ "$output" != *"security-reviewer"* ]]
+  [[ "$output" != *"approved"* ]]
+  [[ "$output" != *"Rotate active key"* ]]
+}
+
+@test "make report-production-dr-owner-evidence renders production DR owner evidence" {
+  run env \
+    PRODUCTION_DR_OWNER_OUTPUT=docs/production-dr-owner-2026-06-10.md \
+    PRODUCTION_DR_OWNER_JSON_OUTPUT=docs/production-dr-owner-2026-06-10.json \
+    PRODUCTION_DR_REVIEWER=sre-reviewer \
+    PRODUCTION_DR_OWNER=production-owner \
+    PRODUCTION_DR_ESCALATION_PATH=incident-commander \
+    PRODUCTION_DR_RTO_TARGET=4h \
+    PRODUCTION_DR_RPO_TARGET=1h \
+    PRODUCTION_DR_RECOVERY_ORDER='Restore state before deploy.' \
+    PRODUCTION_DR_COMMUNICATIONS_PLAN='Post updates in incident channel.' \
+    PRODUCTION_DR_LATEST_ACCEPTED_DRILL='restore drill 2026-04-27' \
+    PRODUCTION_DR_NEXT_REVIEW_DATE=2026-07-10 \
+    PRODUCTION_DR_EVIDENCE_RETENTION_LOCATION=docs/production-dr-owner-2026-06-10.md \
+    PRODUCTION_DR_APPROVAL=approved \
+    PRODUCTION_DR_ACTION='Run production tabletop before expiry.' \
+    PRODUCTION_DR_EXPIRY_DATE=2026-07-10T00:00:00Z \
+    PRODUCTION_DR_OWNER_FORCE=1 \
+    make -n report-production-dr-owner-evidence
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"./scripts/record_production_dr_owner_evidence.py"* ]]
+  [[ "$output" == *'PRODUCTION_DR_EVIDENCE:-.artifacts/well-architected/evidence.json'* ]]
+  [[ "$output" == *"PRODUCTION_DR_OWNER_JSON_OUTPUT"* ]]
+  [[ "$output" == *"--json-output"* ]]
+  [[ "$output" == *"--escalation-path"* ]]
+  [[ "$output" == *"PRODUCTION_DR_ESCALATION_PATH"* ]]
+  [[ "$output" == *"--latest-accepted-drill"* ]]
+  [[ "$output" == *"PRODUCTION_DR_LATEST_ACCEPTED_DRILL"* ]]
+  [[ "$output" == *"--action"* ]]
+  [[ "$output" == *"PRODUCTION_DR_OWNER_FORCE"* ]]
+  [[ "$output" == *"--force"* ]]
+  [[ "$output" != *"sre-reviewer"* ]]
+  [[ "$output" != *"Restore state"* ]]
+  [[ "$output" != *"Run production tabletop"* ]]
 }
 
 @test "make test-quality delegates to the Rust-based quality suite" {
@@ -524,6 +799,19 @@ EOF
   [[ "$output" == *"make doctor"* ]]
   [[ "$output" == *"make build"* ]]
   [[ "$output" == *"make test-battery"* ]]
+  [[ "$output" != *"make test-mutation"* ]]
+}
+
+@test "make ci-pr-unprivileged runs the credential-free PR battery" {
+  run make -n ci-pr-unprivileged
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"make doctor"* ]]
+  [[ "$output" == *"make build"* ]]
+  [[ "$output" == *"make test-integration-unprivileged"* ]]
+  [[ "$output" == *"make test-guardrails-unprivileged"* ]]
+  [[ "$output" == *"make test-security"* ]]
+  ! grep -Fxq "make test-integration" <<<"$output"
+  ! grep -Fxq "make test-guardrails" <<<"$output"
   [[ "$output" != *"make test-mutation"* ]]
 }
 

@@ -12,6 +12,64 @@ from .bootstrap_settings import BootstrapSettings
 from .managed_repository import ManagedRepository
 
 
+def _required_mapping_string(item: dict[str, Any], key: str, error_message: str) -> str:
+    """Return a required non-empty string from a repository mapping."""
+    value = item.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(error_message)
+    return value.strip()
+
+
+def _optional_mapping_string(
+    item: dict[str, Any],
+    key: str,
+    *,
+    fallback: str | None,
+    error_message: str,
+) -> str | None:
+    """Return an optional non-empty string from a repository mapping."""
+    value = item.get(key)
+    if value is None:
+        return fallback
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(error_message)
+    return value.strip()
+
+
+def _optional_mapping_int(
+    item: dict[str, Any],
+    key: str,
+    *,
+    fallback: int,
+    error_message: str,
+) -> int:
+    """Return an optional positive integer from a repository mapping."""
+    value = item.get(key)
+    if value is None:
+        return fallback
+    if isinstance(value, bool) or not isinstance(value, int):
+        # Match ManagedRepository._expected_environments so catalog and direct
+        # model validation surface a uniform exception type.
+        raise TypeError(error_message)
+    return value
+
+
+def _metadata_validation_error(name: str, exc: ValueError) -> ValueError:
+    """Return a catalog-scoped metadata validation error."""
+    reason = str(exc)
+    if "lifecycle_state" in reason:
+        field = "lifecycleState"
+    elif "last_reviewed" in reason:
+        field = "lastReviewed"
+    elif "expected_environments" in reason:
+        field = "expectedEnvironments"
+    else:
+        field = "metadata"
+    return ValueError(
+        f"managedRepositories entry '{name}' has invalid {field}: {reason}"
+    )
+
+
 class ManagedRepositoryCatalog:
     """Load and expose the repositories managed by the bootstrap stack."""
 
@@ -30,6 +88,13 @@ class ManagedRepositoryCatalog:
         """Return the resolved repo-to-project mapping."""
         return {
             repository.name: repository.project_name
+            for repository in self._repositories
+        }
+
+    def metadata_mapping(self) -> dict[str, dict[str, object]]:
+        """Return non-secret repository metadata for review and quota evidence."""
+        return {
+            repository.name: repository.evidence_metadata()
             for repository in self._repositories
         }
 
@@ -126,35 +191,72 @@ class ManagedRepositoryCatalog:
     @staticmethod
     def _repository_from_mapping(item: dict[str, Any]) -> ManagedRepository:
         """Build a repository definition from a mapping entry."""
-        raw_name = item.get("name")
-        raw_default_branch = item.get("defaultBranch")
-        if raw_default_branch is None:
-            raw_default_branch = "main"
-        raw_project = item.get("project")
-        if raw_project is None:
-            raw_project = raw_name
-
-        if not isinstance(raw_name, str) or not raw_name.strip():
-            raise ValueError(
-                "Each managedRepositories entry must include a non-empty 'name'."
-            )
-        if not isinstance(raw_default_branch, str) or not raw_default_branch.strip():
-            raise ValueError(
-                "managedRepositories defaultBranch values must be non-empty strings."
-            )
-        if not isinstance(raw_project, str) or not raw_project.strip():
-            raise ValueError(
-                "Each managedRepositories entry must include a non-empty 'project'."
-            )
-        name = raw_name.strip()
-        default_branch = raw_default_branch.strip()
-        project = raw_project.strip()
-
-        return ManagedRepository(
-            name=name,
-            default_branch=default_branch,
-            project=project,
+        name = _required_mapping_string(
+            item,
+            "name",
+            "Each managedRepositories entry must include a non-empty 'name'.",
         )
+        default_branch = _optional_mapping_string(
+            item,
+            "defaultBranch",
+            fallback="main",
+            error_message=(
+                "managedRepositories defaultBranch values must be non-empty strings."
+            ),
+        )
+        project = _optional_mapping_string(
+            item,
+            "project",
+            fallback=name,
+            error_message=(
+                "Each managedRepositories entry must include a non-empty 'project'."
+            ),
+        )
+        owner = _optional_mapping_string(
+            item,
+            "owner",
+            fallback=None,
+            error_message=(
+                "managedRepositories owner values must be non-empty strings."
+            ),
+        )
+        lifecycle_state = _optional_mapping_string(
+            item,
+            "lifecycleState",
+            fallback="active",
+            error_message=(
+                "managedRepositories lifecycleState values must be non-empty strings."
+            ),
+        )
+        last_reviewed = _optional_mapping_string(
+            item,
+            "lastReviewed",
+            fallback=None,
+            error_message=(
+                "managedRepositories lastReviewed values must be non-empty strings."
+            ),
+        )
+        expected_environments = _optional_mapping_int(
+            item,
+            "expectedEnvironments",
+            fallback=2,
+            error_message=(
+                "managedRepositories expectedEnvironments values must be integers."
+            ),
+        )
+
+        try:
+            return ManagedRepository(
+                name=name,
+                default_branch=default_branch,
+                project=project,
+                owner=owner,
+                lifecycle_state=lifecycle_state,
+                last_reviewed=last_reviewed,
+                expected_environments=expected_environments,
+            )
+        except ValueError as exc:
+            raise _metadata_validation_error(name, exc) from exc
 
     @staticmethod
     def repository_from_item(item: Any) -> ManagedRepository:

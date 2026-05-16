@@ -26,6 +26,202 @@ if str(PULUMI_PROGRAM_ROOT) not in sys.path:
     sys.path.insert(0, str(PULUMI_PROGRAM_ROOT))
 
 
+def _apply_mock_resource_defaults(
+    type_: str,
+    name: str,
+    inputs: dict[str, Any],
+    state: dict[str, Any],
+) -> None:
+    """Populate stable mock output fields for Pulumi resources."""
+    default_handlers = {
+        "aws:s3/bucket:Bucket": _mock_s3_bucket,
+        "aws:iam/role:Role": _mock_iam_role,
+        "aws:iam/policy:Policy": _mock_iam_policy,
+        "aws:iam/openIdConnectProvider:OpenIdConnectProvider": _mock_oidc_provider,
+        "aws:ecr/repository:Repository": _mock_ecr_repository,
+        "aws:kms/key:Key": _mock_kms_key,
+        "aws:kms/alias:Alias": _mock_kms_alias,
+        "aws:backup/vault:Vault": _mock_backup_vault,
+        "aws:sns/topic:Topic": _mock_sns_topic,
+        "aws:sns/topicSubscription:TopicSubscription": _mock_sns_topic_subscription,
+        "aws:sqs/queue:Queue": _mock_sqs_queue,
+        "aws:cloudwatch/eventRule:EventRule": _mock_event_rule,
+        "aws:budgets/budget:Budget": _mock_budget,
+        "aws:costexplorer/anomalyMonitor:AnomalyMonitor": _mock_anomaly_monitor,
+        "aws:costexplorer/anomalySubscription:AnomalySubscription": (
+            _mock_anomaly_subscription
+        ),
+        "aws:guardduty/detector:Detector": _mock_guardduty_detector,
+        "aws:securityhub/account:Account": _mock_securityhub_account,
+        "aws:cfg/recorder:Recorder": _mock_config_recorder,
+        "aws:cfg/deliveryChannel:DeliveryChannel": _mock_config_delivery_channel,
+        "aws:cfg/recorderStatus:RecorderStatus": _mock_config_recorder_status,
+    }
+    handler = default_handlers.get(type_)
+    if handler is not None:
+        handler(name, inputs, state)
+
+
+def _mock_s3_bucket(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    bucket = inputs.get("bucket") or name
+    state.setdefault("bucket", bucket)
+    state.setdefault("arn", f"arn:aws:s3:::{bucket}")
+
+
+def _mock_iam_role(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    role_name = inputs.get("name") or name
+    state.setdefault("name", role_name)
+    state.setdefault("arn", f"arn:aws:iam::123456789012:role/{role_name}")
+
+
+def _mock_iam_policy(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    policy_name = inputs.get("name") or name
+    state.setdefault("name", policy_name)
+    state.setdefault("arn", f"arn:aws:iam::123456789012:policy/{policy_name}")
+
+
+def _mock_oidc_provider(
+    _name: str, _inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault(
+        "arn",
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+    )
+
+
+def _mock_ecr_repository(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    repository_name = inputs.get("name") or name
+    repository_url = f"123456789012.dkr.ecr.us-east-1.amazonaws.com/{repository_name}"
+    state.setdefault("name", repository_name)
+    state.setdefault("repositoryUrl", repository_url)
+    state.setdefault("repository_url", repository_url)
+
+
+def _mock_kms_key(name: str, _inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    state.setdefault("arn", f"arn:aws:kms:us-east-1:123456789012:key/{name}")
+    state.setdefault("keyId", f"{name}-key-id")
+    state.setdefault("key_id", f"{name}-key-id")
+
+
+def _mock_kms_alias(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    alias_name = inputs.get("name") or name
+    state.setdefault("name", alias_name)
+    state.setdefault("arn", f"arn:aws:kms:us-east-1:123456789012:{alias_name}")
+
+
+def _mock_backup_vault(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    vault_name = inputs.get("name", name)
+    state.setdefault("name", vault_name)
+    state.setdefault(
+        "arn",
+        f"arn:aws:backup:us-east-1:123456789012:backup-vault:{vault_name}",
+    )
+
+
+def _mock_sns_topic(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    topic_name = inputs.get("name", name)
+    state.setdefault("name", topic_name)
+    state.setdefault(
+        "arn",
+        f"arn:aws:sns:us-east-1:123456789012:{topic_name}",
+    )
+
+
+def _mock_sns_topic_subscription(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    topic_arn = inputs.get("topic", "arn:aws:sns:us-east-1:123456789012:topic")
+    state.setdefault("arn", f"{topic_arn}:{name}")
+
+
+def _mock_sqs_queue(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    queue_name = inputs.get("name") or name
+    state.setdefault("name", queue_name)
+    state.setdefault("arn", f"arn:aws:sqs:us-east-1:123456789012:{queue_name}")
+    state.setdefault(
+        "url",
+        f"https://sqs.us-east-1.amazonaws.com/123456789012/{queue_name}",
+    )
+
+
+def _mock_event_rule(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    rule_name = inputs.get("name", name)
+    state.setdefault("name", rule_name)
+    state.setdefault(
+        "arn",
+        f"arn:aws:events:us-east-1:123456789012:rule/{rule_name}",
+    )
+
+
+def _mock_budget(name: str, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+    budget_name = inputs.get("name", name)
+    state.setdefault("name", budget_name)
+    state.setdefault(
+        "arn",
+        f"arn:aws:budgets::123456789012:budget/{budget_name}",
+    )
+
+
+def _mock_anomaly_monitor(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    monitor_name = inputs.get("name", name)
+    state.setdefault("name", monitor_name)
+    state.setdefault(
+        "arn",
+        f"arn:aws:ce::123456789012:anomalymonitor/{monitor_name}",
+    )
+
+
+def _mock_anomaly_subscription(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    subscription_name = inputs.get("name", name)
+    state.setdefault("name", subscription_name)
+    state.setdefault(
+        "arn",
+        f"arn:aws:ce::123456789012:anomalysubscription/{subscription_name}",
+    )
+
+
+def _mock_guardduty_detector(
+    name: str, _inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("id", f"{name}-detector-id")
+    state.setdefault(
+        "arn",
+        f"arn:aws:guardduty:us-east-1:123456789012:detector/{name}-detector-id",
+    )
+
+
+def _mock_securityhub_account(
+    _name: str, _inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("arn", "arn:aws:securityhub:us-east-1:123456789012:hub/default")
+
+
+def _mock_config_recorder(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("name", inputs.get("name") or name)
+
+
+def _mock_config_delivery_channel(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("name", inputs.get("name") or name)
+
+
+def _mock_config_recorder_status(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    state.setdefault("name", inputs.get("name") or name)
+
+
 class TestMocks(pulumi.runtime.Mocks):
     """Pulumi mocks used by infra unit tests."""
 
@@ -37,37 +233,7 @@ class TestMocks(pulumi.runtime.Mocks):
         name = args.name
         inputs = dict(args.inputs)
         state = dict(inputs)
-        if type_ == "aws:s3/bucket:Bucket":
-            bucket = inputs.get("bucket") or name
-            state.setdefault("bucket", bucket)
-            state.setdefault("arn", f"arn:aws:s3:::{bucket}")
-        elif type_ == "aws:iam/role:Role":
-            role_name = inputs.get("name") or name
-            state.setdefault("name", role_name)
-            state.setdefault("arn", f"arn:aws:iam::123456789012:role/{role_name}")
-        elif type_ == "aws:iam/openIdConnectProvider:OpenIdConnectProvider":
-            state.setdefault(
-                "arn",
-                "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
-            )
-        elif type_ == "aws:ecr/repository:Repository":
-            repository_name = inputs.get("name") or name
-            repository_url = (
-                f"123456789012.dkr.ecr.us-east-1.amazonaws.com/{repository_name}"
-            )
-            state.setdefault("name", repository_name)
-            state.setdefault("repositoryUrl", repository_url)
-            state.setdefault("repository_url", repository_url)
-        elif type_ == "aws:kms/key:Key":
-            state.setdefault("arn", f"arn:aws:kms:us-east-1:123456789012:key/{name}")
-            state.setdefault("keyId", f"{name}-key-id")
-            state.setdefault("key_id", f"{name}-key-id")
-        elif type_ == "aws:kms/alias:Alias":
-            alias_name = inputs.get("name") or name
-            state.setdefault("name", alias_name)
-            state.setdefault("arn", f"arn:aws:kms:us-east-1:123456789012:{alias_name}")
-        elif type_ == "aws:backup/vault:Vault":
-            state.setdefault("name", inputs.get("name", name))
+        _apply_mock_resource_defaults(type_, name, inputs, state)
         self.resources.append((type_, name, state))
         resource_id = None if args.custom is False else f"{name}_id"
         return resource_id, state
@@ -79,6 +245,12 @@ class TestMocks(pulumi.runtime.Mocks):
             return {"name": "us-east-1", "region": "us-east-1"}, []
         if token == "aws:index/getCallerIdentity:getCallerIdentity":  # nosec B105
             return {"accountId": "123456789012"}, []
+        if token == "aws:index/getPartition:getPartition":  # nosec B105
+            return {
+                "partition": "aws",
+                "dnsSuffix": "amazonaws.com",
+                "reverseDnsPrefix": "com.amazonaws",
+            }, []
         if token == "aws:iam/getRole:getRole":  # nosec B105
             return {"arn": f"arn:aws:iam::123456789012:role/{payload.get('name')}"}, []
         if token == "aws:s3/getBucket:getBucket":  # nosec B105

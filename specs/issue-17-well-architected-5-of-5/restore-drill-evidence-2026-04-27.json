@@ -1,0 +1,18 @@
+{
+  "workload": "bootstrap-infrastructure",
+  "environment": "test",
+  "completedAt": "2026-04-27T05:05:41.655000Z",
+  "sourceRecoveryPointArn": "arn:aws:backup:eu-central-1:891377212104:recovery-point:awsbackup-source-pr22w5-bootstrap-891377-20260427042513-573093ee",
+  "targetRestoreLocation": "s3://awsbackup-restore-pr22w5-bootstrap-891377212104-drill",
+  "validationResult": "passed",
+  "cleanupConfirmed": true,
+  "restoreJobId": "d7f25510-1dfd-4f11-8953-72ed1c971c2c",
+  "resourceType": "S3",
+  "validationEvidence": {
+    "restoreJobStatus": "COMPLETED",
+    "restorePercentDone": "100.00%",
+    "createdResourceArn": "arn:aws:s3:::awsbackup-restore-pr22w5-bootstrap-891377212104-drill",
+    "cleanupCheck": "aws s3api head-bucket returned 404 Not Found for awsbackup-restore-pr22w5-bootstrap-891377212104-drill",
+    "cleanupCheckedAt": "2026-05-09T16:09:15Z"
+  }
+}

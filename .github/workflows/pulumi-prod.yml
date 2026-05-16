@@ -141,6 +141,7 @@ jobs:
       - name: Save production update plan and preview artifact
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_COMMIT_SHA: ${{ steps.resolve_sha.outputs.preview_sha }}
         run: make pulumi-plan
 
       - name: Upload preview artifact
@@ -297,6 +298,7 @@ jobs:
       - name: Apply saved production plan
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_EXPECTED_SHA: ${{ needs.preview.outputs.preview_sha }}
         run: make pulumi-up-plan
 
   post_apply_drift:

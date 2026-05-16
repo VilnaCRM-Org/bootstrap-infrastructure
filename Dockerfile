@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7-labs
 
 # Debian slim keeps the image small while remaining compatible with AWS CLI v2.
-ARG BASE_IMAGE=python:3.11.9-slim-bookworm@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317
+ARG BASE_IMAGE=python:3.11.15-slim-bookworm@sha256:cd67330292a51e2963156f74ff340455d66b2172e9190e99f40dff9357471177
 FROM ${BASE_IMAGE} AS tooling
 
 # TARGETARCH is supplied by BuildKit; do not default it or cross-platform builds
@@ -10,18 +10,18 @@ ARG TARGETARCH
 ARG USERNAME=dev
 ARG UID=1000
 ARG GID=1000
-ARG PULUMI_VERSION=3.200.0
-ARG PULUMI_SHA256_AMD64=b48a7f6034c6ef554c25e1762b9e89d451d2ebd4f3671850a56fe395956fecbe
-ARG PULUMI_SHA256_ARM64=127e30ee5b34b32d616db1a3254ff2520e639cfb3b0f19dfc62b52f743465c2c
+ARG PULUMI_VERSION=3.223.0
+ARG PULUMI_SHA256_AMD64=4297489a17a71981d212c0e47db2b3f59e67fbaf0fddf52226def8b71538d519
+ARG PULUMI_SHA256_ARM64=d5f5fc5e2068df8ac018b3297b0c0f38e8d284293a656ad48489a2c6b5a317bf
 ARG AWSCLI_VERSION=2.16.9
 ARG AWSCLI_SHA256_AMD64=8c09f0aa7743fb04a28ac7a6f3c2822d6ffcc58bcace2beaf55258ee0f67c4cb
 ARG AWSCLI_SHA256_ARM64=82636f7ec20c57beeed19a14f8684113e0edfb30e79f1a615809de2dfb482712
 ARG UV_VERSION=0.9.21
 ARG UV_SHA256_AMD64=0a1ab27383c28ef1c041f85cbbc609d8e3752dfb4b238d2ad97b208a52232baf
 ARG UV_SHA256_ARM64=416984484783a357170c43f98e7d2d203f1fb595d6b3b95131513c53e50986ef
-ARG ACTIONLINT_VERSION=1.7.7
-ARG ACTIONLINT_SHA256_AMD64=023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
-ARG ACTIONLINT_SHA256_ARM64=401942f9c24ed71e4fe71b76c7d638f66d8633575c4016efd2977ce7c28317d0
+ARG ACTIONLINT_VERSION=1.7.12
+ARG ACTIONLINT_SHA256_AMD64=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+ARG ACTIONLINT_SHA256_ARM64=325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6
 ARG GITLEAKS_VERSION=8.24.2
 ARG GITLEAKS_SHA256_AMD64=fa0500f6b7e41d28791ebc680f5dd9899cd42b58629218a5f041efa899151a8e
 ARG GITLEAKS_SHA256_ARM64=574a6d52573c61173add7ddb5e3cc68c0e82cb0735818a1eeb9a0a2de1643fbc
@@ -51,7 +51,7 @@ RUN bash -o pipefail -c 'set -euo pipefail \
         *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
+        --retry 12 --retry-delay 10 --retry-max-time 240 --retry-all-errors \
         "https://get.pulumi.com/releases/sdk/pulumi-v${PULUMI_VERSION}-linux-${pulumi_arch}.tar.gz" \
         --output /tmp/pulumi.tar.gz \
     && echo "${pulumi_sha256}  /tmp/pulumi.tar.gz" | sha256sum -c - \
@@ -75,7 +75,7 @@ RUN bash -o pipefail -c 'set -euo pipefail \
         *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
+        --retry 12 --retry-delay 10 --retry-max-time 240 --retry-all-errors \
         "https://awscli.amazonaws.com/awscli-exe-${awscli_arch}-${AWSCLI_VERSION}.zip" \
         --output "/tmp/awscliv2.zip" \
     && echo "${awscli_sha256}  /tmp/awscliv2.zip" | sha256sum -c - \
@@ -92,7 +92,7 @@ RUN bash -o pipefail -c 'set -euo pipefail \
         *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
+        --retry 12 --retry-delay 10 --retry-max-time 240 --retry-all-errors \
         "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${uv_arch}.tar.gz" \
         --output /tmp/uv.tar.gz \
     && echo "${uv_sha256}  /tmp/uv.tar.gz" | sha256sum -c - \
@@ -108,7 +108,7 @@ RUN bash -o pipefail -c 'set -euo pipefail \
         *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
+        --retry 12 --retry-delay 10 --retry-max-time 240 --retry-all-errors \
         "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_${actionlint_arch}.tar.gz" \
         --output /tmp/actionlint.tar.gz \
     && echo "${actionlint_sha256}  /tmp/actionlint.tar.gz" | sha256sum -c - \
@@ -123,7 +123,7 @@ RUN bash -o pipefail -c 'set -euo pipefail \
         *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
+        --retry 12 --retry-delay 10 --retry-max-time 240 --retry-all-errors \
         "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${gitleaks_arch}.tar.gz" \
         --output /tmp/gitleaks.tar.gz \
     && echo "${gitleaks_sha256}  /tmp/gitleaks.tar.gz" | sha256sum -c - \
@@ -138,7 +138,7 @@ RUN bash -o pipefail -c 'set -euo pipefail \
         *) echo "Unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
     && curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
+        --retry 12 --retry-delay 10 --retry-max-time 240 --retry-all-errors \
         "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-${hadolint_arch}" \
         --output /tmp/hadolint \
     && echo "${hadolint_sha256}  /tmp/hadolint" | sha256sum -c - \
@@ -234,7 +234,7 @@ ARG BATS_VERSION=1.11.0
 ARG BATS_SHA256=aeff09fdc8b0c88b3087c99de00cf549356d7a2f6a69e3fcec5e0e861d2f9063
 
 RUN bash -o pipefail -c 'curl --fail --silent --show-error --location \
-        --retry 5 --retry-delay 5 --retry-all-errors \
+        --retry 12 --retry-delay 10 --retry-max-time 240 --retry-all-errors \
         "https://github.com/bats-core/bats-core/archive/refs/tags/v${BATS_VERSION}.tar.gz" \
         --output /tmp/bats.tar.gz \
     && echo "${BATS_SHA256}  /tmp/bats.tar.gz" | sha256sum -c - \

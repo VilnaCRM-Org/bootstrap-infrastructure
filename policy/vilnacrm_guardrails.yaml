@@ -3,6 +3,9 @@ required_tags:
   - Environment
   - Owner
   - CostCenter
+  - DataClassification
+  - Criticality
+  - RetentionClass
 
 allowed_regions:
   - eu-central-1

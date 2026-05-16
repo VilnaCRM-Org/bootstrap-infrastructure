@@ -5,7 +5,8 @@ guardrail layer below is designed to catch the common failure modes of
 AI-generated Pulumi and AWS code before anyone merges or applies it.
 
 For the broader Python, dependency, workflow, Dockerfile, and scheduled
-maintainability checks, use [CI quality gates](ci-quality-gates.md).
+maintainability details behind these checks, use
+[CI quality gates](ci-quality-gates.md).
 
 ## Required PR checks
 
@@ -13,22 +14,62 @@ These checks are intended to be marked as required in branch protection:
 
 | Check | Local command | Purpose |
 | --- | --- | --- |
-| `Preview` | `make test-preview` | Produces a non-destructive Pulumi preview artifact for every configured stack |
-| `Destructive Diff Gate` | `make test-destructive-diff` | Blocks deletes and replacements of critical infrastructure unless explicitly approved |
-| `IAM Validation` | `make test-iam-validation` | Validates previewed IAM policies with AWS IAM Access Analyzer |
+| `Ruff` | `make test-ruff` | Lint, import-order, formatting drift, and McCabe complexity |
+| `Ty` | `make test-ty` | Fast static typing diagnostics |
+| `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
+| `Architecture` | `make test-architecture` | Import Linter contracts for package isolation and dependency direction |
+| `Structural` | `make test-pulumi && make test-repository-catalogs && make test-repository-fanout` | Pulumi project, workflow, catalog, and static fanout checks |
+| `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
+| `Coverage` | `make test-coverage` | Combined branch-coverage gate after unit, policy, and integration suites |
+| `Local Battery` | `make ci-pr` or `make ci-pr-unprivileged` | Dockerized PR battery including image build and local gate composition |
+| `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
+| `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
 | `Secrets Scan` | `make test-secrets` | Runs Gitleaks against tracked Git content |
 | `Dependency Audit` | `make test-deps-security` | Audits Python dependencies with `pip-audit --strict` |
 | `Bandit` | `make test-bandit` | Lints repository Python code for common security hazards |
+| `Dependency Review` | GitHub-native | Reviews pull-request dependency risk against GitHub advisories |
 | `Actionlint` | `make test-actionlint` | Lints GitHub Actions workflow syntax and common security issues |
+| `Yamllint` | `make test-yaml` | Lints GitHub workflow, Pulumi stack, and operational YAML |
+| `Hadolint` | `make test-dockerfile` | Lints Dockerfile quality and safety rules |
+| `Preview` | `make test-preview` | Produces a non-destructive Pulumi preview artifact for every configured stack |
+| `Destructive Diff Gate` | `make test-destructive-diff` | Blocks deletes and replacements of critical infrastructure unless explicitly approved |
+| `IAM Validation` | `make test-iam-validation` | Validates previewed IAM policies with AWS IAM Access Analyzer |
+| `Policy` | `make test-policy` | Enforces the custom Pulumi CrossGuard policy pack |
 | `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
 | `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |
 
 `make test-security` aggregates Gitleaks, dependency audit, and Bandit.
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
-`make test-guardrails` aggregates real preview generation and destructive diff
-gating. `make test-guardrails-unprivileged` uses an empty preview artifact to
-exercise the destructive-diff parser and IAM-input extraction for fork pull
-requests. `make ci-pr` and `make ci` keep the real preview path.
+`make test-guardrails` aggregates real preview generation, destructive diff
+gating, and static cost proxy checks. `make test-guardrails-unprivileged` uses
+an empty preview artifact to exercise the destructive-diff parser, cost proxy,
+and IAM-input extraction for fork pull requests. `make ci-pr` and `make ci`
+keep the real preview path.
+
+### Same-repo privileged check contract
+
+For same-repo infrastructure pull requests, branch protection should require
+the AWS-backed guardrail checks from `.github/workflows/pulumi-pr-guardrails.yml`
+by exact workflow and job name:
+
+| Required evidence | Workflow / check name | Job ID | Required result |
+| --- | --- | --- | --- |
+| AWS-backed Pulumi preview artifact | `Pulumi PR Guardrails / Preview` | `preview` | Success |
+| Destructive diff review and static cost/quota proxy over the preview artifact | `Pulumi PR Guardrails / Destructive Diff Gate` | `destructive_diff` | Success |
+| AWS IAM Access Analyzer validation | `Pulumi PR Guardrails / IAM Validation` | `iam_validation` | Success |
+
+The fork-only checks `Pulumi PR Guardrails / Preview (Unprivileged)` and
+`Pulumi PR Guardrails / IAM Validation (Unprivileged)` are credential-free
+fallback evidence. They must not be treated as equivalent to same-repo AWS
+validation for infrastructure changes that need privileged proof.
+
+A skipped privileged `Preview` or `IAM Validation` check is not an acceptable
+skip for a same-repo infrastructure PR. If a maintainer cannot rerun the change
+from a trusted same-repo branch, a repository branch-protection owner must
+explicitly approve the temporary exception and record the missing check, reason,
+compensating validation, and follow-up before the PR can be treated as merge
+ready. The destructive-diff gate remains governed only by the
+`allow-destructive-infra-change` label described below.
 
 ## Preview model
 
@@ -63,6 +104,15 @@ Test and production deployment workflows use `make pulumi-plan` to save the
 Pulumi update plan and write the corresponding preview JSON artifact in the same
 operation. Destructive-diff and IAM validation gates consume that uploaded
 artifact, so apply jobs use a plan whose preview has already passed guardrails.
+`make pulumi-plan` also writes `.artifacts/pulumi-plan/manifest.json` with the
+selected stack, backend URL, commit SHA, plan hash, and preview hash. `make
+pulumi-up-plan` refuses to apply when the manifest is missing, stale, from a
+different commit or backend, or when the saved plan hash no longer matches.
+Production applies remain saved-plan-only. The test deployment workflow may
+fall back to a direct `make pulumi-up` only when `pulumi up --plan` fails with
+Pulumi's known KMS-backed saved-plan decryption error after the same-run
+preview, destructive-diff, and IAM validation gates have passed under the
+test-state concurrency lock.
 
 Stack selection follows this order:
 
@@ -99,6 +149,27 @@ replacements against critical resource families such as:
 Intentional destructive changes must be reviewed manually and then approved with
 the pull-request label `allow-destructive-infra-change`. The label is the only
 supported override because it leaves an auditable trail in GitHub.
+
+## Cost and Quota Proxy
+
+`make test-cost-proxy` reads the same Pulumi preview JSON artifact as the
+destructive-diff gate. It counts create and replace operations for resource
+families that usually affect cost, quotas, or operational fanout, including S3
+buckets, KMS keys, IAM roles, AWS Backup resources, ECR repositories, SNS
+topics, EventBridge rules, CloudTrail trails, S3 replication configuration,
+GuardDuty, Security Hub, and AWS Config recorder resources.
+
+The proxy is intentionally static. It does not estimate monthly spend and it
+does not replace the repo-managed AWS Budget, Cost Anomaly Detection resources,
+Service Quotas, or a FinOps review. It gives reviewers an early signal that a
+pull request is adding or replacing unusually many durable resources before the
+change reaches the test account.
+
+The default weighted threshold is `66`, which matches the expected full
+first-time bootstrap footprint after automation, management CloudTrail, backup,
+cost, security detection, configuration inventory, and operations controls are
+included. Pull requests that exceed that threshold need an explicit guardrail
+change or a reduction in durable-resource fanout.
 
 ## IAM validation
 
@@ -142,10 +213,19 @@ Optional or job-specific environment variables:
 | --- | --- |
 | `AWS_REGION` | AWS region used by `configure-aws-credentials`; defaults to `eu-central-1` |
 | `PULUMI_PR_BACKEND_URL` | Optional PR-only backend, useful while a legacy shared test stack is being migrated |
-| `PULUMI_PR_PREVIEW_STACKS` | Optional PR-only stack list; falls back to `PULUMI_PREVIEW_STACKS` |
+| `PULUMI_PR_PREVIEW_STACKS` | Optional PR-only stack list; used by trusted PR and test deploy fallbacks |
 | `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for preview |
 | `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks |
 | `AWS_APPLY_ROLE_ARN` | OIDC role used by test or production apply jobs |
+| `OPERATIONS_TOPIC_ARN` | Standard metadata input for evidence collection when the environment reuses an existing operations SNS topic |
+| `OPERATIONS_CLOUDTRAIL_NAME` | Standard metadata input for evidence collection when the environment reuses an existing operations CloudTrail |
+| `RESTORE_DRILL_EVIDENCE` | Standard metadata input pointing to the latest workload-scoped restore drill evidence record |
+| `DEPENDABOT_EXCEPTION_EVIDENCE` | Optional non-secret exception evidence covering exact open default-branch Dependabot alert numbers when remediation cannot land immediately |
+| `ALERT_ROUTE_OBSERVATION_EVIDENCE` | Optional non-secret SRE-approved downstream alert-route observation evidence matching the live operations route |
+| `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` | Optional non-secret security-owner attestation for aggregate IAM account-access posture, human MFA/SSO posture, active-key decision, and permissions-boundary or exemption decision |
+| `PRODUCTION_DR_OWNER_EVIDENCE` | Optional non-secret production-owner DR evidence that binds RTO/RPO, recovery ownership, escalation, communications, latest accepted drill, next review, and retention location to current restore-drill metadata |
+| `QUESTION_MATRIX_EVIDENCE` | Standard metadata input pointing to the structured 57-question review evidence record |
+| `EXTERNAL_CONTROL_EVIDENCE` | Standard metadata input pointing to the structured external-control owner and freshness evidence record |
 
 Optional environment secrets:
 
@@ -155,6 +235,12 @@ Optional environment secrets:
 
 Shared backends should use an AWS KMS-backed Pulumi secrets provider rather
 than a passphrase-managed stack secret flow.
+
+`Pulumi Test Deploy` uses the generic backend, stack, apply-role, and drift-role
+variables when they exist. In the `test` environment it can fall back to
+`PULUMI_PR_BACKEND_URL`, `PULUMI_PR_PREVIEW_STACKS`, and `AWS_PREVIEW_ROLE_ARN`
+so an existing single bootstrap automation role can apply its own narrowed
+policy before creating new operations and cost-control resources.
 
 Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate. Same-repo pull requests fail fast when required
@@ -172,6 +258,163 @@ Privileged jobs should emit sanitized evidence in the job summary or logs:
 
 Do not print raw secrets, stack exports, decrypted values, or secret-bearing
 Pulumi output.
+
+Use `make report-well-architected-evidence` to collect a metadata-only evidence
+bundle for PR readiness, branch protection, protected production-environment
+approval, AWS identity, aggregate IAM account-access posture, account cost
+controls, optional operations topic routing, restore-job freshness, and
+repository fanout. The report is written to
+`.artifacts/well-architected/evidence.json` with a sanitized Markdown summary at
+`.artifacts/well-architected/evidence.md`; missing external evidence is reported
+as a blocker rather than treated as success. IAM account-access evidence is
+aggregate only: do not emit user names or access key IDs.
+The `Well-Architected Evidence` workflow runs the same collector against the
+real test-account OIDC role for trusted PRs and pushes, uploads the JSON and
+Markdown artifacts, and appends the Markdown summary to the GitHub job summary.
+It is advisory while the external controls tracked in #26-#30 remain open; set
+`WELL_ARCHITECTED_EVIDENCE_ENFORCE=true` only after those blockers are closed
+and the collector exits cleanly. Fork PRs do not receive AWS credentials and
+record an unprivileged skip summary instead.
+The Make target only creates the output artifact paths; the Python collector
+reads the standard environment variables directly when the matching CLI flags
+are omitted. When set, `PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
+`OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
+`QUESTION_MATRIX_EVIDENCE`, `EXTERNAL_CONTROL_EVIDENCE`, and
+`PRODUCTION_DR_OWNER_EVIDENCE` are standard evidence inputs, not secrets.
+Restore evidence must be scoped to this bootstrap workload and include cleanup
+confirmation for any isolated restore location.
+The collector also reads non-secret Dependabot alert metadata for the configured
+manifest path, or for an explicit dependency when `--dependabot-dependency` is
+set. Unresolved high or critical default-branch alerts remain SEC11 blockers
+until closed or covered by an owner-approved exception.
+If `DEPENDABOT_EXCEPTION_EVIDENCE` is set, the collector reads a non-secret
+JSON exception record and only treats it as coverage when it is current,
+matches the dependency scope and manifest, covers the exact open alert numbers,
+and records owner approval plus a remediation plan. Invalid or expired exception
+records do not suppress live alert blockers.
+When `report-dependabot-exception` writes JSON, it reads the latest collector
+`github_dependabot_alerts` evidence, copies the exact open alert numbers, and
+rejects missing evidence notes, invalid approvals, missing or expired
+`DEPENDABOT_EXCEPTION_EXPIRY_DATE`, stale or future
+`DEPENDABOT_EXCEPTION_REVIEW_DATE`, and missing dependency or manifest metadata
+before producing a record for `DEPENDABOT_EXCEPTION_EVIDENCE`.
+Set `DEPENDABOT_EXCEPTION_FORCE=1` only when intentionally replacing an
+existing Markdown or JSON exception artifact.
+If `ALERT_ROUTE_OBSERVATION_EVIDENCE` is set, the collector reads a non-secret
+SRE-approved alert-route observation record. The record must be current,
+unexpired, include an approved downstream route or queue-owner process,
+evidence/remediation notes, and match the live stable SNS/SQS route metadata
+exactly. Volatile queue-depth counts are retained as observation-only metadata
+and are not used for exact matching.
+When `report-alert-route-observation` writes JSON, it rejects missing or
+expired `ALERT_ROUTE_EXPIRY_DATE`, stale or future `ALERT_ROUTE_REVIEW_DATE`,
+and decision values the collector would reject.
+Set `ALERT_ROUTE_OBSERVATION_FORCE=1` only when intentionally replacing an
+existing Markdown or JSON observation artifact.
+If `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` is set, the collector reads a
+non-secret JSON security-owner attestation for aggregate IAM account-access
+posture. The attestation must be current, unexpired, owner-approved, include
+human MFA/SSO, active-key, permissions-boundary or exemption decisions, and
+match the live aggregate IAM counts exactly. It can only cover the human-access
+and active-key exception blockers; root MFA, root access keys, or unreadable IAM
+metadata remain hard failures.
+When `report-security-account-attestation` writes JSON, it rejects missing or
+expired `SECURITY_ACCOUNT_EXPIRY_DATE`, stale or future
+`SECURITY_ACCOUNT_REVIEW_DATE`, and owner decision values the collector would
+reject.
+Set `SECURITY_ACCOUNT_ATTESTATION_FORCE=1` only when intentionally replacing an
+existing Markdown or JSON attestation artifact.
+If `PRODUCTION_DR_OWNER_EVIDENCE` is set, the collector reads a non-secret JSON
+production DR owner record. The record must be current, unexpired,
+owner-approved, include production recovery ownership, escalation,
+communications, RTO/RPO, latest accepted drill, next review, evidence retention,
+and match the latest restore-drill metadata exactly.
+When `report-production-dr-owner-evidence` writes JSON, it rejects missing or
+expired `PRODUCTION_DR_EXPIRY_DATE`, stale or future
+`PRODUCTION_DR_REVIEW_DATE`, missing owner actions, invalid approvals, and
+restore-drill mismatches the collector would reject.
+Set `PRODUCTION_DR_OWNER_FORCE=1` only when intentionally replacing an existing
+Markdown or JSON production DR owner artifact.
+Question-matrix and external-control records must include owner, freshness,
+coverage, unresolved-count, evidence-location, and fallback fields; boolean
+confirmation flags do not unlock final 5/5 scores.
+Question-matrix records must also include `frameworkSourceVerification` with a
+fresh `checkedAt`, source label, the official AWS Well-Architected TOC URL
+(`https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json`),
+and pillar question counts matching the current AWS Well-Architected Framework
+question set: Operational Excellence `11`, Security `11`, Reliability `13`,
+Performance Efficiency `5`, Cost Optimization `11`, and Sustainability `6`.
+Run `make verify-well-architected-questions` when refreshing the matrix to
+compare the local Markdown matrix rows, `questionScores` IDs, `questionCount`,
+pillar counts, `unresolvedQuestionCount`, `unresolvedQuestionIds`,
+per-pillar unresolved counts, score averages, 1-5 score values, status values,
+score/status consistency, and `frameworkSourceVerification` source metadata
+against the AWS public Framework TOC; the verification artifact records its own
+`checkedAt` timestamp for audit freshness and includes a sanitized copy of the
+validated framework-source metadata. By default the Make target writes this
+artifact to `.artifacts/well-architected/question-verification.json`; set
+`AWS_WA_QUESTION_VERIFY_OUTPUT` only when a different path is needed.
+The hosted Well-Architected Evidence workflow runs the verifier after the
+collector, renders `.artifacts/well-architected/owner-closeout-bundle.md` with
+`make report-well-architected-closeout`, appends the closeout audit to the job
+summary, and uploads the full `.artifacts/well-architected` directory.
+Non-passed `questionScores` entries must also retain non-empty `evidenceRefs`
+so each remaining blocker maps to a concrete issue, collector check, script, workflow,
+or evidence artifact.
+External-control records are checked per control as well as at the file level:
+
+- `controlCount` must match the number of objects in `controls`
+- `unresolvedControlCount` must match controls whose `status` is not `passed`
+- every required control ID must be present
+- every control, passed or unresolved, must include a non-empty `evidence` string list
+- every non-passed control must also include a non-empty `unresolvedReason`
+
+The accepted shape is intentionally non-secret:
+
+```json
+{
+  "id": "branch_protection",
+  "status": "passed",
+  "evidence": [
+    "GitHub ruleset 13906584 requires Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
+  ]
+}
+```
+
+For unresolved controls, keep the evidence non-secret and explain the blocker:
+
+```json
+{
+  "id": "security_account_controls",
+  "status": "unresolved",
+  "evidence": [
+    "Aggregate IAM collector reports root/account MFA enabled and no root access keys."
+  ],
+  "unresolvedReason": "Security-owner attestation for human MFA/SSO and the active IAM user access-key exception is still pending."
+}
+```
+
+The accepted Dependabot exception shape is also non-secret:
+
+```json
+{
+  "workload": "bootstrap-infrastructure",
+  "owner": "security-reviewer",
+  "approvedBy": "Kravalg",
+  "reviewedAt": "2026-06-10T09:00:00Z",
+  "expiresAt": "2026-06-17T09:00:00Z",
+  "dependencyName": "all",
+  "dependencyNames": ["GitPython", "urllib3"],
+  "manifestPath": "uv.lock",
+  "alertNumbers": [4, 5, 6, 7, 8, 9, 10],
+  "approval": "approved",
+  "reason": "Patched lockfile is staged and default-branch alert closure is pending merge.",
+  "remediationPlan": "Merge the patched lockfile or revisit the exception before expiry.",
+  "evidence": [
+    "Security owner approved this short exception window."
+  ]
+}
+```
 
 ### Example IAM trust policy
 
@@ -245,6 +488,37 @@ The workflows are committed in this repository, but maintainers still need to:
 5. mark the required PR checks in GitHub branch protection
 6. decide whether production repositories want stricter stack lists or narrower
    IAM role scopes than the template defaults
+
+Repository administrators can make steps 4 and 5 reproducible with:
+
+```bash
+gh api graphql \
+  -f query='query { repository(owner:"VilnaCRM-Org", name:"bootstrap-infrastructure") { viewerPermission viewerCanAdminister } }' \
+  --jq '.data.repository'
+
+GITHUB_REPOSITORY_CONTROLS_REPO=VilnaCRM-Org/bootstrap-infrastructure \
+GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER=Kravalg \
+GITHUB_REPOSITORY_CONTROLS_MODE=--apply \
+make configure-github-repository-controls
+```
+
+The GraphQL preflight must report an admin-capable identity before `--apply`
+can update repository-owned rulesets or protected environments. The current
+non-admin evidence for PR #22 is `viewerPermission=WRITE` and
+`viewerCanAdminister=false`, so this command is intentionally expected to stop
+at the admin-rights preflight until a repository administrator runs it.
+
+Set `GITHUB_REPOSITORY_CONTROLS_MODE=--dry-run`, or omit the variable, to
+inspect the ruleset and protected environment payloads. Dry runs resolve the
+reviewer login to the numeric GitHub user ID used by the environment API. Set
+`GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only` after applying settings
+manually or through another tool to re-read the active `main` ruleset and
+`prod` environment without writing. With
+`GITHUB_REPOSITORY_CONTROLS_MODE=--apply`, the helper writes the desired
+controls and then runs the same verification. Verification exits non-zero unless
+the required checks, pull-request review/thread-resolution rules,
+protected-branch deployment policy, self-review prevention, and configured
+production reviewer are visible in GitHub metadata.
 
 ## Current limitations
 

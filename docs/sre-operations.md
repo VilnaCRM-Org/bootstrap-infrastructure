@@ -191,6 +191,201 @@ pulumi -C pulumi config
 Do not use secret-revealing flags or raw stack export commands for routine
 evidence collection.
 
+## Operations Alerting
+
+The bootstrap stack provisions an encrypted SNS topic named
+`bootstrap-<environment>-operations`, a customer-managed KMS key aliased as
+`alias/bootstrap-<environment>-operations-alerting`, and EventBridge rules for
+high-severity control-plane signals:
+
+| Signal | Source | Immediate owner action |
+| --- | --- | --- |
+| AWS Backup failed, aborted, or expired job | `aws.backup` job state events | Confirm the affected vault, plan, and protected bucket, then schedule a fresh backup or restore drill |
+| KMS key deletion, disablement, rotation disablement, or policy change | `aws.kms` CloudTrail events | Verify the key and actor, cancel unintended deletion, and review deploy role access |
+| IAM OIDC provider or role policy changes | `aws.iam` CloudTrail events | Confirm the GitHub OIDC trust still matches approved branches or environments |
+| S3 bucket encryption, logging, policy, or replication changes | `aws.s3` CloudTrail events | Confirm state and log buckets still enforce encryption, TLS, logging, and replication |
+
+The stack creates an account-local SQS subscription for durable alert capture.
+Do not treat human escalation as complete until the target account also has a
+confirmed owner and incident route for processing that queue or forwarding the
+SNS topic into ChatOps, ticketing, or paging.
+
+For monthly OPS8 evidence, run the Well-Architected collector first, then
+render a reviewed alert-route observation from the collector output:
+
+```bash
+make report-well-architected-evidence
+
+ALERT_ROUTE_OBSERVATION_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.md \
+ALERT_ROUTE_OBSERVATION_JSON_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.json \
+ALERT_ROUTE_REVIEWER='<reviewer or team>' \
+ALERT_ROUTE_OWNER='SRE' \
+ALERT_ROUTE_DOWNSTREAM='<ChatOps, ticketing, paging, or approved queue-owner process>' \
+ALERT_ROUTE_SEVERITY='<severity and response expectation>' \
+ALERT_ROUTE_FALLBACK='<fallback when the downstream route is unavailable>' \
+ALERT_ROUTE_DECISION='accepted' \
+ALERT_ROUTE_EXPIRY_DATE='YYYY-MM-DDTHH:MM:SSZ' \
+ALERT_ROUTE_ACTION='<non-secret evidence and remediation note>' \
+make report-alert-route-observation
+
+ALERT_ROUTE_OBSERVATION_EVIDENCE=docs/alert-route-observation-YYYY-MM-DD.json \
+make report-well-architected-evidence
+```
+
+Set `ALERT_ROUTE_OBSERVATION_FORCE=1` only when intentionally replacing an
+existing Markdown or JSON observation artifact.
+
+The generated observation is only acceptable evidence after the reviewer
+records a real downstream route or explicitly approved queue-owner process. The
+target file should be committed or otherwise retained as the monthly
+observation history for the workload.
+
+## Operations Evidence Contract
+
+Well-Architected evidence should use metadata and durable review artifacts, not
+secret-bearing dumps. Retain these non-secret handles when validating a stack:
+
+- `operationsAlertTopicArn`
+- `operationsAlertRuleNames`
+- `operationsAlertTopicKeyAliasName`
+- `operationsAlertQueueArn`
+- `operationsAlertQueueName`
+- `operationsAlertQueueSubscriptionArn`
+- `monthlyBudgetName`
+- `costAnomalyMonitorArn`
+- `costAnomalySubscriptionArn`
+- `backupVaultName` and `backupVaultArn`
+- `OPERATIONS_TOPIC_ARN` when an existing operations SNS topic is reused
+- `OPERATIONS_CLOUDTRAIL_NAME` when an existing operations trail is reused
+- `RESTORE_DRILL_EVIDENCE` for the latest workload-scoped restore drill record
+- `DEPENDABOT_EXCEPTION_EVIDENCE` for non-secret exact-alert exception
+  evidence when default-branch remediation cannot land immediately
+- `ALERT_ROUTE_OBSERVATION_EVIDENCE` for non-secret downstream alert-route
+  observation evidence
+- `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` for non-secret security-owner
+  attestation of aggregate IAM account-access posture
+- `PRODUCTION_DR_OWNER_EVIDENCE` for non-secret production DR owner approval,
+  RTO/RPO, escalation, communications, drill, review, and retention evidence
+- `QUESTION_MATRIX_EVIDENCE` for the structured 57-question review record
+- `EXTERNAL_CONTROL_EVIDENCE` for structured external-control evidence
+
+For each environment, the monthly evidence bundle should also record the
+reviewer, review date, alert subscription status, incident route, last backup
+review, last restore drill, last drift run, budget threshold, anomaly threshold,
+and any missed KPI actions. Do not include stack exports, decrypted Pulumi
+config, secret values, access keys, tokens, private keys, or contents of state
+objects.
+
+Run `make report-well-architected-evidence` after privileged guardrails or a
+test-account smoke deploy to create the standard metadata-only evidence bundle.
+The target writes `.artifacts/well-architected/evidence.json` and
+`.artifacts/well-architected/evidence.md`; the collector reads
+`PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
+`OPERATIONS_CLOUDTRAIL_NAME`, `RESTORE_DRILL_EVIDENCE`,
+`QUESTION_MATRIX_EVIDENCE`, `EXTERNAL_CONTROL_EVIDENCE`, and optional
+owner-evidence paths such as `DEPENDABOT_EXCEPTION_EVIDENCE`,
+`ALERT_ROUTE_OBSERVATION_EVIDENCE`, `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE`,
+and `PRODUCTION_DR_OWNER_EVIDENCE` directly when the matching CLI flags are
+omitted. Set those variables only when the non-secret identifiers or
+evidence records are available; the collector records missing values as
+blockers so operators can close them without fabricating 5/5 evidence.
+After the collector and AWS question verifier run, use
+`make report-well-architected-closeout` to render
+`.artifacts/well-architected/owner-closeout-bundle.md`. The bundle keeps the
+owner/admin handoff non-secret and includes an Objective Audit plus
+Prompt-To-Artifact Checklist that maps the 5/5 goal to current evidence,
+scores, failed gates, unresolved questions, and unresolved external controls.
+External-control evidence must name the required control IDs for
+branch protection, alert route, backup/restore, FinOps, quota headroom,
+security account controls, sustainability governance, and production approval.
+The collector also validates the per-control proof shape: passed controls need
+a non-empty `evidence` list, unresolved controls need an `unresolvedReason`, and
+the top-level control counts must match the `controls` array. Owner comments,
+private screenshots, or admin-only views can be referenced by non-secret issue
+URLs or metadata summaries, but do not include private user lists, access key
+IDs, secret values, or stack exports.
+
+## Ownership And RACI
+
+Repository-owned controls still need accountable humans or teams before they
+can support a 5/5 claim.
+
+| Activity | Accountable | Responsible | Consulted | Informed |
+| --- | --- | --- | --- | --- |
+| CI guardrail and branch-protection evidence | Maintainer | Platform owner | SRE, security reviewer | Repository contributors |
+| Backup health, restore drills, drift, and DR evidence | SRE | SRE | Maintainer, security reviewer | FinOps for cost impact |
+| KMS, IAM/OIDC, state access, and logging incidents | Security reviewer | SRE | Maintainer | Repository contributors |
+| Budget, anomaly, transfer-cost, and quota evidence | `platform-maintainers` for the test workload; FinOps owner for future shared or production workloads | Maintainer | SRE | Security reviewer |
+| Repository catalog owner and stale cleanup review | Maintainer | Repository owner | SRE, FinOps owner | Platform owner |
+
+Current external-control closeout for PR #22 is routed through issues #26-#30.
+Those issues are assigned to `Kravalg`, `pixelTM`, and `vilnacrm` because the
+remaining controls require repository admin, security-owner, or SRE evidence
+outside the current automation token.
+
+If any role or external-control owner is unnamed for an environment, the
+related Well-Architected score must stay unchanged and the review should record
+the missing owner as a blocker.
+
+## Severity Model
+
+Use these severities for bootstrap infrastructure events:
+
+| Severity | Examples | Response expectation |
+| --- | --- | --- |
+| SEV1 | Production state bucket access failure, unintended KMS key deletion schedule, state/log bucket policy removal, confirmed secret exposure, or destructive prod apply drift. | Immediate incident owner, containment first, maintainer and security reviewer notified. |
+| SEV2 | Failed AWS Backup job for protected resources, prod drift, GitHub OIDC trust change, budget forecast at or above 100%, or Cost Anomaly alert above threshold. | Same business day triage, owner assigned, mitigation or accepted-risk note recorded. |
+| SEV3 | Test-environment drift, non-prod backup failure, catalog fanout warning, quota headroom warning, or stale repository metadata. | Triage within three business days and track follow-up to closure. |
+| SEV4 | Documentation gaps, dashboard freshness gaps, non-urgent KPI misses, or scheduled review actions. | Review in the next monthly operations cycle. |
+
+## KPI Register
+
+The monthly operations review should track these minimum KPIs:
+
+| KPI | Target | Evidence source | Owner |
+| --- | --- | --- | --- |
+| Backup job health | No unresolved failed, aborted, or expired protected-resource jobs. | AWS Backup metadata and EventBridge alert history. | SRE |
+| Restore drill freshness | Last successful non-production drill is no older than 90 days. | Restore evidence record. | SRE |
+| Drift freshness | Scheduled drift evidence is no older than 24 hours for shared stacks. | GitHub workflow run or safe Pulumi refresh evidence. | SRE |
+| Guardrail health | Required same-repo safety checks are passing and not skipped outside policy. | GitHub checks and branch-protection evidence. | Maintainer |
+| Alert route freshness | Operations SNS subscription and downstream route confirmed in the last 30 days or after route changes. | SNS metadata or incident-tool evidence. | SRE |
+| Cost alert readiness | Budget and Cost Anomaly thresholds reviewed in the last 30 days. | Budget/anomaly metadata plus `docs/finops-review-2026-05-09.md`. | `platform-maintainers` |
+| Catalog demand review | Active catalog entries have owner, lifecycle state, last-reviewed date, and expected environments. | Repository catalog and fanout output. | Maintainer |
+
+Missing or stale KPI evidence is a no-go for an honest 5/5 even when the
+underlying AWS resources exist.
+
+## Runbook Expectations
+
+Every bootstrap runbook or alert playbook should include:
+
+- Signal source, severity, owner, and escalation route.
+- First five minutes of metadata-only checks.
+- Containment and rollback or fail-forward decision points.
+- Recovery steps and validation commands that avoid secret-revealing output.
+- Communication template for affected maintainers or account owners.
+- Evidence to retain, including timestamps, workflow URLs, AWS resource names,
+  and cleanup confirmation.
+- Post-incident review trigger, action owner, target date, and fallback if the
+  evidence cannot be collected safely.
+
+## Backup and Restore Evidence
+
+Monthly backup review should record the stack, account, vault name, plan name,
+last successful backup job timestamp, and any failed job IDs. Quarterly restore
+drills should restore into an isolated location and verify object metadata only;
+do not inspect Pulumi state contents, decrypted stack values, or secret payloads
+as part of routine evidence collection. Restore evidence must identify the
+bootstrap workload, source recovery point, operator, validation result, and
+cleanup confirmation for the isolated restore location; generic account-level
+restore evidence is not enough for this workload.
+
+Target recovery posture for bootstrap state is:
+
+- RPO: one daily AWS Backup recovery point plus S3 versioning
+- RTO: restore procedure reviewed and executable within one business day
+- DR boundary: primary-region state and log buckets have cross-region replicas
+
 ## Incident and Drift Triage
 
 When something looks wrong:
@@ -208,7 +403,7 @@ When something looks wrong:
 
 Map failures back to their local commands:
 
-- `Structural` -> `make test-pulumi && make test-repository-catalogs`
+- `Structural` -> `make test-pulumi && make test-repository-catalogs && make test-repository-fanout`
 - `Policy` -> `make test-policy`
 - `Ruff` -> `make test-ruff`
 - `Ty` -> `make test-ty`
@@ -223,6 +418,7 @@ Map failures back to their local commands:
 - `Local Battery` -> `make ci-pr-unprivileged` by default, or `make ci-pr` when AWS-backed automation tests are enabled
 - `Preview` -> `make test-preview-unprivileged` by default, or `make test-preview` when AWS-backed preview variables are configured
 - `Destructive Diff Gate` -> `make test-destructive-diff`
+- `Cost Proxy` -> `make test-cost-proxy`
 - `IAM Validation` -> `make test-iam-validation-unprivileged` by default, or `make test-iam-validation` when AWS credentials are configured
 - `Secrets Scan` -> `make test-secrets`
 - `Dependency Audit` -> `make test-deps-security`

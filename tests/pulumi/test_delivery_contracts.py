@@ -169,7 +169,7 @@ def test_dockerfile_pins_base_image_and_verifies_downloads() -> None:
     """Require checksum verification for externally downloaded tooling."""
     dockerfile_text = DOCKERFILE.read_text(encoding="utf-8")
 
-    assert "python:3.11.9-slim-bookworm@" in dockerfile_text
+    assert "python:3.11.15-slim-bookworm@" in dockerfile_text
     assert "FROM ${BASE_IMAGE} AS tooling" in dockerfile_text
     assert "FROM ${BASE_IMAGE} AS runtime-base" in dockerfile_text
     assert "ARG TARGETARCH" in dockerfile_text
@@ -419,6 +419,7 @@ def test_new_helper_scripts_keep_local_ci_behaviour_explicit() -> None:
     assert "if not quality_artifact_dir.is_absolute()" in wily_script
     assert '"git", "rev-parse", "--verify", "HEAD"' in wily_script
     assert "Wily maintainability report skipped" in wily_script
+    assert "Current maintainability snapshot from radon" in wily_script
     assert "PULUMI_REQUIRE_SHARED_BACKEND" in preview_summary_script
     assert '"make", "test-preview"' in preview_summary_script
     assert "GITHUB_STEP_SUMMARY" in preview_summary_script
@@ -443,6 +444,9 @@ def test_coverage_bearing_make_targets_enforce_full_line_coverage() -> None:
     assert (
         "INTEGRATION_COVERAGE_INCLUDE ?= pulumi/__main__.py,pulumi/app/*"
         in makefile_text
+    )
+    assert (
+        "coverage run --parallel-mode -m pytest -q tests/integration" in makefile_text
     )
     assert (
         "coverage report --show-missing --fail-under=100 "
@@ -582,8 +586,9 @@ def test_makefile_secret_and_guardrail_targets_stay_developer_safe() -> None:
     """Keep secret and preview guardrails aligned with local developer workflows."""
     makefile_text = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
 
-    assert "gitleaks git . --config .gitleaks.toml --no-banner --redact" in (
-        makefile_text
+    assert (
+        'gitleaks git . --log-opts="-1" --config .gitleaks.toml --no-banner --redact'
+        in makefile_text
     )
     assert "gitleaks dir ." not in makefile_text
     guardrails_block = makefile_text.split("test-guardrails:", maxsplit=1)[1].split(
@@ -711,6 +716,10 @@ def test_multi_account_workflows_use_environment_scoped_oidc_contracts() -> None
             "prod-preview",
             drift_role,
         ),
+        ("well-architected-evidence.yml", "test_account_evidence"): (
+            "test",
+            preview_role,
+        ),
         ("pulumi-pr-guardrails.yml", "preview"): ("test", preview_role),
         ("pulumi-pr-guardrails.yml", "iam_validation"): ("test", preview_role),
         ("pulumi-prod.yml", "preview"): ("prod-preview", preview_role),
@@ -768,6 +777,10 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     test_workflow = yaml.safe_load(
         (WORKFLOWS_DIR / "pulumi-test-deploy.yml").read_text(encoding="utf-8")
     )
+    test_preview_env = test_workflow["jobs"]["preview"]["env"]
+    test_iam_env = test_workflow["jobs"]["iam_validation"]["env"]
+    test_apply_env = test_workflow["jobs"]["apply"]["env"]
+    test_drift_env = test_workflow["jobs"]["post_apply_drift"]["env"]
     prod_preview_lines = "\n".join(
         _run_lines(prod_workflow["jobs"]["preview"]["steps"])
     )
@@ -775,6 +788,7 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     test_preview_lines = "\n".join(
         _run_lines(test_workflow["jobs"]["preview"]["steps"])
     )
+    test_apply_lines = "\n".join(_run_lines(test_workflow["jobs"]["apply"]["steps"]))
 
     assert prod_workflow["permissions"]["actions"] == "read"  # nosec B101
     assert (  # nosec B101
@@ -792,6 +806,38 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert "12-digit AWS account ID" in test_preview_lines  # nosec B101
     assert "s3:// backend" in test_preview_lines  # nosec B101
     assert "awskms:// URI" in test_preview_lines  # nosec B101
+    assert (  # nosec B101
+        test_preview_env["PULUMI_BACKEND_URL"]
+        == "${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}"
+    )
+    assert (  # nosec B101
+        test_preview_env["PULUMI_PREVIEW_STACKS"]
+        == "${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
+    )
+    assert (  # nosec B101
+        test_preview_env["PULUMI_DRIFT_STACKS"]
+        == "${{ vars.PULUMI_DRIFT_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
+    )
+    assert (  # nosec B101
+        test_iam_env["PULUMI_BACKEND_URL"]
+        == "${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}"
+    )
+    assert (  # nosec B101
+        test_iam_env["PULUMI_PREVIEW_STACKS"]
+        == "${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
+    )
+    assert (  # nosec B101
+        test_apply_env["AWS_APPLY_ROLE_ARN"]
+        == "${{ vars.AWS_APPLY_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}"
+    )
+    assert (  # nosec B101
+        test_apply_env["PULUMI_BACKEND_URL"]
+        == "${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}"
+    )
+    assert (  # nosec B101
+        test_drift_env["AWS_DRIFT_ROLE_ARN"]
+        == "${{ vars.AWS_DRIFT_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}"
+    )
     test_deploy_query = (
         "pulumi-test-deploy.yml/runs?head_sha=${TARGET_SHA}"
         + "&status=completed&per_page=100"
@@ -809,6 +855,12 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert "git rev-parse HEAD" not in prod_apply_lines  # nosec B101
     assert "make pulumi-plan" in prod_preview_lines  # nosec B101
     assert "make pulumi-plan" in test_preview_lines  # nosec B101
+    assert "make pulumi-up-plan" in test_apply_lines  # nosec B101
+    assert "decrypting secret value: cipher: message authentication failed" in (  # nosec B101
+        test_apply_lines
+    )
+    assert re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
+    assert not re.search(r"(?m)^\s*make pulumi-up$", prod_apply_lines)  # nosec B101
     assert "make publish-pulumi-preview-summary" not in prod_preview_lines  # nosec B101
     assert "make publish-pulumi-preview-summary" not in test_preview_lines  # nosec B101
 

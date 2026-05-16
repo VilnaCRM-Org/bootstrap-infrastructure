@@ -1,3 +1,5 @@
+import ast
+import re
 from pathlib import Path
 
 import yaml
@@ -81,6 +83,7 @@ def test_makefile_exposes_current_ci_targets() -> None:
         "test-quality",
         "test-repo-hygiene",
         "test-repository-catalogs",
+        "test-repository-fanout",
         "test-security",
         "test-guardrails",
         "test-guardrails-unprivileged",
@@ -89,6 +92,7 @@ def test_makefile_exposes_current_ci_targets() -> None:
         "test-integration-unprivileged",
         "test-coverage",
         "test-preview-unprivileged",
+        "test-cost-proxy",
         "test-iam-validation-unprivileged",
         "test-mutation",
         "test-cli",
@@ -101,7 +105,20 @@ def test_makefile_exposes_current_ci_targets() -> None:
 
 
 def test_deploy_stack_exports_bootstrap_outputs() -> None:
-    main_text = (ROOT / "pulumi" / "__main__.py").read_text()
+    main_tree = ast.parse((ROOT / "pulumi" / "__main__.py").read_text())
+    exported_names = {
+        node.args[0].value
+        for node in ast.walk(main_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "pulumi"
+        and node.func.attr == "export"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    }
+
     for export_name in (
         "centralLogBucket",
         "centralLogBucketArn",
@@ -112,11 +129,27 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
         "pulumiSecretsProviderUrls",
         "deployRoleArns",
         "managedRepositoryProjects",
+        "managedRepositoryMetadata",
+        "backupVaultName",
+        "backupVaultArn",
+        "backupRoleArn",
+        "operationsAlertTopicArn",
+        "operationsCloudTrailBucketName",
+        "operationsCloudTrailName",
+        "operationsAlertRuleNames",
+        "operationsAlertTopicKeyAliasName",
+        "operationsAlertQueueArn",
+        "operationsAlertQueueName",
+        "operationsAlertQueueUrl",
+        "operationsAlertQueueSubscriptionArn",
+        "monthlyBudgetName",
+        "costAnomalyMonitorArn",
+        "costAnomalySubscriptionArn",
         "automationRoleArn",
         "runnerRepositoryName",
         "runnerRepositoryUrl",
     ):
-        assert f'pulumi.export("{export_name}"' in main_text  # nosec B101
+        assert export_name in exported_names  # nosec B101
 
 
 def test_repository_uses_current_python_tooling_contract() -> None:
@@ -172,6 +205,7 @@ def test_pulumi_workflows_cover_current_local_targets() -> None:
 
     assert "make test-pulumi" in structural  # nosec B101
     assert "make test-repository-catalogs" in structural  # nosec B101
+    assert "make test-repository-fanout" in structural  # nosec B101
     assert "make test-unit" in unit  # nosec B101
     assert "make test-integration" in integration  # nosec B101
     assert "make test-mutation" in mutation  # nosec B101
@@ -179,6 +213,7 @@ def test_pulumi_workflows_cover_current_local_targets() -> None:
     assert "make test-policy" in policy  # nosec B101
     assert "make publish-pulumi-preview-summary" in guardrails  # nosec B101
     assert "make test-destructive-diff" in guardrails  # nosec B101
+    assert "make test-cost-proxy" in guardrails  # nosec B101
     assert "make test-iam-validation" in guardrails  # nosec B101
     assert "make ci-pr" in local_battery  # nosec B101
 
@@ -212,6 +247,7 @@ def test_docs_cover_current_testing_and_guardrail_guidance() -> None:
         "ci-quality-gates.md",
         "ci-guardrails.md",
         "ci-architecture.md",
+        "cost-performance-sustainability.md",
         "pulumi-guardrails.md",
         "security-baseline.md",
         "sre-operations.md",
@@ -257,6 +293,33 @@ def test_docs_cover_current_testing_and_guardrail_guidance() -> None:
         "make pulumi-up",
     ):
         assert phrase in testing_doc  # nosec B101
+
+
+def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
+    """Avoid baking volatile SQS queue depth into retained review evidence."""
+    alert_doc = (ROOT / "docs" / "alert-routing-evidence.md").read_text()
+    operating_doc = (ROOT / "docs" / "operating-review-2026-05-09.md").read_text()
+    docs = f"{alert_doc}\n{operating_doc}"
+
+    assert "observation-only metadata" in alert_doc  # nosec B101
+    assert "stable SNS/SQS route metadata" in operating_doc  # nosec B101
+    assert "ApproximateNumberOfMessages=" not in docs  # nosec B101
+    assert "two visible messages" not in docs  # nosec B101
+
+
+def test_completion_audit_avoids_self_stale_exact_head_metadata() -> None:
+    """Keep the tracked audit from invalidating itself on every commit."""
+    audit_doc = (
+        ROOT
+        / "specs"
+        / "issue-17-well-architected-5-of-5"
+        / "completion-audit-2026-05-10.md"
+    ).read_text()
+
+    assert "Current collector state" in audit_doc  # nosec B101
+    assert "Latest audited collector head" not in audit_doc  # nosec B101
+    assert "Latest audited collector timestamp" not in audit_doc  # nosec B101
+    assert re.search(r"\b[0-9a-f]{40}\b", audit_doc) is None  # nosec B101
 
 
 def test_repository_tracks_current_policy_and_guardrail_support_files() -> None:
@@ -332,9 +395,13 @@ def test_bmad_bmalph_planning_uses_specs_directory() -> None:
 
 
 def test_removed_legacy_scaffold_paths_stay_absent() -> None:
-    assert not (ROOT / ".qlty").exists()  # nosec B101
     assert not (ROOT / ".importlinter").exists()  # nosec B101
     assert not (ROOT / "policy_pack").exists()  # nosec B101
     assert not (ROOT / ".github" / "workflows" / "devsecops-guardrails.yml").exists()  # nosec B101
     assert not (ROOT / ".github" / "workflows" / "pulumi-preview.yml").exists()  # nosec B101
     assert not (ROOT / ".github" / "workflows" / "pulumi.yml").exists()  # nosec B101
+
+
+def test_qlty_cloud_uses_committed_repository_config() -> None:
+    assert (ROOT / ".qlty" / "qlty.toml").is_file()  # nosec B101
+    assert (ROOT / ".qlty" / ".gitignore").is_file()  # nosec B101

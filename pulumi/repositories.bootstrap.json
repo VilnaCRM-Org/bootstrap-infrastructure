@@ -1,0 +1,14 @@
+{
+  "$schema": "./repositories.schema.json",
+  "repositories": [
+    {
+      "name": "bootstrap-infrastructure",
+      "defaultBranch": "main",
+      "project": "platform-bootstrap",
+      "owner": "platform",
+      "lifecycleState": "active",
+      "lastReviewed": "2026-04-27",
+      "expectedEnvironments": 2
+    }
+  ]
+}

@@ -1,14 +1,14 @@
 # PRD: Well-Architected 5/5 Remediation Roadmap
 
 ## Executive Summary
-This planning package turns issue #17 into an implementation-ready roadmap for moving the bootstrap infrastructure repository from the documented AWS Well-Architected baseline to an evidence-backed 5/5 target across all pillars. The primary users are maintainers, SREs, security reviewers, and FinOps owners who need clear sequencing, acceptance criteria, validation evidence, and external-control documentation before infrastructure changes begin.
+This package turns issue #17 into an implementation roadmap and evidence ledger for moving the bootstrap infrastructure repository from the documented AWS Well-Architected baseline to an evidence-backed 5/5 target across all pillars. The current branch includes the first bounded repo-owned controls, so the primary users are maintainers, SREs, security reviewers, and FinOps owners who need clear sequencing, acceptance criteria, validation evidence, and external-control documentation without overstating final readiness.
 
 ## Success Criteria
 
 | ID | Criterion | Measurement |
 | --- | --- | --- |
 | SC-1 | Every issue #17 roadmap item is mapped to an epic and story. | `epics.md` contains a traceability table that covers all P0, P1, and P2 bullets from issue #17. |
-| SC-2 | The plan preserves the assessment target of 5/5 without claiming implementation is complete. | `well-architected-review.md` keeps current scores separate from target scores and labels this PR as planning-only. |
+| SC-2 | The specs preserve the assessment target of 5/5 without claiming final implementation is complete. | `well-architected-review.md` keeps baseline scores, current implementation evidence, target scores, and remaining blockers separate. |
 | SC-3 | Future implementation PRs have clear acceptance criteria. | Each story includes concrete deliverables, validation expectations, and evidence requirements. |
 | SC-4 | External controls are acceptable only with audit-ready evidence. | Specs require owner, evidence location, review cadence, and fallback action for every externally enforced control. |
 | SC-5 | Planning follows repository BMAD/BMALPH placement rules. | All new planning artifacts live under `specs/issue-17-well-architected-5-of-5/`; no generated BMAD, BMALPH, or Ralph tooling is committed. |
@@ -17,11 +17,11 @@ This planning package turns issue #17 into an implementation-ready roadmap for m
 
 ## Product Scope
 
-MVP scope for this PR:
-- Add BMAD-style planning artifacts for issue #17 under `specs/`.
+Current branch scope:
 - Preserve the P0, P1, and P2 priority structure from the issue.
 - Define epics, stories, acceptance criteria, evidence expectations, and readiness risks.
-- Identify repo-owned implementation candidates and externally enforced control candidates.
+- Identify repo-owned implementation evidence and externally enforced control blockers.
+- Record implemented repo-owned operations monitoring, cost Budget/Cost Anomaly controls, classification tags, catalog metadata, fanout checks, and preview cost proxy evidence.
 
 Growth scope for future implementation PRs:
 - Implement mandatory AWS-backed guardrail checks and branch protection evidence.
@@ -33,10 +33,10 @@ Vision scope:
 - A follow-up review can score each pillar 5/5 using repository evidence, CI evidence, AWS metadata checks, and documented external controls.
 
 Out of scope for this PR:
-- Changing Pulumi resources, AWS IAM policies, GitHub Actions behavior, branch protection, or AWS accounts.
-- Adding committed changes that run Pulumi preview/apply, mutate stacks, read stack exports, or inspect secret-bearing configuration.
+- Changing branch protection, GitHub environment settings, payer-account policy, or AWS organization controls.
+- Adding committed changes that run Pulumi preview/apply, mutate shared stacks outside the reviewed Pulumi implementation, read stack exports, or inspect secret-bearing configuration.
 - Direct local Pulumi apply unless Pulumi is installed, KMS backend metadata is safely configured, and account checks pass; when real test-account proof is requested, use the existing OIDC-backed GitHub `Pulumi Test Deploy` workflow.
-- Claiming that any Well-Architected gap is remediated by this planning-only PR.
+- Claiming final 5/5 while external owners, evidence freshness, subscriptions, restore drills, or branch-protection proof remain missing.
 
 ## User Journeys
 
@@ -67,7 +67,7 @@ This is developer infrastructure automation. Planning must remain useful for AI 
 | ID | Requirement | Test Criteria |
 | --- | --- | --- |
 | FR-1 | The planning package maps all issue #17 priority bullets to epics. | A traceability table lists each P0, P1, and P2 item and its owning epic. |
-| FR-2 | The planning package preserves current and target Well-Architected scores. | The scorecard states the issue baseline, target score, and that this PR does not change implemented scores. |
+| FR-2 | The package preserves current and target Well-Architected scores. | The scorecard states the issue baseline, current branch evidence, target score, and why final score claims remain blocked. |
 | FR-3 | Each epic can be implemented independently where practical. | Each epic defines deliverables, dependencies, acceptance criteria, and validation evidence. |
 | FR-4 | Future implementation stories avoid secret-revealing workflows. | Story validation examples use safe commands and exclude `--show-secrets`, stack exports, secret payload reads, and decrypt operations. |
 | FR-5 | External-control candidates require ownership evidence. | Each external-control story requires owner, evidence source, review cadence, and fallback if evidence is unavailable. |
@@ -82,13 +82,13 @@ This is developer infrastructure automation. Planning must remain useful for AI 
 | FR-14 | Security evidence covers identity, permissions, detection, data protection, incident response, and appsec. | SEC stories require OIDC/static-key boundaries, permission matrices, Access Analyzer evidence, detection routes, data classification, encryption decisions, and vulnerability response SLAs. |
 | FR-15 | Reliability evidence covers quotas, change safety, monitoring, backups, failure testing, and DR. | REL stories require quota headroom, saved-plan integrity, alarm matrix, restore drills, fault scenarios, RTO/RPO, and DR exercise evidence. |
 | FR-16 | Performance evidence covers resource choice and control-plane efficiency. | PERF stories require resource fanout, CI/runtime SLOs, storage access assumptions, network/region rationale, and regular metric review. |
-| FR-17 | Cost evidence covers FinOps governance end to end. | COST stories require budget/anomaly evidence, activated allocation tags, cost ADRs, cost proxy or estimation, transfer model, stale cleanup, and effort-vs-savings review. |
+| FR-17 | Cost evidence covers FinOps governance end to end. | COST stories require repo-managed budget/anomaly evidence, activated allocation tags or blocker, cost ADRs, cost proxy or estimation, transfer model, stale cleanup, and effort-vs-savings review. |
 | FR-18 | Sustainability evidence covers region, demand, architecture, data, services, and process. | SUS stories require region decision matrix, demand inventory, CI efficiency targets, data retention matrix, no idle compute without justification, and sustainability KPI cadence. |
 
 ## Non-Functional Requirements
 
-- The planning package shall keep all new committed files under `specs/issue-17-well-architected-5-of-5/` as measured by `git diff --name-only`.
-- The planning package shall contain no generated BMAD, BMALPH, Ralph, stack export, or secret-bearing files as measured by `git status --ignored` and staged file review.
+- Specs shall keep canonical issue #17 planning and evidence artifacts under `specs/issue-17-well-architected-5-of-5/`.
+- The package shall contain no generated BMAD, BMALPH, Ralph, stack export, or secret-bearing files as measured by `git status --ignored` and staged file review.
 - Future AWS validation shall use metadata-only commands unless a human explicitly authorizes a secret-management task.
 - Future Pulumi CLI examples shall use `pulumi -C pulumi ...` and AWS KMS secrets providers.
 - Future implementation PRs shall include the narrowest useful validation for touched files and shall not depend on skipped privileged CI checks for same-repo infrastructure changes.

@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 
 import infra.automation as automation
+import pytest
 from infra import config, pulumi_secrets
 from infra.iam import github_oidc
 
@@ -18,6 +19,69 @@ def test_mutation_target_pulumi_secrets_key_policy():
     assert statement["Principal"]["AWS"] == "arn:aws:iam::123456789012:root"  # nosec B101
     assert statement["Action"] == "kms:*"  # nosec B101
     assert statement["Resource"] == "*"  # nosec B101
+
+
+def test_mutation_target_adoption_helpers_detect_existing_resources(monkeypatch):
+    monkeypatch.setattr(
+        automation.aws.ecr,
+        "get_repository",
+        lambda name: SimpleNamespace(name=name),
+    )
+    monkeypatch.setattr(
+        automation.aws.iam,
+        "get_role",
+        lambda name: SimpleNamespace(name=name),
+    )
+    monkeypatch.setattr(
+        pulumi_secrets.aws.kms,
+        "get_alias",
+        lambda name: SimpleNamespace(name=name),
+    )
+
+    assert automation._ecr_repository_exists("repo") is True  # nosec B101
+    assert automation._iam_role_exists("role") is True  # nosec B101
+    assert pulumi_secrets._kms_alias_exists("alias/repo") is True  # nosec B101
+
+
+def test_mutation_target_adoption_helpers_treat_not_found_as_absent(monkeypatch):
+    def missing_ecr_repository(*, name):
+        raise RuntimeError(f"RepositoryNotFoundException: {name}")
+
+    def missing_iam_role(*, name):
+        raise RuntimeError(f"NoSuchEntity: {name}")
+
+    def missing_kms_alias(*, name):
+        raise RuntimeError(f"NotFoundException: {name}")
+
+    monkeypatch.setattr(automation.aws.ecr, "get_repository", missing_ecr_repository)
+    monkeypatch.setattr(automation.aws.iam, "get_role", missing_iam_role)
+    monkeypatch.setattr(pulumi_secrets.aws.kms, "get_alias", missing_kms_alias)
+
+    assert automation._ecr_repository_exists("repo") is False  # nosec B101
+    assert automation._iam_role_exists("role") is False  # nosec B101
+    assert pulumi_secrets._kms_alias_exists("alias/repo") is False  # nosec B101
+
+
+def test_mutation_target_adoption_helpers_reraise_unexpected_errors(monkeypatch):
+    def failing_ecr_repository(*, name):  # noqa: ARG001
+        raise RuntimeError("ecr throttled")
+
+    def failing_iam_role(*, name):  # noqa: ARG001
+        raise RuntimeError("iam throttled")
+
+    def failing_kms_alias(*, name):  # noqa: ARG001
+        raise RuntimeError("kms throttled")
+
+    monkeypatch.setattr(automation.aws.ecr, "get_repository", failing_ecr_repository)
+    monkeypatch.setattr(automation.aws.iam, "get_role", failing_iam_role)
+    monkeypatch.setattr(pulumi_secrets.aws.kms, "get_alias", failing_kms_alias)
+
+    with pytest.raises(RuntimeError, match="ecr throttled"):
+        automation._ecr_repository_exists("repo")
+    with pytest.raises(RuntimeError, match="iam throttled"):
+        automation._iam_role_exists("role")
+    with pytest.raises(RuntimeError, match="kms throttled"):
+        pulumi_secrets._kms_alias_exists("alias/repo")
 
 
 def test_mutation_target_pulumi_secrets_component(monkeypatch):
@@ -96,6 +160,7 @@ def test_mutation_target_pulumi_secrets_component(monkeypatch):
     )
     monkeypatch.setattr(pulumi_secrets.aws.kms, "Key", FakeKey)
     monkeypatch.setattr(pulumi_secrets.aws.kms, "Alias", FakeAlias)
+    monkeypatch.setattr(pulumi_secrets, "_kms_alias_exists", lambda _name: False)
     monkeypatch.setattr(
         pulumi_secrets,
         "pulumi_secrets_provider_for_repo",
@@ -148,25 +213,116 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         action for statement in policy["Statement"] for action in statement["Action"]
     }
     statements = {statement["Sid"]: statement for statement in policy["Statement"]}
+    split_documents = automation._automation_policy_documents(
+        "123456789012",
+        config.settings,
+        "bootstrap-infrastructure",
+    )
+    split_statements = {
+        statement["Sid"]: statement
+        for _name, document in split_documents
+        for statement in json.loads(document)["Statement"]
+    }
+
+    assert split_statements == statements  # nosec B101
+    assert all(  # nosec B101
+        len(document.encode("utf-8"))
+        <= automation.IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES
+        for _name, document in split_documents
+    )
 
     assert "s3:*" not in actions  # nosec B101
     assert "kms:*" not in actions  # nosec B101
     assert "backup:*" not in actions  # nosec B101
     assert "ecr:*" not in actions  # nosec B101
+    assert "events:*" not in actions  # nosec B101
+    assert "cloudtrail:*" not in actions  # nosec B101
+    assert "sns:*" not in actions  # nosec B101
+    assert "guardduty:*" not in actions  # nosec B101
+    assert "securityhub:*" not in actions  # nosec B101
+    assert "config:*" not in actions  # nosec B101
     assert "s3:CreateBucket" in actions  # nosec B101
     assert "kms:CreateKey" in actions  # nosec B101
+    assert "kms:Decrypt" not in actions  # nosec B101
+    assert "kms:Encrypt" not in actions  # nosec B101
+    assert "kms:GenerateDataKey" not in actions  # nosec B101
     assert "backup:CreateBackupPlan" in actions  # nosec B101
     assert "ecr:CreateRepository" in actions  # nosec B101
+    assert "events:PutRule" in actions  # nosec B101
+    assert "cloudtrail:CreateTrail" in actions  # nosec B101
+    assert "sns:CreateTopic" in actions  # nosec B101
+    assert "sqs:CreateQueue" in actions  # nosec B101
+    assert "budgets:ModifyBudget" in actions  # nosec B101
+    assert "budgets:DescribeBudget" in actions  # nosec B101
+    assert "ce:CreateAnomalyMonitor" in actions  # nosec B101
+    assert "billing:GetBillingViewData" in actions  # nosec B101
+    assert "guardduty:CreateDetector" in actions  # nosec B101
+    assert "securityhub:EnableSecurityHub" in actions  # nosec B101
+    assert "config:PutConfigurationRecorder" in actions  # nosec B101
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
-        "arn:aws:s3:::pulumi-*-test-state-replication",
+        "arn:aws:s3:::pulumi-*-test-state-*-replication",
         "arn:aws:s3:::company-central-logs-*-test",
-        "arn:aws:s3:::company-central-logs-*-test-replication",
+        "arn:aws:s3:::company-central-logs-*-test-*-replication",
+        "arn:aws:s3:::bootstrap-*-test-cloudtrail",
+        "arn:aws:s3:::bootstrap-*-test-aws-config",
     ]
     assert statements["ManageBootstrapEcr"]["Resource"] == [  # nosec B101
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
         "bootstrap-infrastructure-test"
     ]
+    assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
+        "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
+    ]
+    assert statements["ManageBootstrapCloudTrail"]["Resource"] == [  # nosec B101
+        "arn:aws:cloudtrail:*:123456789012:trail/bootstrap-test-management-events"
+    ]
+    assert statements["ReadCloudTrailTrailsForRefresh"] == {  # nosec B101
+        "Sid": "ReadCloudTrailTrailsForRefresh",
+        "Effect": "Allow",
+        "Action": ["cloudtrail:DescribeTrails"],
+        "Resource": "*",
+    }
+    assert statements["ManageBootstrapSns"]["Resource"] == [  # nosec B101
+        "arn:aws:sns:*:123456789012:bootstrap-test-operations"
+    ]
+    assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == "*"  # nosec B101
+    assert statements["ManageBootstrapSqs"]["Resource"] == [  # nosec B101
+        "arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"
+    ]
+    assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
+        "arn:aws:budgets::123456789012:budget/bootstrap-test-*"
+    ]
+    assert statements["ReadAccountBudgetsForEvidence"] == {  # nosec B101
+        "Sid": "ReadAccountBudgetsForEvidence",
+        "Effect": "Allow",
+        "Action": ["budgets:ViewBudget"],
+        "Resource": ["arn:aws:budgets::123456789012:budget/*"],
+    }
+    assert statements["ManageBootstrapCostAnomalyMonitors"]["Resource"] == [  # nosec B101
+        "arn:aws:ce::123456789012:anomalymonitor/*",
+    ]
+    assert statements["ReadCostAnomalyMonitorsForEvidence"] == {  # nosec B101
+        "Sid": "ReadCostAnomalyMonitorsForEvidence",
+        "Effect": "Allow",
+        "Action": ["ce:GetAnomalyMonitors"],
+        "Resource": ["arn:aws:ce::123456789012:anomalymonitor/*"],
+    }
+    assert statements["ManageBootstrapCostAnomalyMonitors"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": "cost-anomaly-monitor",
+        }
+    }
+    assert statements["ManageBootstrapCostAnomalySubscriptions"]["Resource"] == [  # nosec B101
+        "arn:aws:ce::123456789012:anomalysubscription/*",
+    ]
+    assert statements["ManageBootstrapCostAnomalySubscriptions"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": "cost-anomaly-subscription",
+        }
+    }
     assert (  # nosec B101
         "arn:aws:iam::123456789012:role/PulumiAutomation-"
         "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
@@ -175,20 +331,150 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         statements["ManageBootstrapKmsKeys"]["Condition"]["StringEquals"]
         == {
             "aws:ResourceTag/Environment": "test",
-            "aws:ResourceTag/Purpose": "pulumi-secrets",
+            "aws:ResourceTag/Purpose": [
+                "pulumi-secrets",
+                "operations-alerting",
+                "operations-cloudtrail",
+            ],
         }
     )
+    assert statements["CreateBootstrapKmsKeys"]["Condition"]["StringEquals"] == {  # nosec B101
+        "aws:RequestTag/Environment": "test",
+        "aws:RequestTag/Purpose": [
+            "pulumi-secrets",
+            "operations-alerting",
+            "operations-cloudtrail",
+        ],
+    }
+    assert (  # nosec B101
+        "arn:aws:kms:*:123456789012:alias/bootstrap-test-operations-alerting"
+        in statements["ManageBootstrapKmsAliases"]["Resource"]
+    )
+    assert (  # nosec B101
+        "arn:aws:kms:*:123456789012:alias/bootstrap-test-operations-cloudtrail"
+        in statements["ManageBootstrapKmsAliases"]["Resource"]
+    )
+    assert (  # nosec B101
+        statements["ManageBootstrapKmsAliases"]["Condition"]["StringEqualsIfExists"]
+        == {
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": [
+                "pulumi-secrets",
+                "operations-alerting",
+                "operations-cloudtrail",
+            ],
+        }
+    )
+    assert statements["ManageSecurityHubAccount"]["Resource"] == [  # nosec B101
+        "arn:aws:securityhub:*:123456789012:hub/default"
+    ]
+    assert statements["ManageAwsConfigRecorder"]["Resource"] == [  # nosec B101
+        "arn:aws:config:*:123456789012:configuration-recorder/"
+        "bootstrap-test-configuration-recorder/*"
+    ]
     assert {
         statement["Sid"]
         for statement in policy["Statement"]
         if statement["Resource"] == "*"
     } == {
         "CreateBootstrapKmsKeys",
+        "CreateBootstrapCostAnomalyMonitor",
+        "CreateBootstrapCostAnomalySubscription",
         "CreateBootstrapOidcProvider",
+        "CreateBootstrapGuardDutyDetector",
         "ListBootstrapOidcProviders",
         "ListBootstrapKmsAliases",
+        "ManageBootstrapSnsSubscriptions",
+        "ManageAwsConfigDeliveryChannel",
+        "ReadBillingViewDataForBudgets",
+        "ReadCloudTrailTrailsForRefresh",
+        "ReadGuardDutyDetectors",
         "ReadIdentity",
     }  # nosec B101
+
+
+def _split_automation_policy_documents() -> list[tuple[str, str]]:
+    return automation._automation_policy_documents(
+        "123456789012",
+        config.settings,
+        "bootstrap-infrastructure",
+    )
+
+
+def test_mutation_target_automation_policy_documents_skip_empty_groups(monkeypatch):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    empty_group = ("empty-policy", frozenset({"StatementThatDoesNotExist"}))
+    monkeypatch.setattr(
+        automation,
+        "_AUTOMATION_MANAGED_POLICY_GROUPS",
+        (empty_group, *automation._AUTOMATION_MANAGED_POLICY_GROUPS),
+    )
+
+    documents = _split_automation_policy_documents()
+
+    assert documents[0][0] == "policy"  # nosec B101
+    assert empty_group[0] not in {name for name, _document in documents}  # nosec B101
+
+
+def test_mutation_target_automation_policy_documents_require_complete_groups(
+    monkeypatch,
+):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    monkeypatch.setattr(
+        automation,
+        "_AUTOMATION_MANAGED_POLICY_GROUPS",
+        tuple(
+            (
+                name,
+                frozenset(sid for sid in policy_sids if sid != "ReadIdentity"),
+            )
+            for name, policy_sids in automation._AUTOMATION_MANAGED_POLICY_GROUPS
+        ),
+    )
+
+    with pytest.raises(ValueError, match="ReadIdentity"):
+        _split_automation_policy_documents()
+
+
+def test_mutation_target_automation_policy_documents_require_inline_policy_first(
+    monkeypatch,
+):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    groups = automation._AUTOMATION_MANAGED_POLICY_GROUPS
+    monkeypatch.setattr(
+        automation,
+        "_AUTOMATION_MANAGED_POLICY_GROUPS",
+        (("not-policy", groups[0][1]), *groups[1:]),
+    )
+
+    with pytest.raises(ValueError, match="first automation policy document"):
+        _split_automation_policy_documents()
+
+
+def test_mutation_target_automation_policy_documents_enforce_inline_size(
+    monkeypatch,
+):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    monkeypatch.setattr(automation, "IAM_ROLE_INLINE_POLICY_MAX_BYTES", 1)
+
+    with pytest.raises(ValueError, match="inline policy document exceeds"):
+        _split_automation_policy_documents()
+
+
+def test_mutation_target_automation_policy_documents_enforce_managed_size(
+    monkeypatch,
+):
+    monkeypatch.setattr(config.settings, "environment", "test")
+    monkeypatch.setattr(config.settings, "logging_prefix", "company")
+    monkeypatch.setattr(automation, "IAM_ROLE_INLINE_POLICY_MAX_BYTES", 100_000)
+    monkeypatch.setattr(automation, "IAM_CUSTOMER_MANAGED_POLICY_MAX_BYTES", 1)
+
+    with pytest.raises(ValueError, match="managed policy document exceeds"):
+        _split_automation_policy_documents()
 
 
 def test_mutation_target_github_oidc_role_name_limits_length():

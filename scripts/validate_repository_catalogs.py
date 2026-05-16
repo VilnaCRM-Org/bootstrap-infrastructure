@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -12,6 +14,38 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError, ValidationError
 
 ROOT_DIR = repo_root(__file__)
+DEFAULT_EXPECTED_ENVIRONMENTS = 2
+PER_ENVIRONMENT_FANOUT = {
+    "s3Buckets": 2,
+    "kmsKeys": 1,
+    "iamRoles": 2,
+    "backupSelections": 1,
+}
+CENTRAL_STACK_FANOUT = {
+    "s3Buckets": 4,
+    "kmsKeys": 1,
+    "backupVaults": 1,
+    "backupPlans": 1,
+    "iamRoles": 3,
+    "oidcProviders": 1,
+    "ecrRepositories": 1,
+    "snsTopics": 1,
+    "snsSubscriptions": 1,
+    "sqsQueues": 1,
+    "eventRules": 4,
+    "cloudTrailTrails": 1,
+    "budgets": 1,
+    "costAnomalyMonitors": 1,
+    "costAnomalySubscriptions": 1,
+    # Cost allocation tags are optional and config-driven; keep the category
+    # visible without assuming the optional controls are enabled by default.
+    "costAllocationTags": 0,
+    "guardDutyDetectors": 1,
+    "securityHubAccounts": 1,
+    "configRecorders": 1,
+    "configDeliveryChannels": 1,
+}
+LAST_REVIEWED_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 def repository_catalog_paths(root_dir: Path) -> list[Path]:
@@ -84,6 +118,74 @@ def _validate_repository_mapping(item: Mapping[str, object]) -> None:
             "Each managedRepositories entry must include a non-empty 'project'.",
         )
 
+    _validate_repository_metadata(item)
+
+
+def _validate_repository_metadata(item: Mapping[str, object]) -> None:
+    """Validate optional ownership and lifecycle metadata fields."""
+    _validate_owner_metadata(item)
+    _validate_lifecycle_state_metadata(item)
+    _validate_last_reviewed_metadata(item)
+    _validate_expected_environments_metadata(item)
+
+
+def _validate_owner_metadata(item: Mapping[str, object]) -> None:
+    """Validate optional repository owner metadata."""
+    raw_owner = item.get("owner")
+    if raw_owner is not None:
+        _required_non_blank_string(
+            raw_owner,
+            "managedRepositories owner values must be non-empty strings.",
+        )
+
+
+def _validate_lifecycle_state_metadata(item: Mapping[str, object]) -> None:
+    """Validate optional repository lifecycle metadata."""
+    raw_lifecycle_state = item.get("lifecycleState")
+    if raw_lifecycle_state is not None:
+        lifecycle_state = _required_non_blank_string(
+            raw_lifecycle_state,
+            "managedRepositories lifecycleState values must be non-empty strings.",
+        )
+        if lifecycle_state not in {"active", "planned", "deprecated", "archived"}:
+            raise ValueError(
+                "managedRepositories lifecycleState values must be one of: "
+                "active, planned, deprecated, archived."
+            )
+
+
+def _validate_last_reviewed_metadata(item: Mapping[str, object]) -> None:
+    """Validate optional repository review-date metadata."""
+    raw_last_reviewed = item.get("lastReviewed")
+    if raw_last_reviewed is not None:
+        last_reviewed = _required_non_blank_string(
+            raw_last_reviewed,
+            "managedRepositories lastReviewed values must be non-empty strings.",
+        )
+        if not LAST_REVIEWED_PATTERN.fullmatch(last_reviewed):
+            raise ValueError(
+                "managedRepositories lastReviewed values must use YYYY-MM-DD format."
+            )
+        try:
+            dt.date.fromisoformat(last_reviewed)
+        except ValueError as exc:
+            raise ValueError(
+                "managedRepositories lastReviewed values must use YYYY-MM-DD format."
+            ) from exc
+
+
+def _validate_expected_environments_metadata(item: Mapping[str, object]) -> None:
+    """Validate optional repository environment fanout metadata."""
+    raw_expected_environments = item.get("expectedEnvironments")
+    if raw_expected_environments is not None and (
+        isinstance(raw_expected_environments, bool)
+        or not isinstance(raw_expected_environments, int)
+        or raw_expected_environments < 1
+    ):
+        raise ValueError(
+            "managedRepositories expectedEnvironments values must be positive integers."
+        )
+
 
 def _validate_loader_semantics(payload: Mapping[str, object]) -> None:
     """Validate catalog rules that the JSON Schema cannot fully express."""
@@ -135,6 +237,90 @@ def validate_catalogs(catalog_paths: Sequence[Path], schema_path: Path) -> list[
     ]
 
 
+def _expected_environments(item: object) -> int:
+    """Return the projected environment count for one catalog entry."""
+    if isinstance(item, Mapping):
+        raw_value = item.get("expectedEnvironments")
+        if isinstance(raw_value, int) and not isinstance(raw_value, bool):
+            return raw_value
+    return DEFAULT_EXPECTED_ENVIRONMENTS
+
+
+def estimate_fanout(payload: Mapping[str, object]) -> dict[str, int]:
+    """Estimate cost and quota-driving resources from repository catalog metadata."""
+    repositories = payload.get("repositories")
+    if not isinstance(repositories, list):
+        raise ValueError("managedRepositories config must be a list.")
+    environment_instances = sum(_expected_environments(item) for item in repositories)
+    fanout = dict(CENTRAL_STACK_FANOUT)
+    fanout["repositories"] = len(repositories)
+    fanout["environmentInstances"] = environment_instances
+
+    for key, count in PER_ENVIRONMENT_FANOUT.items():
+        fanout[key] = fanout.get(key, 0) + count * environment_instances
+    return fanout
+
+
+def catalog_fanout_report(catalog_path: Path, schema_path: Path) -> dict[str, int]:
+    """Validate a catalog and return its projected resource fanout."""
+    validate_catalog(catalog_path, schema_path)
+    payload = _load_json(catalog_path)
+    if not isinstance(payload, Mapping):
+        raise ValueError("Repository catalog JSON must be an object.")
+    return estimate_fanout(payload)
+
+
+def _fanout_thresholds(args: argparse.Namespace) -> dict[str, int]:
+    """Return configured fanout thresholds."""
+    return {
+        "s3Buckets": args.max_s3_buckets,
+        "kmsKeys": args.max_kms_keys,
+        "iamRoles": args.max_iam_roles,
+        "backupSelections": args.max_backup_selections,
+        "ecrRepositories": args.max_ecr_repositories,
+        "budgets": args.max_budgets,
+        "snsSubscriptions": args.max_sns_subscriptions,
+        "sqsQueues": args.max_sqs_queues,
+        "cloudTrailTrails": args.max_cloudtrail_trails,
+        "costAnomalyMonitors": args.max_cost_anomaly_monitors,
+        "costAnomalySubscriptions": args.max_cost_anomaly_subscriptions,
+        "costAllocationTags": args.max_cost_allocation_tags,
+        "guardDutyDetectors": args.max_guardduty_detectors,
+        "securityHubAccounts": args.max_security_hub_accounts,
+        "configRecorders": args.max_config_recorders,
+        "configDeliveryChannels": args.max_config_delivery_channels,
+    }
+
+
+def _fanout_failures(
+    catalog_path: Path, report: Mapping[str, int], thresholds: Mapping[str, int]
+) -> list[str]:
+    """Return threshold violations for one fanout report."""
+    failures = []
+    for key, threshold in thresholds.items():
+        value = report.get(key, 0)
+        if value > threshold:
+            failures.append(f"{catalog_path}: {key} fanout {value} exceeds {threshold}")
+    return failures
+
+
+def _fanout_threshold_report(
+    report: Mapping[str, int], thresholds: Mapping[str, int]
+) -> dict[str, dict[str, int | str]]:
+    """Return current fanout counts with threshold headroom for reporting."""
+    threshold_report: dict[str, dict[str, int | str]] = {}
+    for key, threshold in thresholds.items():
+        current = report.get(key, 0)
+        threshold_report[key] = {
+            "current": current,
+            "max": threshold,
+            "remaining": max(threshold - current, 0),
+            "overBy": max(current - threshold, 0),
+            "status": "exceeded" if current > threshold else "ok",
+        }
+    return threshold_report
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Validate committed repository catalog JSON files."""
     parser = argparse.ArgumentParser(
@@ -152,6 +338,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=ROOT_DIR / "pulumi" / "repositories.schema.json",
         help="JSON Schema file used for repository catalogs.",
     )
+    parser.add_argument(
+        "--fanout-report",
+        action="store_true",
+        help="Print static resource fanout estimates for each catalog.",
+    )
+    parser.add_argument("--max-s3-buckets", type=int, default=200)
+    parser.add_argument("--max-kms-keys", type=int, default=100)
+    parser.add_argument("--max-iam-roles", type=int, default=300)
+    parser.add_argument("--max-backup-selections", type=int, default=500)
+    parser.add_argument("--max-ecr-repositories", type=int, default=50)
+    parser.add_argument("--max-budgets", type=int, default=20)
+    parser.add_argument("--max-sns-subscriptions", type=int, default=50)
+    parser.add_argument("--max-sqs-queues", type=int, default=50)
+    parser.add_argument("--max-cloudtrail-trails", type=int, default=20)
+    parser.add_argument("--max-cost-anomaly-monitors", type=int, default=20)
+    parser.add_argument("--max-cost-anomaly-subscriptions", type=int, default=20)
+    parser.add_argument("--max-cost-allocation-tags", type=int, default=100)
+    parser.add_argument("--max-guardduty-detectors", type=int, default=20)
+    parser.add_argument("--max-security-hub-accounts", type=int, default=20)
+    parser.add_argument("--max-config-recorders", type=int, default=20)
+    parser.add_argument("--max-config-delivery-channels", type=int, default=20)
     args = parser.parse_args(argv)
 
     catalog_paths = list(args.catalogs) or repository_catalog_paths(ROOT_DIR)
@@ -161,12 +368,37 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         validated_paths = validate_catalogs(catalog_paths, args.schema)
+        reports = (
+            [
+                (path, catalog_fanout_report(path, args.schema))
+                for path in validated_paths
+            ]
+            if args.fanout_report
+            else []
+        )
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     for path in validated_paths:
         print(f"validated repository catalog: {path}")
+    failures: list[str] = []
+    thresholds = _fanout_thresholds(args)
+    for path, report in reports:
+        print(
+            f"repository fanout estimate for {path}: "
+            f"{json.dumps(report, sort_keys=True)}"
+        )
+        threshold_report_json = json.dumps(
+            _fanout_threshold_report(report, thresholds),
+            sort_keys=True,
+        )
+        print(f"repository fanout thresholds for {path}: {threshold_report_json}")
+        failures.extend(_fanout_failures(path, report, thresholds))
+    if failures:
+        for failure in failures:
+            print(f"error: {failure}", file=sys.stderr)
+        return 1
     return 0
 
 

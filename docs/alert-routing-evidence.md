@@ -1,0 +1,143 @@
+# Alert Routing Evidence
+
+This record captures the repository-owned observability and alert-routing
+evidence for the bootstrap workload as of 2026-05-09. It contains only
+non-secret AWS metadata, route-test identifiers, owners, and fallback rules.
+
+## Metadata
+
+| Field | Value |
+| --- | --- |
+| Workload | `bootstrap-infrastructure` |
+| Environment | `test` |
+| Region | `eu-central-1` |
+| Evidence owner | SRE |
+| Review cadence | Monthly and per alert-source change |
+| Secret safety | Do not add payloads with stack exports, credentials, object contents, or private incident notes. |
+
+## Alert Inventory
+
+The current workload has no application runtime, load balancer, queue worker,
+or customer request path. Monitoring is therefore focused on bootstrap
+control-plane risk events, recovery events, CI/drift status, and cost alerts.
+
+| Signal | Live source | Rule or route | Target | Owner | Runbook |
+| --- | --- | --- | --- | --- | --- |
+| Backup, copy, or restore job failed, aborted, or expired | AWS Backup EventBridge events | `bootstrap-test-backup-failed` | `arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations` | SRE | `docs/data-protection-recovery-evidence.md` |
+| KMS key disabled, deletion scheduled, rotation disabled, or key policy changed | CloudTrail API events from `kms.amazonaws.com` | `bootstrap-test-kms-risk` | Operations SNS topic | Security reviewer plus SRE | `docs/security-operating-evidence.md` |
+| GitHub OIDC provider or deploy-role trust changed | CloudTrail API events from `iam.amazonaws.com` | `bootstrap-test-iam-oidc-risk` | Operations SNS topic | Security reviewer plus SRE | `docs/security-operating-evidence.md` |
+| State/log bucket encryption, policy, logging, or replication changed | CloudTrail API events from `s3.amazonaws.com` | `bootstrap-test-s3-control-plane-risk` | Operations SNS topic | SRE | `docs/data-protection-recovery-evidence.md` |
+| Budget threshold or cost anomaly | AWS Budgets and Cost Anomaly Detection | Operations topic policy permits the account-local publishers | Operations SNS topic | FinOps owner plus SRE | `docs/cost-performance-sustainability.md` |
+| Drift, preview, destructive diff, IAM validation, and policy failures | GitHub Actions and local make targets | Required-check contract plus workflow summaries | PR checks and workflow logs | Maintainer | `docs/ci-guardrails.md` |
+
+Live AWS metadata checked on 2026-05-09:
+
+- `aws events list-rules --name-prefix bootstrap-test --region eu-central-1`
+  returned four enabled rules: `bootstrap-test-backup-failed`,
+  `bootstrap-test-iam-oidc-risk`, `bootstrap-test-kms-risk`, and
+  `bootstrap-test-s3-control-plane-risk`.
+- `aws events list-targets-by-rule` returned one SNS target for each rule:
+  `arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations`.
+- `aws cloudwatch describe-alarms --alarm-name-prefix bootstrap-test` returned
+  no metric or composite alarms. This is expected for the current no-runtime
+  workload; future runtime compute, public endpoints, or replica-lag SLOs must
+  add metric alarms before those claims can pass.
+- `aws cloudwatch list-dashboards --dashboard-name-prefix bootstrap-test`
+  returned no dashboards. The current observability inventory is docs-based
+  because the workload has no runtime telemetry dashboard; future runtime or
+  monthly operations dashboards must be linked here.
+
+## Route Test
+
+The collector verifies that the operations SNS topic is KMS-encrypted, has an
+SQS subscription, and can read non-secret queue metadata such as queue name,
+visible and not-visible message counts, retention, and visibility timeout. A
+direct SNS-to-SQS probe also passed on 2026-05-09:
+
+| Step | Result |
+| --- | --- |
+| Publish probe | `aws sns publish` to `bootstrap-test-operations` returned message ID `901ab1e8-a146-55ef-a995-d391dd612a29`. |
+| Receive probe | `aws sqs receive-message` on `bootstrap-test-operations-alerts` returned message ID `06e63d7f-bd7e-448f-a91c-46850ce69104` containing test ID `wa-alert-route-test-2026-05-09T173000Z`. |
+| Cleanup | The probe message was deleted from the queue after validation. |
+
+A synthetic EventBridge event with AWS service source `aws.backup` was rejected
+with `NotAuthorizedForSourceException`, so EventBridge-to-SNS coverage remains
+validated by live rule/target metadata and Pulumi component tests rather than
+service-event injection.
+
+## Queue Consumption Metadata
+
+A non-secret route metadata refresh on 2026-05-10 UTC confirmed that the
+repository-owned durable queue exists, but it also confirmed that human
+consumption is still not proven:
+
+| Check | Result |
+| --- | --- |
+| SNS topic | `arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations` reports one confirmed subscription and a KMS key. |
+| Subscription | The confirmed subscriber protocol is `sqs`, endpoint `arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts`. |
+| Queue | `bootstrap-test-operations-alerts` resolved to an SQS queue URL in `eu-central-1`. |
+| Queue depth | Current visible, not-visible, and delayed counts are captured by the collector and generated observation records as observation-only metadata. Read the latest counts from `.artifacts/well-architected/evidence.json` instead of hard-coding them in retained review docs. |
+| Queue retention | `MessageRetentionPeriod=345600` and `VisibilityTimeout=30`. |
+
+The visible queue depth is useful operating evidence when it shows why a
+queue-owner process is required, but it is volatile. It is not sufficient OPS8
+evidence by itself: SRE still needs to record a downstream human route,
+ticket/paging/ChatOps subscriber, or explicitly approved queue-owner consumption
+process plus monthly observation history.
+
+## Monthly Observation Record
+
+The `Well-Architected Evidence` workflow now runs on pull requests, pushes to
+`main`, manual dispatch, and a monthly schedule on the ninth day of the month.
+Scheduled runs remain advisory even if evidence enforcement is enabled, upload
+the metadata-only evidence bundle, and retain the artifact for 90 days. This
+creates a recurring source of non-secret alert-route metadata, but it still
+does not replace the human route owner decision required for OPS8.
+
+After a scheduled or manual collector run, SRE can render a dated observation
+record from `.artifacts/well-architected/evidence.json`:
+
+```bash
+ALERT_ROUTE_OBSERVATION_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.md \
+ALERT_ROUTE_OBSERVATION_JSON_OUTPUT=docs/alert-route-observation-YYYY-MM-DD.json \
+ALERT_ROUTE_REVIEWER='<reviewer or team>' \
+ALERT_ROUTE_OWNER='SRE' \
+ALERT_ROUTE_DOWNSTREAM='<ChatOps, ticketing, paging, or approved queue-owner process>' \
+ALERT_ROUTE_SEVERITY='<severity and response expectation>' \
+ALERT_ROUTE_FALLBACK='<fallback when the downstream route is unavailable>' \
+ALERT_ROUTE_DECISION='accepted' \
+ALERT_ROUTE_EXPIRY_DATE='YYYY-MM-DDTHH:MM:SSZ' \
+ALERT_ROUTE_ACTION='<non-secret evidence and remediation note>' \
+make report-alert-route-observation
+
+ALERT_ROUTE_OBSERVATION_EVIDENCE=docs/alert-route-observation-YYYY-MM-DD.json \
+make report-well-architected-evidence
+```
+
+The generated record includes SNS/SQS route metadata, queue depth, retention,
+visibility timeout, downstream route, severity expectations, fallback behavior,
+review decision, and follow-up actions. JSON output can be supplied back to the
+collector through `ALERT_ROUTE_OBSERVATION_EVIDENCE`; the collector validates
+approval, freshness, expiry, evidence/remediation notes, and exact stable
+SNS/SQS route metadata while treating queue depth as observation-only data. It
+intentionally omits message
+payloads, private incident notes, stack exports, credentials, tokens, and
+access-key material. OPS8 should stay below 5/5 until a real observation file
+exists with an approved downstream route or accepted queue-owner process and
+the monthly history is current.
+When JSON output is requested, the generator also fails before writing if
+`ALERT_ROUTE_EXPIRY_DATE` is missing, invalid, or expired, if the review date is
+stale or future-dated, or if the decision value is outside the collector's
+accepted values.
+
+## Fallbacks
+
+- Keep OPS8 and human-escalation claims below 5/5 until the downstream human
+  alert route or incident tool is recorded with owner, target, and test
+  evidence.
+- Use `docs/incident-drill-evidence-2026-05-09.md` for the current OPS10 and
+  REL6 drill evidence. Keep REL6 below 5/5 when future resource-specific metric
+  coverage is stale or incomplete, including future replica-lag, runtime, or
+  public-endpoint metrics.
+- Add a new row before merging any new alert source, metric alarm, dashboard,
+  downstream subscriber, runtime compute, or public endpoint.

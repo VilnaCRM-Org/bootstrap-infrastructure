@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Sequence
 from typing import cast
@@ -51,12 +52,15 @@ def _primary_bucket_name(settings_obj: BootstrapSettings, region_name: str) -> s
     return settings_obj.central_logging_bucket_name(region_name)
 
 
-def _replica_bucket_name(primary_bucket_name: str) -> str:
+def _replica_bucket_name(primary_bucket_name: str, replication_region: str) -> str:
     """Build the replica logging bucket name while enforcing S3 limits."""
-    replica_bucket_name = f"{primary_bucket_name}-replication"
-    if len(replica_bucket_name) > 63:
-        raise ValueError("Replica logging bucket name exceeds S3 63-character limit.")
-    return replica_bucket_name
+    suffix = f"-{replication_region}-replication"
+    max_prefix_length = 63 - len(suffix)
+    if len(primary_bucket_name) <= max_prefix_length:
+        return f"{primary_bucket_name}{suffix}"
+    digest = hashlib.sha256(primary_bucket_name.encode("utf-8")).hexdigest()[:8]
+    truncated_length = max(max_prefix_length - len(digest) - 1, 1)
+    return f"{primary_bucket_name[:truncated_length]}-{digest}{suffix}"
 
 
 def _import_id_if_bucket_exists(
@@ -255,7 +259,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         )
 
         primary_bucket_name = _primary_bucket_name(configured_settings, region.region)
-        replica_bucket_name = _replica_bucket_name(primary_bucket_name)
+        replica_bucket_name = _replica_bucket_name(primary_bucket_name, resolved_region)
 
         primary_bucket_opts = _resource_options(
             self,
@@ -305,9 +309,11 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             bucket=bucket.id,
             rules=[
                 aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    blocked_encryption_types=["SSE-C"],
+                    bucket_key_enabled=False,
                     apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                         sse_algorithm="AES256"
-                    )
+                    ),
                 )
             ],
             opts=primary_resource_opts,
@@ -318,9 +324,11 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             bucket=replica_bucket.id,
             rules=[
                 aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+                    blocked_encryption_types=["SSE-C"],
+                    bucket_key_enabled=False,
                     apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                         sse_algorithm="AES256"
-                    )
+                    ),
                 )
             ],
             opts=replica_resource_opts,

@@ -45,6 +45,23 @@ def _key_policy(account_id: str) -> str:
     )
 
 
+def _kms_alias_exists(name: str) -> bool:  # pragma: no mutate
+    """Return True when the KMS alias already exists."""
+    try:  # pragma: no mutate
+        aws.kms.get_alias(name=name)  # pragma: no mutate
+    except Exception as exc:  # pragma: no mutate
+        message = str(exc)  # pragma: no mutate
+        if (  # pragma: no mutate
+            "NotFoundException" in message
+            or "NotFound" in message
+            or "not found" in message.lower()
+            or "couldn't find resource" in message
+        ):  # pragma: no mutate
+            return False  # pragma: no mutate
+        raise  # pragma: no mutate
+    return True  # pragma: no mutate
+
+
 class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
     """Create a customer-managed KMS key and alias for each managed repository."""
 
@@ -83,6 +100,14 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
             alias_name = configured_settings.pulumi_secrets_alias_name_for_repo(
                 repo.name
             )  # pragma: no mutate
+            alias_import_id = (  # pragma: no mutate
+                alias_name if _kms_alias_exists(alias_name) else None
+            )
+            alias_options = pulumi.ResourceOptions(parent=self)  # pragma: no mutate
+            if alias_import_id is not None:  # pragma: no mutate
+                alias_options = pulumi.ResourceOptions(  # pragma: no mutate
+                    parent=self, import_=alias_import_id
+                )
 
             key = aws.kms.Key(  # pragma: no mutate
                 f"{name}-key-{suffix}",  # pragma: no mutate
@@ -98,6 +123,7 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
                         "Repository": repo.name,
                         "App": repo.name,
                         "RepositoryProject": repo.project_name,
+                        **repo.tag_metadata(),
                     },
                     settings=configured_settings,
                 ),  # pragma: no mutate
@@ -108,7 +134,7 @@ class PulumiSecretsKeys(pulumi.ComponentResource):  # pragma: no mutate
                 f"{name}-alias-{suffix}",  # pragma: no mutate
                 name=alias_name,  # pragma: no mutate
                 target_key_id=key.key_id,  # pragma: no mutate
-                opts=pulumi.ResourceOptions(parent=self),  # pragma: no mutate
+                opts=alias_options,  # pragma: no mutate
             )  # pragma: no mutate
 
             self.key_arns[repo.name] = key.arn  # pragma: no mutate

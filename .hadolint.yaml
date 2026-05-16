@@ -1,2 +1,5 @@
 ignored:
+  # The base image is pinned through a digest-valued ARG; Hadolint cannot
+  # resolve that indirection for DL3006.
+  - DL3006
   - DL3059

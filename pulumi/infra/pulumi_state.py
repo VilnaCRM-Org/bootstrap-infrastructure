@@ -231,9 +231,11 @@ def _state_bucket_encryption_rules() -> list[
     """Return the shared AES256 bucket encryption policy."""
     return [
         aws.s3.BucketServerSideEncryptionConfigurationRuleArgs(
+            blocked_encryption_types=["SSE-C"],
+            bucket_key_enabled=False,
             apply_server_side_encryption_by_default=aws.s3.BucketServerSideEncryptionConfigurationRuleApplyServerSideEncryptionByDefaultArgs(
                 sse_algorithm="AES256"
-            )
+            ),
         )
     ]
 
@@ -250,21 +252,27 @@ def _state_bucket_tags(
             "Repository": repo.name,
             "App": repo.name,
             "RepositoryProject": repo.project_name,
+            **repo.tag_metadata(),
         },
         settings=settings_obj,
     )
 
 
-def _replica_bucket_name(bucket_name: str) -> str:
+def _replica_bucket_name(bucket_name: str, replication_region: str) -> str:
     """Return the replica bucket name while enforcing S3 limits."""
-    replica_name = f"{bucket_name}-replication"
-    if len(replica_name) > 63:
-        raise ValueError(f"Replica bucket name '{replica_name}' exceeds 63 characters.")
-    return replica_name
+    suffix = f"-{replication_region}-replication"
+    max_prefix_length = 63 - len(suffix)
+    if len(bucket_name) <= max_prefix_length:
+        return f"{bucket_name}{suffix}"
+    digest = hashlib.sha256(bucket_name.encode("utf-8")).hexdigest()[:8]
+    truncated_length = max(max_prefix_length - len(digest) - 1, 1)
+    return f"{bucket_name[:truncated_length]}-{digest}{suffix}"
 
 
 def _state_access_log_bucket_names(
-    primary_region: str, settings_obj: BootstrapSettings | None = None
+    primary_region: str,
+    replication_region: str,
+    settings_obj: BootstrapSettings | None = None,
 ) -> tuple[str, str]:
     """Return deterministic primary/replica log-bucket names for state buckets."""
     active_settings = settings_obj or globals()["settings"]
@@ -273,7 +281,9 @@ def _state_access_log_bucket_names(
         if active_settings is globals()["settings"]
         else active_settings.central_logging_bucket_name(primary_region)
     )
-    return primary_logs_bucket, _replica_bucket_name(primary_logs_bucket)
+    return primary_logs_bucket, _replica_bucket_name(
+        primary_logs_bucket, replication_region
+    )
 
 
 class PulumiStateBuckets(pulumi.ComponentResource):
@@ -306,7 +316,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             replication_region, primary_region, self._settings
         )
         primary_logs_bucket, replica_logs_bucket = _state_access_log_bucket_names(
-            primary_region, self._settings
+            primary_region, resolved_region, self._settings
         )
         replica_provider = aws.Provider(
             f"{name}-replica-provider",
@@ -366,7 +376,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         )
         replica_bucket, replica_bucket_versioning = self._create_bucket(
             f"{component_name}-replica-{suffix}",
-            bucket_name=_replica_bucket_name(bucket_name),
+            bucket_name=_replica_bucket_name(bucket_name, resolved_region),
             lifecycle_rule_id="replica-expire-old-versions",
             purpose="pulumi-state-replica",
             repo=repo,
@@ -375,7 +385,9 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             ownership_name=f"{component_name}-replica-ownership-{suffix}",
             policy_name=f"{component_name}-replica-policy-{suffix}",
             provider=replica_provider,
-            import_id=self._replica_import_id(bucket_name, replica_provider),
+            import_id=self._replica_import_id(
+                bucket_name, resolved_region, replica_provider
+            ),
         )
         replication_role, replication_role_policy = self._create_replication_role(
             component_name,
@@ -531,10 +543,13 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         )
 
     def _replica_import_id(
-        self, bucket_name: str, replica_provider: aws.Provider
+        self,
+        bucket_name: str,
+        replication_region: str,
+        replica_provider: aws.Provider,
     ) -> str | None:
         """Return the import ID for an existing replica bucket, if present."""
-        replica_name = _replica_bucket_name(bucket_name)
+        replica_name = _replica_bucket_name(bucket_name, replication_region)
         if _bucket_exists(replica_name, provider=replica_provider):
             return replica_name
         return None

@@ -42,8 +42,12 @@ Optional PR-only overrides for the `test` environment:
 
 | Variable | Purpose |
 | --- | --- |
-| `PULUMI_PR_BACKEND_URL` | Backend used only by trusted PR previews |
-| `PULUMI_PR_PREVIEW_STACKS` | Stack list used only by trusted PR previews |
+| `PULUMI_PR_BACKEND_URL` | Backend used by trusted PR previews and test deploys when `PULUMI_BACKEND_URL` is not populated |
+| `PULUMI_PR_PREVIEW_STACKS` | Stack list used by trusted PR previews and test deploys when shared preview/drift stack lists are not populated |
+
+`Pulumi Test Deploy` can also fall back from `AWS_APPLY_ROLE_ARN` and
+`AWS_DRIFT_ROLE_ARN` to `AWS_PREVIEW_ROLE_ARN` in `test` while a single
+environment-scoped bootstrap role is being expanded by the stack itself.
 
 Use separate AWS roles per account and purpose. Preview roles should be unable
 to mutate production resources. Apply roles should be scoped to the exact

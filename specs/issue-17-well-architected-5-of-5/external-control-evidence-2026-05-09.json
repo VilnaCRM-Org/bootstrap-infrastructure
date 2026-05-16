@@ -1,0 +1,106 @@
+{
+  "workload": "bootstrap-infrastructure",
+  "owner": "platform-maintainers",
+  "reviewedAt": "2026-05-11T18:36:48Z",
+  "controlCount": 8,
+  "unresolvedControlCount": 3,
+  "unresolvedControlIds": [
+    "branch_protection",
+    "production_approval",
+    "security_account_controls"
+  ],
+  "evidenceLocation": "specs/issue-17-well-architected-5-of-5/",
+  "fallbackPlan": "Do not claim final 5/5 Well-Architected scores while any external control remains unresolved; keep deployment gated by PR review, local CI, AWS metadata checks, and explicit owner approval.",
+  "controls": [
+    {
+      "id": "branch_protection",
+      "status": "unresolved",
+      "evidence": [
+        "collect_well_architected_evidence reports zero required status checks in branch protection/ruleset metadata.",
+        "Current GitHub token has push/pull/triage permissions but not admin or maintain, so ruleset repair requires a repository administrator.",
+        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/rulesets was retested at 2026-05-11T18:26:19Z; the active main branch ruleset still reports an empty required_status_checks list.",
+        "python3 scripts/configure_github_repository_controls.py --dry-run was retested at 2026-05-11T18:26:19Z; it resolves reviewer Kravalg to GitHub user ID 9444106 and renders the expanded required-status-check payload.",
+        "python3 scripts/configure_github_repository_controls.py --verify-only was retested at 2026-05-11T18:26:19Z; it fails read-only because the active main ruleset is missing required status checks and prod is unreadable.",
+        "python3 scripts/configure_github_repository_controls.py --apply was retested at 2026-05-11T18:36:48Z; it still stops at the repository-admin preflight before any write."
+      ],
+      "unresolvedReason": "Admin-owned ruleset must require the documented status checks: Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
+    },
+    {
+      "id": "alert_route",
+      "status": "passed",
+      "evidence": [
+        "AWS SNS topic arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations exists, is KMS encrypted, and has an SQS subscription.",
+        "collect_well_architected_evidence aws_sns_alert_route check passed.",
+        "The 2026-05-11 collector records non-secret SQS metadata for arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts: queue name bootstrap-test-operations-alerts, retention 345600 seconds, visibility timeout 30 seconds, and zero not-visible or delayed messages.",
+        "make report-alert-route-observation renders non-secret monthly OPS8 route-observation records from collector evidence, can write JSON for ALERT_ROUTE_OBSERVATION_EVIDENCE collector validation, and keeps downstream human route approval and observation history as separate SRE-owned evidence."
+      ]
+    },
+    {
+      "id": "backup_restore",
+      "status": "passed",
+      "evidence": [
+        "AWS Backup restore job d7f25510-1dfd-4f11-8953-72ed1c971c2c completed on 2026-04-27.",
+        "restore-drill-evidence-2026-04-27.json records the restore target and cleanup confirmation."
+      ]
+    },
+    {
+      "id": "finops",
+      "status": "passed",
+      "evidence": [
+        "AWS Budget and Cost Anomaly Detection subscription exist and collect_well_architected_evidence aws_cost_controls passed.",
+        "Pulumi.test.yaml now enables repository-managed Cost Allocation Tag activation for the bootstrap tag set.",
+        "aws ce update-cost-allocation-tags-status activated App, CostCenter, Criticality, DataClassification, Environment, Owner, Project, Repository, RepositoryProject, and RetentionClass on 2026-05-09; list-cost-allocation-tags then returned those keys as Active.",
+        "docs/finops-review-2026-05-09.md records platform-maintainers as the accountable FinOps owner for the test review, the 100 USD monthly budget, 80% actual and 100% forecast budget alerts, the 10 USD anomaly threshold, confirmed SNS routing, month-to-date service cost, transfer review, action thresholds, and next review date."
+      ]
+    },
+    {
+      "id": "quota_headroom",
+      "status": "passed",
+      "evidence": [
+        "Repository fanout evidence is below configured thresholds for S3, KMS, IAM, Backup, ECR, Budgets, SNS, SQS, CloudTrail, and Cost Anomaly resources.",
+        "quota-headroom-evidence-2026-05-09.json records count-only AWS usage, Service Quotas/default quota values, projected bootstrap fanout, and no-go behavior for tight CloudTrail and AWS Config headroom.",
+        "collect_well_architected_evidence repository_fanout check passed."
+      ]
+    },
+    {
+      "id": "security_account_controls",
+      "status": "unresolved",
+      "evidence": [
+        "OIDC roles, policy pack checks, CodeQL/Bandit/Gitleaks/pip-audit workflows, KMS keys, CloudTrail, and alert rules are defined.",
+        "docs/security-operating-evidence.md records the authentication matrix, permission matrix, wildcard justifications, permissions-boundary decision, threat model, secure SDLC controls, and open security exceptions.",
+        "The PR now adds Pulumi-managed GuardDuty, Security Hub, AWS Config recorder, Config delivery channel, and a dedicated encrypted AWS Config S3 delivery bucket.",
+        "A real Pulumi preview for the test stack passed with the policy pack, destructive gate, cost proxy, and IAM validation on 2026-05-09.",
+        "A guarded local Pulumi apply using the AWS KMS secrets provider and PR head b05d233 completed on 2026-05-09T22:00Z with 30 created, 1 updated, and 86 unchanged resources.",
+        "The hosted Pulumi Test Deploy for PR head 86e3a05 passed preview, IAM validation, destructive diff, apply, and post-apply drift on 2026-05-11.",
+        "aws guardduty get-detector in eu-central-1 returned detector 502efed8294c4b95a7f0778aaa4b8d62 with Status=ENABLED and bootstrap security-detection tags.",
+        "aws securityhub describe-hub in eu-central-1 returned arn:aws:securityhub:eu-central-1:891377212104:hub/default with AutoEnableControls=true.",
+        "aws configservice describe-configuration-recorders, describe-delivery-channels, and describe-configuration-recorder-status returned recorder bootstrap-test-configuration-recorder, delivery bucket bootstrap-891377212104-eu-central-1-test-aws-config, recording=true, and lastStatus=SUCCESS.",
+        "The 2026-05-11T18:26:19Z live IAM metadata read records account MFA enabled, no root/account access keys, four discovered IAM users, one MFA device in use, and one active IAM user access key last used on 2026-05-11T18:19:00Z without exposing user names or key IDs.",
+        "make report-security-account-attestation renders a non-secret security-owner attestation record from collector evidence and explicit owner decisions while keeping IAM user names and access key IDs out of the artifact."
+      ],
+      "unresolvedReason": "Human MFA/SSO, static-key exception evidence or remediation, administrator-owned permissions-boundary or exemption attestation, and external security owner approval remain outside the repository evidence until an owner records them."
+    },
+    {
+      "id": "sustainability_governance",
+      "status": "passed",
+      "evidence": [
+        "Lifecycle policies, backup retention, ECR cleanup, and repository fanout checks exist.",
+        "docs/data-classification-retention.md records classification, owner, retention, storage, and deletion rationale for current artifact classes.",
+        "docs/well-architected-operating-evidence.md records platform-maintainers as sustainability owner, region decision matrices, CI/build efficiency targets, stale-asset fallback, KPI cadence, and exception process."
+      ]
+    },
+    {
+      "id": "production_approval",
+      "status": "unresolved",
+      "evidence": [
+        "Production workflow has preview/apply split and commit SHA gates.",
+        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod returned 404 on 2026-05-11T18:26:19Z.",
+        "gh api repos/VilnaCRM-Org/bootstrap-infrastructure/environments/prod-preview showed no protection rules on 2026-05-11T18:26:19Z.",
+        "python3 scripts/configure_github_repository_controls.py --dry-run was retested at 2026-05-11T18:26:19Z; it resolves reviewer Kravalg to GitHub user ID 9444106 and renders the protected prod environment payload.",
+        "python3 scripts/configure_github_repository_controls.py --verify-only was retested at 2026-05-11T18:26:19Z; it fails read-only because prod is unreadable and the active main ruleset is missing required status checks.",
+        "python3 scripts/configure_github_repository_controls.py --apply was retested at 2026-05-11T18:36:48Z; it still stops at the repository-admin preflight before it can create or protect prod."
+      ],
+      "unresolvedReason": "GitHub environment approval evidence, required reviewer settings, and production no-go evidence are external and not yet confirmed."
+    }
+  ]
+}
