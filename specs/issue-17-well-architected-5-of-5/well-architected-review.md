@@ -68,17 +68,16 @@ The 2026-05-09 evidence record at
 the 57 AWS Well-Architected Framework questions plus a source-verification
 record that includes the official AWS TOC URL. These scores are current review
 observations for this PR and the repository, not final 5/5 claims. As of the
-2026-05-09 review, 10 questions remain unresolved because those rows still have
-at least one missing owner, freshness, validation, fallback, drill, account, or
-administrator-owned evidence item.
+2026-05-09 review and the post-PR #35 Dependabot refresh, 9 questions remain
+unresolved because those rows still have at least one missing owner, freshness,
+validation, fallback, drill, account, or administrator-owned evidence item.
 
 Repository-owned operating evidence for owners, KPI cadence, priority/risk
 tradeoffs, runbooks, decision matrices, and sustainability governance is now
 recorded in `docs/well-architected-operating-evidence.md`. It improves the
 current question-level scores, but does not close external blockers such as
 branch protection, production environment approvals, downstream human alert
-routing, external security attestations, or default-branch Dependabot alert
-closure after merge.
+routing, or external security attestations.
 
 Final Well-Architected score change claimed by this PR: `0.0`. The current
 branch adds remediation evidence for some questions, but the pillar scores stay
@@ -177,8 +176,7 @@ Issue #17 can be closed only when:
 - Remaining external blockers are closed: branch protection, production
   approval rules, downstream human alert routing, human MFA/SSO evidence,
   static-key exception evidence, permissions-boundary or exemption attestation,
-  external security-owner approval, and default-branch Dependabot alert closure
-  or exceptions.
+  and external security-owner approval.
 - A follow-up Well-Architected review scores every pillar 5/5.
 
 ## Planning Non-Goals

@@ -74,7 +74,7 @@ evidence remain open.
 | Restore drill evidence | Epic 5 | Current restore evidence is `restore-drill-evidence-2026-04-27.json`; next restore drill is due before the 90-day freshness window expires. |
 | Production approval evidence | Epic 1 | Protected environment reviewer rules, approved apply evidence, reviewed SHA, and skipped-check policy. |
 | Security account controls | SEC1-SEC11 | MFA/SSO posture, static-key exception or remediation evidence, permissions-boundary or exemption attestation, and external security-owner approval. Live GuardDuty/Security Hub/AWS Config posture is current for the test stack, and `make report-security-account-attestation` now provides the non-secret record path once the owner decision exists. |
-| Dependabot alert closure or exception | SEC11 | Default-branch high-severity alerts in `uv.lock` must close after the patched lockfile lands on `main`, or a current `DEPENDABOT_EXCEPTION_EVIDENCE` record must cover the exact remaining alert numbers with owner approval and a remediation plan. `make report-dependabot-exception` now renders the non-secret Markdown/JSON record from the latest collector output and validates approval, evidence notes, freshness, expiry, dependency scope, manifest, and exact alert-number metadata before JSON can be supplied to the collector. |
+| Dependabot alert closure or exception | SEC11 | Current Dependabot metadata reports zero open high or critical default-branch alerts for `uv.lock`, and the latest collector passes `github_dependabot_alerts`. If future alerts cannot close immediately, `make report-dependabot-exception` renders the non-secret Markdown/JSON record from the latest collector output and validates approval, evidence notes, freshness, expiry, dependency scope, manifest, and exact alert-number metadata before JSON can be supplied to the collector. |
 | Sustainability goals | Epic 8 | Current governance is recorded in `docs/well-architected-operating-evidence.md` and `docs/operating-review-2026-05-09.md`; refresh before region, retention, compute, or catalog expansion changes. |
 | Well-Architected review owner | Epic 0 | Owner for question-matrix updates, score changes, evidence expiry, and follow-up review. |
 
@@ -113,7 +113,7 @@ make configure-github-repository-controls
 ```
 
 The permission preflight must show an admin-capable identity before the helper
-can write repository rulesets or protected environments. Current PR #22
+can write repository rulesets or protected environments. Current issue #17
 operator evidence is `viewerPermission=WRITE` and `viewerCanAdminister=false`,
 so the helper correctly fails before any write until a repository administrator
 reruns it.
@@ -149,7 +149,7 @@ safe validation strategy is:
 | Branch test deploy | Dispatch `Pulumi Test Deploy` on the PR branch. | Uses GitHub OIDC and configured environment metadata without printing secret values. | Workflow URL, head SHA, preview result, destructive diff result, IAM validation result, apply result, and post-apply drift result. |
 | Post-run review | `gh run view` and `gh pr checks` | Inspect logs only for status and failure causes; do not print secrets. | PR comment or readiness update with run conclusion and remaining blockers. |
 
-Current implementation-PR readiness observations:
+Current implementation readiness observations:
 
 - Local validation and hosted PR checks are current for the branch head,
   including Preview, Destructive Diff Gate, IAM Validation, Local Battery,
@@ -157,9 +157,9 @@ Current implementation-PR readiness observations:
 - `completion-audit-2026-05-10.md` maps the active goal to concrete artifacts,
   current test and collector evidence, and the external blockers that still
   prevent an honest final 5/5 claim.
-- The collector confirms the PR head matches the local head, but the live PR is
-  not approved and remains merge-blocked. Hosted checks are green, but human
-  review and admin-controlled repository settings remain external blockers.
+- The collector confirms the current branch evidence context, and hosted checks
+  are green for current `main`, but admin-controlled repository settings remain
+  external blockers.
 - Real test-account preview/apply evidence exists for the branch. A guarded
   local apply on 2026-05-09 UTC created the GuardDuty, Security Hub, and AWS
   Config resources, and the hosted Pulumi Test Deploy for PR head `86e3a05`
