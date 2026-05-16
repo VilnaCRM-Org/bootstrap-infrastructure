@@ -143,11 +143,13 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     destructive_diff_job_if = " ".join(jobs["destructive_diff"]["if"].split())
     pr_backend_expression = (
         "${{ github.event_name == 'pull_request' && "
-        + "vars.PULUMI_PR_BACKEND_URL || vars.PULUMI_BACKEND_URL }}"
+        + "vars.PULUMI_PR_BACKEND_URL || vars.PULUMI_BACKEND_URL || "
+        + "vars.PULUMI_PR_BACKEND_URL }}"
     )
     pr_stack_expression = (
         "${{ github.event_name == 'pull_request' && "
-        + "vars.PULUMI_PR_PREVIEW_STACKS || vars.PULUMI_PREVIEW_STACKS }}"
+        + "vars.PULUMI_PR_PREVIEW_STACKS || vars.PULUMI_PREVIEW_STACKS || "
+        + "vars.PULUMI_PR_PREVIEW_STACKS }}"
     )
 
     assert workflow["concurrency"]["cancel-in-progress"] is True
