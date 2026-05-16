@@ -68,7 +68,7 @@ The 2026-05-09 evidence record at
 the 57 AWS Well-Architected Framework questions plus a source-verification
 record that includes the official AWS TOC URL. These scores are current review
 observations for this PR and the repository, not final 5/5 claims. As of the
-2026-05-09 review and the post-PR #35 Dependabot refresh, 9 questions remain
+2026-05-09 review and the post-PR #36 Dependabot evidence refresh, 9 questions remain
 unresolved because those rows still have at least one missing owner, freshness,
 validation, fallback, drill, account, or administrator-owned evidence item.
 
