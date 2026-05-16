@@ -51,12 +51,17 @@ def pillar_scores(checks: Sequence[dict[str, object]]) -> dict[str, float]:
     by_name = {str(check["name"]): check for check in checks}
     scores: dict[str, float] = {}
     for pillar, check_names in PILLAR_CHECKS.items():
+        applicable = [
+            check_name
+            for check_name in check_names
+            if by_name.get(check_name, {}).get("status") != "not_applicable"
+        ]
         passed = sum(
             1
-            for check_name in check_names
+            for check_name in applicable
             if by_name.get(check_name, {}).get("status") == "passed"
         )
-        scores[pillar] = round(5 * passed / len(check_names), 2)
+        scores[pillar] = round(5 * passed / len(applicable), 2) if applicable else 5.0
     return scores
 
 

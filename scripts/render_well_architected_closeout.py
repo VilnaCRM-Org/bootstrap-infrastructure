@@ -18,6 +18,7 @@ OPTIONAL_EVIDENCE_PLACEHOLDER = "<path-if-needed>"
 REVIEWER_LOGIN_PLACEHOLDER = "<reviewer-login>"
 APPROVAL_DECISION_PLACEHOLDER = "<approved|approved_exception|accepted_risk>"
 DATE_PLACEHOLDER = "<YYYY-MM-DD>"
+NON_BLOCKING_CHECK_STATUSES = frozenset({"passed", "not_applicable"})
 
 
 def _load_json_object(path: Path) -> dict[str, Any]:
@@ -229,6 +230,35 @@ def _prompt_checklist_lines(
         _string_entries(pr_checks.get("changedFileTopLevelPaths"))
     )
     score_scale = _score_scale_summary(question_matrix.get("scoreScale"))
+    if _branch_context(pr_checks):
+        branch = evidence_report.get("branch", "")
+        pr_artifact_evidence = (
+            f"Branch `{branch}` evidence context; PR-specific checks are marked "
+            "`not_applicable`"
+        )
+        pr_coverage = (
+            "PR gates remain enforced for pull_request evidence; branch evidence "
+            "relies on branch protection plus current branch workflow status."
+        )
+        pr_result = "not applicable for branch evidence"
+    else:
+        pr_artifact_evidence = (
+            f"PR head `{pr_head}`; hosted checks {pr_checks.get('checkCount', '')}; "
+            "non-passing hosted checks "
+            f"{pr_checks.get('nonPassingCheckCount', '')}; "
+            f"local dirty files {local_state.get('dirtyFileCount', '')}; "
+            f"changed files {pr_checks.get('changedFileCount', '')}; "
+            f"changed top-level paths {changed_top_level}"
+        )
+        pr_coverage = (
+            "Hosted PR gates, changed-file metadata, and local evidence state cover "
+            "the reviewed branch; repository-owned tests still need to stay green "
+            "after every new push"
+        )
+        pr_result = (
+            f"merge state {pr_checks.get('mergeStateStatus', '')}; review decision "
+            f"{pr_checks.get('reviewDecision', '') or 'empty'}"
+        )
     return [
         "## Prompt-To-Artifact Checklist",
         "",
@@ -246,17 +276,7 @@ def _prompt_checklist_lines(
         ),
         (
             "| Check PR code and whole project code | "
-            f"PR head `{pr_head}`; hosted checks "
-            f"{pr_checks.get('checkCount', '')}; non-passing hosted checks "
-            f"{pr_checks.get('nonPassingCheckCount', '')}; local dirty files "
-            f"{local_state.get('dirtyFileCount', '')}; changed files "
-            f"{pr_checks.get('changedFileCount', '')}; changed top-level paths "
-            f"{changed_top_level} | "
-            "Hosted PR gates, changed-file metadata, and local evidence state cover "
-            "the reviewed branch; repository-owned tests still need to stay green "
-            "after every new push | "
-            f"merge state {pr_checks.get('mergeStateStatus', '')}; review decision "
-            f"{pr_checks.get('reviewDecision', '') or 'empty'} |"
+            f"{pr_artifact_evidence} | {pr_coverage} | {pr_result} |"
         ),
         (
             "| Put scores from 1 to 5 | "
@@ -280,6 +300,82 @@ def _prompt_checklist_lines(
     ]
 
 
+def _branch_context(pr_checks: dict[str, Any]) -> bool:
+    return pr_checks.get("scope") == "branch"
+
+
+def _pull_request_state_lines(
+    pr_checks: dict[str, Any],
+    local_state: dict[str, Any],
+    review_threads: dict[str, Any],
+) -> list[str]:
+    if _branch_context(pr_checks):
+        return [
+            "## Pull Request State",
+            "",
+            "Not applicable in this branch evidence context; no pull request "
+            "number was supplied.",
+            "",
+        ]
+
+    return [
+        "## Pull Request State",
+        "",
+        _table(
+            [
+                ("PR head SHA", pr_checks.get("headRefOid", "")),
+                ("Local head SHA", local_state.get("localHead", "")),
+                ("Dirty file count", local_state.get("dirtyFileCount", "")),
+                ("Hosted check count", pr_checks.get("checkCount", "")),
+                (
+                    "Non-passing hosted checks",
+                    pr_checks.get("nonPassingCheckCount", ""),
+                ),
+                ("Changed file count", pr_checks.get("changedFileCount", "")),
+                (
+                    "Changed top-level paths",
+                    _comma_list(
+                        _string_entries(pr_checks.get("changedFileTopLevelPaths"))
+                    ),
+                ),
+                ("Review decision", pr_checks.get("reviewDecision", "")),
+                ("Merge state", pr_checks.get("mergeStateStatus", "")),
+                ("Mergeable", pr_checks.get("mergeable", "")),
+                ("Review thread count", review_threads.get("threadCount", "")),
+                (
+                    "Unresolved review threads",
+                    review_threads.get("unresolvedThreadCount", ""),
+                ),
+                (
+                    "Advisory unresolved review threads",
+                    review_threads.get("advisoryUnresolvedThreadCount", ""),
+                ),
+                (
+                    "Blocking review threads",
+                    review_threads.get("blockingThreadCount", ""),
+                ),
+                (
+                    "Outdated unresolved review threads",
+                    review_threads.get("outdatedUnresolvedThreadCount", ""),
+                ),
+            ]
+        ),
+        "",
+    ]
+
+
+def _reviewer_action_lines(pr_head: object) -> list[str]:
+    return [
+        "### Reviewer",
+        "",
+        "- Review and approve the latest PR head SHA after checking the current "
+        f"diff and hosted checks: `{pr_head}`.",
+        "- Do not rely on approvals from earlier commits when GitHub reports an "
+        "empty review decision.",
+        "",
+    ]
+
+
 def render_closeout_bundle(
     evidence_report: dict[str, Any], question_verification: dict[str, Any]
 ) -> str:
@@ -294,7 +390,11 @@ def render_closeout_bundle(
     question_matrix = _check_evidence(checks_by_name, "question_matrix_evidence")
     external_controls = _check_evidence(checks_by_name, "external_control_evidence")
 
-    failed_checks = [check for check in checks if check.get("status") != "passed"]
+    failed_checks = [
+        check
+        for check in checks
+        if check.get("status") not in NON_BLOCKING_CHECK_STATUSES
+    ]
     failed_check_rows = _failed_check_rows(failed_checks)
     unresolved_questions = _string_entries(
         question_verification.get("evidenceUnresolvedQuestionIds")
@@ -307,6 +407,9 @@ def render_closeout_bundle(
     )
     repo = str(evidence_report.get("repo", ""))
     pr_head = pr_checks.get("headRefOid", "")
+    reviewer_lines = (
+        _reviewer_action_lines(pr_head) if evidence_report.get("pr") else []
+    )
     final_collector_command = _collector_command(
         evidence_report.get("pr", ""),
         alert_route.get("topicArn", ""),
@@ -350,48 +453,7 @@ def render_closeout_bundle(
             goal_status,
             evidence_report,
         ),
-        "## Pull Request State",
-        "",
-        _table(
-            [
-                ("PR head SHA", pr_head),
-                ("Local head SHA", local_state.get("localHead", "")),
-                ("Dirty file count", local_state.get("dirtyFileCount", "")),
-                ("Hosted check count", pr_checks.get("checkCount", "")),
-                (
-                    "Non-passing hosted checks",
-                    pr_checks.get("nonPassingCheckCount", ""),
-                ),
-                ("Changed file count", pr_checks.get("changedFileCount", "")),
-                (
-                    "Changed top-level paths",
-                    _comma_list(
-                        _string_entries(pr_checks.get("changedFileTopLevelPaths"))
-                    ),
-                ),
-                ("Review decision", pr_checks.get("reviewDecision", "")),
-                ("Merge state", pr_checks.get("mergeStateStatus", "")),
-                ("Mergeable", pr_checks.get("mergeable", "")),
-                ("Review thread count", review_threads.get("threadCount", "")),
-                (
-                    "Unresolved review threads",
-                    review_threads.get("unresolvedThreadCount", ""),
-                ),
-                (
-                    "Advisory unresolved review threads",
-                    review_threads.get("advisoryUnresolvedThreadCount", ""),
-                ),
-                (
-                    "Blocking review threads",
-                    review_threads.get("blockingThreadCount", ""),
-                ),
-                (
-                    "Outdated unresolved review threads",
-                    review_threads.get("outdatedUnresolvedThreadCount", ""),
-                ),
-            ]
-        ),
-        "",
+        *_pull_request_state_lines(pr_checks, local_state, review_threads),
         "## Remaining Collector Gates",
         "",
         "| Check | Status | Blockers |",
@@ -453,13 +515,7 @@ def render_closeout_bundle(
             "",
             "## Required Owner Actions",
             "",
-            "### Reviewer",
-            "",
-            "- Review and approve the latest PR head SHA after checking the current "
-            f"diff and hosted checks: `{pr_head}`.",
-            "- Do not rely on approvals from earlier commits when GitHub reports an "
-            "empty review decision.",
-            "",
+            *reviewer_lines,
             "### Repository Admin",
             "",
             "- Apply and verify repository controls with "

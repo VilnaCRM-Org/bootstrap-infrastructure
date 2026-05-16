@@ -2788,11 +2788,32 @@ def test_render_well_architected_closeout_handles_clean_and_invalid_inputs(
             "evidenceUnresolvedQuestionIds": "not a list",
         },
     )
+    branch_text = module.render_closeout_bundle(
+        {
+            "generatedAt": "2026-05-11T00:00:00Z",
+            "branch": "main",
+            "checks": [
+                {
+                    "name": "github_pr_checks",
+                    "status": "not_applicable",
+                    "evidence": {"branch": "main", "scope": "branch"},
+                    "blockers": [],
+                }
+            ],
+        },
+        {"checkedAt": "2026-05-11T00:01:00Z"},
+    )
     invalid = tmp_path / "invalid.json"
     output = tmp_path / "bundle.md"
     invalid.write_text("[]", encoding="utf-8")
 
     assert "| None | passed | None |" in text  # nosec B101
+    assert "| None | passed | None |" in branch_text  # nosec B101
+    assert "github_pr_checks | not_applicable" not in branch_text  # nosec B101
+    assert "Branch `main` evidence context" in branch_text  # nosec B101
+    assert "Not applicable in this branch evidence context" in branch_text  # nosec B101
+    assert "| PR head SHA |" not in branch_text  # nosec B101
+    assert "### Reviewer" not in branch_text  # nosec B101
     assert "| Current final scores | None |" in text  # nosec B101
     assert "| Unresolved question IDs | None |" in text  # nosec B101
     assert "| Unresolved control IDs | None |" in text  # nosec B101
@@ -5321,6 +5342,49 @@ def test_score_blockers_distinguish_failed_and_missing_gates(
             "can be treated as final Well-Architected scores."
         ),
     ]
+
+
+def test_branch_evidence_marks_pr_gates_not_applicable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Branch evidence should not fail PR-only checks when no PR exists."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    args = module.build_parser().parse_args(
+        ["--repo", "org/repo", "--branch", "main", "--root-dir", str(tmp_path)]
+    )
+
+    checks = module.github_pr_context_evidence(args)
+
+    assert [check["name"] for check in checks] == [  # nosec B101
+        "github_pr_checks",
+        "github_pr_local_state",
+        "github_review_threads",
+    ]
+    assert {check["status"] for check in checks} == {  # nosec B101
+        "not_applicable"
+    }
+    assert all(not check["blockers"] for check in checks)  # nosec B101
+    assert all(check["evidence"]["branch"] == "main" for check in checks)  # nosec B101
+
+
+def test_pillar_scores_ignore_not_applicable_pr_gates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-PR branch evidence should not depress pillar scores for PR-only gates."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    checks = [
+        {"name": "github_pr_checks", "status": "not_applicable"},
+        {"name": "github_pr_local_state", "status": "not_applicable"},
+        {"name": "github_review_threads", "status": "not_applicable"},
+        {"name": "github_branch_protection", "status": "passed"},
+        {"name": "github_production_environment", "status": "passed"},
+        {"name": "aws_sns_alert_route", "status": "passed"},
+        {"name": "aws_cloudtrail_management_events", "status": "passed"},
+    ]
+
+    scores = module.pillar_scores(checks)
+
+    assert scores["Operational Excellence"] == pytest.approx(5.0)  # nosec B101
 
 
 def test_collect_well_architected_evidence_unknown_and_missing_paths(

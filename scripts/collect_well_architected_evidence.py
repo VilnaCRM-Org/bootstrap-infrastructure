@@ -472,9 +472,7 @@ def collect_evidence(
 ) -> dict[str, Any]:
     """Collect metadata-only Well-Architected evidence."""
     checks = [
-        github_pr_checks(args.repo, args.pr, runner=runner),
-        github_pr_local_state(args.repo, args.pr, args.root_dir, runner=runner),
-        github_review_threads(args.repo, args.pr, runner=runner),
+        *github_pr_context_evidence(args, runner=runner),
         github_branch_protection(
             args.repo,
             args.branch,
@@ -533,6 +531,49 @@ def collect_evidence(
         "scoreBlockers": score_blockers(checks),
         "blockers": [*_all_blockers(checks), *score_blockers(checks)],
     }
+
+
+def github_pr_context_evidence(
+    args: argparse.Namespace, *, runner: Runner = run
+) -> list[dict[str, object]]:
+    """Return PR evidence when available, or mark PR-only gates not applicable."""
+    if args.pr is not None:
+        return [
+            github_pr_checks(args.repo, args.pr, runner=runner),
+            github_pr_local_state(args.repo, args.pr, args.root_dir, runner=runner),
+            github_review_threads(args.repo, args.pr, runner=runner),
+        ]
+
+    return [
+        _not_applicable_pr_check(
+            "github_pr_checks",
+            args.branch,
+            "No pull request number is available in this branch evidence context.",
+        ),
+        _not_applicable_pr_check(
+            "github_pr_local_state",
+            args.branch,
+            "Local PR head comparison only applies to pull request evidence.",
+        ),
+        _not_applicable_pr_check(
+            "github_review_threads",
+            args.branch,
+            "Review-thread evidence only applies to pull request evidence.",
+        ),
+    ]
+
+
+def _not_applicable_pr_check(name: str, branch: str, reason: str) -> dict[str, object]:
+    """Return a normalized branch-context result for PR-only evidence checks."""
+    return _check(
+        name,
+        status="not_applicable",
+        evidence={
+            "branch": branch,
+            "reason": reason,
+            "scope": "branch",
+        },
+    )
 
 
 def render_markdown_report(report: dict[str, Any]) -> str:
