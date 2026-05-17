@@ -212,6 +212,12 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     actions = {
         action for statement in policy["Statement"] for action in statement["Action"]
     }
+    allow_actions = {
+        action
+        for statement in policy["Statement"]
+        if statement["Effect"] == "Allow"
+        for action in statement["Action"]
+    }
     statements = {statement["Sid"]: statement for statement in policy["Statement"]}
     split_documents = automation._automation_policy_documents(
         "123456789012",
@@ -252,6 +258,8 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "cloudtrail:CreateTrail" in actions  # nosec B101
     assert "sns:CreateTopic" in actions  # nosec B101
     assert "sqs:CreateQueue" in actions  # nosec B101
+    assert "sqs:ReceiveMessage" not in allow_actions  # nosec B101
+    assert "sqs:DeleteMessage" not in allow_actions  # nosec B101
     assert "budgets:ModifyBudget" in actions  # nosec B101
     assert "budgets:DescribeBudget" in actions  # nosec B101
     assert "ce:CreateAnomalyMonitor" in actions  # nosec B101
@@ -289,6 +297,27 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == "*"  # nosec B101
     assert statements["ManageBootstrapSqs"]["Resource"] == [  # nosec B101
         "arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"
+    ]
+    assert statements["DenyBootstrapSqsConsumption"] == {  # nosec B101
+        "Sid": "DenyBootstrapSqsConsumption",
+        "Effect": "Deny",
+        "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage"],
+        "Resource": ["arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"],
+    }
+    alert_triage_policy = json.loads(
+        automation._operations_alert_triage_policy("123456789012", config.settings)
+    )
+    assert alert_triage_policy["Statement"] == [  # nosec B101
+        {
+            "Sid": "ConsumeOperationsAlertQueue",
+            "Effect": "Allow",
+            "Action": [
+                "sqs:GetQueueUrl",
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+            ],
+            "Resource": ["arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"],
+        }
     ]
     assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
         "arn:aws:budgets::123456789012:budget/bootstrap-test-*"
@@ -488,3 +517,17 @@ def test_mutation_target_github_oidc_role_name_limits_length():
 
 def test_mutation_target_github_oidc_truncation_keeps_digest():
     assert github_oidc._role_name_for_suffix("repo-short") == "PulumiDeploy-repo-short"  # nosec B101
+
+
+def test_mutation_target_operations_alert_triage_role_name_limits_length(monkeypatch):
+    monkeypatch.setattr(config.settings, "environment", "test")
+
+    assert (  # nosec B101
+        automation._operations_alert_triage_role_name(
+            config.settings,
+            "bootstrap-infrastructure",
+        )
+        == "OperationsAlertTriage-bootstrap-infrastructure-test"
+    )
+    with pytest.raises(ValueError, match="operations alert triage role name"):
+        automation._operations_alert_triage_role_name(config.settings, "a" * 40)

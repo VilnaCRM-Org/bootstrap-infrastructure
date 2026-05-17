@@ -1231,10 +1231,17 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         future_output(automation_resource.repository.repository_url)
     )
     role_arn = _sync_await(future_output(automation_resource.role.arn))
+    triage_role_arn = _sync_await(
+        future_output(automation_resource.operations_alert_triage_role.arn)
+    )
     assert repository_url is not None  # nosec B101
     assert role_arn is not None  # nosec B101
+    assert triage_role_arn is not None  # nosec B101
     assert repository_url.endswith("/pulumi-runner/bootstrap-infrastructure-test")  # nosec B101
     assert role_arn.endswith(":role/PulumiAutomation-bootstrap-infrastructure-test")  # nosec B101
+    assert triage_role_arn.endswith(  # nosec B101
+        ":role/OperationsAlertTriage-bootstrap-infrastructure-test"
+    )
 
     new_resources = pulumi_mocks.resources[start:]
     repository_type, _, repository_state = next(
@@ -1247,6 +1254,12 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         for type_, name, state in new_resources
         if type_ == "aws:iam/role:Role"
         and state.get("name") == "PulumiAutomation-bootstrap-infrastructure-test"
+    )
+    triage_role_type, _, triage_role_state = next(
+        (type_, name, state)
+        for type_, name, state in new_resources
+        if type_ == "aws:iam/role:Role"
+        and state.get("name") == "OperationsAlertTriage-bootstrap-infrastructure-test"
     )
     policy_names = [
         "github-automation-policy",
@@ -1270,10 +1283,20 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert repository_state["imageTagMutability"] == "IMMUTABLE"  # nosec B101
     assert repository_state["imageScanningConfiguration"]["scanOnPush"] is True  # nosec B101
     assert role_type == "aws:iam/role:Role"  # nosec B101
+    assert triage_role_type == "aws:iam/role:Role"  # nosec B101
     assert (
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
         in role_state["assumeRolePolicy"]
     )  # nosec B101
+    assert (  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
+        in triage_role_state["assumeRolePolicy"]
+    )
+    assert (  # nosec B101
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "operations-alert-triage.yml@refs/heads/main"
+        in triage_role_state["assumeRolePolicy"]
+    )
     assert (  # nosec B101
         len(policy_states[0]["policy"].encode("utf-8"))
         <= automation.IAM_ROLE_INLINE_POLICY_MAX_BYTES
@@ -1309,6 +1332,10 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "arn:aws:iam::123456789012:role/PulumiAutomation-"
         "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
     )
+    assert (  # nosec B101
+        "arn:aws:iam::123456789012:role/OperationsAlertTriage-"
+        "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
+    )
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
         "arn:aws:s3:::pulumi-*-test-state-*-replication",
@@ -1323,6 +1350,13 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         for statement in document["Statement"]
         for action in statement["Action"]
     }
+    all_allow_actions = {
+        action
+        for document in automation_policies
+        for statement in document["Statement"]
+        if statement["Effect"] == "Allow"
+        for action in statement["Action"]
+    }
     assert "kms:Decrypt" not in all_actions  # nosec B101
     assert "kms:Encrypt" not in all_actions  # nosec B101
     assert "kms:GenerateDataKey" not in all_actions  # nosec B101
@@ -1330,6 +1364,8 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert "cloudtrail:*" not in all_actions  # nosec B101
     assert "cloudtrail:CreateTrail" in all_actions  # nosec B101
     assert "cloudtrail:DescribeTrails" in all_actions  # nosec B101
+    assert "sqs:ReceiveMessage" not in all_allow_actions  # nosec B101
+    assert "sqs:DeleteMessage" not in all_allow_actions  # nosec B101
     assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
         "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
     ]
@@ -1350,6 +1386,29 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert statements["ManageBootstrapSnsSubscriptions"]["Action"] == [  # nosec B101
         "sns:GetSubscriptionAttributes",
         "sns:Unsubscribe",
+    ]
+    assert statements["DenyBootstrapSqsConsumption"] == {  # nosec B101
+        "Sid": "DenyBootstrapSqsConsumption",
+        "Effect": "Deny",
+        "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage"],
+        "Resource": ["arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"],
+    }
+    triage_policy_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-automation-operations-alert-triage-policy",
+    )
+    triage_policy = json.loads(triage_policy_state["policy"])
+    assert triage_policy["Statement"] == [  # nosec B101
+        {
+            "Sid": "ConsumeOperationsAlertQueue",
+            "Effect": "Allow",
+            "Action": [
+                "sqs:GetQueueUrl",
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+            ],
+            "Resource": ["arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"],
+        }
     ]
     assert statements["ManageBootstrapBudgets"]["Resource"] == [  # nosec B101
         "arn:aws:budgets::123456789012:budget/bootstrap-test-*"

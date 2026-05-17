@@ -21,6 +21,7 @@ Each privileged environment should define these variables as applicable:
 | `AWS_PREVIEW_ROLE_ARN` | Preview and IAM validation role |
 | `AWS_APPLY_ROLE_ARN` | Apply role for `test` and `prod` |
 | `AWS_DRIFT_ROLE_ARN` | Drift role |
+| `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` | Dedicated role for operations alert issue triage |
 | `PULUMI_BACKEND_URL` | Account-local Pulumi backend |
 | `PULUMI_SECRETS_PROVIDER` | AWS KMS Pulumi secrets provider URI |
 | `PULUMI_PREVIEW_STACKS` | Explicit preview stack list |
@@ -45,6 +46,8 @@ GitHub environment through job-level `env:`. That keeps the assumed account
 preflight-validated and prevents a workflow from assuming a role in the wrong
 account. Store role ARNs as job or workflow environment variables, not
 repository-wide variables, when they differ by account or purpose.
+The operations alert triage role should also trust only
+`.github/workflows/operations-alert-triage.yml` on the protected main branch.
 
 ## Production Protection
 

@@ -1,0 +1,36 @@
+{
+  "accountEvidence": {
+    "accountAccessKeysPresent": 0,
+    "accountMfaEnabled": 1,
+    "activeUserAccessKeyCount": 0,
+    "activeUserAccessKeyCreateDateUnknownCount": 0,
+    "activeUserAccessKeyLastUsedOlderThan90DaysCount": 0,
+    "activeUserAccessKeyLastUsedUnknownCount": 0,
+    "activeUserAccessKeyLastUsedWithin90DaysCount": 0,
+    "activeUserAccessKeyNeverUsedCount": 0,
+    "activeUserAccessKeyOlderThan90DaysCount": 0,
+    "discoveredUserCount": 4,
+    "inactiveUserAccessKeyCount": 0,
+    "mfaDeviceCount": 1,
+    "mfaDevicesInUse": 1,
+    "otherUserAccessKeyStatusCount": 0,
+    "summaryUserCount": 4,
+    "unreadableAccessKeyLastUsedCount": 0,
+    "unreadableAccessKeyUserCount": 0,
+    "usersWithActiveAccessKeys": 0
+  },
+  "activeKeyDecision": "no_active_keys",
+  "approval": "approved",
+  "approvedBy": "Kravalg",
+  "environment": "test",
+  "evidence": [
+    "IAM user access keys were removed from the test account; IAM users have no console login profiles, GitHub Actions uses environment-scoped OIDC roles, and scoped automation policies plus policy-pack/IAM validation replace the prior permissions-boundary exemption for this no-runtime bootstrap workload."
+  ],
+  "expiresAt": "2026-08-17T00:00:00Z",
+  "humanAccessPosture": "approved",
+  "owner": "Kravalg",
+  "permissionsBoundaryDecision": "not_required",
+  "remediationPlan": "IAM user access keys were removed from the test account; IAM users have no console login profiles, GitHub Actions uses environment-scoped OIDC roles, and scoped automation policies plus policy-pack/IAM validation replace the prior permissions-boundary exemption for this no-runtime bootstrap workload.",
+  "reviewedAt": "2026-05-17",
+  "workload": "bootstrap-infrastructure"
+}

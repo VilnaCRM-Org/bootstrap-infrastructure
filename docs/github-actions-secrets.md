@@ -33,6 +33,7 @@ differs between test and production.
 | `AWS_REGION` | Region used by `configure-aws-credentials` and Pulumi | Optional only when the workflow has a safe default |
 | `AWS_PREVIEW_ROLE_ARN` | OIDC role used by preview, IAM validation, and drift jobs | Required for `test` and `prod-preview` |
 | `AWS_APPLY_ROLE_ARN` | OIDC role used by apply jobs | Required only for `test` and `prod` |
+| `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` | Dedicated OIDC role used only by operations alert issue triage | Required for `test` when alert triage is enabled |
 | `PULUMI_BACKEND_URL` | Account-specific shared Pulumi backend | Required for privileged jobs |
 | `PULUMI_SECRETS_PROVIDER` | AWS KMS Pulumi secrets provider URI | Required; use an `awskms://...` URI |
 | `PULUMI_PREVIEW_STACKS` | Comma-separated stack list for preview jobs | Use `test` in `test`; use `prod` in `prod-preview` |
@@ -67,9 +68,9 @@ than a passphrase-managed stack secret flow.
 ## OIDC role setup
 
 1. Create an IAM OIDC identity provider for `https://token.actions.githubusercontent.com` in each AWS account if it does not already exist.
-2. Create separate preview and apply roles where the environment needs both.
+2. Create separate preview, apply, and operations alert triage roles where the environment needs them.
 3. Scope trust policies to this repository, the `sts.amazonaws.com` audience, and the relevant GitHub environment subject.
-4. Store the role ARNs as `AWS_PREVIEW_ROLE_ARN` or `AWS_APPLY_ROLE_ARN` in the matching GitHub environment.
+4. Store the role ARNs as `AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, or `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` in the matching GitHub environment.
 5. Configure workflows to use `allowed-account-ids` with `AWS_ACCOUNT_ID`.
 
 See the dedicated [CI guardrails guide](ci-guardrails.md) for an example trust policy and the documented `sub` claim formats.
@@ -82,6 +83,9 @@ repo:VilnaCRM-Org/bootstrap-infrastructure:environment:<environment>
 
 Use `environment:test`, `environment:prod-preview`, or `environment:prod` as
 appropriate. Avoid broad branch-only trust for production apply roles.
+The operations alert triage role should also bind
+`token.actions.githubusercontent.com:job_workflow_ref` to
+`VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/operations-alert-triage.yml@refs/heads/main`.
 
 ## Release Automation Secrets
 

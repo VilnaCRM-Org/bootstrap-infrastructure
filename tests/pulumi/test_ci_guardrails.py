@@ -481,7 +481,7 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
     alert_route_evidence = (
         "${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE || "
         "'specs/issue-17-well-architected-5-of-5/"
-        "alert-route-observation-2026-05-17.json' }}"
+        "alert-route-observation-2026-05-17-approved.json' }}"
     )
     assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["ALERT_ROUTE_OBSERVATION_EVIDENCE"]
@@ -490,7 +490,7 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
     security_attestation_evidence = (
         "${{ vars.SECURITY_ACCOUNT_ATTESTATION_EVIDENCE || "
         "'specs/issue-17-well-architected-5-of-5/"
-        "security-account-attestation-2026-05-17.json' }}"
+        "security-account-attestation-2026-05-17-approved.json' }}"
     )
     assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["SECURITY_ACCOUNT_ATTESTATION_EVIDENCE"]
