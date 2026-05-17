@@ -117,5 +117,9 @@ if bootstrap_requested:
 
     if bootstrap.automation is not None:
         pulumi.export("automationRoleArn", bootstrap.outputs["automationRoleArn"])
+        pulumi.export(
+            "operationsAlertTriageRoleArn",
+            bootstrap.outputs["operationsAlertTriageRoleArn"],
+        )
         pulumi.export("runnerRepositoryName", bootstrap.outputs["runnerRepositoryName"])
         pulumi.export("runnerRepositoryUrl", bootstrap.outputs["runnerRepositoryUrl"])

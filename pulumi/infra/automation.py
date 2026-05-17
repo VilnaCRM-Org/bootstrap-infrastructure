@@ -61,6 +61,7 @@ _AUTOMATION_MANAGED_POLICY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
                 "ManageBootstrapSns",
                 "ManageBootstrapSnsSubscriptions",
                 "ManageBootstrapSqs",
+                "DenyBootstrapSqsConsumption",
             }
         ),
     ),
@@ -256,6 +257,15 @@ _AUTOMATION_SQS_ACTIONS = (
     "sqs:TagQueue",
     "sqs:UntagQueue",
 )
+_OPERATIONS_ALERT_TRIAGE_SQS_ACTIONS = (
+    "sqs:GetQueueUrl",
+    "sqs:ReceiveMessage",
+    "sqs:DeleteMessage",
+)
+_OPERATIONS_ALERT_TRIAGE_CONSUME_ACTIONS = (
+    "sqs:ReceiveMessage",
+    "sqs:DeleteMessage",
+)
 _AUTOMATION_BUDGETS_ACTIONS = (
     "budgets:ModifyBudget",
     "budgets:DescribeBudget",
@@ -402,11 +412,14 @@ def _resource_options(
     parent: pulumi.Resource,
     *,
     import_id: str | None = None,
+    depends_on: list[pulumi.Resource] | None = None,
 ) -> pulumi.ResourceOptions:
     """Build consistent resource options for automation resources."""
     kwargs: dict[str, object] = {"parent": parent}
     if import_id is not None:
         kwargs["import_"] = import_id
+    if depends_on is not None:
+        kwargs["depends_on"] = depends_on
     return pulumi.ResourceOptions(**kwargs)
 
 
@@ -458,8 +471,13 @@ def _automation_iam_role_resources(
 ) -> list[str]:
     """Scope IAM management to deterministic bootstrap role families."""
     automation_role_name = settings.automation_role_name(repo_name)
+    operations_alert_triage_role_name = _operations_alert_triage_role_name(
+        settings,
+        repo_name,
+    )
     return [
         f"arn:aws:iam::{account_id}:role/{automation_role_name}",
+        f"arn:aws:iam::{account_id}:role/{operations_alert_triage_role_name}",
         f"arn:aws:iam::{account_id}:role/PulumiDeploy-*",
         f"arn:aws:iam::{account_id}:role/PulumiStateRepl-*",
         f"arn:aws:iam::{account_id}:role/central-logging-replication-role-*",
@@ -593,6 +611,85 @@ def _automation_assume_role_policy(
                             ),
                         }
                     },
+                }
+            ],
+        }
+    )
+
+
+def _operations_alert_triage_role_name(
+    settings: BootstrapSettings,
+    repo_name: str,
+) -> str:
+    """Compute the dedicated operations-alert triage role name."""
+    repo_part = settings.sanitize_bucket_component(repo_name, "repoSlug").replace(
+        ".",
+        "-",
+    )
+    env_part = settings.sanitize_bucket_component(
+        settings.environment,
+        "environment",
+    ).replace(".", "-")
+    name = f"OperationsAlertTriage-{repo_part}-{env_part}"
+    if len(name) > 64:
+        raise ValueError(
+            "Combined repo/environment produce operations alert triage role name "
+            f"'{name}' longer than 64 characters."
+        )
+    return name
+
+
+def _operations_alert_triage_assume_role_policy(
+    oidc_provider_arn: str,
+    org: str,
+    repo_name: str,
+    environment: str,
+    branch_name: str,
+) -> str:
+    """Build the OIDC trust policy for the alert triage workflow only."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Federated": oidc_provider_arn},
+                    "Action": "sts:AssumeRoleWithWebIdentity",
+                    "Condition": {
+                        "StringEquals": {
+                            "token.actions.githubusercontent.com:aud": (
+                                "sts.amazonaws.com"
+                            ),
+                            "token.actions.githubusercontent.com:sub": (
+                                f"repo:{org}/{repo_name}:environment:{environment}"
+                            ),
+                            "token.actions.githubusercontent.com:job_workflow_ref": (
+                                f"{org}/{repo_name}/.github/workflows/"
+                                "operations-alert-triage.yml"
+                                f"@refs/heads/{branch_name}"
+                            ),
+                        }
+                    },
+                }
+            ],
+        }
+    )
+
+
+def _operations_alert_triage_policy(
+    account_id: str,
+    settings: BootstrapSettings,
+) -> str:
+    """Return the least-privilege SQS consume policy for alert triage."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "ConsumeOperationsAlertQueue",
+                    "Effect": "Allow",
+                    "Action": list(_OPERATIONS_ALERT_TRIAGE_SQS_ACTIONS),
+                    "Resource": _automation_sqs_resources(account_id, settings),
                 }
             ],
         }
@@ -818,6 +915,12 @@ def _automation_policy(
                     "Sid": "ManageBootstrapSqs",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_SQS_ACTIONS),
+                    "Resource": _automation_sqs_resources(account_id, settings),
+                },
+                {
+                    "Sid": "DenyBootstrapSqsConsumption",
+                    "Effect": "Deny",
+                    "Action": list(_OPERATIONS_ALERT_TRIAGE_CONSUME_ACTIONS),
                     "Resource": _automation_sqs_resources(account_id, settings),
                 },
                 {
@@ -1271,6 +1374,54 @@ def _create_automation_role_policies(
     return inline_policy, managed_policies, policy_attachments
 
 
+def _create_operations_alert_triage_role(
+    context: AutomationResourceContext,
+    provider_arn: pulumi.Input[str],
+    *,
+    depends_on: list[pulumi.Resource],
+) -> tuple[aws.iam.Role, aws.iam.RolePolicy]:
+    """Create the dedicated GitHub Actions role that drains alert messages."""
+    role_name = _operations_alert_triage_role_name(context.settings, context.repo_name)
+    branch_name = context.settings.github_branch or "main"
+    role = aws.iam.Role(
+        f"{context.name}-operations-alert-triage-role",
+        name=role_name,
+        assume_role_policy=apply_output(
+            pulumi.Output.from_input(provider_arn),
+            lambda arn: _operations_alert_triage_assume_role_policy(
+                arn,
+                context.settings.org,
+                context.repo_name,
+                context.settings.environment,
+                branch_name,
+            ),
+        ),
+        tags=_automation_tags(
+            context.settings,
+            context.repo_name,
+            context.repo_project,
+            "operations-alert-triage",
+        ),
+        opts=_resource_options(
+            context.parent,
+            import_id=role_name if _iam_role_exists(role_name) else None,
+            depends_on=depends_on,
+        ),
+    )
+    policy_name = f"{context.name}-operations-alert-triage-policy"
+    role_policy = aws.iam.RolePolicy(
+        policy_name,
+        name=policy_name,
+        role=role.id,
+        policy=_operations_alert_triage_policy(
+            aws.get_caller_identity().account_id,
+            context.settings,
+        ),
+        opts=pulumi.ResourceOptions(parent=context.parent),
+    )
+    return role, role_policy
+
+
 class GitHubAutomation(pulumi.ComponentResource):
     """Provision the ECR runner repository and GitHub automation role."""
 
@@ -1316,20 +1467,31 @@ class GitHubAutomation(pulumi.ComponentResource):
                 role,
             )
         )
+        policy_dependencies = [inline_policy, *policy_attachments]
+        operations_alert_triage_role, operations_alert_triage_policy = (
+            _create_operations_alert_triage_role(
+                resource_context,
+                provider_arn,
+                depends_on=policy_dependencies,
+            )
+        )
 
         self.repository = repository
         self.role = role
+        self.operations_alert_triage_role = operations_alert_triage_role
         self.policy = inline_policy
+        self.operations_alert_triage_policy = operations_alert_triage_policy
         self.managed_policies = managed_policies
         self.policies = [inline_policy, *managed_policies]
         self.policy_attachments = policy_attachments
-        self.policy_dependencies = [inline_policy, *policy_attachments]
+        self.policy_dependencies = policy_dependencies
 
         self.register_outputs(
             {
                 "repository_name": repository.name,
                 "repository_url": repository.repository_url,
                 "role_arn": role.arn,
+                "operations_alert_triage_role_arn": (operations_alert_triage_role.arn),
                 "policy_name": self.policy.name,
                 "policy_names": [policy.name for policy in self.policies],
                 "managed_policy_arns": [policy.arn for policy in managed_policies],

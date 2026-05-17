@@ -165,6 +165,9 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             self.outputs.update(
                 {
                     "automationRoleArn": self.automation.role.arn,
+                    "operationsAlertTriageRoleArn": (
+                        self.automation.operations_alert_triage_role.arn
+                    ),
                     "runnerRepositoryName": self.automation.repository.name,
                     "runnerRepositoryUrl": self.automation.repository.repository_url,
                 }

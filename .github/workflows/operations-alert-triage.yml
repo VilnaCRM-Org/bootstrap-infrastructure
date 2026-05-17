@@ -1,0 +1,181 @@
+name: Operations Alert Issue Triage
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage_operations_alerts:
+    name: Triage Operations Alerts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: test
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+      AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN: ${{ vars.AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN }}
+      GH_TOKEN: ${{ github.token }}
+      OPERATIONS_ALERT_QUEUE_NAME: ${{ vars.OPERATIONS_ALERT_QUEUE_NAME || 'bootstrap-test-operations-alerts' }}
+    steps:
+      - name: Validate triage prerequisites
+        run: |
+          missing=()
+          for name in \
+            AWS_ACCOUNT_ID \
+            AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN \
+            OPERATIONS_ALERT_QUEUE_NAME; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            printf 'error: operations alert triage is missing %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
+            echo "error: AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ env.AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN }}
+          role-session-name: gha-operations-alert-triage-${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+
+      - name: Create GitHub issue for queued operations alerts
+        env:
+          GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+        run: |
+          queue_url="$(
+            aws sqs get-queue-url \
+              --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
+              --query QueueUrl \
+              --output text
+          )"
+          alerts_json="$(mktemp)"
+          page_json="$(mktemp)"
+          next_alerts_json="$(mktemp)"
+          printf '{"Messages":[]}\n' > "${alerts_json}"
+
+          receive_pages=0
+          max_receive_pages=50
+          while [[ "${receive_pages}" -lt "${max_receive_pages}" ]]; do
+            aws sqs receive-message \
+              --queue-url "${queue_url}" \
+              --max-number-of-messages 10 \
+              --wait-time-seconds 10 \
+              --attribute-names SentTimestamp \
+              --output json > "${page_json}"
+
+            page_count="$(jq '.Messages | length' "${page_json}")"
+            if [[ "${page_count}" -eq 0 ]]; then
+              break
+            fi
+
+            jq -s '{"Messages": ((.[0].Messages // []) + (.[1].Messages // []))}' \
+              "${alerts_json}" \
+              "${page_json}" > "${next_alerts_json}"
+            mv "${next_alerts_json}" "${alerts_json}"
+            next_alerts_json="$(mktemp)"
+            receive_pages="$((receive_pages + 1))"
+          done
+
+          alert_count="$(jq '.Messages | length' "${alerts_json}")"
+          if [[ "${alert_count}" -eq 0 ]]; then
+            echo "No operations alert messages are currently queued."
+            exit 0
+          fi
+          if [[ "${receive_pages}" -eq "${max_receive_pages}" ]]; then
+            printf 'Reached receive page limit after collecting %s operations alert message(s).\n' "${alert_count}"
+          fi
+
+          body_file="$(mktemp)"
+          {
+            printf 'The operations alert queue contains %s message(s).\n\n' "${alert_count}"
+            printf 'This issue intentionally records sanitized metadata only. Use the message IDs, event source, detail type, event time, CloudTrail, and linked runbooks for investigation; do not paste raw alert payloads, stack exports, credentials, tokens, or private incident notes.\n\n'
+            printf 'Queue: <code>%s</code>\n' "${OPERATIONS_ALERT_QUEUE_NAME}"
+            printf 'AWS account: <code>%s</code>\n' "${AWS_ACCOUNT_ID}"
+            printf 'AWS region: <code>%s</code>\n\n' "${AWS_REGION}"
+            printf 'Messages:\n'
+            python - "${alerts_json}" <<'PY'
+          import json
+          import sys
+
+
+          def load_json(value):
+              if isinstance(value, dict):
+                  return value
+              if not isinstance(value, str) or not value:
+                  return {}
+              try:
+                  loaded = json.loads(value)
+              except json.JSONDecodeError:
+                  return {}
+              return loaded if isinstance(loaded, dict) else {}
+
+
+          def safe_value(value):
+              if value in (None, ""):
+                  return "unknown"
+              text = str(value).replace("`", "'").replace("\n", " ")
+              return text[:200]
+
+
+          with open(sys.argv[1], encoding="utf-8") as alerts_file:
+              alerts = json.load(alerts_file)
+
+          for message in alerts.get("Messages", []):
+              sns = load_json(message.get("Body"))
+              event = load_json(sns.get("Message"))
+              attributes = message.get("Attributes") or {}
+              fields = {
+                  "sqsMessageId": message.get("MessageId"),
+                  "snsMessageId": sns.get("MessageId"),
+                  "sentTimestamp": attributes.get("SentTimestamp"),
+                  "eventSource": event.get("source"),
+                  "detailType": event.get("detail-type"),
+                  "eventTime": event.get("time") or sns.get("Timestamp"),
+              }
+              rendered = ", ".join(
+                  f"{name}: `{safe_value(value)}`"
+                  for name, value in fields.items()
+              )
+              print(f"- {rendered}")
+          PY
+          } > "${body_file}"
+
+          issue_url="$(
+            gh issue create \
+              --repo "${GITHUB_REPOSITORY_NAME}" \
+              --title "Operations alerts queued: ${alert_count} message(s)" \
+              --body-file "${body_file}"
+          )"
+          printf 'Created operations alert issue: %s\n' "${issue_url}"
+
+          jq -r '.Messages[].ReceiptHandle' "${alerts_json}" |
+            while IFS= read -r receipt_handle; do
+              aws sqs delete-message \
+                --queue-url "${queue_url}" \
+                --receipt-handle "${receipt_handle}"
+            done

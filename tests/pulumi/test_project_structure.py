@@ -146,6 +146,7 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
         "costAnomalyMonitorArn",
         "costAnomalySubscriptionArn",
         "automationRoleArn",
+        "operationsAlertTriageRoleArn",
         "runnerRepositoryName",
         "runnerRepositoryUrl",
     ):

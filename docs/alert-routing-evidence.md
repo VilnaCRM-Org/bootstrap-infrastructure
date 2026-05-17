@@ -65,11 +65,30 @@ with `NotAuthorizedForSourceException`, so EventBridge-to-SNS coverage remains
 validated by live rule/target metadata and Pulumi component tests rather than
 service-event injection.
 
+## Human Consumption Route
+
+Operations alerts are consumed by the scheduled
+`.github/workflows/operations-alert-triage.yml` workflow. The workflow assumes
+the dedicated test account operations alert triage role through GitHub OIDC,
+reads metadata-only messages from `bootstrap-test-operations-alerts`, creates a
+GitHub issue in
+`VilnaCRM-Org/bootstrap-infrastructure` with sanitized SNS/EventBridge source,
+detail type, and event-time metadata, and deletes messages only after the issue
+is created. It must not write raw alert payloads, stack exports, credentials,
+tokens, or private incident notes to GitHub.
+The shared Pulumi automation role carries an explicit deny for alert-queue
+`sqs:ReceiveMessage` and `sqs:DeleteMessage`; only the dedicated triage role
+may drain alert messages.
+
+The durable SQS queue remains the delivery buffer and fallback path; GitHub
+issues are the human review route for maintainers.
+
 ## Queue Consumption Metadata
 
 A non-secret route metadata refresh on 2026-05-10 UTC confirmed that the
-repository-owned durable queue exists, but it also confirmed that human
-consumption is still not proven:
+repository-owned durable queue exists. The scheduled GitHub issue triage
+workflow provides the human consumption route, while queue depth remains
+volatile observation metadata:
 
 | Check | Result |
 | --- | --- |
@@ -80,19 +99,18 @@ consumption is still not proven:
 | Queue retention | `MessageRetentionPeriod=345600` and `VisibilityTimeout=30`. |
 
 The visible queue depth is useful operating evidence when it shows why a
-queue-owner process is required, but it is volatile. It is not sufficient OPS8
-evidence by itself: SRE still needs to record a downstream human route,
-ticket/paging/ChatOps subscriber, or explicitly approved queue-owner consumption
-process plus monthly observation history.
+maintainer issue route is required, but it is volatile. It is not sufficient
+OPS8 evidence by itself: SRE still needs to retain the scheduled workflow
+history, generated GitHub issues, or a current fallback observation record.
 
 ## Monthly Observation Record
 
 The `Well-Architected Evidence` workflow now runs on pull requests, pushes to
 `main`, manual dispatch, and a monthly schedule on the ninth day of the month.
 Scheduled runs remain advisory even if evidence enforcement is enabled, upload
-the metadata-only evidence bundle, and retain the artifact for 90 days. This
-creates a recurring source of non-secret alert-route metadata, but it still
-does not replace the human route owner decision required for OPS8.
+the metadata-only evidence bundle, and retain the artifact for 90 days. The
+separate operations alert triage workflow creates GitHub issues from queued
+alert metadata every 30 minutes.
 
 After a scheduled or manual collector run, SRE can render a dated observation
 record from `.artifacts/well-architected/evidence.json`:

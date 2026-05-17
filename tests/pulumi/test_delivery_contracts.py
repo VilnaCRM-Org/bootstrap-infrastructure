@@ -710,6 +710,7 @@ def test_multi_account_workflows_use_environment_scoped_oidc_contracts() -> None
     preview_role = "${{ env.AWS_PREVIEW_ROLE_ARN }}"
     apply_role = "${{ env.AWS_APPLY_ROLE_ARN }}"
     drift_role = "${{ env.AWS_DRIFT_ROLE_ARN }}"
+    alert_triage_role = "${{ env.AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN }}"
     expected_contracts_by_job = {
         ("nightly-guardrails.yml", "test_drift_detection"): ("test", drift_role),
         ("nightly-guardrails.yml", "prod_drift_detection"): (
@@ -719,6 +720,10 @@ def test_multi_account_workflows_use_environment_scoped_oidc_contracts() -> None
         ("well-architected-evidence.yml", "test_account_evidence"): (
             "test",
             preview_role,
+        ),
+        ("operations-alert-triage.yml", "triage_operations_alerts"): (
+            "test",
+            alert_triage_role,
         ),
         ("pulumi-pr-guardrails.yml", "preview"): ("test", preview_role),
         ("pulumi-pr-guardrails.yml", "iam_validation"): ("test", preview_role),
@@ -884,6 +889,7 @@ def test_multi_account_environment_docs_are_explicit() -> None:
         "AWS_PREVIEW_ROLE_ARN",
         "AWS_APPLY_ROLE_ARN",
         "AWS_DRIFT_ROLE_ARN",
+        "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN",
         "PULUMI_BACKEND_URL",
         "PULUMI_SECRETS_PROVIDER",
     ):

@@ -1,0 +1,35 @@
+{
+  "approvedBy": "Kravalg",
+  "decision": "approved",
+  "downstreamRoute": "Scheduled GitHub Actions workflow .github/workflows/operations-alert-triage.yml assumes the dedicated test OIDC operations-alert triage role, creates GitHub issues from sanitized SQS/SNS/EventBridge alert metadata, and deletes messages only after issue creation; smoke test routed messages to issues #39, #40, #41, and #42.",
+  "environment": "test",
+  "evidence": [
+    "Implemented scheduled GitHub issue triage for the operations alert queue, granted scoped SQS consume permissions to a dedicated test OIDC operations-alert triage role, explicitly denied alert-queue consumption from the shared automation role, and performed a metadata-only smoke test that created and closed handled test-alert issues #39-#42."
+  ],
+  "expiresAt": "2026-08-17T00:00:00Z",
+  "fallback": "If scheduled issue triage fails or GitHub issue creation is unavailable, inspect bootstrap-test-operations-alerts manually, create a metadata-only GitHub issue, and keep OPS8 blocked until the workflow route is restored.",
+  "owner": "SRE",
+  "queueObservation": {
+    "delayedMessages": 0,
+    "notVisibleMessages": 0,
+    "visibleMessages": 0
+  },
+  "remediationPlan": "Implemented scheduled GitHub issue triage for the operations alert queue, granted scoped SQS consume permissions to a dedicated test OIDC operations-alert triage role, explicitly denied alert-queue consumption from the shared automation role, and performed a metadata-only smoke test that created and closed handled test-alert issues #39-#42.",
+  "reviewedAt": "2026-05-17",
+  "routeEvidence": {
+    "encrypted": true,
+    "sqsQueue": {
+      "messageRetentionSeconds": 345600,
+      "queueArn": "arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts",
+      "queueName": "bootstrap-test-operations-alerts",
+      "visibilityTimeoutSeconds": 30
+    },
+    "subscriptionCount": 1,
+    "subscriptionProtocols": [
+      "sqs"
+    ],
+    "topicArn": "arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations"
+  },
+  "severityExpectations": "SEV1/SEV2 control-plane, backup, KMS, IAM/OIDC, S3, budget, and anomaly events are routed to GitHub issues for maintainer review, with the durable SQS queue retained as the fallback buffer.",
+  "workload": "bootstrap-infrastructure"
+}
