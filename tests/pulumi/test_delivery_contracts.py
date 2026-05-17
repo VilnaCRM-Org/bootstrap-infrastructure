@@ -914,6 +914,11 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     assert intake["permissions"] == {  # nosec B101
         "contents": "write",
         "issues": "write",
+        "pull-requests": "read",
+    }
+    assert intake["jobs"]["dispatch"]["permissions"] == {  # nosec B101
+        "contents": "write",
+        "issues": "write",
         "pull-requests": "write",
     }
     assert "scripts/pulumi_pr_comment.py" in intake_lines  # nosec B101
@@ -935,6 +940,14 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     assert runner["concurrency"]["cancel-in-progress"] is False  # nosec B101
     assert runner["permissions"] == {  # nosec B101
         "contents": "read",
+        "issues": "read",
+        "pull-requests": "read",
+    }
+    assert runner["jobs"]["preflight"]["permissions"] == {  # nosec B101
+        "issues": "write",
+        "pull-requests": "write",
+    }
+    assert runner["jobs"]["comment_result"]["permissions"] == {  # nosec B101
         "issues": "write",
         "pull-requests": "write",
     }

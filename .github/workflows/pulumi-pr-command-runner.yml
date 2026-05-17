@@ -42,14 +42,19 @@ defaults:
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: write
+  issues: read
+  pull-requests: read
 
 jobs:
   preflight:
     name: Preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      issues: write
+      # Rejection feedback is posted to the PR conversation; live QA showed
+      # GitHub rejects this with only issues: write on the Actions token.
+      pull-requests: write
     outputs:
       command: ${{ steps.resolve.outputs.command }}
       display_command: ${{ steps.resolve.outputs.display_command }}
@@ -768,6 +773,11 @@ jobs:
       - prod_apply
       - prod_post_apply_drift
     timeout-minutes: 10
+    permissions:
+      issues: write
+      # Result feedback is posted to the PR conversation; live QA showed
+      # GitHub rejects this with only issues: write on the Actions token.
+      pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
