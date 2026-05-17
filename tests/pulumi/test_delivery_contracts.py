@@ -914,6 +914,10 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
         "pull-requests": "read",
     }
     assert "scripts/pulumi_pr_comment.py" in intake_lines  # nosec B101
+    assert (
+        intake_lines.count('gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}"')
+        == 1
+    )  # nosec B101
     assert "event_type='pulumi-pr-command'" in intake_lines  # nosec B101
     assert "client_payload[head_sha]" in intake_lines  # nosec B101
     assert "head_repo == github.repository" in str(intake)  # nosec B101
@@ -936,6 +940,12 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     assert "actual_head_sha" in preflight_lines  # nosec B101
     assert "actual_head_repo" in preflight_lines  # nosec B101
     assert "actual_pr_state" in preflight_lines  # nosec B101
+    assert (
+        preflight_lines.count(
+            'gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}"'
+        )
+        == 1
+    )  # nosec B101
     assert "pull request is closed or merged" in preflight_lines  # nosec B101
     assert "pull request head moved after the command was queued" in preflight_lines  # nosec B101
 

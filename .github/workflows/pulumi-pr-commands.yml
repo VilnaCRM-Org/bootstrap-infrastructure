@@ -63,11 +63,12 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.issue.number }}
         run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           {
-            echo "head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
-            echo "head_repo=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name')"
-            echo "state=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
-            echo "merged=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merged')"
+            echo "head_sha=$(jq -r '.head.sha' <<< "${pr_json}")"
+            echo "head_repo=$(jq -r '.head.repo.full_name' <<< "${pr_json}")"
+            echo "state=$(jq -r '.state' <<< "${pr_json}")"
+            echo "merged=$(jq -r '.merged' <<< "${pr_json}")"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Reject closed or merged pull requests
