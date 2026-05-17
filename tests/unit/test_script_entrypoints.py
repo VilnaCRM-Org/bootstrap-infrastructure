@@ -8423,6 +8423,25 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
     assert applied_selected_plan  # nosec B101
 
     applied.clear()
+    monkeypatch.setattr(module, "discover_stacks", lambda *args: ["prod"])
+    (plan_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "createdAtEpoch": 1000,
+                "commitSha": "",
+                "backendUrl": "file:///tmp/backend",
+                "stacks": [
+                    {
+                        "stack": "prod",
+                        "planFile": ".artifacts/pulumi-plan/single.plan",
+                        "planSha256": hashlib.sha256(b"plan").hexdigest(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
 
     def decrypt_failure_run(command, **kwargs):
         applied.append(command)

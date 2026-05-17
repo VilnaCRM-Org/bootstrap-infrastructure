@@ -401,6 +401,13 @@ def _plan_decrypt_fallback_enabled(context: CommandContext) -> bool:
 def _run_up_plan_stack(
     context: CommandContext, stack: str, plan_path: Path
 ) -> int | None:
+    if stack != "prod":
+        _run_stack_command(
+            context,
+            StackCommand("up-plan", stack, plan_path=plan_path),
+        )
+        return None
+
     result = context.runner(
         _pulumi_command(context, StackCommand("up-plan", stack, plan_path=plan_path)),
         env=context.env,
