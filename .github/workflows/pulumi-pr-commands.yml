@@ -52,8 +52,13 @@ jobs:
           steps.parse.outputs.skip != 'true' &&
           steps.parse.outputs.authorized != 'true'
         run: |
-          gh pr comment "${{ github.event.issue.number }}" \
-            --body "Pulumi PR commands are restricted to repository owners, members, and collaborators."
+          jq -n \
+            --arg body "Pulumi PR commands are restricted to repository owners, members, and collaborators." \
+            '{body: $body}' \
+            | gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
+              --input -
 
       - name: Resolve pull request metadata
         if: >-
@@ -77,8 +82,13 @@ jobs:
           steps.parse.outputs.authorized == 'true' &&
           (steps.pr.outputs.state != 'open' || steps.pr.outputs.merged == 'true')
         run: |
-          gh pr comment "${{ github.event.issue.number }}" \
-            --body "Pulumi PR commands are only accepted while the pull request is open and unmerged."
+          jq -n \
+            --arg body "Pulumi PR commands are only accepted while the pull request is open and unmerged." \
+            '{body: $body}' \
+            | gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
+              --input -
 
       - name: Reject forked pull requests
         if: >-
@@ -93,7 +103,11 @@ jobs:
           Pulumi PR commands are only enabled for branches in this repository.
           Forked pull requests are rejected to avoid exposing AWS credentials.
           EOF
-          gh pr comment "${{ github.event.issue.number }}" --body-file "${body_file}"
+          jq -Rs '{body: .}' < "${body_file}" \
+            | gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
+              --input -
 
       - name: Dispatch trusted runner
         if: >-
@@ -134,4 +148,8 @@ jobs:
             echo
             echo "A trusted runner workflow will re-check the PR head SHA before using AWS credentials."
           } > "${body_file}"
-          gh pr comment "${{ github.event.issue.number }}" --body-file "${body_file}"
+          jq -Rs '{body: .}' < "${body_file}" \
+            | gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
+              --input -
