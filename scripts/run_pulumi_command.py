@@ -63,6 +63,7 @@ PLAN_MANIFEST_NAME = "manifest.json"
 PLAN_MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_PLAN_MAX_AGE_SECONDS = 24 * 60 * 60
 PLAN_DECRYPT_ERROR = "decrypting secret value: cipher: message authentication failed"
+STACK_LOCK_ERROR = "the stack is currently locked"
 
 
 def _resolve_path(root_dir: Path, raw_path: str) -> Path:
@@ -431,6 +432,47 @@ def _run_up_plan_stack(
     return result.returncode or 1
 
 
+def _pulumi_cancel_command(context: CommandContext, stack: str) -> list[str]:
+    return [
+        "pulumi",
+        "-C",
+        str(context.pulumi_dir),
+        "cancel",
+        "--stack",
+        stack,
+        "--yes",
+    ]
+
+
+def _run_up_stack(context: CommandContext, stack: str) -> int | None:
+    if not _plan_decrypt_fallback_enabled(context):
+        _run_stack_command(context, StackCommand("up", stack))
+        return None
+
+    result = context.runner(
+        _pulumi_command(context, StackCommand("up", stack)),
+        env=context.env,
+        check=False,
+        capture_output=True,
+    )
+    _emit_completed_output(result)
+    if result.returncode == 0:
+        return None
+
+    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
+    if STACK_LOCK_ERROR in combined_output:
+        print(
+            "warning: Pulumi reported a stack lock during guarded direct apply; "
+            "running pulumi cancel for the selected stack and retrying once.",
+            file=sys.stderr,
+        )
+        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
+        _run_stack_command(context, StackCommand("up", stack))
+        return None
+
+    return result.returncode or 1
+
+
 def _run_up_plan_command(context: CommandContext, stacks: list[str]) -> int:
     selected_plan_file = context.env.get("PULUMI_PLAN_FILE")
     if selected_plan_file and len(stacks) > 1:
@@ -471,6 +513,11 @@ def _run_regular_command(
         select_failure = _select_or_init_stack(context, stack)
         if select_failure is not None:
             return select_failure
+        if command == "up":
+            up_failure = _run_up_stack(context, stack)
+            if up_failure is not None:
+                return up_failure
+            continue
         _run_stack_command(context, StackCommand(command, stack))
     return 0
 

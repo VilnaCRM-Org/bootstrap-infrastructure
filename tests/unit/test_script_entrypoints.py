@@ -8473,6 +8473,33 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
         command[3] == "up" and "--plan" not in command for command in applied
     )  # nosec B101
 
+    applied.clear()
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("PULUMI_EXPECTED_SHA", "b" * 40)
+    monkeypatch.setenv("PULUMI_STACK", "test")
+    up_attempts = 0
+
+    def locked_up_run(command, **kwargs):
+        nonlocal up_attempts
+        applied.append(command)
+        if command[0] == "pulumi" and command[3] == "up":
+            up_attempts += 1
+            if up_attempts == 1:
+                return subprocess.CompletedProcess(
+                    command,
+                    255,
+                    stdout="",
+                    stderr=module.STACK_LOCK_ERROR,
+                )
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", locked_up_run)
+    assert module.main(["up"]) == 0  # nosec B101
+    assert any(  # nosec B101
+        len(command) > 3 and command[3] == "cancel" for command in applied
+    )
+    assert up_attempts == 2  # nosec B101
+
     single_output = repo_dir / "single-output.txt"
     module._write_plan_outputs(
         str(single_output), [selected_plan], plan_dir, plan_dir / "manifest.json"
