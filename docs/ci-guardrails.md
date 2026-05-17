@@ -37,6 +37,7 @@ These checks are intended to be marked as required in branch protection:
 | `Policy` | `make test-policy` | Enforces the custom Pulumi CrossGuard policy pack |
 | `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
 | `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |
+| `Test Account Evidence` | `make report-well-architected-evidence` | Fails trusted PR and main evidence runs when final Well-Architected readiness is below 5/5 |
 
 `make test-security` aggregates Gitleaks, dependency audit, and Bandit.
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
@@ -271,10 +272,9 @@ aggregate only: do not emit user names or access key IDs.
 The `Well-Architected Evidence` workflow runs the same collector against the
 real test-account OIDC role for trusted PRs and pushes, uploads the JSON and
 Markdown artifacts, and appends the Markdown summary to the GitHub job summary.
-It is advisory while the external controls tracked in #26-#30 remain open; set
-`WELL_ARCHITECTED_EVIDENCE_ENFORCE=true` only after those blockers are closed
-and the collector exits cleanly. Fork PRs do not receive AWS credentials and
-record an unprivileged skip summary instead.
+The trusted PR and push path is enforced: non-scheduled runs fail when the
+collector exits non-zero. Fork PRs do not receive AWS credentials and record an
+unprivileged skip summary instead.
 The Make target only creates the output artifact paths; the Python collector
 reads the standard environment variables directly when the matching CLI flags
 are omitted. When set, `PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
@@ -376,7 +376,7 @@ The accepted shape is intentionally non-secret:
   "id": "branch_protection",
   "status": "passed",
   "evidence": [
-    "GitHub ruleset 13906584 requires Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions)."
+    "GitHub ruleset 13906584 requires Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), CodeQL (actions), and Test Account Evidence."
   ]
 }
 ```

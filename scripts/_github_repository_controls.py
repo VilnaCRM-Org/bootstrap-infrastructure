@@ -27,6 +27,7 @@ REQUIRED_STATUS_CHECKS = (
     "Policy",
     "CodeQL (python)",
     "CodeQL (actions)",
+    "Test Account Evidence",
 )
 
 
@@ -229,6 +230,21 @@ def environment_reviewer_ids(environment: Mapping[str, Any]) -> set[int]:
     return reviewer_ids
 
 
+def environment_prevents_self_review(environment: Mapping[str, Any]) -> bool:
+    """Return whether the required-reviewer rule prevents deployment self-review."""
+    if environment.get("prevent_self_review") is True:
+        return True
+    protection_rules = environment.get("protection_rules")
+    if not isinstance(protection_rules, list):
+        return False
+    return any(
+        isinstance(rule, Mapping)
+        and rule.get("type") == "required_reviewers"
+        and rule.get("prevent_self_review") is True
+        for rule in protection_rules
+    )
+
+
 def reviewer_ids_from_items(items: Sequence[object]) -> set[int]:
     """Return user IDs from reviewer objects in environment metadata."""
     reviewer_ids: set[int] = set()
@@ -253,7 +269,7 @@ def prod_environment_verification_blockers(
     if environment is None:
         return ["Production environment was not readable after apply."]
     blockers: list[str] = []
-    if environment.get("prevent_self_review") is not True:
+    if not environment_prevents_self_review(environment):
         blockers.append("Production environment does not prevent self-review.")
     branch_policy = environment.get("deployment_branch_policy")
     if not isinstance(branch_policy, Mapping):

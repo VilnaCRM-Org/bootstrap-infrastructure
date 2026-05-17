@@ -1,0 +1,36 @@
+{
+  "accountEvidence": {
+    "accountAccessKeysPresent": 0,
+    "accountMfaEnabled": 1,
+    "activeUserAccessKeyCount": 1,
+    "activeUserAccessKeyCreateDateUnknownCount": 0,
+    "activeUserAccessKeyLastUsedOlderThan90DaysCount": 0,
+    "activeUserAccessKeyLastUsedUnknownCount": 0,
+    "activeUserAccessKeyLastUsedWithin90DaysCount": 1,
+    "activeUserAccessKeyNeverUsedCount": 0,
+    "activeUserAccessKeyOlderThan90DaysCount": 1,
+    "discoveredUserCount": 4,
+    "inactiveUserAccessKeyCount": 0,
+    "mfaDeviceCount": 1,
+    "mfaDevicesInUse": 1,
+    "otherUserAccessKeyStatusCount": 0,
+    "summaryUserCount": 4,
+    "unreadableAccessKeyLastUsedCount": 0,
+    "unreadableAccessKeyUserCount": 0,
+    "usersWithActiveAccessKeys": 1
+  },
+  "activeKeyDecision": "approved_exception",
+  "approval": "accepted_risk",
+  "approvedBy": "Kravalg",
+  "environment": "test",
+  "evidence": [
+    "Time-limited security-owner acceptance for current aggregate IAM posture in account 891377212104; rotate or remove the remaining active codex_cli IAM user key, enroll remaining human users in MFA/SSO or document service-user-only posture, and revisit permissions-boundary exemption before expiry."
+  ],
+  "expiresAt": "2026-06-17",
+  "humanAccessPosture": "accepted_risk",
+  "owner": "Kravalg",
+  "permissionsBoundaryDecision": "approved_exemption",
+  "remediationPlan": "Time-limited security-owner acceptance for current aggregate IAM posture in account 891377212104; rotate or remove the remaining active codex_cli IAM user key, enroll remaining human users in MFA/SSO or document service-user-only posture, and revisit permissions-boundary exemption before expiry.",
+  "reviewedAt": "2026-05-17",
+  "workload": "bootstrap-infrastructure"
+}

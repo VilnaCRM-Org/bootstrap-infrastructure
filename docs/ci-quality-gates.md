@@ -38,6 +38,7 @@ These checks should be required in branch protection:
 | `Policy` | `make test-policy` | Custom Pulumi CrossGuard policy pack enforcement |
 | `CodeQL (python)` | GitHub-native | Static security/code scanning for Python |
 | `CodeQL (actions)` | GitHub-native | Static security/code scanning for workflows |
+| `Test Account Evidence` | `make report-well-architected-evidence` | Real test-account Well-Architected evidence gate for trusted PRs and main |
 
 `make ci-pr` is the canonical local equivalent of the real non-mutation
 pull-request battery and backs the required `Local Battery` check.

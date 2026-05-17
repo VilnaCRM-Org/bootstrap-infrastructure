@@ -1,0 +1,29 @@
+{
+  "approval": "accepted_risk",
+  "approvedBy": "Kravalg",
+  "communicationsPlan": "Post status and recovery decisions in the maintained incident channel and linked GitHub issue; do not expose secrets, raw stack exports, or private incident notes.",
+  "environment": "prod",
+  "escalationPath": "Kravalg / platform-maintainers via GitHub issue and maintained incident channel",
+  "evidence": [
+    "Time-limited production-owner acceptance based on the successful test restore drill; run and record a production-specific tabletop or restore drill before expiry."
+  ],
+  "evidenceRetentionLocation": "specs/issue-17-well-architected-5-of-5/production-dr-owner-2026-05-17.md",
+  "expiresAt": "2026-06-17",
+  "latestAcceptedDrill": "restore-drill-evidence-2026-04-27",
+  "nextReviewDate": "2026-06-17",
+  "owner": "Kravalg",
+  "recoveryOrder": "Restore Pulumi state and read access first, validate KMS/secrets provider and GitHub OIDC roles, run preview/drift, then resume applies only after prod environment approval.",
+  "remediationPlan": "Time-limited production-owner acceptance based on the successful test restore drill; run and record a production-specific tabletop or restore drill before expiry.",
+  "restoreDrillEvidence": {
+    "cleanupConfirmed": true,
+    "completedAt": "2026-04-27T05:05:41.655000Z",
+    "environment": "test",
+    "targetRestoreLocation": "s3://awsbackup-restore-pr22w5-bootstrap-891377212104-drill",
+    "validationResult": "passed",
+    "workload": "bootstrap-infrastructure"
+  },
+  "reviewedAt": "2026-05-17",
+  "rpoTarget": "One daily AWS Backup recovery point plus S3 versioning for state and log data.",
+  "rtoTarget": "One business day for bootstrap infrastructure recovery under current accepted-risk production posture.",
+  "workload": "bootstrap-infrastructure"
+}

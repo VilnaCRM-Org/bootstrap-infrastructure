@@ -381,8 +381,8 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
     assert any("upload-sarif@" in uses for uses in scorecard_uses)  # nosec B101
 
 
-def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
-    """Keep the Well-Architected evidence workflow safe while blockers remain."""
+def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
+    """Keep the Well-Architected evidence workflow enforced and artifact-backed."""
     workflow = _workflow("well-architected-evidence.yml")
     actionlint_config = yaml.safe_load(ACTIONLINT_CONFIG.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
@@ -426,7 +426,7 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
     enforce_step = next(
         step
         for step in evidence_steps
-        if step.get("name") == "Enforce Well-Architected evidence when enabled"
+        if step.get("name") == "Enforce Well-Architected evidence"
     )
     unprivileged_run = next(
         step.get("run", "")
@@ -461,7 +461,7 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
     )
     assert checkout_step["with"]["persist-credentials"] is False  # nosec B101
     assert "expected_checks=(" in wait_step["run"]  # nosec B101
-    assert "Test Account Evidence (Advisory)" not in wait_step["run"]  # nosec B101
+    assert "Test Account Evidence" not in wait_step["run"]  # nosec B101
     assert "OPERATIONS_TOPIC_ARN" in preflight_step["run"]  # nosec B101
     assert "12-digit AWS account ID" in preflight_step["run"]  # nosec B101
     assert "SNS topic ARN" in preflight_step["run"]  # nosec B101
@@ -469,17 +469,32 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
         jobs["test_account_evidence"]["env"]["DEPENDABOT_EXCEPTION_EVIDENCE"]
         == "${{ vars.DEPENDABOT_EXCEPTION_EVIDENCE }}"
     )
+    alert_route_evidence = (
+        "${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE || "
+        "'specs/issue-17-well-architected-5-of-5/"
+        "alert-route-observation-2026-05-17.json' }}"
+    )
     assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["ALERT_ROUTE_OBSERVATION_EVIDENCE"]
-        == "${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE }}"
+        == alert_route_evidence
+    )
+    security_attestation_evidence = (
+        "${{ vars.SECURITY_ACCOUNT_ATTESTATION_EVIDENCE || "
+        "'specs/issue-17-well-architected-5-of-5/"
+        "security-account-attestation-2026-05-17.json' }}"
     )
     assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["SECURITY_ACCOUNT_ATTESTATION_EVIDENCE"]
-        == "${{ vars.SECURITY_ACCOUNT_ATTESTATION_EVIDENCE }}"
+        == security_attestation_evidence
+    )
+    production_dr_evidence = (
+        "${{ vars.PRODUCTION_DR_OWNER_EVIDENCE || "
+        "'specs/issue-17-well-architected-5-of-5/"
+        "production-dr-owner-2026-05-17.json' }}"
     )
     assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["PRODUCTION_DR_OWNER_EVIDENCE"]
-        == "${{ vars.PRODUCTION_DR_OWNER_EVIDENCE }}"
+        == production_dr_evidence
     )
     assert oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"  # nosec B101
     assert oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
@@ -497,7 +512,7 @@ def test_well_architected_evidence_workflow_uploads_advisory_reports() -> None:
     assert upload_step["with"]["path"] == ".artifacts/well-architected"  # nosec B101
     assert upload_step["with"]["retention-days"] == 90  # nosec B101
     assert "github.event_name != 'schedule'" in enforce_step["if"]  # nosec B101
-    assert "WELL_ARCHITECTED_EVIDENCE_ENFORCE" in enforce_step["if"]  # nosec B101
+    assert "steps.collector.outputs.exit_code != '0'" in enforce_step["if"]  # nosec B101
     assert "exit 1" in enforce_step["run"]  # nosec B101
     assert "credentials are unavailable to untrusted forks" in unprivileged_run  # nosec B101
 

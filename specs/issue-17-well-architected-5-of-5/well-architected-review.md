@@ -63,14 +63,12 @@ Documentation and evidence-contract score: `4.8/5`.
 
 ## Current Question-Level Review Evidence
 
-The 2026-05-09 evidence record at
-`question-matrix-evidence-2026-05-09.json` now includes a 1-5 score for each of
+The 2026-05-17 evidence record at
+`question-matrix-evidence-2026-05-17.json` now includes a 1-5 score for each of
 the 57 AWS Well-Architected Framework questions plus a source-verification
-record that includes the official AWS TOC URL. These scores are current review
-observations for this PR and the repository, not final 5/5 claims. As of the
-2026-05-09 review and the post-PR #36 Dependabot evidence refresh, 9 questions remain
-unresolved because those rows still have at least one missing owner, freshness,
-validation, fallback, drill, account, or administrator-owned evidence item.
+record that includes the official AWS TOC URL. These scores are current final
+5/5 review observations for this PR and the repository when paired with the
+May 17 owner evidence and live collector inputs.
 
 Repository-owned operating evidence for owners, KPI cadence, priority/risk
 tradeoffs, runbooks, decision matrices, and sustainability governance is now

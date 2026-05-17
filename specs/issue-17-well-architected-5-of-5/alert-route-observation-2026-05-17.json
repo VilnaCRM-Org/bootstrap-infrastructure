@@ -1,0 +1,35 @@
+{
+  "approvedBy": "Kravalg",
+  "decision": "accepted_risk",
+  "downstreamRoute": "Approved queue-owner review process for durable SQS queue bootstrap-test-operations-alerts; no ChatOps or paging integration is claimed for this no-runtime bootstrap workload.",
+  "environment": "test",
+  "evidence": [
+    "Record first monthly observation from current SNS/SQS route metadata; replace durable-queue-only process with ChatOps, ticketing, or paging route before expiry or renew accepted risk."
+  ],
+  "expiresAt": "2026-06-17",
+  "fallback": "If queue-owner review is unavailable or route metadata changes, treat alert consumption as blocked, inspect AWS/GitHub evidence manually, and open a follow-up before claiming OPS8 5/5.",
+  "owner": "SRE",
+  "queueObservation": {
+    "delayedMessages": 0,
+    "notVisibleMessages": 0,
+    "visibleMessages": 4
+  },
+  "remediationPlan": "Record first monthly observation from current SNS/SQS route metadata; replace durable-queue-only process with ChatOps, ticketing, or paging route before expiry or renew accepted risk.",
+  "reviewedAt": "2026-05-17",
+  "routeEvidence": {
+    "encrypted": true,
+    "sqsQueue": {
+      "messageRetentionSeconds": 345600,
+      "queueArn": "arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts",
+      "queueName": "bootstrap-test-operations-alerts",
+      "visibilityTimeoutSeconds": 30
+    },
+    "subscriptionCount": 1,
+    "subscriptionProtocols": [
+      "sqs"
+    ],
+    "topicArn": "arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations"
+  },
+  "severityExpectations": "SEV1/SEV2 control-plane, backup, KMS, IAM/OIDC, S3, budget, and anomaly events are reviewed by SRE through monthly queue observation and incident follow-up.",
+  "workload": "bootstrap-infrastructure"
+}
