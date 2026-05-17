@@ -463,6 +463,15 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
     assert "expected_checks=(" in wait_step["run"]  # nosec B101
     assert "Test Account Evidence" not in wait_step["run"]  # nosec B101
     assert "OPERATIONS_TOPIC_ARN" in preflight_step["run"]  # nosec B101
+    for evidence_name in (
+        "RESTORE_DRILL_EVIDENCE",
+        "QUESTION_MATRIX_EVIDENCE",
+        "EXTERNAL_CONTROL_EVIDENCE",
+        "ALERT_ROUTE_OBSERVATION_EVIDENCE",
+        "SECURITY_ACCOUNT_ATTESTATION_EVIDENCE",
+        "PRODUCTION_DR_OWNER_EVIDENCE",
+    ):
+        assert evidence_name in preflight_step["run"]  # nosec B101
     assert "12-digit AWS account ID" in preflight_step["run"]  # nosec B101
     assert "SNS topic ARN" in preflight_step["run"]  # nosec B101
     assert (  # nosec B101

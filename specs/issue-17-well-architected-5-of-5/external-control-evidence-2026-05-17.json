@@ -61,7 +61,7 @@
       "evidence": [
         "OIDC roles, policy pack checks, CodeQL/Bandit/Gitleaks/pip-audit workflows, KMS keys, CloudTrail, GuardDuty, Security Hub, AWS Config, and alert rules are defined and backed by current metadata evidence.",
         "collect_well_architected_evidence aws_iam_account_access passed on 2026-05-17 when supplied SECURITY_ACCOUNT_ATTESTATION_EVIDENCE=specs/issue-17-well-architected-5-of-5/security-account-attestation-2026-05-17.json.",
-        "security-account-attestation-2026-05-17.json exactly matches live aggregate IAM fields for account MFA, root access-key absence, four discovered IAM users, one active codex_cli IAM user access key, and one MFA device in use without exposing access key IDs or secrets.",
+        "security-account-attestation-2026-05-17.json exactly matches live aggregate IAM fields for account MFA, root access-key absence, four discovered IAM users, one active IAM user access key, and one MFA device in use without exposing access key IDs, IAM user names, or secrets.",
         "The security-owner record uses accepted_risk for human-access posture, approved_exception for the active key, approved_exemption for the permissions-boundary decision, expires on 2026-06-17, and records required follow-up rotation/remediation before expiry."
       ]
     },

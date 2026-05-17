@@ -48,4 +48,4 @@ This attestation record is generated from metadata-only Well-Architected collect
 
 ## Follow-Up Actions
 
-- Time-limited security-owner acceptance for current aggregate IAM posture in account 891377212104; rotate or remove the remaining active codex_cli IAM user key, enroll remaining human users in MFA/SSO or document service-user-only posture, and revisit permissions-boundary exemption before expiry.
+- Time-limited security-owner acceptance for current aggregate IAM posture in account 891377212104; rotate or remove the remaining active IAM user access key, enroll remaining human users in MFA/SSO or document service-user-only posture, and revisit permissions-boundary exemption before expiry.

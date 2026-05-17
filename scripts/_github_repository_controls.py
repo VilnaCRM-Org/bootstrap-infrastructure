@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from _github_environment_controls import environment_prevents_self_review
+
 REQUIRED_STATUS_CHECKS = (
     "Ruff",
     "Ty",
@@ -228,21 +230,6 @@ def environment_reviewer_ids(environment: Mapping[str, Any]) -> set[int]:
             if isinstance(reviewers, list):
                 reviewer_ids.update(reviewer_ids_from_items(reviewers))
     return reviewer_ids
-
-
-def environment_prevents_self_review(environment: Mapping[str, Any]) -> bool:
-    """Return whether the required-reviewer rule prevents deployment self-review."""
-    if environment.get("prevent_self_review") is True:
-        return True
-    protection_rules = environment.get("protection_rules")
-    if not isinstance(protection_rules, list):
-        return False
-    return any(
-        isinstance(rule, Mapping)
-        and rule.get("type") == "required_reviewers"
-        and rule.get("prevent_self_review") is True
-        for rule in protection_rules
-    )
 
 
 def reviewer_ids_from_items(items: Sequence[object]) -> set[int]:

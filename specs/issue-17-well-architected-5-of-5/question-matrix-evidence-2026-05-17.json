@@ -96,7 +96,7 @@
       "pillar": "Operational Excellence",
       "score": 5,
       "status": "passed",
-      "rationale": "Local and CI guardrail contracts are backed by the active main ruleset, which now requires all 23 documented status checks; collector github_branch_protection passes with no missing required contexts.",
+      "rationale": "Local and CI guardrail contracts are backed by the active main ruleset, which now requires all 24 documented status checks including Test Account Evidence; collector github_branch_protection passes with no missing required contexts.",
       "primaryBlocker": "",
       "evidenceRefs": [
         "external-control:branch_protection",
@@ -199,7 +199,7 @@
       "pillar": "Security",
       "score": 5,
       "status": "passed",
-      "rationale": "GitHub OIDC trust, account checks, local credential boundaries, human-admin ownership, and the remaining active codex_cli static-key posture are covered by a time-limited approved-exception security attestation that the collector validates against live IAM metadata.",
+      "rationale": "GitHub OIDC trust, account checks, local credential boundaries, human-admin ownership, and the remaining active static-key posture are covered by a time-limited approved-exception security attestation that the collector validates against live IAM metadata.",
       "primaryBlocker": "",
       "evidenceRefs": [
         "external-control:security_account_controls",

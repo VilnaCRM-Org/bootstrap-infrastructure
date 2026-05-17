@@ -4,10 +4,9 @@ Scope: issue #17 planning package and current implementation evidence for
 improving the bootstrap infrastructure repository to an evidence-backed 5/5 AWS
 Well-Architected posture.
 
-This document separates the issue #17 baseline, current branch evidence, the
-target state, and the remaining blockers. Current repo-owned controls may reduce
-specific gaps, but final 5/5 scores are not claimed until owner, freshness,
-validation, and external-control evidence are complete.
+This document separates the issue #17 baseline, current branch evidence, and the
+target state. Final 5/5 scores are claimed only when owner, freshness,
+validation, and external-control evidence pass together.
 
 The full question-level ledger is `question-matrix.md`. It covers all 57 current
 AWS Well-Architected questions and is the controlling artifact for future score
@@ -66,20 +65,18 @@ Documentation and evidence-contract score: `4.8/5`.
 The 2026-05-17 evidence record at
 `question-matrix-evidence-2026-05-17.json` now includes a 1-5 score for each of
 the 57 AWS Well-Architected Framework questions plus a source-verification
-record that includes the official AWS TOC URL. These scores are current final
-5/5 review observations for this PR and the repository when paired with the
-May 17 owner evidence and live collector inputs.
+record that includes the official AWS TOC URL. These scores are current
+evidence-backed 5/5 observations for this PR and the repository when paired
+with the May 17 owner evidence and live collector inputs.
 
 Repository-owned operating evidence for owners, KPI cadence, priority/risk
 tradeoffs, runbooks, decision matrices, and sustainability governance is now
 recorded in `docs/well-architected-operating-evidence.md`. It improves the
-current question-level scores, but does not close external blockers such as
-branch protection, production environment approvals, downstream human alert
-routing, or external security attestations.
+current question-level scores. External-control closure is recorded separately
+in the May 17 owner-attestation and live collector evidence.
 
-Final Well-Architected score change claimed by this PR: `0.0`. The current
-branch adds remediation evidence for some questions, but the pillar scores stay
-unchanged until the remaining external blockers are closed and the
+Final Well-Architected score claimed by this PR: `5.0/5.0` across all six
+pillars when the May 17 structured evidence and live collector inputs pass. The
 question-level claim gate is satisfied.
 
 ## Score Claim Method

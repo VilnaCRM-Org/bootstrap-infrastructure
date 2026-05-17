@@ -56,6 +56,7 @@ targets = ["pulumi", "policy", "scripts"]
 extend_exclude = [".artifacts", ".pulumi-backend"]
 ignore_notebooks = true
 known_first_party = [
+    "_github_environment_controls",
     "_github_repository_controls",
     "_pulumi_command_support",
     "_script_support",

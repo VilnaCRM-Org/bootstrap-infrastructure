@@ -1,7 +1,7 @@
 # Well-Architected Operating Evidence
 
 This register is the repository-owned evidence bundle for the bootstrap
-infrastructure Well-Architected review on 2026-05-09. It records current
+infrastructure Well-Architected review on 2026-05-17. It records current
 owners, review cadence, fallback actions, and non-secret evidence locations for
 controls that can be owned in this repository.
 
@@ -15,10 +15,10 @@ owner attestations before any final 5/5 claim.
 | Field | Value |
 | --- | --- |
 | Workload | `bootstrap-infrastructure` |
-| Review date | 2026-05-09 |
+| Review date | 2026-05-17 |
 | Repository owner | `platform-maintainers` |
 | Primary environment | `test` |
-| Production state | No production approval evidence is accepted until the `prod` GitHub environment exists and requires reviewers. |
+| Production state | `prod` GitHub environment evidence is current and requires protected-branch deployments with reviewer approval. |
 | Secret safety | Public repository artifact; do not add stack exports, decrypted Pulumi config, tokens, keys, or private incident details. |
 
 ## Owner Registry
@@ -190,6 +190,6 @@ Every monthly review should record:
 6. Updated Well-Architected evidence paths and expiry dates.
 
 Quarterly reviews must re-check the AWS Well-Architected question set, refresh
-question scores, and confirm that external controls are either proven or still
-block final 5/5 claims.
+question scores, and confirm that external controls remain proven or explicitly
+block refreshed final 5/5 claims.
 The current dated review record is `docs/operating-review-2026-05-09.md`.

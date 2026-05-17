@@ -90,7 +90,10 @@ jobs:
             OPERATIONS_CLOUDTRAIL_NAME \
             RESTORE_DRILL_EVIDENCE \
             QUESTION_MATRIX_EVIDENCE \
-            EXTERNAL_CONTROL_EVIDENCE; do
+            EXTERNAL_CONTROL_EVIDENCE \
+            ALERT_ROUTE_OBSERVATION_EVIDENCE \
+            SECURITY_ACCOUNT_ATTESTATION_EVIDENCE \
+            PRODUCTION_DR_OWNER_EVIDENCE; do
             if [[ -z "${!name}" ]]; then
               missing+=("${name}")
             fi
@@ -110,7 +113,10 @@ jobs:
           for path in \
             "${RESTORE_DRILL_EVIDENCE}" \
             "${QUESTION_MATRIX_EVIDENCE}" \
-            "${EXTERNAL_CONTROL_EVIDENCE}"; do
+            "${EXTERNAL_CONTROL_EVIDENCE}" \
+            "${ALERT_ROUTE_OBSERVATION_EVIDENCE}" \
+            "${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE}" \
+            "${PRODUCTION_DR_OWNER_EVIDENCE}"; do
             if [[ ! -f "${path}" ]]; then
               printf 'error: evidence file is missing: %s\n' "${path}" >&2
               exit 1

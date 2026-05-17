@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Sequence, cast
 
+from _github_environment_controls import environment_prevents_self_review
+
 
 @dataclass(frozen=True)
 class ProductionEnvironmentMetadata:
@@ -35,7 +37,7 @@ def production_environment_metadata(
         reviewer_login=reviewer_login,
         reviewer_logins=_environment_required_reviewer_logins(payload),
         reviewer_count=_environment_required_reviewer_count(payload),
-        prevents_self_review=_environment_prevents_self_review(payload),
+        prevents_self_review=environment_prevents_self_review(payload),
         protected_branches=bool(branch_policy.get("protected_branches")),
         custom_branch_policies=bool(branch_policy.get("custom_branch_policies")),
     )
@@ -128,18 +130,3 @@ def _dict_items(value: object) -> list[dict[str, Any]]:
         if isinstance(item, dict):
             items.append(cast(dict[str, Any], item))
     return items
-
-
-def _environment_prevents_self_review(payload: dict[str, Any]) -> bool:
-    """Return whether the required-reviewer rule prevents self-review."""
-    if payload.get("prevent_self_review") is True:
-        return True
-    rules = payload.get("protection_rules")
-    if not isinstance(rules, list):
-        return False
-    return any(
-        isinstance(rule, dict)
-        and rule.get("type") == "required_reviewers"
-        and rule.get("prevent_self_review") is True
-        for rule in rules
-    )

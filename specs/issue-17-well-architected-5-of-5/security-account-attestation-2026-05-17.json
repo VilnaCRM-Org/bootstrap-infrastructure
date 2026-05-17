@@ -24,13 +24,13 @@
   "approvedBy": "Kravalg",
   "environment": "test",
   "evidence": [
-    "Time-limited security-owner acceptance for current aggregate IAM posture in account 891377212104; rotate or remove the remaining active codex_cli IAM user key, enroll remaining human users in MFA/SSO or document service-user-only posture, and revisit permissions-boundary exemption before expiry."
+    "Time-limited security-owner acceptance for current aggregate IAM posture in account 891377212104; rotate or remove the remaining active IAM user access key, enroll remaining human users in MFA/SSO or document service-user-only posture, and revisit permissions-boundary exemption before expiry."
   ],
   "expiresAt": "2026-06-17",
   "humanAccessPosture": "accepted_risk",
   "owner": "Kravalg",
   "permissionsBoundaryDecision": "approved_exemption",
-  "remediationPlan": "Time-limited security-owner acceptance for current aggregate IAM posture in account 891377212104; rotate or remove the remaining active codex_cli IAM user key, enroll remaining human users in MFA/SSO or document service-user-only posture, and revisit permissions-boundary exemption before expiry.",
+  "remediationPlan": "Time-limited security-owner acceptance for current aggregate IAM posture in account 891377212104; rotate or remove the remaining active IAM user access key, enroll remaining human users in MFA/SSO or document service-user-only posture, and revisit permissions-boundary exemption before expiry.",
   "reviewedAt": "2026-05-17",
   "workload": "bootstrap-infrastructure"
 }

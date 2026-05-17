@@ -5255,7 +5255,7 @@ def test_github_pr_checks_falls_back_to_files_api_when_diff_is_too_large(
             }
         else:
             payload = {
-                "mergeStateStatus": "CLEAN",
+                "mergeStateStatus": "BLOCKED",
                 "mergeable": "MERGEABLE",
                 "reviewDecision": "APPROVED",
                 "headRefOid": "abc123",
