@@ -903,6 +903,9 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     )
     intake_lines = "\n".join(_run_lines(intake["jobs"]["dispatch"]["steps"]))
     preflight_lines = "\n".join(_run_lines(runner["jobs"]["preflight"]["steps"]))
+    comment_result_lines = "\n".join(
+        _run_lines(runner["jobs"]["comment_result"]["steps"])
+    )
     test_apply_lines = "\n".join(_run_lines(runner["jobs"]["test_apply"]["steps"]))
     prod_apply_lines = "\n".join(_run_lines(runner["jobs"]["prod_apply"]["steps"]))
 
@@ -920,6 +923,8 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     )  # nosec B101
     assert "event_type='pulumi-pr-command'" in intake_lines  # nosec B101
     assert "client_payload[head_sha]" in intake_lines  # nosec B101
+    assert "gh pr comment" not in intake_lines  # nosec B101
+    assert "/issues/${{ github.event.issue.number }}/comments" in intake_lines  # nosec B101
     assert "head_repo == github.repository" in str(intake)  # nosec B101
     assert "state == 'open'" in str(intake)  # nosec B101
     assert "merged == 'false'" in str(intake)  # nosec B101
@@ -946,6 +951,10 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
         )
         == 1
     )  # nosec B101
+    assert "gh pr comment" not in preflight_lines  # nosec B101
+    assert "/issues/${pr_number}/comments" in preflight_lines  # nosec B101
+    assert "gh pr comment" not in comment_result_lines  # nosec B101
+    assert "/issues/${pr_number}/comments" in comment_result_lines  # nosec B101
     assert "pull request is closed or merged" in preflight_lines  # nosec B101
     assert "pull request head moved after the command was queued" in preflight_lines  # nosec B101
 

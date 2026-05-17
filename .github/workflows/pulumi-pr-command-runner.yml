@@ -70,6 +70,16 @@ jobs:
       - name: Resolve and verify pull request command
         id: resolve
         run: |
+          post_pr_comment() {
+            local pr_number="$1"
+            local body="$2"
+            jq -n --arg body "${body}" '{body: $body}' \
+              | gh api \
+                --method POST \
+                "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
+                --input -
+          }
+
           if [[ ! "${REQUEST_PR_NUMBER}" =~ ^[0-9]+$ ]]; then
             echo "error: pull_request_number must be numeric." >&2
             exit 1
@@ -93,15 +103,15 @@ jobs:
           actual_pr_state="$(jq -r '.state' <<< "${pr_json}")"
           actual_pr_merged="$(jq -r '.merged' <<< "${pr_json}")"
           if [[ "${actual_pr_state}" != "open" || "${actual_pr_merged}" == "true" ]]; then
-            gh pr comment "${REQUEST_PR_NUMBER}" --body "Pulumi PR command runner rejected this request because the pull request is closed or merged."
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Pulumi PR command runner rejected this request because the pull request is closed or merged."
             exit 1
           fi
           if [[ "${actual_head_repo}" != "${GITHUB_REPOSITORY}" ]]; then
-            gh pr comment "${REQUEST_PR_NUMBER}" --body "Pulumi PR command runner rejected this request because the pull request head is not in the base repository."
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Pulumi PR command runner rejected this request because the pull request head is not in the base repository."
             exit 1
           fi
           if [[ "${actual_head_sha}" != "${REQUEST_HEAD_SHA}" ]]; then
-            gh pr comment "${REQUEST_PR_NUMBER}" --body "Pulumi PR command runner rejected this request because the pull request head moved after the command was queued. Comment again on the latest commit."
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Pulumi PR command runner rejected this request because the pull request head moved after the command was queued. Comment again on the latest commit."
             exit 1
           fi
 
@@ -791,7 +801,11 @@ jobs:
 
           pr_number="${{ needs.preflight.outputs.pull_request_number }}"
           if [[ -n "${pr_number}" ]]; then
-            gh pr comment "${pr_number}" --body-file "${body_file}"
+            jq -Rs '{body: .}' < "${body_file}" \
+              | gh api \
+                --method POST \
+                "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
+                --input -
           else
             cat "${body_file}"
           fi
