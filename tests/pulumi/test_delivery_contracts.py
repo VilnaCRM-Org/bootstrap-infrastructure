@@ -725,6 +725,29 @@ def test_multi_account_workflows_use_environment_scoped_oidc_contracts() -> None
             "test",
             alert_triage_role,
         ),
+        ("pulumi-pr-command-runner.yml", "test_preview"): ("test", preview_role),
+        ("pulumi-pr-command-runner.yml", "test_iam_validation"): (
+            "test",
+            preview_role,
+        ),
+        ("pulumi-pr-command-runner.yml", "test_apply"): ("test", apply_role),
+        ("pulumi-pr-command-runner.yml", "test_post_apply_drift"): (
+            "test",
+            drift_role,
+        ),
+        ("pulumi-pr-command-runner.yml", "prod_preview"): (
+            "prod-preview",
+            preview_role,
+        ),
+        ("pulumi-pr-command-runner.yml", "prod_iam_validation"): (
+            "prod-preview",
+            preview_role,
+        ),
+        ("pulumi-pr-command-runner.yml", "prod_apply"): ("prod", apply_role),
+        ("pulumi-pr-command-runner.yml", "prod_post_apply_drift"): (
+            "prod-preview",
+            drift_role,
+        ),
         ("pulumi-pr-guardrails.yml", "preview"): ("test", preview_role),
         ("pulumi-pr-guardrails.yml", "iam_validation"): ("test", preview_role),
         ("pulumi-prod.yml", "preview"): ("prod-preview", preview_role),
@@ -868,6 +891,105 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert not re.search(r"(?m)^\s*make pulumi-up$", prod_apply_lines)  # nosec B101
     assert "make publish-pulumi-preview-summary" not in prod_preview_lines  # nosec B101
     assert "make publish-pulumi-preview-summary" not in test_preview_lines  # nosec B101
+
+
+def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
+    """PR comments must run through test before production can plan or apply."""
+    intake = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-pr-commands.yml").read_text(encoding="utf-8")
+    )
+    runner = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-pr-command-runner.yml").read_text(encoding="utf-8")
+    )
+    intake_lines = "\n".join(_run_lines(intake["jobs"]["dispatch"]["steps"]))
+    preflight_lines = "\n".join(_run_lines(runner["jobs"]["preflight"]["steps"]))
+    test_apply_lines = "\n".join(_run_lines(runner["jobs"]["test_apply"]["steps"]))
+    prod_apply_lines = "\n".join(_run_lines(runner["jobs"]["prod_apply"]["steps"]))
+
+    assert _triggers(intake)["issue_comment"]["types"] == ["created"]  # nosec B101
+    assert "github.event.issue.state == 'open'" in intake["jobs"]["dispatch"]["if"]  # nosec B101
+    assert intake["permissions"] == {  # nosec B101
+        "contents": "write",
+        "issues": "write",
+        "pull-requests": "read",
+    }
+    assert "scripts/pulumi_pr_comment.py" in intake_lines  # nosec B101
+    assert (
+        intake_lines.count('gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}"')
+        == 1
+    )  # nosec B101
+    assert "event_type='pulumi-pr-command'" in intake_lines  # nosec B101
+    assert "client_payload[head_sha]" in intake_lines  # nosec B101
+    assert "head_repo == github.repository" in str(intake)  # nosec B101
+    assert "state == 'open'" in str(intake)  # nosec B101
+    assert "merged == 'false'" in str(intake)  # nosec B101
+
+    triggers = _triggers(runner)
+    assert triggers["repository_dispatch"]["types"] == ["pulumi-pr-command"]  # nosec B101
+    assert "workflow_dispatch" in triggers  # nosec B101
+    assert runner["concurrency"]["cancel-in-progress"] is False  # nosec B101
+    assert runner["permissions"] == {  # nosec B101
+        "contents": "read",
+        "issues": "write",
+        "pull-requests": "read",
+    }
+
+    assert "head_sha must be a full lowercase 40-character commit SHA" in (  # nosec B101
+        preflight_lines
+    )
+    assert "actual_head_sha" in preflight_lines  # nosec B101
+    assert "actual_head_repo" in preflight_lines  # nosec B101
+    assert "actual_pr_state" in preflight_lines  # nosec B101
+    assert (
+        preflight_lines.count(
+            'gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}"'
+        )
+        == 1
+    )  # nosec B101
+    assert "pull request is closed or merged" in preflight_lines  # nosec B101
+    assert "pull request head moved after the command was queued" in preflight_lines  # nosec B101
+
+    prod_preview = runner["jobs"]["prod_preview"]
+    assert prod_preview["needs"] == ["preflight", "test_post_apply_drift"]  # nosec B101
+    assert (
+        "needs.test_post_apply_drift.result == 'success'"
+        in (  # nosec B101
+            prod_preview["if"]
+        )
+    )
+
+    assert "make pulumi-plan" in "\n".join(  # nosec B101
+        _run_lines(runner["jobs"]["test_preview"]["steps"])
+    )
+    assert "make test-destructive-diff" in "\n".join(  # nosec B101
+        _run_lines(runner["jobs"]["test_destructive_diff"]["steps"])
+    )
+    assert "make test-iam-validation" in "\n".join(  # nosec B101
+        _run_lines(runner["jobs"]["test_iam_validation"]["steps"])
+    )
+    assert "make pulumi-up-plan" in test_apply_lines  # nosec B101
+    assert "decrypting secret value: cipher: message authentication failed" in (  # nosec B101
+        test_apply_lines
+    )
+    assert re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
+    assert "make test-drift" in "\n".join(  # nosec B101
+        _run_lines(runner["jobs"]["test_post_apply_drift"]["steps"])
+    )
+
+    assert "make pulumi-plan" in "\n".join(  # nosec B101
+        _run_lines(runner["jobs"]["prod_preview"]["steps"])
+    )
+    assert "make test-destructive-diff" in "\n".join(  # nosec B101
+        _run_lines(runner["jobs"]["prod_destructive_diff"]["steps"])
+    )
+    assert "make test-iam-validation" in "\n".join(  # nosec B101
+        _run_lines(runner["jobs"]["prod_iam_validation"]["steps"])
+    )
+    assert "make pulumi-up-plan" in prod_apply_lines  # nosec B101
+    assert not re.search(r"(?m)^\s*make pulumi-up$", prod_apply_lines)  # nosec B101
+    assert "make test-drift" in "\n".join(  # nosec B101
+        _run_lines(runner["jobs"]["prod_post_apply_drift"]["steps"])
+    )
 
 
 def test_multi_account_environment_docs_are_explicit() -> None:

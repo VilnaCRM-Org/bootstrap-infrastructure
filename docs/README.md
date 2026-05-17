@@ -137,6 +137,10 @@ CI checks are split into focused workflows that run inside the Docker workspace:
 - `security-scans.yml` runs secrets, Bandit, dependency audit/review, workflow linting, YAML linting, and Hadolint.
 - `bats-tests.yml` validates the Makefile CLI surface.
 - `pulumi-local.yml` runs `make ci-pr`, the non-mutation pull-request battery inside Docker.
+- `pulumi-pr-commands.yml` accepts trusted same-repository PR comments for Pulumi plan/apply requests.
+- `pulumi-pr-command-runner.yml` revalidates the PR SHA, runs test account plan/guardrails/apply first, and gates production promotion behind the successful test sequence.
+- `pulumi-test-deploy.yml` plans, validates, applies, and drift-checks the test account on `main`.
+- `pulumi-prod.yml` requires a successful test deployment for the requested SHA before production preview, approval, saved-plan apply, and drift.
 - `nightly-quality.yml` publishes maintainability, dead-code, docstring, and SBOM reports.
 
 These checks do not require AWS or Pulumi credentials by default. They use
@@ -149,6 +153,9 @@ Privileged issue 18 workflows use GitHub environments for account separation:
 production preview and drift; and protected `prod` for production apply.
 Configure account-local variables, OIDC roles, Pulumi backend URLs, and AWS
 KMS-backed Pulumi secrets providers in the [GitHub Actions Secrets guide](github-actions-secrets.md).
+The PR-comment path accepts `/pulumi test plan`, `/pulumi test up`,
+`/pulumi prod plan`, and `/pulumi prod up`; production comments run the test
+account apply and post-apply drift gates successfully before production starts.
 
 ## CI Quality Gates
 

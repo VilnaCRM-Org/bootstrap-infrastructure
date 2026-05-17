@@ -1,9 +1,9 @@
 # GitHub Actions Secrets and Variables
 
 The hardened CI/CD layer in this repository is OIDC-first. Preview, IAM
-validation, and nightly drift detection are designed to use short-lived AWS
-credentials issued through GitHub Actions OIDC. Do not add long-lived static AWS
-access keys for these workflows.
+validation, PR-comment plan/apply commands, and nightly drift detection are
+designed to use short-lived AWS credentials issued through GitHub Actions OIDC.
+Do not add long-lived static AWS access keys for these workflows.
 
 ## GitHub environments
 
@@ -14,8 +14,8 @@ under **Settings -> Environments**:
 
 | Environment | Purpose | Protection |
 | --- | --- | --- |
-| `test` | Trusted PR previews, merge-to-main test applies, and test drift checks | No production approval; keep branch scope limited to protected branches for apply jobs |
-| `prod-preview` | Production previews and production drift checks with read-only or preview-only AWS access | No apply permissions |
+| `test` | Trusted PR previews, PR-comment test commands, merge-to-main test applies, and test drift checks | No production approval; keep branch scope limited to protected branches for apply jobs |
+| `prod-preview` | PR-comment production plans, production previews, and production drift checks with read-only or preview-only AWS access | No apply permissions |
 | `prod` | Production apply only | Require reviewers and restrict deployment branches |
 
 Fork pull requests must stay unprivileged. Same-repo privileged jobs should fail
@@ -31,8 +31,9 @@ differs between test and production.
 | --- | --- | --- |
 | `AWS_ACCOUNT_ID` | Expected 12-digit AWS account ID for the environment | Used with OIDC account allow-listing and evidence |
 | `AWS_REGION` | Region used by `configure-aws-credentials` and Pulumi | Optional only when the workflow has a safe default |
-| `AWS_PREVIEW_ROLE_ARN` | OIDC role used by preview, IAM validation, and drift jobs | Required for `test` and `prod-preview` |
+| `AWS_PREVIEW_ROLE_ARN` | OIDC role used by preview and IAM validation jobs | Required for `test` and `prod-preview` |
 | `AWS_APPLY_ROLE_ARN` | OIDC role used by apply jobs | Required only for `test` and `prod` |
+| `AWS_DRIFT_ROLE_ARN` | OIDC role used by drift jobs | Required for `prod-preview`; `test` can fall back to `AWS_PREVIEW_ROLE_ARN` |
 | `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` | Dedicated OIDC role used only by operations alert issue triage | Required for `test` when alert triage is enabled |
 | `PULUMI_BACKEND_URL` | Account-specific shared Pulumi backend | Required for privileged jobs |
 | `PULUMI_SECRETS_PROVIDER` | AWS KMS Pulumi secrets provider URI | Required; use an `awskms://...` URI |
@@ -54,6 +55,29 @@ Use separate AWS roles per account and purpose. Preview roles should be unable
 to mutate production resources. Apply roles should be scoped to the exact
 resources Pulumi manages in that account.
 
+## PR comment commands
+
+Repository owners, members, and collaborators can request Pulumi operations from
+same-repository pull requests:
+
+```text
+/pulumi test plan
+/pulumi test up
+/pulumi prod plan
+/pulumi prod up
+```
+
+`/pulumi plan` and `/pulumi up` are compatibility aliases for the `test`
+environment. Fork pull requests are rejected before any AWS credentials are
+requested.
+
+The comment intake workflow dispatches a trusted runner with the PR number,
+exact head SHA, target environment, and command. The runner revalidates that the
+PR head is still the queued SHA before checkout. Production commands always run
+the test account first: they save and validate a test plan, apply it to `test`,
+run post-apply drift detection, and only then continue to `prod-preview` or the
+protected `prod` environment for the same SHA.
+
 ## Optional environment secrets
 
 Add these under the GitHub environment's **Secrets** tab only when needed.
@@ -68,9 +92,9 @@ than a passphrase-managed stack secret flow.
 ## OIDC role setup
 
 1. Create an IAM OIDC identity provider for `https://token.actions.githubusercontent.com` in each AWS account if it does not already exist.
-2. Create separate preview, apply, and operations alert triage roles where the environment needs them.
+2. Create separate preview, apply, drift, and operations alert triage roles where the environment needs them.
 3. Scope trust policies to this repository, the `sts.amazonaws.com` audience, and the relevant GitHub environment subject.
-4. Store the role ARNs as `AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, or `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` in the matching GitHub environment.
+4. Store the role ARNs as `AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`, or `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` in the matching GitHub environment.
 5. Configure workflows to use `allowed-account-ids` with `AWS_ACCOUNT_ID`.
 
 See the dedicated [CI guardrails guide](ci-guardrails.md) for an example trust policy and the documented `sub` claim formats.
