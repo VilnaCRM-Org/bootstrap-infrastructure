@@ -229,6 +229,7 @@ EOF
   assert_pulumi_secrets_provider_passthrough
   [[ "$output" == *"-e PULUMI_PLAN_DIR=\".artifacts/pulumi-plan\""* ]]
   [[ "$output" == *"-e PULUMI_EXPECTED_SHA=\"\""* ]]
+  [[ "$output" == *"-e GITHUB_ACTIONS=\"\""* ]]
   [[ "$output" == *"./scripts/run_pulumi_command.py up-plan"* ]]
 }
 

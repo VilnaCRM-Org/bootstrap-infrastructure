@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -61,6 +62,7 @@ SUPPORTED_COMMANDS = {
 PLAN_MANIFEST_NAME = "manifest.json"
 PLAN_MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_PLAN_MAX_AGE_SECONDS = 24 * 60 * 60
+PLAN_DECRYPT_ERROR = "decrypting secret value: cipher: message authentication failed"
 
 
 def _resolve_path(root_dir: Path, raw_path: str) -> Path:
@@ -382,6 +384,46 @@ def _selected_plan_path(
     return _plan_file(context.plan_dir, stack)
 
 
+def _emit_completed_output(result: subprocess.CompletedProcess[str]) -> None:
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end="")
+
+
+def _plan_decrypt_fallback_enabled(context: CommandContext) -> bool:
+    return (
+        context.env.get("GITHUB_ACTIONS") == "true"
+        and bool(context.env.get("PULUMI_EXPECTED_SHA"))
+    )
+
+
+def _run_up_plan_stack(
+    context: CommandContext, stack: str, plan_path: Path
+) -> int | None:
+    result = context.runner(
+        _pulumi_command(context, StackCommand("up-plan", stack, plan_path=plan_path)),
+        env=context.env,
+        check=False,
+        capture_output=True,
+    )
+    _emit_completed_output(result)
+    if result.returncode == 0:
+        return None
+
+    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
+    if PLAN_DECRYPT_ERROR in combined_output and _plan_decrypt_fallback_enabled(context):
+        print(
+            "warning: saved Pulumi plan failed with the known KMS plan-decrypt "
+            "error; retrying guarded direct apply after the workflow gates.",
+            file=sys.stderr,
+        )
+        _run_stack_command(context, StackCommand("up", stack))
+        return None
+
+    return result.returncode or 1
+
+
 def _run_up_plan_command(context: CommandContext, stacks: list[str]) -> int:
     selected_plan_file = context.env.get("PULUMI_PLAN_FILE")
     if selected_plan_file and len(stacks) > 1:
@@ -409,10 +451,9 @@ def _run_up_plan_command(context: CommandContext, stacks: list[str]) -> int:
         manifest_failure = _validate_plan_manifest(context, manifest, stack, plan_path)
         if manifest_failure is not None:
             return manifest_failure
-        _run_stack_command(
-            context,
-            StackCommand("up-plan", stack, plan_path=plan_path),
-        )
+        up_plan_failure = _run_up_plan_stack(context, stack, plan_path)
+        if up_plan_failure is not None:
+            return up_plan_failure
     return 0
 
 

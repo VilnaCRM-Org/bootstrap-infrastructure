@@ -8422,6 +8422,38 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
     )
     assert applied_selected_plan  # nosec B101
 
+    applied.clear()
+
+    def decrypt_failure_run(command, **kwargs):
+        applied.append(command)
+        if command[0] == "pulumi" and command[3] == "up" and "--plan" in command:
+            return subprocess.CompletedProcess(
+                command,
+                255,
+                stdout="",
+                stderr=module.PLAN_DECRYPT_ERROR,
+            )
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", decrypt_failure_run)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("PULUMI_EXPECTED_SHA", "a" * 40)
+    assert module.main(["up-plan"]) == 0  # nosec B101
+    assert "known KMS plan-decrypt" in capsys.readouterr().err  # nosec B101
+    assert any(  # nosec B101
+        command[3] == "up" and "--plan" in command for command in applied
+    )
+    assert any(  # nosec B101
+        command[3] == "up" and "--plan" not in command for command in applied
+    )
+
+    applied.clear()
+    monkeypatch.setenv("GITHUB_ACTIONS", "false")
+    assert module.main(["up-plan"]) == 255  # nosec B101
+    assert not any(
+        command[3] == "up" and "--plan" not in command for command in applied
+    )  # nosec B101
+
     single_output = repo_dir / "single-output.txt"
     module._write_plan_outputs(
         str(single_output), [selected_plan], plan_dir, plan_dir / "manifest.json"
