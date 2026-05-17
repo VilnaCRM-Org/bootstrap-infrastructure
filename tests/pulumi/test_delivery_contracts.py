@@ -907,6 +907,7 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     prod_apply_lines = "\n".join(_run_lines(runner["jobs"]["prod_apply"]["steps"]))
 
     assert _triggers(intake)["issue_comment"]["types"] == ["created"]  # nosec B101
+    assert "github.event.issue.state == 'open'" in intake["jobs"]["dispatch"]["if"]  # nosec B101
     assert intake["permissions"] == {  # nosec B101
         "contents": "write",
         "issues": "write",
@@ -916,6 +917,8 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     assert "event_type='pulumi-pr-command'" in intake_lines  # nosec B101
     assert "client_payload[head_sha]" in intake_lines  # nosec B101
     assert "head_repo == github.repository" in str(intake)  # nosec B101
+    assert "state == 'open'" in str(intake)  # nosec B101
+    assert "merged == 'false'" in str(intake)  # nosec B101
 
     triggers = _triggers(runner)
     assert triggers["repository_dispatch"]["types"] == ["pulumi-pr-command"]  # nosec B101
@@ -932,6 +935,8 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     )
     assert "actual_head_sha" in preflight_lines  # nosec B101
     assert "actual_head_repo" in preflight_lines  # nosec B101
+    assert "actual_pr_state" in preflight_lines  # nosec B101
+    assert "pull request is closed or merged" in preflight_lines  # nosec B101
     assert "pull request head moved after the command was queued" in preflight_lines  # nosec B101
 
     prod_preview = runner["jobs"]["prod_preview"]

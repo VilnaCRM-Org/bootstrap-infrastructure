@@ -21,7 +21,9 @@ permissions:
 jobs:
   dispatch:
     name: Dispatch PR Command
-    if: github.event.issue.pull_request != null
+    if: >-
+      github.event.issue.pull_request != null &&
+      github.event.issue.state == 'open'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -64,12 +66,25 @@ jobs:
           {
             echo "head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
             echo "head_repo=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.repo.full_name')"
+            echo "state=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.state')"
+            echo "merged=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" --jq '.merged')"
           } >> "${GITHUB_OUTPUT}"
+
+      - name: Reject closed or merged pull requests
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          (steps.pr.outputs.state != 'open' || steps.pr.outputs.merged == 'true')
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" \
+            --body "Pulumi PR commands are only accepted while the pull request is open and unmerged."
 
       - name: Reject forked pull requests
         if: >-
           steps.parse.outputs.skip != 'true' &&
           steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
           steps.pr.outputs.head_repo != github.repository
         run: |
           body_file="$(mktemp)"
@@ -83,6 +98,8 @@ jobs:
         if: >-
           steps.parse.outputs.skip != 'true' &&
           steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
           steps.pr.outputs.head_repo == github.repository
         env:
           PR_NUMBER: ${{ github.event.issue.number }}
@@ -106,6 +123,8 @@ jobs:
         if: >-
           steps.parse.outputs.skip != 'true' &&
           steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
           steps.pr.outputs.head_repo == github.repository
         run: |
           body_file="$(mktemp)"

@@ -89,6 +89,12 @@ jobs:
 
           actual_head_sha="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}" --jq '.head.sha')"
           actual_head_repo="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}" --jq '.head.repo.full_name')"
+          actual_pr_state="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}" --jq '.state')"
+          actual_pr_merged="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}" --jq '.merged')"
+          if [[ "${actual_pr_state}" != "open" || "${actual_pr_merged}" == "true" ]]; then
+            gh pr comment "${REQUEST_PR_NUMBER}" --body "Pulumi PR command runner rejected this request because the pull request is closed or merged."
+            exit 1
+          fi
           if [[ "${actual_head_repo}" != "${GITHUB_REPOSITORY}" ]]; then
             gh pr comment "${REQUEST_PR_NUMBER}" --body "Pulumi PR command runner rejected this request because the pull request head is not in the base repository."
             exit 1
