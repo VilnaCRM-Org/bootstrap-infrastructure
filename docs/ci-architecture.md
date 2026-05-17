@@ -18,6 +18,8 @@ Docker-backed pull request checks use the same Docker workspace and the same
 | `pulumi-structural.yml` | `make test-pulumi`, `make test-repository-catalogs`, `make test-repository-fanout` | Validates Pulumi metadata, workflow contracts, repository catalogs, static fanout, and Dockerfile safeguards |
 | `pulumi-policy.yml` | `make test-policy` | Validates the Pulumi policy pack and AWS guardrail coverage |
 | `pulumi-pr-guardrails.yml` | `make publish-pulumi-preview-summary`, `make test-preview-unprivileged`, `make test-destructive-diff`, `make test-iam-validation` | Generates the PR preview artifact and enforces destructive/IAM guardrails without giving fork PRs AWS credentials |
+| `pulumi-pr-commands.yml` | `scripts/pulumi_pr_comment.py`, `repository_dispatch` | Parses trusted PR comments, rejects forked PRs, and queues exact-SHA Pulumi operations |
+| `pulumi-pr-command-runner.yml` | `make pulumi-plan`, destructive diff, IAM validation, apply, drift | Executes PR-comment Pulumi commands with test-first production promotion gates |
 | `pulumi-test-deploy.yml` | `make pulumi-plan`, destructive diff, IAM validation, apply, drift | Applies the `test` stack after main merges or manual dispatch |
 | `pulumi-prod.yml` | test-deploy SHA check, `make pulumi-plan`, approval, apply | Previews with `prod-preview`, then applies through protected `prod` |
 | `security-scans.yml` | `make test-secrets`, `make test-deps-security`, `make test-bandit`, `make test-actionlint`, `make test-yaml`, `make test-dockerfile` | Runs blocking security and repo-hygiene checks plus GitHub dependency review |
@@ -52,6 +54,14 @@ first verifies that the requested commit already has a successful `Pulumi Test
 Deploy` run on `main`, then records sanitized evidence for the reviewed commit.
 The apply job runs only in the protected `prod` environment after required
 reviewers approve it and the commit SHA is still the reviewed SHA.
+
+PR-comment production promotion follows the same account boundaries, but the
+trusted runner performs the test sequence inside the command workflow before
+any production job can start. `/pulumi prod plan` and `/pulumi prod up` both
+save and validate a test plan, apply it to the `test` account, and run
+post-apply drift detection for the exact PR head SHA. Only after that succeeds
+does the runner enter `prod-preview`; `/pulumi prod up` then waits on the
+protected `prod` environment and applies the saved production plan.
 
 ## Shared Controls
 
