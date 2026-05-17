@@ -914,7 +914,7 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     assert intake["permissions"] == {  # nosec B101
         "contents": "write",
         "issues": "write",
-        "pull-requests": "read",
+        "pull-requests": "write",
     }
     assert "scripts/pulumi_pr_comment.py" in intake_lines  # nosec B101
     assert (
@@ -936,7 +936,7 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     assert runner["permissions"] == {  # nosec B101
         "contents": "read",
         "issues": "write",
-        "pull-requests": "read",
+        "pull-requests": "write",
     }
 
     assert "head_sha must be a full lowercase 40-character commit SHA" in (  # nosec B101
