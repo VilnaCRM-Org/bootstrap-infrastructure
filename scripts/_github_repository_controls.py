@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from _github_environment_controls import environment_prevents_self_review
+
 REQUIRED_STATUS_CHECKS = (
     "Ruff",
     "Ty",
@@ -27,6 +29,7 @@ REQUIRED_STATUS_CHECKS = (
     "Policy",
     "CodeQL (python)",
     "CodeQL (actions)",
+    "Test Account Evidence",
 )
 
 
@@ -253,7 +256,7 @@ def prod_environment_verification_blockers(
     if environment is None:
         return ["Production environment was not readable after apply."]
     blockers: list[str] = []
-    if environment.get("prevent_self_review") is not True:
+    if not environment_prevents_self_review(environment):
         blockers.append("Production environment does not prevent self-review.")
     branch_policy = environment.get("deployment_branch_policy")
     if not isinstance(branch_policy, Mapping):

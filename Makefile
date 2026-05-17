@@ -397,7 +397,7 @@ verify-well-architected-questions: ## Compare question evidence with AWS public 
 		if [ -n "$${AWS_WA_TOC_JSON:-}" ]; then toc_arg="--toc-json $${AWS_WA_TOC_JSON}"; fi; \
 		if [ -n "$${AWS_WA_TOC_URL:-}" ]; then toc_url_arg="--toc-url $${AWS_WA_TOC_URL}"; fi; \
 		$(REPO_PYTHON) ./scripts/verify_well_architected_questions.py \
-			--question-matrix-evidence "$${QUESTION_MATRIX_EVIDENCE:-specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-05-09.json}" \
+			--question-matrix-evidence "$${QUESTION_MATRIX_EVIDENCE:-specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-05-17.json}" \
 			--question-matrix "$${QUESTION_MATRIX:-specs/issue-17-well-architected-5-of-5/question-matrix.md}" \
 			$$toc_arg $$toc_url_arg $$output_arg'
 

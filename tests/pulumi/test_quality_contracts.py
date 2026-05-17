@@ -57,6 +57,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
     assert "C90" in ruff["select"]
     assert data["tool"]["ruff"]["lint"]["mccabe"]["max-complexity"] == 10
     expected_first_party = [
+        "_github_environment_controls",
         "_github_repository_controls",
         "_pulumi_command_support",
         "_script_support",

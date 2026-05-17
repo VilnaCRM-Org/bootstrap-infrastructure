@@ -1,7 +1,7 @@
 # Well-Architected Operating Evidence
 
 This register is the repository-owned evidence bundle for the bootstrap
-infrastructure Well-Architected review on 2026-05-09. It records current
+infrastructure Well-Architected review on 2026-05-17. It records current
 owners, review cadence, fallback actions, and non-secret evidence locations for
 controls that can be owned in this repository.
 
@@ -15,10 +15,10 @@ owner attestations before any final 5/5 claim.
 | Field | Value |
 | --- | --- |
 | Workload | `bootstrap-infrastructure` |
-| Review date | 2026-05-09 |
+| Review date | 2026-05-17 |
 | Repository owner | `platform-maintainers` |
 | Primary environment | `test` |
-| Production state | No production approval evidence is accepted until the `prod` GitHub environment exists and requires reviewers. |
+| Production state | `prod` GitHub environment evidence is current and requires protected-branch deployments with reviewer approval. |
 | Secret safety | Public repository artifact; do not add stack exports, decrypted Pulumi config, tokens, keys, or private incident details. |
 
 ## Owner Registry
@@ -44,7 +44,7 @@ or owner attestation for each control.
 
 | Control | Tracking issue | Assigned owners | Required closeout evidence |
 | --- | --- | --- | --- |
-| Branch protection required checks | #26 | `Kravalg`, `pixelTM`, `vilnacrm` | Active `main` ruleset requires Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), and CodeQL (actions). |
+| Branch protection required checks | #26 | `Kravalg`, `pixelTM`, `vilnacrm` | Active `main` ruleset requires Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), CodeQL (actions), and Test Account Evidence. |
 | Production approval | #27 | `Kravalg`, `pixelTM`, `vilnacrm` | `prod` GitHub environment exists, blocks self-review, restricts deployment branches, and records required reviewer settings. |
 | Security account attestations | #28 | `Kravalg`, `pixelTM`, `vilnacrm` | Non-secret security-owner attestation records human MFA/SSO posture, static-key exception or remediation, and permissions-boundary or exemption approval. |
 | Default-branch vulnerability closeout | #29 | `Kravalg`, `pixelTM`, `vilnacrm` | Closed: current Dependabot metadata reports zero open high or critical default-branch alerts for `uv.lock`; future alerts must close or receive owner-approved time-bound exceptions generated with `make report-dependabot-exception`. |
@@ -67,8 +67,8 @@ or owner attestation for each control.
 | Repository owner and RACI | This file and `docs/sre-operations.md`. | Current for repository-owned controls. | If owners are disputed, keep affected scores below 5/5. |
 | Local validation | `make ci-pr-unprivileged` passed on 2026-05-09 after the account security-control changes. | Current local signal. | Hosted GitHub checks are still required before merge readiness. |
 | AWS identity and metadata collector | `make report-well-architected-evidence` collector output passed identity, alert topic, CloudTrail, restore, and fanout checks on 2026-05-09. | Current metadata signal. | Re-run after every new push or account change. |
-| Branch protection | Collector reports zero required status checks. | Blocked. | Repository admin must update the active ruleset. |
-| Production approval | `gh api repos/.../environments/prod` returns 404; `prod-preview` has no protection rules. | Blocked. | Create protected `prod` environment with required reviewers before production claims. |
+| Branch protection | Collector reports all documented required checks in the active ruleset. | Current. | Re-run the repository-controls verifier after any required-check change. |
+| Production approval | `prod` is readable, protected-branches-only, prevents self-review, and requires `Kravalg`. | Current. | Re-run the repository-controls verifier after any environment protection change. |
 | Security account services | Repository code provisions GuardDuty, Security Hub, AWS Config recorder, and the Config delivery bucket; `docs/security-operating-evidence.md` records identity, permission, wildcard, boundary, exception, live metadata, and no-drift evidence. | Current for test-account SEC4 evidence. | Refresh after security-service, recorder, delivery, or region changes; keep human/admin attestations tracked separately. |
 | Data protection and recovery | `docs/data-protection-recovery-evidence.md` records at-rest protection, Vault Lock/Object Lock posture, restore runbook, backup review cadence, and degraded-mode playbooks. | Current for repository-owned SEC8 and REL9 evidence. | Refresh before storage, backup, KMS, retention, or replica changes. |
 | Alert and monitoring inventory | `docs/alert-routing-evidence.md` records live EventBridge rules, SNS targets, absence of runtime alarms/dashboards, SNS-to-SQS probe evidence, owners, runbooks, and fallback rules. | Current for repository-owned observability inventory. | Refresh monthly and before adding alert sources, dashboards, runtime compute, or public endpoints. |
@@ -190,6 +190,6 @@ Every monthly review should record:
 6. Updated Well-Architected evidence paths and expiry dates.
 
 Quarterly reviews must re-check the AWS Well-Architected question set, refresh
-question scores, and confirm that external controls are either proven or still
-block final 5/5 claims.
+question scores, and confirm that external controls remain proven or explicitly
+block refreshed final 5/5 claims.
 The current dated review record is `docs/operating-review-2026-05-09.md`.

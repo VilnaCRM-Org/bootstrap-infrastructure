@@ -3017,6 +3017,41 @@ def test_configure_github_repository_controls_verification_helpers(
         )
         == []
     )
+    missing_self_review_environment = {
+        "deployment_branch_policy": {
+            "protected_branches": True,
+            "custom_branch_policies": False,
+        },
+        "reviewers": [{"type": "User", "id": 9444106}],
+    }
+    assert module._prod_environment_verification_blockers(  # noqa: SLF001
+        missing_self_review_environment, 9444106
+    ) == ["Production environment does not prevent self-review."]  # nosec B101
+    nested_self_review_environment = {
+        "deployment_branch_policy": {
+            "protected_branches": True,
+            "custom_branch_policies": False,
+        },
+        "protection_rules": [
+            {
+                "type": "required_reviewers",
+                "prevent_self_review": True,
+                "reviewers": [
+                    {
+                        "type": "User",
+                        "reviewer": {"id": 9444106, "login": "Kravalg"},
+                    }
+                ],
+            },
+            {"type": "branch_policy"},
+        ],
+    }
+    assert (
+        module._prod_environment_verification_blockers(  # noqa: SLF001  # nosec B101
+            nested_self_review_environment, 9444106
+        )
+        == []
+    )
     assert module._environment_reviewer_ids(  # noqa: SLF001  # nosec B101
         {"reviewers": [{"type": "User", "id": 9444106}]}
     ) == {9444106}
@@ -3198,7 +3233,7 @@ def test_required_status_check_contract_matches_collector_and_docs(
         PROJECT_ROOT
         / "specs"
         / "issue-17-well-architected-5-of-5"
-        / "external-control-evidence-2026-05-09.json"
+        / "external-control-evidence-2026-05-17.json"
     )
     external_control_evidence = json.loads(
         external_control_path.read_text(encoding="utf-8")
@@ -3243,11 +3278,6 @@ def test_required_status_check_contract_matches_collector_and_docs(
         for control in external_control_evidence["controls"]
         if control["id"] == "production_approval"
     )
-    unresolved_controls = [
-        control
-        for control in external_control_evidence["controls"]
-        if control.get("status") != "passed"
-    ]
     assert (  # noqa: SLF001  # nosec B101
         collector_module._unresolved_control_ids_from_controls(
             external_control_evidence["controls"]
@@ -3258,20 +3288,15 @@ def test_required_status_check_contract_matches_collector_and_docs(
         collector_module._non_empty_string_list(control.get("evidence"))  # noqa: SLF001
         for control in external_control_evidence["controls"]
     )
-    assert all(  # nosec B101
-        isinstance(control.get("unresolvedReason"), str)
-        and control["unresolvedReason"].strip()
-        for control in unresolved_controls
-    )
-    assert branch_protection_control["unresolvedReason"] == (  # nosec B101
-        "Admin-owned ruleset must require the documented status checks: "
-        f"{required_check_text}."
-    )
+    assert external_control_evidence["unresolvedControlIds"] == []  # nosec B101
+    assert branch_protection_control["status"] == "passed"  # nosec B101
+    assert production_approval_control["status"] == "passed"  # nosec B101
     for control in (branch_protection_control, production_approval_control):
         evidence_text = " ".join(control["evidence"])
-        assert "--dry-run" in evidence_text  # nosec B101
         assert "--verify-only" in evidence_text  # nosec B101
-        assert "--apply" in evidence_text  # nosec B101
+    assert required_check_text in " ".join(  # nosec B101
+        branch_protection_control["evidence"]
+    )
     assert (  # nosec B101
         f"GitHub ruleset 13906584 requires {required_check_text}." in guardrails_doc
     )
@@ -3296,7 +3321,7 @@ def test_well_architected_question_source_contract_matches_docs(
     toc_url = collector_module.AWS_WELL_ARCHITECTED_TOC_URL
     issue_dir = PROJECT_ROOT / "specs" / "issue-17-well-architected-5-of-5"
     question_evidence = json.loads(
-        (issue_dir / "question-matrix-evidence-2026-05-09.json").read_text(
+        (issue_dir / "question-matrix-evidence-2026-05-17.json").read_text(
             encoding="utf-8"
         )
     )
@@ -5230,7 +5255,7 @@ def test_github_pr_checks_falls_back_to_files_api_when_diff_is_too_large(
             }
         else:
             payload = {
-                "mergeStateStatus": "CLEAN",
+                "mergeStateStatus": "BLOCKED",
                 "mergeable": "MERGEABLE",
                 "reviewDecision": "APPROVED",
                 "headRefOid": "abc123",
@@ -5259,7 +5284,7 @@ def test_github_pr_checks_omits_current_in_progress_check(
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
     monkeypatch.setenv(
         "WELL_ARCHITECTED_CURRENT_CHECK_NAME",
-        "Test Account Evidence (Advisory)",
+        "Test Account Evidence",
     )
 
     def runner(command, **_kwargs):
@@ -5277,7 +5302,7 @@ def test_github_pr_checks_omits_current_in_progress_check(
                     },
                     {
                         "__typename": "CheckRun",
-                        "name": "Test Account Evidence (Advisory)",
+                        "name": "Test Account Evidence",
                         "status": "IN_PROGRESS",
                         "conclusion": None,
                     },
@@ -5298,7 +5323,7 @@ def test_github_pr_checks_omits_current_in_progress_check(
     assert check["evidence"]["nonPassingCheckCount"] == 0  # nosec B101
     assert check["evidence"]["currentCheckInProgressCount"] == 1  # nosec B101
     assert check["evidence"]["currentCheckInProgressNames"] == [  # nosec B101
-        "Test Account Evidence (Advisory)"
+        "Test Account Evidence"
     ]
 
 
@@ -5309,13 +5334,13 @@ def test_github_pr_checks_does_not_omit_completed_current_check_failure(
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
     monkeypatch.setenv(
         "WELL_ARCHITECTED_CURRENT_CHECK_NAME",
-        "Test Account Evidence (Advisory)",
+        "Test Account Evidence",
     )
 
     entries = [
         {
             "__typename": "CheckRun",
-            "name": "Test Account Evidence (Advisory)",
+            "name": "Test Account Evidence",
             "status": "COMPLETED",
             "conclusion": "FAILURE",
         }
@@ -5324,7 +5349,7 @@ def test_github_pr_checks_does_not_omit_completed_current_check_failure(
     assert module._non_passing_rollup_labels(  # noqa: SLF001  # nosec B101
         entries,
         current_check_names=module._current_check_names_from_env(),  # noqa: SLF001
-    ) == ["Test Account Evidence (Advisory)"]
+    ) == ["Test Account Evidence"]
 
 
 def test_score_blockers_distinguish_failed_and_missing_gates(
