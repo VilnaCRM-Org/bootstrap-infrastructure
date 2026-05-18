@@ -8312,6 +8312,57 @@ def test_run_pulumi_command_plan_handles_multiple_configured_stacks(
     assert initialized_prod  # nosec B101
 
 
+def test_run_pulumi_command_plan_clears_ci_stack_lock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """CI plan commands should clear stale Pulumi locks before saving a plan."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    pulumi_dir = repo_dir / "pulumi"
+    policy_dir = repo_dir / "policy"
+    pulumi_dir.mkdir(parents=True)
+    policy_dir.mkdir()
+    monkeypatch.setattr(module, "repo_root", lambda _: repo_dir)
+    monkeypatch.setenv("PULUMI_STACK", "prod")
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("PULUMI_COMMIT_SHA", "d" * 40)
+    monkeypatch.setenv(
+        "PULUMI_SECRETS_PROVIDER",
+        "awskms://alias/bootstrap-preview?region=eu-central-1",
+    )
+
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        if command[0] == "pulumi" and command[3] == "cancel":
+            return subprocess.CompletedProcess(command, 0, stdout="")
+        if command[0] == "pulumi" and command[3] == "preview":
+            if stdout := kwargs.get("stdout"):
+                stdout.write('{"changeSummary": {"same": 1}, "steps": []}')
+            plan_path = Path(command[command.index("--save-plan") + 1])
+            plan_path.write_text("plan", encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, stdout="")
+        if command[:3] == ["uv", "--project", str(repo_dir)]:
+            return subprocess.CompletedProcess(command, 0, stdout="summary\n")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", fake_run)
+    assert module.main(["plan"]) == 0  # nosec B101
+    assert "cleared a stale Pulumi lock" in capsys.readouterr().err  # nosec B101
+    cancel_index = next(  # nosec B101
+        index
+        for index, command in enumerate(calls)
+        if len(command) > 3 and command[3] == "cancel"
+    )
+    preview_index = next(  # nosec B101
+        index
+        for index, command in enumerate(calls)
+        if len(command) > 3 and command[3] == "preview"
+    )
+    assert cancel_index < preview_index  # nosec B101
+
+
 def test_run_pulumi_command_handles_error_paths_and_plan_application(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

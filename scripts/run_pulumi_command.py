@@ -352,6 +352,7 @@ def _run_plan_command(context: CommandContext, stacks: list[str]) -> int:
         if select_failure is not None:
             return select_failure
 
+        _cancel_stale_stack_lock(context, stack)
         plan_path = _plan_file(context.plan_dir, stack)
         plan_files.append(plan_path)
         preview_file = _preview_file(context.preview_artifact_dir, stack)
@@ -436,6 +437,10 @@ def _plan_decrypt_fallback_enabled(context: CommandContext) -> bool:
     )
 
 
+def _ci_stack_lock_recovery_enabled(context: CommandContext) -> bool:
+    return context.env.get("GITHUB_ACTIONS") == "true" and bool(_commit_sha(context))
+
+
 def _prod_direct_apply_after_gates_enabled(context: CommandContext) -> bool:
     configured = context.env.get("PULUMI_PROD_DIRECT_APPLY_AFTER_GATES", "true")
     return (
@@ -503,6 +508,24 @@ def _pulumi_cancel_command(context: CommandContext, stack: str) -> list[str]:
         stack,
         "--yes",
     ]
+
+
+def _cancel_stale_stack_lock(context: CommandContext, stack: str) -> None:
+    if not _ci_stack_lock_recovery_enabled(context):
+        return
+
+    result = context.runner(
+        _pulumi_cancel_command(context, stack),
+        env=context.env,
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        print(
+            f"warning: cleared a stale Pulumi lock for stack {stack} before "
+            "running the next guarded CI operation.",
+            file=sys.stderr,
+        )
 
 
 def _run_up_stack(context: CommandContext, stack: str) -> int | None:
