@@ -477,7 +477,10 @@ def _run_up_plan_stack(
         return None
 
     combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if PLAN_DECRYPT_ERROR in combined_output and _plan_decrypt_fallback_enabled(context):
+    if (
+        PLAN_DECRYPT_ERROR in combined_output
+        and _plan_decrypt_fallback_enabled(context)
+    ):
         print(
             "warning: saved Pulumi plan failed with the known KMS plan-decrypt "
             "error; retrying guarded direct apply after the workflow gates.",
