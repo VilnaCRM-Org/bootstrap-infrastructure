@@ -36,6 +36,7 @@ class StackCommand:
     stack: str
     plan_path: Path | None = None
     stdout: TextIO | None = None
+    include_policy_pack: bool | None = None
 
 
 PULUMI_INVOCATIONS = {
@@ -163,7 +164,12 @@ def _pulumi_command(context: CommandContext, request: StackCommand) -> list[str]
         "--non-interactive",
         *invocation.static_args,
     ]
-    if invocation.include_policy_pack:
+    include_policy_pack = (
+        invocation.include_policy_pack
+        if request.include_policy_pack is None
+        else request.include_policy_pack
+    )
+    if include_policy_pack:
         command.extend(["--policy-pack", str(context.policy_pack_dir)])
     if invocation.plan_flag:
         command.extend([invocation.plan_flag, str(_required_plan_path(request))])

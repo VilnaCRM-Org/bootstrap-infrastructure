@@ -4392,6 +4392,9 @@ def test_run_pulumi_command_builds_expected_pulumi_invocations(
         context, module.StackCommand("drift", "test")
     )
     up_command = module._pulumi_command(context, module.StackCommand("up", "test"))
+    up_without_policy_command = module._pulumi_command(
+        context, module.StackCommand("up", "prod", include_policy_pack=False)
+    )
     refresh_command = module._pulumi_command(
         context, module.StackCommand("refresh", "test")
     )
@@ -4399,6 +4402,8 @@ def test_run_pulumi_command_builds_expected_pulumi_invocations(
         context, module.StackCommand("destroy", "test")
     )
     assert "--yes" in up_command  # nosec B101
+    assert "--policy-pack" in up_command  # nosec B101
+    assert "--policy-pack" not in up_without_policy_command  # nosec B101
     assert "--yes" in refresh_command  # nosec B101
     assert "--expect-no-changes" in drift_command  # nosec B101
     assert "--yes" in destroy_command  # nosec B101
@@ -8514,6 +8519,13 @@ def test_run_up_plan_stack_defaults_to_direct_prod_apply_in_ci(
         len(command) > 3 and command[3] == "up" and "--plan" not in command
         for command in applied
     )
+    assert not any(  # nosec B101
+        len(command) > 3
+        and command[3] == "up"
+        and "--plan" not in command
+        and "--policy-pack" in command
+        for command in applied
+    )
 
 
 def test_run_up_plan_stack_recovers_from_plan_decrypt(
@@ -8561,6 +8573,13 @@ def test_run_up_plan_stack_recovers_from_plan_decrypt(
         len(command) > 3 and command[3] == "up" and "--plan" not in command
         for command in applied
     )
+    assert not any(  # nosec B101
+        len(command) > 3
+        and command[3] == "up"
+        and "--plan" not in command
+        and "--policy-pack" in command
+        for command in applied
+    )
 
 
 def test_run_up_plan_stack_recovers_from_saved_plan_lock(
@@ -8605,6 +8624,13 @@ def test_run_up_plan_stack_recovers_from_saved_plan_lock(
     )
     assert any(  # nosec B101
         len(command) > 3 and command[3] == "up" and "--plan" not in command
+        for command in applied
+    )
+    assert not any(  # nosec B101
+        len(command) > 3
+        and command[3] == "up"
+        and "--plan" not in command
+        and "--policy-pack" in command
         for command in applied
     )
 

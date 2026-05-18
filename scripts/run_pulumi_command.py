@@ -455,10 +455,12 @@ def _run_direct_prod_apply_after_gates(
         "warning: applying production with guarded direct Pulumi up after "
         "the workflow preview, destructive diff, IAM validation, and "
         "environment approval gates; saved production plan replay is "
-        "bypassed in CI to avoid provider-secret replay hangs.",
+        "bypassed in CI to avoid provider-secret replay hangs; the direct "
+        "apply reuses the policy-backed preview gate and skips policy-pack "
+        "loading during the final apply.",
         file=sys.stderr,
     )
-    return _run_up_stack(context, stack)
+    return _run_up_stack(context, stack, include_policy_pack=False)
 
 
 def _saved_prod_plan_recovery_enabled(
@@ -481,7 +483,7 @@ def _recover_failed_saved_prod_plan(
             "error; retrying guarded direct apply after the workflow gates.",
             file=sys.stderr,
         )
-        return _run_up_stack(context, stack)
+        return _run_up_stack(context, stack, include_policy_pack=False)
 
     if _saved_prod_plan_recovery_enabled(context, combined_output, STACK_LOCK_ERROR):
         print(
@@ -491,7 +493,7 @@ def _recover_failed_saved_prod_plan(
             file=sys.stderr,
         )
         context.runner(_pulumi_cancel_command(context, stack), env=context.env)
-        return _run_up_stack(context, stack)
+        return _run_up_stack(context, stack, include_policy_pack=False)
 
     return result.returncode or 1
 
@@ -549,14 +551,20 @@ def _cancel_stale_stack_lock(context: CommandContext, stack: str) -> None:
         )
 
 
-def _run_up_stack(context: CommandContext, stack: str) -> int | None:
+def _run_up_stack(
+    context: CommandContext, stack: str, *, include_policy_pack: bool = True
+) -> int | None:
     if not _plan_decrypt_fallback_enabled(context):
-        _run_stack_command(context, StackCommand("up", stack))
+        _run_stack_command(
+            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
+        )
         return None
 
     result = _run_with_observable_output(
         context,
-        _pulumi_command(context, StackCommand("up", stack)),
+        _pulumi_command(
+            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
+        ),
     )
     if result.returncode == 0:
         return None
@@ -569,7 +577,9 @@ def _run_up_stack(context: CommandContext, stack: str) -> int | None:
             file=sys.stderr,
         )
         context.runner(_pulumi_cancel_command(context, stack), env=context.env)
-        _run_stack_command(context, StackCommand("up", stack))
+        _run_stack_command(
+            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
+        )
         return None
 
     return result.returncode or 1
