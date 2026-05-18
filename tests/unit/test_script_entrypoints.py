@@ -8651,6 +8651,253 @@ def test_run_up_stack_recovers_from_lock(
     assert up_attempts == 2  # nosec B101
 
 
+def test_run_pulumi_command_observable_output_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Observable command execution should stream and capture subprocess output."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    context_dir = tmp_path / "repo"
+
+    def fake_runner(command, **kwargs):
+        return subprocess.CompletedProcess(
+            command,
+            7,
+            stdout="captured stdout\n",
+            stderr="captured stderr\n",
+        )
+
+    fake_context = module.CommandContext(
+        root_dir=context_dir,
+        env={},
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="",
+        runner=fake_runner,
+    )
+    result = module._run_with_observable_output(fake_context, ["pulumi", "version"])
+    captured = capsys.readouterr()
+    assert result.returncode == 7  # nosec B101
+    assert "captured stdout" in captured.out  # nosec B101
+    assert "captured stderr" in captured.err  # nosec B101
+
+    popen_calls: list[list[str]] = []
+
+    class FakeProcess:
+        stdout = io.StringIO("line one\nline two\n")
+
+        def wait(self) -> int:
+            return 3
+
+    def fake_popen(command, **kwargs):
+        popen_calls.append(command)
+        return FakeProcess()
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    default_context = module.CommandContext(
+        root_dir=context_dir,
+        env={"EXAMPLE": "1"},
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="",
+        runner=module.DEFAULT_RUNNER,
+    )
+    streamed = module._run_with_observable_output(default_context, ["pulumi", "about"])
+    assert streamed.returncode == 3  # nosec B101
+    assert streamed.stdout == "line one\nline two\n"  # nosec B101
+    assert popen_calls == [["pulumi", "about"]]  # nosec B101
+    assert "line one" in capsys.readouterr().out  # nosec B101
+
+    class FakeProcessWithoutStdout:
+        stdout = None
+
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.setattr(
+        module.subprocess,
+        "Popen",
+        lambda command, **kwargs: FakeProcessWithoutStdout(),
+    )
+    no_stdout = module._run_with_observable_output(
+        default_context, ["pulumi", "whoami"]
+    )
+    assert no_stdout.returncode == 0  # nosec B101
+    assert no_stdout.stdout == ""  # nosec B101
+
+
+def test_run_pulumi_command_unhandled_apply_failures_return_status(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Unhandled Pulumi apply failures should propagate their return codes."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    context_dir = tmp_path / "repo"
+
+    def plan_failure_runner(command, **kwargs):
+        if len(command) > 3 and command[3] == "up" and "--plan" in command:
+            return subprocess.CompletedProcess(command, 42, stdout="", stderr="boom")
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    prod_context = module.CommandContext(
+        root_dir=context_dir,
+        env={
+            "GITHUB_ACTIONS": "true",
+            "PULUMI_EXPECTED_SHA": "e" * 40,
+            "PULUMI_PROD_DIRECT_APPLY_AFTER_GATES": "false",
+        },
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=plan_failure_runner,
+    )
+    assert (  # nosec B101
+        module._run_up_plan_stack(prod_context, "prod", tmp_path / "prod.plan") == 42
+    )
+
+    direct_calls: list[list[str]] = []
+
+    def direct_runner(command, **kwargs):
+        direct_calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    direct_context = module.CommandContext(
+        root_dir=context_dir,
+        env={},
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="",
+        runner=direct_runner,
+    )
+    assert module._run_up_stack(direct_context, "test") is None
+    assert any(  # nosec B101
+        len(command) > 3 and command[3] == "up" for command in direct_calls
+    )
+
+    def direct_failure_runner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 17, stdout="", stderr="boom")
+
+    failed_context = module.CommandContext(
+        root_dir=context_dir,
+        env={"GITHUB_ACTIONS": "true", "PULUMI_EXPECTED_SHA": "f" * 40},
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=direct_failure_runner,
+    )
+    assert module._run_up_stack(failed_context, "test") == 17  # nosec B101
+
+
+def test_run_pulumi_command_dispatch_propagates_apply_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Command dispatch should return failed up-plan and up statuses."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    context_dir = tmp_path / "repo"
+    plan_dir = context_dir / ".artifacts" / "pulumi-plan"
+    plan_dir.mkdir(parents=True)
+    plan_file = plan_dir / f"{module._safe_artifact_stem('test')}.plan"
+    plan_file.write_text("plan", encoding="utf-8")
+    (plan_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "createdAtEpoch": 1000,
+                "commitSha": "",
+                "backendUrl": "file:///tmp/backend",
+                "stacks": [
+                    {
+                        "stack": "test",
+                        "planFile": f".artifacts/pulumi-plan/{plan_file.name}",
+                        "planSha256": hashlib.sha256(b"plan").hexdigest(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    context = module.CommandContext(
+        root_dir=context_dir,
+        env={"PULUMI_PLAN_NOW_EPOCH": "1000"},
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=plan_dir,
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="",
+        runner=lambda command, **kwargs: subprocess.CompletedProcess(command, 0),
+    )
+
+    monkeypatch.setattr(module, "_select_or_init_stack", lambda *args: None)
+    monkeypatch.setattr(module, "_run_up_plan_stack", lambda *args: 13)
+    assert module._run_up_plan_command(context, ["test"]) == 13  # nosec B101
+
+    seen_up_stacks: list[str] = []
+
+    def fake_up_stack(_context, stack):
+        seen_up_stacks.append(stack)
+        return None if stack == "first" else 11
+
+    monkeypatch.setattr(module, "_run_up_stack", fake_up_stack)
+    assert module._run_regular_command("up", context, ["first", "second"]) == 11
+    assert seen_up_stacks == ["first", "second"]  # nosec B101
+
+
+def test_run_pulumi_command_cancel_stale_lock_noops_without_recovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Stale-lock cancellation should be quiet when disabled or unsuccessful."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    context_dir = tmp_path / "repo"
+    calls: list[list[str]] = []
+
+    def fake_runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="no lock")
+
+    context = module.CommandContext(
+        root_dir=context_dir,
+        env={},
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="",
+        runner=fake_runner,
+    )
+    module._cancel_stale_stack_lock(context, "test")
+    assert calls == []  # nosec B101
+
+    enabled_context = module.CommandContext(
+        root_dir=context_dir,
+        env={"GITHUB_ACTIONS": "true", "PULUMI_COMMIT_SHA": "a" * 40},
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="",
+        runner=fake_runner,
+    )
+    module._cancel_stale_stack_lock(enabled_context, "test")
+    assert len(calls) == 1  # nosec B101
+    assert capsys.readouterr().err == ""  # nosec B101
+
+
 def test_run_pulumi_command_runs_generic_and_plan_without_github_output(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
