@@ -1277,6 +1277,13 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         _resource_state_by_name(pulumi_mocks, f"{policy_name}-attachment")
         for policy_name in managed_policy_names
     ]
+    exclusive_attachment_state = next(
+        state
+        for type_, name, state in new_resources
+        if type_
+        == "aws:iam/rolePolicyAttachmentsExclusive:RolePolicyAttachmentsExclusive"
+        and name == "github-automation-managed-policy-attachments-exclusive"
+    )
 
     assert repository_type == "aws:ecr/repository:Repository"  # nosec B101
     assert repository_state["name"] == "pulumi-runner/bootstrap-infrastructure-test"  # nosec B101
@@ -1310,6 +1317,20 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         assert (  # nosec B101
             attachment_state["role"] == "PulumiAutomation-bootstrap-infrastructure-test"
         )
+    assert (  # nosec B101
+        exclusive_attachment_state["roleName"]
+        == "PulumiAutomation-bootstrap-infrastructure-test"
+    )
+    assert (
+        set(exclusive_attachment_state["policyArns"])
+        == {  # nosec B101
+            state["arn"] for state in policy_states[1:]
+        }
+    )
+    assert (  # nosec B101
+        "arn:aws:iam::aws:policy/AdministratorAccess"
+        not in exclusive_attachment_state["policyArns"]
+    )
     automation_policies = [
         json.loads(policy_state["policy"]) for policy_state in policy_states
     ]
