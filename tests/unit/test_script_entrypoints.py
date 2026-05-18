@@ -8443,6 +8443,25 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
         encoding="utf-8",
     )
 
+    def guarded_direct_apply_run(command, **kwargs):
+        applied.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", guarded_direct_apply_run)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("PULUMI_EXPECTED_SHA", "a" * 40)
+    monkeypatch.delenv("PULUMI_PROD_DIRECT_APPLY_AFTER_GATES", raising=False)
+    assert module.main(["up-plan"]) == 0  # nosec B101
+    assert "guarded direct Pulumi up" in capsys.readouterr().err  # nosec B101
+    assert not any(  # nosec B101
+        command[3] == "up" and "--plan" in command for command in applied
+    )
+    assert any(  # nosec B101
+        command[3] == "up" and "--plan" not in command for command in applied
+    )
+
+    applied.clear()
+
     def decrypt_failure_run(command, **kwargs):
         applied.append(command)
         if command[0] == "pulumi" and command[3] == "up" and "--plan" in command:
@@ -8455,8 +8474,7 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
         return subprocess.CompletedProcess(command, 0, stdout="")
 
     monkeypatch.setattr(module, "run", decrypt_failure_run)
-    monkeypatch.setenv("GITHUB_ACTIONS", "true")
-    monkeypatch.setenv("PULUMI_EXPECTED_SHA", "a" * 40)
+    monkeypatch.setenv("PULUMI_PROD_DIRECT_APPLY_AFTER_GATES", "false")
     assert module.main(["up-plan"]) == 0  # nosec B101
     assert "known KMS plan-decrypt" in capsys.readouterr().err  # nosec B101
     assert any(  # nosec B101
@@ -8475,8 +8493,34 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
 
     applied.clear()
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("PULUMI_EXPECTED_SHA", "c" * 40)
+
+    def locked_plan_run(command, **kwargs):
+        applied.append(command)
+        if command[0] == "pulumi" and command[3] == "up" and "--plan" in command:
+            return subprocess.CompletedProcess(
+                command,
+                255,
+                stdout="",
+                stderr=module.STACK_LOCK_ERROR,
+            )
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    monkeypatch.setattr(module, "run", locked_plan_run)
+    assert module.main(["up-plan"]) == 0  # nosec B101
+    assert "stack lock while applying the saved" in capsys.readouterr().err  # nosec B101
+    assert any(  # nosec B101
+        len(command) > 3 and command[3] == "cancel" for command in applied
+    )
+    assert any(  # nosec B101
+        command[3] == "up" and "--plan" not in command for command in applied
+    )
+
+    applied.clear()
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
     monkeypatch.setenv("PULUMI_EXPECTED_SHA", "b" * 40)
     monkeypatch.setenv("PULUMI_STACK", "test")
+    monkeypatch.delenv("PULUMI_PROD_DIRECT_APPLY_AFTER_GATES", raising=False)
     up_attempts = 0
 
     def locked_up_run(command, **kwargs):

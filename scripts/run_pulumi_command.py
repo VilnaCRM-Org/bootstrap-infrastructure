@@ -30,6 +30,8 @@ from _script_support import (
     run,
 )
 
+DEFAULT_RUNNER = run
+
 __all__ = [
     "CommandContext",
     "StackCommand",
@@ -64,6 +66,7 @@ PLAN_MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_PLAN_MAX_AGE_SECONDS = 24 * 60 * 60
 PLAN_DECRYPT_ERROR = "decrypting secret value: cipher: message authentication failed"
 STACK_LOCK_ERROR = "the stack is currently locked"
+FALSEY_ENV_VALUES = {"0", "false", "no", "off"}
 
 
 def _resolve_path(root_dir: Path, raw_path: str) -> Path:
@@ -392,10 +395,52 @@ def _emit_completed_output(result: subprocess.CompletedProcess[str]) -> None:
         print(result.stderr, file=sys.stderr, end="")
 
 
+def _run_with_observable_output(
+    context: CommandContext, command: list[str]
+) -> subprocess.CompletedProcess[str]:
+    if context.runner is not DEFAULT_RUNNER:
+        result = context.runner(
+            command,
+            env=context.env,
+            check=False,
+            capture_output=True,
+        )
+        _emit_completed_output(result)
+        return result
+
+    process = subprocess.Popen(  # nosec B603
+        command,
+        env=context.env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    output_parts: list[str] = []
+    if process.stdout is not None:
+        for line in process.stdout:
+            output_parts.append(line)
+            print(line, end="")
+    returncode = process.wait()
+    return subprocess.CompletedProcess(
+        command,
+        returncode,
+        stdout="".join(output_parts),
+        stderr="",
+    )
+
+
 def _plan_decrypt_fallback_enabled(context: CommandContext) -> bool:
     return (
         context.env.get("GITHUB_ACTIONS") == "true"
         and bool(context.env.get("PULUMI_EXPECTED_SHA"))
+    )
+
+
+def _prod_direct_apply_after_gates_enabled(context: CommandContext) -> bool:
+    configured = context.env.get("PULUMI_PROD_DIRECT_APPLY_AFTER_GATES", "true")
+    return (
+        _plan_decrypt_fallback_enabled(context)
+        and configured.strip().lower() not in FALSEY_ENV_VALUES
     )
 
 
@@ -409,13 +454,20 @@ def _run_up_plan_stack(
         )
         return None
 
-    result = context.runner(
+    if _prod_direct_apply_after_gates_enabled(context):
+        print(
+            "warning: applying production with guarded direct Pulumi up after "
+            "the workflow preview, destructive diff, IAM validation, and "
+            "environment approval gates; saved production plan replay is "
+            "bypassed in CI to avoid provider-secret replay hangs.",
+            file=sys.stderr,
+        )
+        return _run_up_stack(context, stack)
+
+    result = _run_with_observable_output(
+        context,
         _pulumi_command(context, StackCommand("up-plan", stack, plan_path=plan_path)),
-        env=context.env,
-        check=False,
-        capture_output=True,
     )
-    _emit_completed_output(result)
     if result.returncode == 0:
         return None
 
@@ -426,8 +478,17 @@ def _run_up_plan_stack(
             "error; retrying guarded direct apply after the workflow gates.",
             file=sys.stderr,
         )
-        _run_stack_command(context, StackCommand("up", stack))
-        return None
+        return _run_up_stack(context, stack)
+
+    if STACK_LOCK_ERROR in combined_output and _plan_decrypt_fallback_enabled(context):
+        print(
+            "warning: Pulumi reported a stack lock while applying the saved "
+            "production plan; running pulumi cancel for the selected stack "
+            "and retrying with guarded direct apply.",
+            file=sys.stderr,
+        )
+        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
+        return _run_up_stack(context, stack)
 
     return result.returncode or 1
 
@@ -449,13 +510,10 @@ def _run_up_stack(context: CommandContext, stack: str) -> int | None:
         _run_stack_command(context, StackCommand("up", stack))
         return None
 
-    result = context.runner(
+    result = _run_with_observable_output(
+        context,
         _pulumi_command(context, StackCommand("up", stack)),
-        env=context.env,
-        check=False,
-        capture_output=True,
     )
-    _emit_completed_output(result)
     if result.returncode == 0:
         return None
 
