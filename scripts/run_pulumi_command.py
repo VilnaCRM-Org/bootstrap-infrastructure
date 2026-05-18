@@ -448,6 +448,54 @@ def _prod_direct_apply_after_gates_enabled(context: CommandContext) -> bool:
     )
 
 
+def _run_direct_prod_apply_after_gates(
+    context: CommandContext, stack: str
+) -> int | None:
+    print(
+        "warning: applying production with guarded direct Pulumi up after "
+        "the workflow preview, destructive diff, IAM validation, and "
+        "environment approval gates; saved production plan replay is "
+        "bypassed in CI to avoid provider-secret replay hangs.",
+        file=sys.stderr,
+    )
+    return _run_up_stack(context, stack)
+
+
+def _saved_prod_plan_recovery_enabled(
+    context: CommandContext, combined_output: str, error_signature: str
+) -> bool:
+    return error_signature in combined_output and _plan_decrypt_fallback_enabled(
+        context
+    )
+
+
+def _recover_failed_saved_prod_plan(
+    context: CommandContext,
+    stack: str,
+    result: subprocess.CompletedProcess[str],
+) -> int | None:
+    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
+    if _saved_prod_plan_recovery_enabled(context, combined_output, PLAN_DECRYPT_ERROR):
+        print(
+            "warning: saved Pulumi plan failed with the known KMS plan-decrypt "
+            "error; retrying guarded direct apply after the workflow gates.",
+            file=sys.stderr,
+        )
+        return _run_up_stack(context, stack)
+
+    if _saved_prod_plan_recovery_enabled(context, combined_output, STACK_LOCK_ERROR):
+        print(
+            "warning: Pulumi reported a stack lock while applying the saved "
+            "production plan; running pulumi cancel for the selected stack "
+            "and retrying with guarded direct apply.",
+            file=sys.stderr,
+        )
+        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
+        return _run_up_stack(context, stack)
+
+    return result.returncode or 1
+
+
 def _run_up_plan_stack(
     context: CommandContext, stack: str, plan_path: Path
 ) -> int | None:
@@ -459,14 +507,7 @@ def _run_up_plan_stack(
         return None
 
     if _prod_direct_apply_after_gates_enabled(context):
-        print(
-            "warning: applying production with guarded direct Pulumi up after "
-            "the workflow preview, destructive diff, IAM validation, and "
-            "environment approval gates; saved production plan replay is "
-            "bypassed in CI to avoid provider-secret replay hangs.",
-            file=sys.stderr,
-        )
-        return _run_up_stack(context, stack)
+        return _run_direct_prod_apply_after_gates(context, stack)
 
     result = _run_with_observable_output(
         context,
@@ -475,28 +516,7 @@ def _run_up_plan_stack(
     if result.returncode == 0:
         return None
 
-    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if PLAN_DECRYPT_ERROR in combined_output and _plan_decrypt_fallback_enabled(
-        context
-    ):
-        print(
-            "warning: saved Pulumi plan failed with the known KMS plan-decrypt "
-            "error; retrying guarded direct apply after the workflow gates.",
-            file=sys.stderr,
-        )
-        return _run_up_stack(context, stack)
-
-    if STACK_LOCK_ERROR in combined_output and _plan_decrypt_fallback_enabled(context):
-        print(
-            "warning: Pulumi reported a stack lock while applying the saved "
-            "production plan; running pulumi cancel for the selected stack "
-            "and retrying with guarded direct apply.",
-            file=sys.stderr,
-        )
-        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
-        return _run_up_stack(context, stack)
-
-    return result.returncode or 1
+    return _recover_failed_saved_prod_plan(context, stack, result)
 
 
 def _pulumi_cancel_command(context: CommandContext, stack: str) -> list[str]:
