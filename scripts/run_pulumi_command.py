@@ -431,9 +431,8 @@ def _run_with_observable_output(
 
 
 def _plan_decrypt_fallback_enabled(context: CommandContext) -> bool:
-    return (
-        context.env.get("GITHUB_ACTIONS") == "true"
-        and bool(context.env.get("PULUMI_EXPECTED_SHA"))
+    return context.env.get("GITHUB_ACTIONS") == "true" and bool(
+        context.env.get("PULUMI_EXPECTED_SHA")
     )
 
 
@@ -477,9 +476,8 @@ def _run_up_plan_stack(
         return None
 
     combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if (
-        PLAN_DECRYPT_ERROR in combined_output
-        and _plan_decrypt_fallback_enabled(context)
+    if PLAN_DECRYPT_ERROR in combined_output and _plan_decrypt_fallback_enabled(
+        context
     ):
         print(
             "warning: saved Pulumi plan failed with the known KMS plan-decrypt "
