@@ -8317,10 +8317,10 @@ def test_run_pulumi_command_plan_handles_multiple_configured_stacks(
     assert initialized_prod  # nosec B101
 
 
-def test_run_pulumi_command_plan_clears_ci_stack_lock(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_run_pulumi_command_plan_does_not_preemptively_cancel_stack_lock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """CI plan commands should clear stale Pulumi locks before saving a plan."""
+    """CI plan commands should not cancel a possibly active update."""
     module = load_script_module(monkeypatch, "run_pulumi_command")
     repo_dir = tmp_path / "repo"
     pulumi_dir = repo_dir / "pulumi"
@@ -8354,18 +8354,12 @@ def test_run_pulumi_command_plan_clears_ci_stack_lock(
 
     monkeypatch.setattr(module, "run", fake_run)
     assert module.main(["plan"]) == 0  # nosec B101
-    assert "cleared a stale Pulumi lock" in capsys.readouterr().err  # nosec B101
-    cancel_index = next(  # nosec B101
-        index
-        for index, command in enumerate(calls)
-        if len(command) > 3 and command[3] == "cancel"
+    assert not any(  # nosec B101
+        len(command) > 3 and command[3] == "cancel" for command in calls
     )
-    preview_index = next(  # nosec B101
-        index
-        for index, command in enumerate(calls)
-        if len(command) > 3 and command[3] == "preview"
+    assert any(  # nosec B101
+        len(command) > 3 and command[3] == "preview" for command in calls
     )
-    assert cancel_index < preview_index  # nosec B101
 
 
 def test_run_pulumi_command_handles_error_paths_and_plan_application(
@@ -8485,10 +8479,10 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
     assert f"plan_file={selected_plan}" in single_output.read_text(encoding="utf-8")  # nosec B101
 
 
-def test_run_up_plan_stack_defaults_to_direct_prod_apply_in_ci(
+def test_run_up_plan_stack_uses_saved_prod_plan_by_default_in_ci(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Production CI applies should bypass saved-plan replay by default."""
+    """Production CI applies should remain constrained to the saved plan."""
     module = load_script_module(monkeypatch, "run_pulumi_command")
     context_dir = tmp_path / "repo"
     applied: list[list[str]] = []
@@ -8510,20 +8504,13 @@ def test_run_up_plan_stack_defaults_to_direct_prod_apply_in_ci(
     )
 
     assert module._run_up_plan_stack(context, "prod", tmp_path / "prod.plan") is None
-    assert "guarded direct Pulumi up" in capsys.readouterr().err  # nosec B101
-    assert not any(  # nosec B101
+    assert capsys.readouterr().err == ""  # nosec B101
+    assert any(  # nosec B101
         len(command) > 3 and command[3] == "up" and "--plan" in command
         for command in applied
     )
-    assert any(  # nosec B101
-        len(command) > 3 and command[3] == "up" and "--plan" not in command
-        for command in applied
-    )
     assert not any(  # nosec B101
-        len(command) > 3
-        and command[3] == "up"
-        and "--plan" not in command
-        and "--policy-pack" in command
+        len(command) > 3 and command[3] == "up" and "--plan" not in command
         for command in applied
     )
 
@@ -8531,7 +8518,7 @@ def test_run_up_plan_stack_defaults_to_direct_prod_apply_in_ci(
 def test_run_up_plan_stack_recovers_from_plan_decrypt(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Known saved-plan decrypt failures should fall back to guarded direct up."""
+    """Known saved-plan decrypt failures should not bypass the saved plan."""
     module = load_script_module(monkeypatch, "run_pulumi_command")
     context_dir = tmp_path / "repo"
     applied: list[list[str]] = []
@@ -8552,7 +8539,6 @@ def test_run_up_plan_stack_recovers_from_plan_decrypt(
         env={
             "GITHUB_ACTIONS": "true",
             "PULUMI_EXPECTED_SHA": "a" * 40,
-            "PULUMI_PROD_DIRECT_APPLY_AFTER_GATES": "false",
         },
         pulumi_dir=context_dir / "pulumi",
         policy_pack_dir=context_dir / "policy",
@@ -8563,21 +8549,14 @@ def test_run_up_plan_stack_recovers_from_plan_decrypt(
         runner=fake_runner,
     )
 
-    assert module._run_up_plan_stack(context, "prod", tmp_path / "prod.plan") is None
-    assert "known KMS plan-decrypt" in capsys.readouterr().err  # nosec B101
+    assert module._run_up_plan_stack(context, "prod", tmp_path / "prod.plan") == 255
+    assert "refusing direct production apply" in capsys.readouterr().err  # nosec B101
     assert any(  # nosec B101
         len(command) > 3 and command[3] == "up" and "--plan" in command
         for command in applied
     )
-    assert any(  # nosec B101
-        len(command) > 3 and command[3] == "up" and "--plan" not in command
-        for command in applied
-    )
     assert not any(  # nosec B101
-        len(command) > 3
-        and command[3] == "up"
-        and "--plan" not in command
-        and "--policy-pack" in command
+        len(command) > 3 and command[3] == "up" and "--plan" not in command
         for command in applied
     )
 
@@ -8585,14 +8564,19 @@ def test_run_up_plan_stack_recovers_from_plan_decrypt(
 def test_run_up_plan_stack_recovers_from_saved_plan_lock(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Saved-plan lock failures should cancel the stale lock and direct-apply."""
+    """Saved-plan lock failures should retry the same plan after cancellation."""
     module = load_script_module(monkeypatch, "run_pulumi_command")
     context_dir = tmp_path / "repo"
     applied: list[list[str]] = []
+    plan_attempts = 0
 
     def fake_runner(command, **kwargs):
+        nonlocal plan_attempts
         applied.append(command)
         if len(command) > 3 and command[3] == "up" and "--plan" in command:
+            plan_attempts += 1
+            if plan_attempts > 1:
+                return subprocess.CompletedProcess(command, 0, stdout="")
             return subprocess.CompletedProcess(
                 command,
                 255,
@@ -8606,7 +8590,6 @@ def test_run_up_plan_stack_recovers_from_saved_plan_lock(
         env={
             "GITHUB_ACTIONS": "true",
             "PULUMI_EXPECTED_SHA": "c" * 40,
-            "PULUMI_PROD_DIRECT_APPLY_AFTER_GATES": "false",
         },
         pulumi_dir=context_dir / "pulumi",
         policy_pack_dir=context_dir / "policy",
@@ -8622,15 +8605,9 @@ def test_run_up_plan_stack_recovers_from_saved_plan_lock(
     assert any(  # nosec B101
         len(command) > 3 and command[3] == "cancel" for command in applied
     )
-    assert any(  # nosec B101
-        len(command) > 3 and command[3] == "up" and "--plan" not in command
-        for command in applied
-    )
+    assert plan_attempts == 2  # nosec B101
     assert not any(  # nosec B101
-        len(command) > 3
-        and command[3] == "up"
-        and "--plan" not in command
-        and "--policy-pack" in command
+        len(command) > 3 and command[3] == "up" and "--plan" not in command
         for command in applied
     )
 
@@ -8774,7 +8751,6 @@ def test_run_pulumi_command_unhandled_apply_failures_return_status(
         env={
             "GITHUB_ACTIONS": "true",
             "PULUMI_EXPECTED_SHA": "e" * 40,
-            "PULUMI_PROD_DIRECT_APPLY_AFTER_GATES": "false",
         },
         pulumi_dir=context_dir / "pulumi",
         policy_pack_dir=context_dir / "policy",
@@ -8808,6 +8784,28 @@ def test_run_pulumi_command_unhandled_apply_failures_return_status(
     assert module._run_up_stack(direct_context, "test") is None
     assert any(  # nosec B101
         len(command) > 3 and command[3] == "up" for command in direct_calls
+    )
+
+    ci_success_calls: list[list[str]] = []
+
+    def ci_success_runner(command, **kwargs):
+        ci_success_calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    ci_success_context = module.CommandContext(
+        root_dir=context_dir,
+        env={"GITHUB_ACTIONS": "true", "PULUMI_EXPECTED_SHA": "g" * 40},
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=ci_success_runner,
+    )
+    assert module._run_up_stack(ci_success_context, "test") is None
+    assert any(  # nosec B101
+        len(command) > 3 and command[3] == "up" for command in ci_success_calls
     )
 
     def direct_failure_runner(command, **kwargs):
@@ -8882,46 +8880,48 @@ def test_run_pulumi_command_dispatch_propagates_apply_failures(
     assert seen_up_stacks == ["first", "second"]  # nosec B101
 
 
-def test_run_pulumi_command_cancel_stale_lock_noops_without_recovery(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_run_plan_command_does_not_cancel_before_preview(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Stale-lock cancellation should be quiet when disabled or unsuccessful."""
+    """Plan creation should not cancel a possibly active update before preview."""
     module = load_script_module(monkeypatch, "run_pulumi_command")
     context_dir = tmp_path / "repo"
+    plan_dir = context_dir / ".artifacts" / "pulumi-plan"
+    preview_dir = context_dir / ".artifacts" / "pulumi-preview"
     calls: list[list[str]] = []
 
     def fake_runner(command, **kwargs):
         calls.append(command)
-        return subprocess.CompletedProcess(command, 1, stdout="", stderr="no lock")
+        if len(command) > 3 and command[3] == "preview":
+            plan_path = Path(command[command.index("--save-plan") + 1])
+            plan_path.parent.mkdir(parents=True, exist_ok=True)
+            plan_path.write_text("plan", encoding="utf-8")
+            stdout = kwargs.get("stdout")
+            if stdout is not None:
+                stdout.write("{}")
+        return subprocess.CompletedProcess(command, 0, stdout="")
 
     context = module.CommandContext(
-        root_dir=context_dir,
-        env={},
-        pulumi_dir=context_dir / "pulumi",
-        policy_pack_dir=context_dir / "policy",
-        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
-        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
-        backend_url="file:///tmp/backend",
-        secrets_provider="",
-        runner=fake_runner,
-    )
-    module._cancel_stale_stack_lock(context, "test")
-    assert calls == []  # nosec B101
-
-    enabled_context = module.CommandContext(
         root_dir=context_dir,
         env={"GITHUB_ACTIONS": "true", "PULUMI_COMMIT_SHA": "a" * 40},
         pulumi_dir=context_dir / "pulumi",
         policy_pack_dir=context_dir / "policy",
-        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
-        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        plan_dir=plan_dir,
+        preview_artifact_dir=preview_dir,
         backend_url="file:///tmp/backend",
         secrets_provider="",
         runner=fake_runner,
     )
-    module._cancel_stale_stack_lock(enabled_context, "test")
-    assert len(calls) == 1  # nosec B101
-    assert capsys.readouterr().err == ""  # nosec B101
+
+    def fake_write_preview_summary(_root_dir, _preview_file, summary_file, **_kwargs):
+        summary_file.write_text("summary\n", encoding="utf-8")
+
+    monkeypatch.setattr(module, "_select_or_init_stack", lambda *args: None)
+    monkeypatch.setattr(module, "_write_preview_summary", fake_write_preview_summary)
+    assert module._run_plan_command(context, ["test"]) == 0  # nosec B101
+    assert not any(  # nosec B101
+        len(command) > 3 and command[3] == "cancel" for command in calls
+    )
 
 
 def test_run_pulumi_command_runs_generic_and_plan_without_github_output(
