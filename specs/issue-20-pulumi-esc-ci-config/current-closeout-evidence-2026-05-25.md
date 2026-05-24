@@ -29,10 +29,11 @@ Open repository issues at the time of this audit:
 | `#56` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
 
 Current PR `#57` review state is approved, but merge state is still blocked.
-Current checks on head `fd313a4` are `28` passing, `5` skipped, and `2`
-failing privileged setup checks. All repo-side checks are green, including
-`Local Battery`, `Mutation`, `CodeRabbit`, `qlty check`, `qlty fmt`, `CodeQL`,
-`Bandit`, and `Actionlint`.
+The latest fully settled audited checks before this evidence-refresh commit
+were on head `fd313a4`: `28` passing, `5` skipped, and `2` failing privileged
+setup checks. All repo-side checks were green, including `Local Battery`,
+`Mutation`, `CodeRabbit`, `qlty check`, `qlty fmt`, `CodeQL`, `Bandit`, and
+`Actionlint`.
 
 The current privileged `Preview` and `Test Account Evidence` checks fail before
 ESC values or AWS credentials are loaded:
