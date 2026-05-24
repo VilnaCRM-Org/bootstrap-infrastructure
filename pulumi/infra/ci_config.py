@@ -238,7 +238,7 @@ class CiConfiguration(pulumi.ComponentResource):
                 f"{name}-secret-{suffix}",
                 name=secret_id,
                 description=(
-                    "Pulumi ESC source-of-truth JSON for "
+                    "AWS Secrets Manager source-of-truth JSON for "
                     f"{_pulumi_esc_project(self._settings)}/{suffix} CI."
                 ),
                 recovery_window_in_days=30,
