@@ -15,6 +15,10 @@ on:
         description: Type the documented confirmation sentence
         required: true
         type: string
+      sre_confirmation_reference:
+        description: HTTPS URL for the SRE confirmation comment or ticket
+        required: true
+        type: string
 
 concurrency:
   group: operations-alert-legacy-reconcile
@@ -36,6 +40,7 @@ jobs:
       CANONICAL_ISSUE: ${{ inputs.canonical_issue }}
       LEGACY_ISSUES: ${{ inputs.legacy_issues }}
       CONFIRMATION: ${{ inputs.confirmation }}
+      SRE_CONFIRMATION_REFERENCE: ${{ inputs.sre_confirmation_reference }}
     steps:
       - name: Reconcile legacy operations alerts
         shell: bash
@@ -43,6 +48,11 @@ jobs:
           expected="I confirm these legacy issues match the canonical operations alert stream"
           if [[ "${CONFIRMATION}" != "${expected}" ]]; then
             echo "error: confirmation sentence does not match the documented value." >&2
+            exit 1
+          fi
+          sre_reference="${SRE_CONFIRMATION_REFERENCE}"
+          if [[ ! "${sre_reference}" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "error: sre_confirmation_reference must be an HTTPS URL without whitespace." >&2
             exit 1
           fi
 
@@ -113,5 +123,5 @@ jobs:
             gh issue close "${issue}" \
               --repo "${GH_REPO}" \
               --duplicate-of "${canonical}" \
-              --comment "Closed as a confirmed duplicate of #${canonical}. SRE confirmation was provided through the Operations Alert Legacy Reconcile workflow after matching this legacy alert to the canonical fingerprinted operations-alert stream."
+              --comment "Closed as a confirmed duplicate of #${canonical}. SRE confirmation was provided through the Operations Alert Legacy Reconcile workflow after matching this legacy alert to the canonical fingerprinted operations-alert stream. SRE confirmation reference: ${sre_reference}"
           done

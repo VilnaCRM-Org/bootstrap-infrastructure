@@ -59,7 +59,8 @@ dependencies.
 
 - Existing open PRs may need to be rebased or rerun after this trust-model
   change lands.
-- Historical operations alert duplicate issues must be closed manually or by a
-  maintainer after the canonical fingerprint behavior is merged.
+- Historical operations alert duplicate issues must be closed through
+  **Operations Alert Legacy Reconcile** after the canonical fingerprint behavior
+  is merged and SRE records a sanitized HTTPS confirmation reference.
 - If local test-account AWS credentials are expired, metadata verification is
   blocked until the maintainer refreshes them.

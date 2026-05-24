@@ -303,6 +303,8 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     """Avoid baking volatile SQS queue depth into retained review evidence."""
     alert_doc = (ROOT / "docs" / "alert-routing-evidence.md").read_text()
     operating_doc = (ROOT / "docs" / "operating-review-2026-05-09.md").read_text()
+    ci_guardrails = (ROOT / "docs" / "ci-guardrails.md").read_text()
+    setup_doc = (ROOT / "docs" / "github-actions-secrets.md").read_text()
     reconcile_workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "operations-alert-reconcile.yml").read_text()
     )
@@ -319,6 +321,10 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
         "I confirm these legacy issues match the canonical operations alert stream"
         in alert_doc
     )  # nosec B101
+    assert "sre_confirmation_reference" in alert_doc  # nosec B101
+    assert "sanitized SRE confirmation" in alert_doc  # nosec B101
+    assert "sre_confirmation_reference" in ci_guardrails  # nosec B101
+    assert "sre_confirmation_reference" in setup_doc  # nosec B101
     assert "stable SNS/SQS route metadata" in operating_doc  # nosec B101
     assert "ApproximateNumberOfMessages=" not in docs  # nosec B101
     assert "two visible messages" not in docs  # nosec B101
@@ -332,6 +338,9 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     }
     assert "id-token" not in reconcile_workflow["permissions"]  # nosec B101
     assert "operations-alert:fingerprint=" in reconcile_run  # nosec B101
+    assert reconcile_triggers["workflow_dispatch"]["inputs"][  # nosec B101
+        "sre_confirmation_reference"
+    ]["required"]
     assert reconcile_workflow["jobs"]["reconcile"]["steps"][0]["shell"] == "bash"  # nosec B101
     assert "GH_REPO: ${{ github.repository }}" in yaml.safe_dump(  # nosec B101
         reconcile_workflow["jobs"]["reconcile"]["env"]
@@ -340,6 +349,8 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     assert "declare -A seen_issues" in reconcile_run  # nosec B101
     assert "legacy_issue_ids" in reconcile_run  # nosec B101
     assert "provide at least one legacy issue number" in reconcile_run  # nosec B101
+    assert "SRE_CONFIRMATION_REFERENCE" in reconcile_run  # nosec B101
+    assert "sre_confirmation_reference must be an HTTPS URL" in reconcile_run  # nosec B101
     assert "canonical_state" in reconcile_run  # nosec B101
     assert "canonical_title" in reconcile_run  # nosec B101
     assert "canonical issue ${canonical} is not open" in reconcile_run  # nosec B101
@@ -348,6 +359,10 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     )  # nosec B101
     assert "gh issue close" in reconcile_run  # nosec B101
     assert "--duplicate-of" in reconcile_run  # nosec B101
+    assert "SRE confirmation reference: ${sre_reference}" in reconcile_run  # nosec B101
+    assert reconcile_run.index("sre_confirmation_reference must") < (  # nosec B101
+        reconcile_run.index("gh issue close")
+    )
 
 
 def test_ci_guardrails_manual_follow_up_completes_esc_cutover() -> None:
@@ -384,6 +399,7 @@ def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
         "NoSuchEntityException",
         "canonical fingerprinted issue",
         "SRE confirms",
+        "sre_confirmation_reference",
         "Manual secure setup required",
         "Generated BMAD/BMALPH/Ralph framework state remains intentionally uncommitted",
     ):

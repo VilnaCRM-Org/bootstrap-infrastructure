@@ -239,6 +239,8 @@ the exact PR head SHA before entering `prod-preview` or protected `prod`.
 8. Create or verify the protected `operations-alert-reconcile` GitHub
    Environment with required SRE or reviewer approval before running the legacy
    operations-alert closure workflow; keep it free of account configuration.
+   The workflow requires an HTTPS `sre_confirmation_reference` to the sanitized
+   SRE confirmation record.
    Repository administrators can apply and verify both protected GitHub
    Environments with `make configure-github-repository-controls`.
 9. Re-run privileged previews, test deploy, drift, operations alert triage, and Well-Architected evidence before removing any legacy GitHub variables.

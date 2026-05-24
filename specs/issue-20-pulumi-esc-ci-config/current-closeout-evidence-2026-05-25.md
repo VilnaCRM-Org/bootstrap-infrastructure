@@ -20,13 +20,13 @@ Open repository issues at the time of this audit:
 | Issue | State | Current disposition |
 | --- | --- | --- |
 | `#20` | Open | GitOps implementation is present in PR `#57`; live closeout still needs external ESC/AWS setup and successful privileged checks. |
-| `#49` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
-| `#50` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
-| `#52` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
-| `#53` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
-| `#54` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
-| `#55` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
-| `#56` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
+| `#49` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#50` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#52` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#53` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#54` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#55` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#56` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
 
 Current PR `#57` review state is approved, but merge state is still blocked.
 The latest fully settled audited checks before this evidence-refresh commit
@@ -130,12 +130,14 @@ issues automatically. The safe GitOps path is:
 2. Establish one canonical issue whose body contains
    `operations-alert:fingerprint=`.
 3. Have SRE confirm the legacy issues match the same underlying alert stream,
-   including state, vault, plan or rule, and protected resource.
+   including state, vault, plan or rule, and protected resource. Retain a
+   sanitized HTTPS confirmation reference without raw alert payloads,
+   credentials, stack exports, tokens, or private incident notes.
 4. Run **Operations Alert Legacy Reconcile** with the canonical issue and the
-   confirmed legacy issue list.
+   confirmed legacy issue list plus the SRE confirmation reference.
 
 Closure is safe only after SRE confirms the legacy issue list against the
-canonical fingerprinted issue.
+canonical fingerprinted issue and records the sanitized confirmation reference.
 
 ## Manual Secure Steps Still Required
 
@@ -160,7 +162,8 @@ canonical fingerprinted issue.
 9. Close `#20` only after the successful run and reviewer acceptance of the AWS
    Secrets Manager source-of-truth refinement.
 10. Close `#49`, `#50`, and `#52` through `#56` only through the manual legacy
-   reconcile workflow after SRE confirmation.
+   reconcile workflow after SRE confirmation, including the required
+   `sre_confirmation_reference`.
 
 ## BMAD/BMALPH Notes
 

@@ -113,8 +113,9 @@ raw payloads.
 
 The manual Operations Alert Legacy Reconcile workflow gives SREs a GitOps-owned
 cleanup path after confirmation. It requires a canonical fingerprinted issue,
-rejects already-fingerprinted legacy issues, and closes confirmed legacy issues
-with `gh issue close --duplicate-of`.
+requires an HTTPS SRE confirmation reference, rejects already-fingerprinted
+legacy issues, and closes confirmed legacy issues with
+`gh issue close --duplicate-of`.
 
 ## Manual Secure Steps
 

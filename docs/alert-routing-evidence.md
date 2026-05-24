@@ -94,14 +94,18 @@ workflow dedupe because the workflow searches issue bodies for the marker.
 After SRE confirmation, use the manual **Operations Alert Legacy Reconcile**
 workflow to close legacy duplicates. The workflow requires a canonical issue
 whose body already contains `operations-alert:fingerprint=`, accepts only
-unmarked open `Operations alerts queued:` issues as legacy duplicates, and uses
-GitHub duplicate closure semantics. It runs behind the
+unmarked open `Operations alerts queued:` issues as legacy duplicates, requires
+an HTTPS SRE confirmation reference, and uses GitHub duplicate closure
+semantics. It runs behind the
 `operations-alert-reconcile` GitHub Environment so repository administrators can
 require SRE or reviewer approval before any duplicate closure. It does not
 request AWS or GitHub OIDC credentials; it only writes issue comments and
 duplicate closures.
 
-The workflow confirmation input must exactly match this sentence:
+The workflow confirmation input must exactly match this sentence, and the
+`sre_confirmation_reference` input must point to the sanitized SRE confirmation
+comment or ticket. Do not put raw alert payloads, credentials, stack exports,
+tokens, or private incident notes in that referenced record.
 
 ```text
 I confirm these legacy issues match the canonical operations alert stream
@@ -144,8 +148,8 @@ separate operations alert triage workflow creates GitHub issues from queued
 alert metadata every 30 minutes. Mixed SQS batches are split by stable alert
 stream before GitHub issue search/create/comment operations, so unrelated
 streams do not collapse into one duplicate marker. Legacy issues without the
-`operations-alert:fingerprint=` marker still require SRE confirmation before
-closure.
+`operations-alert:fingerprint=` marker still require SRE confirmation and an
+HTTPS `sre_confirmation_reference` before closure.
 
 After a scheduled or manual collector run, SRE can render a dated observation
 record from `.artifacts/well-architected/evidence.json`:

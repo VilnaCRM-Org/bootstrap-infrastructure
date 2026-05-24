@@ -575,7 +575,8 @@ The workflows are committed in this repository, but maintainers still need to:
 11. enable required reviewers and branch restrictions on `prod`
 12. create the protected `operations-alert-reconcile` GitHub Environment with
    required SRE or reviewer approval and no account configuration before legacy
-   operations-alert issue closure
+   operations-alert issue closure; the manual closure workflow also requires an
+   HTTPS `sre_confirmation_reference` to the sanitized SRE confirmation record
 13. mark the required PR checks in GitHub branch protection
 14. confirm no stale AWS trust subjects or privileged GitHub Environment account
    variables remain outside the protected `prod` approval boundary
