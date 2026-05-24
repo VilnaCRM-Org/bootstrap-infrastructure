@@ -736,7 +736,7 @@ def test_esc_loader_uses_committed_pulumi_esc_target() -> None:
     boundary_step = next(
         step
         for step in action["runs"]["steps"]
-        if step.get("name") == "Record ESC source-of-truth boundary"
+        if step.get("name") == "Record AWS Secrets Manager source-of-truth boundary"
     )
 
     assert config == {  # nosec B101

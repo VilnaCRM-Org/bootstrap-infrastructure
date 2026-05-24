@@ -8,8 +8,8 @@ Recorded on 2026-05-25 in the `Europe/Sofia` timezone for branch
 | Field | Value |
 | --- | --- |
 | PR | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/57` |
-| Head SHA | `38fc80ac15f2735ac84ff569bfe81577d41e9cd8` |
-| Short SHA | `38fc80a` |
+| Head SHA | `5eb202e0afeba6f6e8d15b16fc14f0a85c3d4dbc` |
+| Short SHA | `5eb202e` |
 | Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi ESC is the fixed projection and OIDC layer. |
 | Secret handling | No secret values, `GetSecretValue` responses, decrypted stack outputs, access keys, or tokens were read or recorded. |
 
@@ -29,6 +29,10 @@ Open repository issues at the time of this audit:
 | `#56` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
 
 Current PR `#57` review state is approved, but merge state is still blocked.
+Current checks on head `5eb202e` are `28` passing, `5` skipped, and `2`
+failing privileged setup checks. All repo-side checks are green, including
+`Local Battery`, `Mutation`, `CodeRabbit`, `qlty check`, and `qlty fmt`.
+
 The current privileged `Preview` and `Test Account Evidence` checks fail before
 ESC values or AWS credentials are loaded:
 
@@ -47,7 +51,9 @@ review.
 ### Test Account
 
 Local AWS CLI checks for the test account could not prove live state because
-the configured local token is invalid:
+the configured local token is invalid. `aws configure list` shows credentials
+coming from local environment variables and region `eu-central-1` from
+`~/.aws/config`; no other AWS CLI profile is configured locally.
 
 ```text
 aws sts get-caller-identity --output json
@@ -97,6 +103,7 @@ complete yet.
 | AWS Secrets Manager source of truth | Pulumi creates secret containers and ESC read roles; docs/tests state values stay in AWS Secrets Manager and must not be copied into ESC encrypted literals. | GitOps implemented |
 | No GitHub `test` or `prod-preview` deployment environments for non-approval jobs | Workflow contracts and tests enforce only protected production apply uses `environment: prod`. | GitOps implemented |
 | Production approval preserved | Protected GitHub `prod` Environment remains the production apply approval boundary. | GitOps implemented; repository-admin verification still required |
+| Protected manual reconcile gate | The repository controls helper now prints, applies, and verifies both `prod` and `operations-alert-reconcile`; the manual reconcile workflow requires `operations-alert-reconcile` and has no AWS/OIDC permission. | GitOps implemented; repository-admin verification still required |
 | Fork PR isolation | Fork paths stay unprivileged and do not open ESC or request AWS credentials. | GitOps implemented |
 | KMS-backed Pulumi secrets provider | Validators require `awskms://` for shared CI stack configuration. | GitOps implemented |
 | Live ESC open and AWS role assumption | Current privileged checks fail at GitHub-to-ESC token exchange for `vilnacrm-org`. | Manual secure setup required |
@@ -110,7 +117,10 @@ Issues `#49`, `#50`, and `#52` through `#56` all reference
 region `eu-central-1`, and AWS Backup `Backup Job State Change` events. None
 of those issue bodies contains an `operations-alert:fingerprint=` marker.
 
-Do not close those issues automatically. The safe GitOps path is:
+Live `main` does not yet contain the fingerprint-aware triage workflow or the
+manual reconcile workflow from PR `#57`, and the live repository does not yet
+have an `operations-alert-reconcile` protected Environment. Do not close those
+issues automatically. The safe GitOps path is:
 
 1. Merge and run the fingerprint-aware operations alert triage workflow, or
    recover a computed fingerprint from retained raw payloads without exposing
@@ -136,13 +146,18 @@ canonical fingerprinted issue.
    for each Secrets Manager read role.
 5. Refresh local test-account AWS CLI credentials and rerun metadata-only
    verification.
-6. Rerun privileged PR checks and confirm `Preview` and `Test Account Evidence`
+6. Have a repository administrator run
+   `GITHUB_REPOSITORY_CONTROLS_MODE=--apply make configure-github-repository-controls`
+   and then `GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only make configure-github-repository-controls`
+   so GitHub has both protected `prod` and `operations-alert-reconcile`
+   Environments.
+7. Rerun privileged PR checks and confirm `Preview` and `Test Account Evidence`
    pass on the current head.
-7. Run GitHub Environment legacy variable cleanup only after ESC-backed
+8. Run GitHub Environment legacy variable cleanup only after ESC-backed
    privileged CI is green, then delete the temporary cleanup token.
-8. Close `#20` only after the successful run and reviewer acceptance of the AWS
+9. Close `#20` only after the successful run and reviewer acceptance of the AWS
    Secrets Manager source-of-truth refinement.
-9. Close `#49`, `#50`, and `#52` through `#56` only through the manual legacy
+10. Close `#49`, `#50`, and `#52` through `#56` only through the manual legacy
    reconcile workflow after SRE confirmation.
 
 ## BMAD/BMALPH Notes

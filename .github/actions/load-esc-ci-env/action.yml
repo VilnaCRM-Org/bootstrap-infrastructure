@@ -74,12 +74,12 @@ runs:
             output.write(f"environment={organization}/{project}/{suffix}\n")
         PY
 
-    - name: Record ESC source-of-truth boundary
+    - name: Record AWS Secrets Manager source-of-truth boundary
       shell: bash
       env:
         PULUMI_ESC_ENVIRONMENT: ${{ steps.esc-target.outputs.environment }}
       run: |
-        echo "::notice title=ESC source of truth::Opening ${PULUMI_ESC_ENVIRONMENT}; AWS Secrets Manager remains the source of truth, while ESC projects values through aws-secrets."
+        echo "::notice title=AWS Secrets Manager source of truth::Opening ${PULUMI_ESC_ENVIRONMENT}; AWS Secrets Manager remains the source of truth, while ESC projects values through aws-secrets."
         echo "::notice title=ESC manual setup::If Pulumi auth reports invalid organization, update .github/ci/pulumi-esc.json through review or configure GitHub-to-ESC OIDC for the real organization before rerunning privileged checks."
         if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
           {

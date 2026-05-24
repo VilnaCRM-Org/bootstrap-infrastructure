@@ -213,8 +213,9 @@ environments are:
 The ESC organization and project prefix is resolved from
 `.github/ci/pulumi-esc.json` before the ESC environment opens. Workflow call
 sites pass fixed suffixes like `test`, `test-pr`, `prod-preview`, and `prod`;
-PR input, issue comments, and repository-dispatch payloads cannot choose the
-ESC path.
+PR input, issue comments, and repository-dispatch payloads cannot supply
+arbitrary ESC environment names. Trusted commands can only select supported
+workflow paths that map to those fixed ESC environments.
 
 Each ESC environment should read one AWS Secrets Manager JSON secret from the
 owning AWS account:
