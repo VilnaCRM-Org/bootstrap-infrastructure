@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess  # nosec B404
 import sys
 import time
 from pathlib import Path
@@ -28,6 +29,8 @@ from _script_support import (
     repo_root,
     run,
 )
+
+DEFAULT_RUNNER = run
 
 __all__ = [
     "CommandContext",
@@ -61,6 +64,8 @@ SUPPORTED_COMMANDS = {
 PLAN_MANIFEST_NAME = "manifest.json"
 PLAN_MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_PLAN_MAX_AGE_SECONDS = 24 * 60 * 60
+PLAN_DECRYPT_ERROR = "decrypting secret value: cipher: message authentication failed"
+STACK_LOCK_ERROR = "the stack is currently locked"
 
 
 def _resolve_path(root_dir: Path, raw_path: str) -> Path:
@@ -382,38 +387,219 @@ def _selected_plan_path(
     return _plan_file(context.plan_dir, stack)
 
 
-def _run_up_plan_command(context: CommandContext, stacks: list[str]) -> int:
-    selected_plan_file = context.env.get("PULUMI_PLAN_FILE")
-    if selected_plan_file and len(stacks) > 1:
+def _emit_completed_output(result: subprocess.CompletedProcess[str]) -> None:
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end="")
+
+
+def _run_with_observable_output(
+    context: CommandContext, command: list[str]
+) -> subprocess.CompletedProcess[str]:
+    if context.runner is not DEFAULT_RUNNER:
+        result = context.runner(
+            command,
+            env=context.env,
+            check=False,
+            capture_output=True,
+        )
+        _emit_completed_output(result)
+        return result
+
+    process = subprocess.Popen(  # nosec B603
+        command,
+        env=context.env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    output_parts: list[str] = []
+    if process.stdout is not None:
+        for line in process.stdout:
+            output_parts.append(line)
+            print(line, end="")
+    returncode = process.wait()
+    return subprocess.CompletedProcess(
+        command,
+        returncode,
+        stdout="".join(output_parts),
+        stderr="",
+    )
+
+
+def _plan_decrypt_fallback_enabled(context: CommandContext) -> bool:
+    return context.env.get("GITHUB_ACTIONS") == "true" and bool(
+        context.env.get("PULUMI_EXPECTED_SHA")
+    )
+
+
+def _saved_prod_plan_recovery_enabled(
+    context: CommandContext, combined_output: str, error_signature: str
+) -> bool:
+    return error_signature in combined_output and _plan_decrypt_fallback_enabled(
+        context
+    )
+
+
+def _recover_failed_saved_prod_plan(
+    context: CommandContext,
+    stack: str,
+    plan_path: Path,
+    result: subprocess.CompletedProcess[str],
+) -> int | None:
+    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
+    if _saved_prod_plan_recovery_enabled(context, combined_output, PLAN_DECRYPT_ERROR):
         print(
-            "error: PULUMI_PLAN_FILE can only be used with a single selected stack.",
+            "error: saved Pulumi plan failed with the known KMS plan-decrypt "
+            "error; refusing direct production apply because production must "
+            "use the reviewed saved plan artifact.",
             file=sys.stderr,
         )
-        return 1
+        return result.returncode or 1
 
-    manifest: dict[str, Any] | None = None
+    if _saved_prod_plan_recovery_enabled(context, combined_output, STACK_LOCK_ERROR):
+        print(
+            "warning: Pulumi reported a stack lock while applying the saved "
+            "production plan; running pulumi cancel for the selected stack "
+            "and retrying the same saved plan once.",
+            file=sys.stderr,
+        )
+        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
+        retry = _run_with_observable_output(
+            context,
+            _pulumi_command(
+                context, StackCommand("up-plan", stack, plan_path=plan_path)
+            ),
+        )
+        return None if retry.returncode == 0 else retry.returncode or 1
 
-    for stack in stacks:
-        select_failure = _select_or_init_stack(context, stack)
-        if select_failure is not None:
-            return select_failure
+    return result.returncode or 1
 
-        plan_path = _selected_plan_path(context, selected_plan_file, stack)
-        if not plan_path.is_file():
-            print(f"error: Pulumi plan file not found: {plan_path}", file=sys.stderr)
-            return 1
-        if manifest is None:
-            manifest = _load_plan_manifest(context)
-            if manifest is None:
-                return 1
-        manifest_failure = _validate_plan_manifest(context, manifest, stack, plan_path)
-        if manifest_failure is not None:
-            return manifest_failure
+
+def _run_up_plan_stack(
+    context: CommandContext, stack: str, plan_path: Path
+) -> int | None:
+    if stack != "prod":
         _run_stack_command(
             context,
             StackCommand("up-plan", stack, plan_path=plan_path),
         )
-    return 0
+        return None
+
+    result = _run_with_observable_output(
+        context,
+        _pulumi_command(context, StackCommand("up-plan", stack, plan_path=plan_path)),
+    )
+    if result.returncode == 0:
+        return None
+
+    return _recover_failed_saved_prod_plan(context, stack, plan_path, result)
+
+
+def _pulumi_cancel_command(context: CommandContext, stack: str) -> list[str]:
+    return [
+        "pulumi",
+        "-C",
+        str(context.pulumi_dir),
+        "cancel",
+        "--stack",
+        stack,
+        "--yes",
+    ]
+
+
+def _run_up_stack(
+    context: CommandContext, stack: str, *, include_policy_pack: bool = True
+) -> int | None:
+    if not _plan_decrypt_fallback_enabled(context):
+        _run_stack_command(
+            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
+        )
+        return None
+
+    result = _run_with_observable_output(
+        context,
+        _pulumi_command(
+            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
+        ),
+    )
+    if result.returncode == 0:
+        return None
+
+    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
+    if STACK_LOCK_ERROR in combined_output:
+        print(
+            "warning: Pulumi reported a stack lock during guarded direct apply; "
+            "running pulumi cancel for the selected stack and retrying once.",
+            file=sys.stderr,
+        )
+        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
+        _run_stack_command(
+            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
+        )
+        return None
+
+    return result.returncode or 1
+
+
+def _run_up_plan_command(context: CommandContext, stacks: list[str]) -> int:
+    selected_plan_file = context.env.get("PULUMI_PLAN_FILE")
+    status = _validate_up_plan_selection(selected_plan_file, stacks)
+    manifest: dict[str, Any] | None = None
+
+    for stack in stacks:
+        if status is None:
+            manifest, status = _run_validated_up_plan_stack(
+                context,
+                selected_plan_file,
+                manifest,
+                stack,
+            )
+    return 0 if status is None else status
+
+
+def _validate_up_plan_selection(
+    selected_plan_file: str | None, stacks: list[str]
+) -> int | None:
+    if not (selected_plan_file and len(stacks) > 1):
+        return None
+
+    print(
+        "error: PULUMI_PLAN_FILE can only be used with a single selected stack.",
+        file=sys.stderr,
+    )
+    return 1
+
+
+def _validate_plan_file_exists(plan_path: Path) -> int | None:
+    if plan_path.is_file():
+        return None
+
+    print(f"error: Pulumi plan file not found: {plan_path}", file=sys.stderr)
+    return 1
+
+
+def _run_validated_up_plan_stack(
+    context: CommandContext,
+    selected_plan_file: str | None,
+    manifest: dict[str, Any] | None,
+    stack: str,
+) -> tuple[dict[str, Any] | None, int | None]:
+    plan_path = _selected_plan_path(context, selected_plan_file, stack)
+    status = _validate_plan_file_exists(plan_path)
+
+    if status is None and manifest is None:
+        manifest = _load_plan_manifest(context)
+        if manifest is None:
+            status = 1
+    if status is None and manifest is not None:
+        status = _validate_plan_manifest(context, manifest, stack, plan_path)
+    if status is None:
+        status = _select_or_init_stack(context, stack)
+    if status is None:
+        status = _run_up_plan_stack(context, stack, plan_path)
+    return manifest, status
 
 
 def _run_regular_command(
@@ -423,6 +609,11 @@ def _run_regular_command(
         select_failure = _select_or_init_stack(context, stack)
         if select_failure is not None:
             return select_failure
+        if command == "up":
+            up_failure = _run_up_stack(context, stack)
+            if up_failure is not None:
+                return up_failure
+            continue
         _run_stack_command(context, StackCommand(command, stack))
     return 0
 

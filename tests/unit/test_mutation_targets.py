@@ -62,6 +62,15 @@ def test_mutation_target_adoption_helpers_treat_not_found_as_absent(monkeypatch)
     assert pulumi_secrets._kms_alias_exists("alias/repo") is False  # nosec B101
 
 
+def test_mutation_target_kms_alias_empty_result_is_absent(monkeypatch):
+    def missing_kms_alias(*, name):
+        raise RuntimeError(f"reading KMS Alias ({name}): empty result")
+
+    monkeypatch.setattr(pulumi_secrets.aws.kms, "get_alias", missing_kms_alias)
+
+    assert pulumi_secrets._kms_alias_exists("alias/repo") is False  # nosec B101
+
+
 def test_mutation_target_adoption_helpers_reraise_unexpected_errors(monkeypatch):
     def failing_ecr_repository(*, name):  # noqa: ARG001
         raise RuntimeError("ecr throttled")

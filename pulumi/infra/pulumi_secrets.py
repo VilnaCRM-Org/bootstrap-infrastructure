@@ -55,6 +55,7 @@ def _kms_alias_exists(name: str) -> bool:  # pragma: no mutate
             "NotFoundException" in message
             or "NotFound" in message
             or "not found" in message.lower()
+            or "empty result" in message
             or "couldn't find resource" in message
         ):  # pragma: no mutate
             return False  # pragma: no mutate

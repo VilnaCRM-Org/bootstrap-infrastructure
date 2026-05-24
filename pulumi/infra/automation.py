@@ -1328,6 +1328,22 @@ def _attach_automation_managed_policy(
     )
 
 
+def _manage_automation_role_policy_attachments_exclusively(
+    parent: pulumi.Resource,
+    resource_name: str,
+    role: aws.iam.Role,
+    managed_policies: list[aws.iam.Policy],
+    policy_attachments: list[aws.iam.RolePolicyAttachment],
+) -> aws.iam.RolePolicyAttachmentsExclusive:
+    """Remove unmanaged managed policies from the automation role."""
+    return aws.iam.RolePolicyAttachmentsExclusive(
+        f"{resource_name}-managed-policy-attachments-exclusive",
+        role_name=role.name,
+        policy_arns=[policy.arn for policy in managed_policies],
+        opts=pulumi.ResourceOptions(parent=parent, depends_on=policy_attachments),
+    )
+
+
 def _create_automation_role_policies(
     context: AutomationResourceContext,
     role: aws.iam.Role,
@@ -1335,6 +1351,7 @@ def _create_automation_role_policies(
     aws.iam.RolePolicy,
     list[aws.iam.Policy],
     list[aws.iam.RolePolicyAttachment],
+    aws.iam.RolePolicyAttachmentsExclusive,
 ]:
     """Create inline and customer-managed policies for the automation role."""
     policy_documents = _automation_policy_documents(
@@ -1371,7 +1388,22 @@ def _create_automation_role_policies(
             )
         )
 
-    return inline_policy, managed_policies, policy_attachments
+    exclusive_policy_attachments = (
+        _manage_automation_role_policy_attachments_exclusively(
+            context.parent,
+            context.name,
+            role,
+            managed_policies,
+            policy_attachments,
+        )
+    )
+
+    return (
+        inline_policy,
+        managed_policies,
+        policy_attachments,
+        exclusive_policy_attachments,
+    )
 
 
 def _create_operations_alert_triage_role(
@@ -1461,13 +1493,20 @@ class GitHubAutomation(pulumi.ComponentResource):
         repository = _create_automation_repository(resource_context)
         _create_automation_lifecycle_policy(name, repository, base_opts)
         role = _create_automation_role(resource_context, provider_arn)
-        inline_policy, managed_policies, policy_attachments = (
-            _create_automation_role_policies(
-                resource_context,
-                role,
-            )
+        (
+            inline_policy,
+            managed_policies,
+            policy_attachments,
+            exclusive_policy_attachments,
+        ) = _create_automation_role_policies(
+            resource_context,
+            role,
         )
-        policy_dependencies = [inline_policy, *policy_attachments]
+        policy_dependencies = [
+            inline_policy,
+            *policy_attachments,
+            exclusive_policy_attachments,
+        ]
         operations_alert_triage_role, operations_alert_triage_policy = (
             _create_operations_alert_triage_role(
                 resource_context,
@@ -1484,6 +1523,7 @@ class GitHubAutomation(pulumi.ComponentResource):
         self.managed_policies = managed_policies
         self.policies = [inline_policy, *managed_policies]
         self.policy_attachments = policy_attachments
+        self.exclusive_policy_attachments = exclusive_policy_attachments
         self.policy_dependencies = policy_dependencies
 
         self.register_outputs(

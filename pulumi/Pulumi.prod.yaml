@@ -3,6 +3,7 @@
 config:
   aws:region: eu-central-1
   bootstrap-infrastructure:costCenter: core
+  bootstrap-infrastructure:costAnomalyMonitorArn: arn:aws:ce::933245420672:anomalymonitor/ec9114d2-dd7f-436d-a2a5-4e4791e19167
   bootstrap-infrastructure:criticality: high
   bootstrap-infrastructure:dataClassification: internal
   bootstrap-infrastructure:environment: prod
