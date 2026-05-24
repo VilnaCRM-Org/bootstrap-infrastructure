@@ -36,6 +36,11 @@ containers and `PulumiEscCiSecretsRead-*` roles. Maintainers still populate the
 JSON values directly in AWS Secrets Manager; Pulumi does not manage secret
 versions, and the values must not be copied into ESC encrypted literals.
 
+Use `docs/esc-aws-secrets-manager-cutover.md` for the manual cutover runbook,
+including secret-safe AWS Secrets Manager updates, ESC environment definition,
+GitHub-to-ESC OIDC setup, privileged CI reruns, legacy GitHub Environment
+variable cleanup, and legacy operations-alert reconcile steps.
+
 Each ESC environment should authenticate to AWS with `fn::open::aws-login`,
 read the corresponding JSON secret with `fn::open::aws-secrets`, parse it with
 `fn::fromJSON`, and expose only the required keys as `environmentVariables`.

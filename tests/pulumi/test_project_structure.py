@@ -379,6 +379,74 @@ def test_ci_guardrails_manual_follow_up_completes_esc_cutover() -> None:
     assert "operations-alert-reconcile" in ci_guardrails  # nosec B101
 
 
+def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
+    """Keep the human ESC cutover runbook explicit and source-of-truth safe."""
+    manual = (ROOT / "docs" / "esc-aws-secrets-manager-cutover.md").read_text()
+    setup_doc = (ROOT / "docs" / "github-actions-secrets.md").read_text()
+    github_setup_doc = (ROOT / ".github" / "github-actions-secrets.md").read_text()
+    readme = (ROOT / "README.md").read_text()
+    docs_readme = (ROOT / "docs" / "README.md").read_text()
+
+    for phrase in (
+        "AWS Secrets Manager is the source of truth",
+        "OIDC and projection layer",
+        "Required Secrets Manager Payloads",
+        "put-secret-value",
+        "Do not use `get-secret-value` for verification",
+        "fn::open::aws-secrets",
+        "fn::fromJSON",
+        "subjectAttributes:",
+        "currentEnvironment.name",
+        "invalid organization",
+        "GitHub-to-ESC OIDC",
+        "GH_ENVIRONMENT_ADMIN_TOKEN",
+        "Operations Alert Legacy Reconcile",
+        "sre_confirmation_reference",
+        "I confirm ESC-backed privileged CI is green",
+        "I confirm these legacy issues match the canonical operations alert stream",
+    ):
+        assert phrase in manual  # nosec B101
+
+    for environment_name in (
+        "vilnacrm-org/bootstrap-infrastructure/test-pr",
+        "vilnacrm-org/bootstrap-infrastructure/test",
+        "vilnacrm-org/bootstrap-infrastructure/prod-preview",
+        "vilnacrm-org/bootstrap-infrastructure/prod",
+    ):
+        assert environment_name in manual  # nosec B101
+
+    for secret_id in (
+        "/bootstrap-infrastructure/ci/test-pr",
+        "/bootstrap-infrastructure/ci/test",
+        "/bootstrap-infrastructure/ci/prod-preview",
+        "/bootstrap-infrastructure/ci/prod",
+    ):
+        assert secret_id in manual  # nosec B101
+
+    for variable_name in (
+        "AWS_ACCOUNT_ID",
+        "AWS_PREVIEW_ROLE_ARN",
+        "AWS_APPLY_ROLE_ARN",
+        "AWS_DRIFT_ROLE_ARN",
+        "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN",
+        "OPERATIONS_ALERT_QUEUE_NAME",
+        "OPERATIONS_TOPIC_ARN",
+        "OPERATIONS_CLOUDTRAIL_NAME",
+        "PULUMI_BACKEND_URL",
+        "PULUMI_SECRETS_PROVIDER",
+        "PULUMI_PREVIEW_STACKS",
+        "PULUMI_DRIFT_STACKS",
+    ):
+        assert variable_name in manual  # nosec B101
+
+    assert "SecretAccessKey" not in manual  # nosec B101
+    assert "secretAccessKey" not in manual  # nosec B101
+    assert "esc-aws-secrets-manager-cutover.md" in setup_doc  # nosec B101
+    assert "esc-aws-secrets-manager-cutover.md" in github_setup_doc  # nosec B101
+    assert "esc-aws-secrets-manager-cutover.md" in readme  # nosec B101
+    assert "esc-aws-secrets-manager-cutover.md" in docs_readme  # nosec B101
+
+
 def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
     """Keep current issue 20 closeout evidence explicit and secret-safe."""
     closeout = (

@@ -41,6 +41,11 @@ read at runtime with the `aws-secrets` provider; do not copy those values into
 ESC encrypted literals, Pulumi Cloud secrets, or any other ESC-managed secret
 value.
 
+Use the [Pulumi ESC and AWS Secrets Manager cutover manual](esc-aws-secrets-manager-cutover.md)
+for the secure human steps that create AWS secret values, configure ESC, rerun
+privileged CI, clean up legacy GitHub Environment variables, and reconcile
+legacy alert issues.
+
 Each privileged workflow authenticates to ESC through GitHub OIDC, opens one
 fixed ESC environment with `pulumi/auth-actions` and `pulumi/esc-action`,
 validates the loaded values, and then assumes the purpose-specific AWS role.
@@ -228,6 +233,9 @@ requested. Production commands always run the test account sequence first for
 the exact PR head SHA before entering `prod-preview` or protected `prod`.
 
 ## Migration Checklist
+
+Follow the dedicated [Pulumi ESC and AWS Secrets Manager cutover manual](esc-aws-secrets-manager-cutover.md)
+for command templates, verification gates, and secret-safe evidence capture.
 
 1. Apply the Pulumi `test` and `prod` stacks so AWS contains the four Secrets Manager containers and the `PulumiEscCiSecretsRead-*` roles.
 2. Populate the four AWS Secrets Manager JSON secret values listed above in the owning AWS accounts.

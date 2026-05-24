@@ -142,7 +142,9 @@ select the first committed `Pulumi.<stack>.yaml` file by default, and expect
 shared backends to use an AWS KMS-backed secrets provider. For test/prod CI
 setup, store account-local values in AWS Secrets Manager JSON secrets, project
 them through Pulumi ESC environments, and configure OIDC roles as described in
-[GitHub Actions Secrets and Variables](docs/github-actions-secrets.md).
+[GitHub Actions Secrets and Variables](docs/github-actions-secrets.md). The
+secure human setup sequence is in the
+[Pulumi ESC and AWS Secrets Manager cutover manual](docs/esc-aws-secrets-manager-cutover.md).
 
 ## Security
 
