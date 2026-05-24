@@ -32,6 +32,8 @@ REQUIRED_STATUS_CHECKS = (
     "Test Account Evidence",
 )
 
+OPERATIONS_ALERT_RECONCILE_ENVIRONMENT = "operations-alert-reconcile"
+
 
 def required_status_checks_rule() -> dict[str, object]:
     """Return the ruleset rule that enforces the documented PR gates."""
@@ -89,8 +91,8 @@ def ruleset_payload(existing_rules: Sequence[Mapping[str, Any]] = ()) -> dict[st
     }
 
 
-def prod_environment_payload(reviewer_id: int) -> dict[str, Any]:
-    """Build the protected production GitHub environment payload."""
+def protected_reviewer_environment_payload(reviewer_id: int) -> dict[str, Any]:
+    """Build a protected GitHub environment payload requiring one reviewer."""
     return {
         "wait_timer": 0,
         "prevent_self_review": True,
@@ -100,6 +102,18 @@ def prod_environment_payload(reviewer_id: int) -> dict[str, Any]:
             "custom_branch_policies": False,
         },
     }
+
+
+def prod_environment_payload(reviewer_id: int) -> dict[str, Any]:
+    """Build the protected production GitHub environment payload."""
+    return protected_reviewer_environment_payload(reviewer_id)
+
+
+def operations_alert_reconcile_environment_payload(
+    reviewer_id: int,
+) -> dict[str, Any]:
+    """Build the protected operations-alert reconcile environment payload."""
+    return protected_reviewer_environment_payload(reviewer_id)
 
 
 def required_status_check_items(rule: object) -> Sequence[object]:
@@ -249,28 +263,48 @@ def reviewer_ids_from_items(items: Sequence[object]) -> set[int]:
     return reviewer_ids
 
 
-def prod_environment_verification_blockers(
-    environment: Mapping[str, Any] | None, reviewer_id: int
+def protected_environment_verification_blockers(
+    environment: Mapping[str, Any] | None,
+    reviewer_id: int,
+    *,
+    label: str,
 ) -> list[str]:
-    """Return blockers when the prod environment does not match expectations."""
+    """Return blockers when a protected environment does not match expectations."""
     if environment is None:
-        return ["Production environment was not readable after apply."]
+        return [f"{label} was not readable after apply."]
     blockers: list[str] = []
     if not environment_prevents_self_review(environment):
-        blockers.append("Production environment does not prevent self-review.")
+        blockers.append(f"{label} does not prevent self-review.")
     branch_policy = environment.get("deployment_branch_policy")
     if not isinstance(branch_policy, Mapping):
-        blockers.append("Production environment does not report a branch policy.")
+        blockers.append(f"{label} does not report a branch policy.")
     elif (
         branch_policy.get("protected_branches") is not True
         or branch_policy.get("custom_branch_policies") is not False
     ):
-        blockers.append(
-            "Production environment does not restrict deployments to protected "
-            "branches."
-        )
+        blockers.append(f"{label} does not restrict deployments to protected branches.")
     if reviewer_id not in environment_reviewer_ids(environment):
-        blockers.append(
-            "Production environment does not require the configured reviewer."
-        )
+        blockers.append(f"{label} does not require the configured reviewer.")
     return blockers
+
+
+def prod_environment_verification_blockers(
+    environment: Mapping[str, Any] | None, reviewer_id: int
+) -> list[str]:
+    """Return blockers when the prod environment does not match expectations."""
+    return protected_environment_verification_blockers(
+        environment,
+        reviewer_id,
+        label="Production environment",
+    )
+
+
+def operations_alert_reconcile_environment_verification_blockers(
+    environment: Mapping[str, Any] | None, reviewer_id: int
+) -> list[str]:
+    """Return blockers when the operations-alert reconcile environment is weak."""
+    return protected_environment_verification_blockers(
+        environment,
+        reviewer_id,
+        label="Operations alert reconcile environment",
+    )

@@ -409,7 +409,7 @@ report-well-architected-closeout: ## Render owner/admin Well-Architected closeou
 		--question-verification "$${WELL_ARCHITECTED_QUESTION_VERIFICATION:-.artifacts/well-architected/question-verification.json}" \
 		--output "$${WELL_ARCHITECTED_CLOSEOUT_OUTPUT:-.artifacts/well-architected/owner-closeout-bundle.md}"
 
-configure-github-repository-controls: ## Print, apply, or verify GitHub ruleset and prod environment controls.
+configure-github-repository-controls: ## Print, apply, or verify GitHub ruleset and protected environment controls.
 	$(REPO_PYTHON) ./scripts/configure_github_repository_controls.py \
 		--repo "$(GITHUB_REPOSITORY_CONTROLS_REPO)" \
 		--prod-reviewer "$(GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER)" \

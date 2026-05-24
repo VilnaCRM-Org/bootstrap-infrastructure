@@ -2746,6 +2746,10 @@ def test_render_well_architected_closeout_writes_owner_handoff(
         "make configure-github-repository-controls" in text
     )
     assert (  # nosec B101
+        "`prod` plus `operations-alert-reconcile` environments require an "
+        "independent reviewer" in text
+    )
+    assert (  # nosec B101
         "gh variable set DEPENDABOT_EXCEPTION_EVIDENCE "
         "--repo VilnaCRM-Org/bootstrap-infrastructure "
         "--body '<path-to-dependabot-exception.json>'" in text
@@ -2957,6 +2961,9 @@ def test_configure_github_repository_controls_payloads(
             "custom_branch_policies": False,
         },
     }
+    assert module.operations_alert_reconcile_environment_payload(  # nosec B101
+        9444106
+    ) == module.prod_environment_payload(9444106)
 
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
     monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: 9444106)
@@ -2965,7 +2972,13 @@ def test_configure_github_repository_controls_payloads(
     )
     rendered = json.loads(capsys.readouterr().out)
     assert rendered["prodEnvironment"]["reviewers"][0]["id"] == 9444106  # nosec B101
+    assert rendered["operationsAlertReconcileEnvironment"]["reviewers"][0]["id"] == (  # nosec B101
+        9444106
+    )
     assert rendered["prodEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
+    assert rendered["operationsAlertReconcileEnvironmentReviewerLogin"] == (  # nosec B101
+        "Kravalg"
+    )
 
     assert (  # nosec B101
         module.main(["--repo", "VilnaCRM-Org/bootstrap-infrastructure", "--dry-run"])
@@ -2975,7 +2988,14 @@ def test_configure_github_repository_controls_payloads(
     assert (  # nosec B101
         dry_run_rendered["prodEnvironment"]["reviewers"][0]["id"] == 9444106
     )
+    assert (  # nosec B101
+        dry_run_rendered["operationsAlertReconcileEnvironment"]["reviewers"][0]["id"]
+        == 9444106
+    )
     assert dry_run_rendered["prodEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
+    assert dry_run_rendered["operationsAlertReconcileEnvironmentReviewerLogin"] == (  # nosec B101
+        "Kravalg"
+    )
 
     with pytest.raises(SystemExit):
         module.main(["--repo", "example/repo", "--apply", "--dry-run"])
@@ -2983,6 +3003,12 @@ def test_configure_github_repository_controls_payloads(
         module.main(["--repo", "example/repo", "--apply", "--verify-only"])
     with pytest.raises(SystemExit):
         module.main(["--repo", "example/repo", "--dry-run", "--verify-only"])
+    with pytest.raises(SystemExit) as help_exit:
+        module.main(["--help"])
+    assert help_exit.value.code == 0  # nosec B101
+    help_text = capsys.readouterr().out
+    assert "protected environment payloads" in help_text  # nosec B101
+    assert "protected environment controls" in help_text  # nosec B101
 
 
 def test_configure_github_repository_controls_verification_helpers(
@@ -3013,6 +3039,12 @@ def test_configure_github_repository_controls_verification_helpers(
     assert module._ruleset_verification_blockers(ruleset) == []  # noqa: SLF001  # nosec B101
     assert (
         module._prod_environment_verification_blockers(  # noqa: SLF001  # nosec B101
+            environment, 9444106
+        )
+        == []
+    )
+    assert (  # noqa: SLF001  # nosec B101
+        module._operations_alert_reconcile_environment_verification_blockers(
             environment, 9444106
         )
         == []
@@ -3125,6 +3157,9 @@ def test_configure_github_repository_controls_verification_helpers(
     assert module._prod_environment_verification_blockers(  # noqa: SLF001  # nosec B101
         None, 9444106
     ) == ["Production environment was not readable after apply."]
+    assert module._operations_alert_reconcile_environment_verification_blockers(  # noqa: SLF001  # nosec B101
+        None, 9444106
+    ) == ["Operations alert reconcile environment was not readable after apply."]
 
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: ruleset)
     monkeypatch.setattr(
@@ -3138,6 +3173,8 @@ def test_configure_github_repository_controls_verification_helpers(
         "requiredStatusChecks": sorted(module.REQUIRED_STATUS_CHECKS),
         "prodReviewerId": 9444106,
         "prodEnvironment": "prod",
+        "operationsAlertReconcileReviewerId": 9444106,
+        "operationsAlertReconcileEnvironment": "operations-alert-reconcile",
     }
 
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: bad_ruleset)
@@ -3152,6 +3189,10 @@ def test_configure_github_repository_controls_verification_helpers(
         module._verify_applied_controls("example/repo", 9444106)  # noqa: SLF001
     combined_error = str(exc_info.value)
     assert "missing required status checks" in combined_error  # nosec B101
+    assert "prod environment was not readable" in combined_error  # nosec B101
+    assert (  # nosec B101
+        "operations-alert-reconcile environment was not readable" in combined_error
+    )
     assert "gh: Not Found" in combined_error  # nosec B101
 
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: ruleset)
@@ -3183,14 +3224,24 @@ def test_configure_github_repository_controls_verify_only(
         "_verify_applied_controls",
         lambda repo, reviewer_id: (
             verifications.append((repo, reviewer_id))
-            or {"prodEnvironment": "prod", "prodReviewerId": reviewer_id}
+            or {
+                "prodEnvironment": "prod",
+                "prodReviewerId": reviewer_id,
+                "operationsAlertReconcileEnvironment": "operations-alert-reconcile",
+                "operationsAlertReconcileReviewerId": reviewer_id,
+            }
         ),
     )
 
     module.configure("example/repo", "Kravalg", apply=False, verify_only=True)
     rendered = json.loads(capsys.readouterr().out)
     assert rendered == {  # nosec B101
-        "verification": {"prodEnvironment": "prod", "prodReviewerId": 9444106}
+        "verification": {
+            "prodEnvironment": "prod",
+            "prodReviewerId": 9444106,
+            "operationsAlertReconcileEnvironment": "operations-alert-reconcile",
+            "operationsAlertReconcileReviewerId": 9444106,
+        }
     }
 
     assert (  # nosec B101
@@ -3418,6 +3469,19 @@ def test_configure_github_repository_controls_apply_paths(
             verifications.append((repo, reviewer_id)) or {"verified": True}
         ),
     )
+    monkeypatch.setattr(
+        module,
+        "prod_environment_payload",
+        lambda reviewer_id: {"environment": "prod", "reviewerId": reviewer_id},
+    )
+    monkeypatch.setattr(
+        module,
+        "operations_alert_reconcile_environment_payload",
+        lambda reviewer_id: {
+            "environment": "operations-alert-reconcile",
+            "reviewerId": reviewer_id,
+        },
+    )
 
     def fake_run_gh_api(args, *, input_payload=None):
         calls.append((list(args), dict(input_payload or {})))
@@ -3437,8 +3501,21 @@ def test_configure_github_repository_controls_apply_paths(
         "--method",
         "PUT",
     ]
+    assert calls[2][0] == [  # nosec B101
+        "repos/example/repo/environments/operations-alert-reconcile",
+        "--method",
+        "PUT",
+    ]
+    assert calls[1][1] == {"environment": "prod", "reviewerId": 9444106}  # nosec B101
+    assert calls[2][1] == {  # nosec B101
+        "environment": "operations-alert-reconcile",
+        "reviewerId": 9444106,
+    }
     rendered = json.loads(capsys.readouterr().out)
-    assert rendered["prodEnvironment"]["reviewers"][0]["id"] == 9444106  # nosec B101
+    assert rendered["prodEnvironment"]["environment"] == "prod"  # nosec B101
+    assert rendered["operationsAlertReconcileEnvironment"]["environment"] == (  # nosec B101
+        "operations-alert-reconcile"
+    )
     assert rendered["verification"] == {"verified": True}  # nosec B101
     assert verifications == [("example/repo", 9444106)]  # nosec B101
 
@@ -3447,6 +3524,21 @@ def test_configure_github_repository_controls_apply_paths(
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
     module.configure("example/repo", "Kravalg", apply=True)
     assert calls[0][0] == ["repos/example/repo/rulesets", "--method", "POST"]  # nosec B101
+    assert calls[1][0] == [  # nosec B101
+        "repos/example/repo/environments/prod",
+        "--method",
+        "PUT",
+    ]
+    assert calls[2][0] == [  # nosec B101
+        "repos/example/repo/environments/operations-alert-reconcile",
+        "--method",
+        "PUT",
+    ]
+    assert calls[1][1] == {"environment": "prod", "reviewerId": 9444106}  # nosec B101
+    assert calls[2][1] == {  # nosec B101
+        "environment": "operations-alert-reconcile",
+        "reviewerId": 9444106,
+    }
     assert verifications == [("example/repo", 9444106)]  # nosec B101
 
 
@@ -4571,7 +4663,10 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                     {
                         "id": "production_approval",
                         "status": "passed",
-                        "evidence": ["Protected prod environment verified."],
+                        "evidence": [
+                            "Protected prod and operations-alert-reconcile "
+                            "environments verified."
+                        ],
                     },
                     {
                         "id": "quota_headroom",

@@ -601,15 +601,16 @@ at the admin-rights preflight until a repository administrator runs it.
 
 Set `GITHUB_REPOSITORY_CONTROLS_MODE=--dry-run`, or omit the variable, to
 inspect the ruleset and protected environment payloads. Dry runs resolve the
-reviewer login to the numeric GitHub user ID used by the environment API. Set
+reviewer login to the numeric GitHub user ID used by the environment API and
+print payloads for both `prod` and `operations-alert-reconcile`. Set
 `GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only` after applying settings
-manually or through another tool to re-read the active `main` ruleset and
-`prod` environment without writing. With
+manually or through another tool to re-read the active `main` ruleset plus the
+`prod` and `operations-alert-reconcile` environments without writing. With
 `GITHUB_REPOSITORY_CONTROLS_MODE=--apply`, the helper writes the desired
 controls and then runs the same verification. Verification exits non-zero unless
 the required checks, pull-request review/thread-resolution rules,
 protected-branch deployment policy, self-review prevention, and configured
-production reviewer are visible in GitHub metadata.
+reviewer are visible in GitHub metadata for both protected environments.
 
 ## Current limitations
 

@@ -7,15 +7,30 @@ import argparse
 import json
 import subprocess  # nosec B404
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import _github_repository_controls as _repository_controls
 
 REQUIRED_STATUS_CHECKS = _repository_controls.REQUIRED_STATUS_CHECKS
+OPERATIONS_ALERT_RECONCILE_ENVIRONMENT = (
+    _repository_controls.OPERATIONS_ALERT_RECONCILE_ENVIRONMENT
+)
+operations_alert_reconcile_environment_payload = (
+    _repository_controls.operations_alert_reconcile_environment_payload
+)
+protected_reviewer_environment_payload = (
+    _repository_controls.protected_reviewer_environment_payload
+)
 prod_environment_payload = _repository_controls.prod_environment_payload
 ruleset_payload = _repository_controls.ruleset_payload
 _environment_reviewer_ids = _repository_controls.environment_reviewer_ids
+_operations_alert_reconcile_environment_verification_blockers = (
+    _repository_controls.operations_alert_reconcile_environment_verification_blockers
+)
+_protected_environment_verification_blockers = (
+    _repository_controls.protected_environment_verification_blockers
+)
 _prod_environment_verification_blockers = (
     _repository_controls.prod_environment_verification_blockers
 )
@@ -30,12 +45,17 @@ _status_check_context = _repository_controls.status_check_context
 
 __all__ = (
     "REQUIRED_STATUS_CHECKS",
+    "OPERATIONS_ALERT_RECONCILE_ENVIRONMENT",
     "build_parser",
     "configure",
     "main",
+    "operations_alert_reconcile_environment_payload",
     "prod_environment_payload",
+    "protected_reviewer_environment_payload",
     "ruleset_payload",
     "_environment_reviewer_ids",
+    "_operations_alert_reconcile_environment_verification_blockers",
+    "_protected_environment_verification_blockers",
     "_prod_environment_verification_blockers",
     "_required_status_check_items",
     "_required_status_contexts",
@@ -108,24 +128,45 @@ def _repo_admin_allowed(repo: str) -> bool:
     return isinstance(permissions, Mapping) and permissions.get("admin") is True
 
 
+def _environment_verification_blockers(
+    repo: str,
+    *,
+    environment_name: str,
+    reviewer_id: int,
+    blocker_fn: Callable[[Mapping[str, Any] | None, int], list[str]],
+) -> list[str]:
+    """Return verification blockers for one protected GitHub environment."""
+    try:
+        environment_payload = _run_gh_api(
+            [f"repos/{repo}/environments/{environment_name}"]
+        )
+    except RuntimeError as exc:
+        return [f"{environment_name} environment was not readable: {exc}."]
+    environment = (
+        environment_payload if isinstance(environment_payload, Mapping) else None
+    )
+    return blocker_fn(environment, reviewer_id)
+
+
 def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
     """Fetch and verify repository controls after an admin apply."""
     ruleset = _main_ruleset(repo)
-    try:
-        environment_payload = _run_gh_api([f"repos/{repo}/environments/prod"])
-    except RuntimeError as exc:
-        environment = None
-        environment_blockers = [f"Production environment was not readable: {exc}."]
-    else:
-        environment = (
-            environment_payload if isinstance(environment_payload, Mapping) else None
-        )
-        environment_blockers = _prod_environment_verification_blockers(
-            environment, reviewer_id
-        )
+    prod_environment_blockers = _environment_verification_blockers(
+        repo,
+        environment_name="prod",
+        reviewer_id=reviewer_id,
+        blocker_fn=_prod_environment_verification_blockers,
+    )
+    reconcile_environment_blockers = _environment_verification_blockers(
+        repo,
+        environment_name=OPERATIONS_ALERT_RECONCILE_ENVIRONMENT,
+        reviewer_id=reviewer_id,
+        blocker_fn=_operations_alert_reconcile_environment_verification_blockers,
+    )
     blockers = [
         *_ruleset_verification_blockers(ruleset),
-        *environment_blockers,
+        *prod_environment_blockers,
+        *reconcile_environment_blockers,
     ]
     if blockers:
         raise RuntimeError(" ".join(blockers))
@@ -133,6 +174,8 @@ def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
         "requiredStatusChecks": sorted(_required_status_contexts(ruleset or {})),
         "prodReviewerId": reviewer_id,
         "prodEnvironment": "prod",
+        "operationsAlertReconcileReviewerId": reviewer_id,
+        "operationsAlertReconcileEnvironment": OPERATIONS_ALERT_RECONCILE_ENVIRONMENT,
     }
 
 
@@ -165,6 +208,9 @@ def configure(
     payloads: dict[str, Any] = {"ruleset": ruleset_payload(existing_rules)}
     if apply:
         payloads["prodEnvironment"] = prod_environment_payload(reviewer_id)
+        payloads["operationsAlertReconcileEnvironment"] = (
+            operations_alert_reconcile_environment_payload(reviewer_id)
+        )
         if existing and isinstance(existing.get("id"), int):
             _run_gh_api(
                 [f"repos/{repo}/rulesets/{existing['id']}", "--method", "PUT"],
@@ -179,10 +225,22 @@ def configure(
             [f"repos/{repo}/environments/prod", "--method", "PUT"],
             input_payload=payloads["prodEnvironment"],
         )
+        _run_gh_api(
+            [
+                f"repos/{repo}/environments/{OPERATIONS_ALERT_RECONCILE_ENVIRONMENT}",
+                "--method",
+                "PUT",
+            ],
+            input_payload=payloads["operationsAlertReconcileEnvironment"],
+        )
         payloads["verification"] = _verify_applied_controls(repo, reviewer_id)
     else:
         payloads["prodEnvironment"] = prod_environment_payload(reviewer_id)
+        payloads["operationsAlertReconcileEnvironment"] = (
+            operations_alert_reconcile_environment_payload(reviewer_id)
+        )
         payloads["prodEnvironmentReviewerLogin"] = reviewer
+        payloads["operationsAlertReconcileEnvironmentReviewerLogin"] = reviewer
 
     print(json.dumps(payloads, indent=2, sort_keys=True))
 
@@ -190,7 +248,9 @@ def configure(
 def build_parser() -> argparse.ArgumentParser:
     """Build the CLI parser."""
     parser = argparse.ArgumentParser(
-        description="Configure GitHub branch and production environment controls."
+        description=(
+            "Configure GitHub branch rules and protected environment controls."
+        )
     )
     parser.add_argument("--repo", required=True, help="Repository in owner/name form.")
     parser.add_argument(
@@ -207,12 +267,15 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print the ruleset and prod environment payloads without applying.",
+        help=("Print the ruleset and protected environment payloads without applying."),
     )
     mode.add_argument(
         "--verify-only",
         action="store_true",
-        help="Verify existing ruleset and prod environment controls without applying.",
+        help=(
+            "Verify existing ruleset and protected environment controls "
+            "without applying."
+        ),
     )
     return parser
 

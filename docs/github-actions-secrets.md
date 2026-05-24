@@ -13,7 +13,7 @@ exports the selected keys as workflow `environmentVariables`. GitHub
 Environments are not used as an account-configuration store. The only
 privileged deployment GitHub Environment that remains required is `prod`, which
 gates production apply with reviewers and deployment branch restrictions. The
-optional `operations-alert-reconcile` Environment gates the manual non-AWS issue
+required `operations-alert-reconcile` Environment gates the manual non-AWS issue
 closure workflow and must not contain account configuration.
 
 ## Pulumi ESC Environments
@@ -233,7 +233,11 @@ the exact PR head SHA before entering `prod-preview` or protected `prod`.
 5. Configure GitHub OIDC for the repository and ESC organization so workflows can open the fixed ESC environments without `PULUMI_ACCESS_TOKEN`.
 6. Move AWS account IDs, role ARNs, regions, Pulumi backend URLs, KMS secrets-provider URIs, and stack lists out of GitHub Environment variables and into AWS Secrets Manager, projected by ESC.
 7. Keep the protected `prod` GitHub Environment for production approval.
-8. Create the protected `operations-alert-reconcile` GitHub Environment with required SRE or reviewer approval before running the legacy operations-alert closure workflow; keep it free of account configuration.
+8. Create or verify the protected `operations-alert-reconcile` GitHub
+   Environment with required SRE or reviewer approval before running the legacy
+   operations-alert closure workflow; keep it free of account configuration.
+   Repository administrators can apply and verify both protected GitHub
+   Environments with `make configure-github-repository-controls`.
 9. Re-run privileged previews, test deploy, drift, operations alert triage, and Well-Architected evidence before removing any legacy GitHub variables.
 10. Create the temporary `GH_ENVIRONMENT_ADMIN_TOKEN` repository secret for the cleanup operator. It must grant repository **Environments** write permission only for this repository; do not use an AWS credential.
 11. Run **GitHub Environment Legacy Variable Cleanup** in dry-run mode and verify it reports only legacy account-configuration variables, including any older `PULUMI_PR_*` backend or stack-list aliases.
