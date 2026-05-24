@@ -349,6 +349,36 @@ def test_ci_guardrails_manual_follow_up_completes_esc_cutover() -> None:
     assert "protected `prod` approval boundary" in ci_guardrails  # nosec B101
 
 
+def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
+    """Keep current issue 20 closeout evidence explicit and secret-safe."""
+    closeout = (
+        ROOT
+        / "specs"
+        / "issue-20-pulumi-esc-ci-config"
+        / "current-closeout-evidence-2026-05-25.md"
+    ).read_text()
+
+    for phrase in (
+        "AWS Secrets Manager remains the source of truth",
+        "Pulumi ESC is the fixed projection and OIDC layer",
+        "invalid organization vilnacrm-org",
+        "InvalidClientTokenId",
+        "ResourceNotFoundException",
+        "NoSuchEntityException",
+        "canonical fingerprinted issue",
+        "SRE confirms",
+        "Manual secure setup required",
+        "Generated BMAD/BMALPH/Ralph framework state remains intentionally uncommitted",
+    ):
+        assert phrase in closeout  # nosec B101
+
+    for issue in ("#20", "#49", "#50", "#52", "#53", "#54", "#55", "#56"):
+        assert issue in closeout  # nosec B101
+
+    assert "No secret values" in closeout  # nosec B101
+    assert "SecretAccessKey" not in closeout  # nosec B101
+
+
 def test_github_environment_cleanup_is_manual_and_guarded() -> None:
     """Keep post-ESC GitHub Environment cleanup explicit and non-AWS."""
     cleanup_workflow = yaml.safe_load(

@@ -46,6 +46,12 @@ cloud metadata checks pass.
 - AWS account trust-policy changes require applying the Pulumi stack through the
   existing GitOps process.
 
+The current PR and AWS metadata audit is retained in
+`current-closeout-evidence-2026-05-25.md`; it records the failing
+GitHub-to-ESC organization exchange, invalid local test-account AWS token, and
+missing production Secrets Manager containers/read role as external closeout
+dependencies.
+
 ## Residual Risks
 
 - Existing open PRs may need to be rebased or rerun after this trust-model
