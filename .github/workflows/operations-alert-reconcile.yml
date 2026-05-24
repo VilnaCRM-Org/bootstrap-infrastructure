@@ -72,7 +72,17 @@ jobs:
             exit 1
           fi
 
+          canonical_state="$(gh issue view "${canonical}" --repo "${GH_REPO}" --json state --jq '.state')"
+          canonical_title="$(gh issue view "${canonical}" --repo "${GH_REPO}" --json title --jq '.title')"
           canonical_body="$(gh issue view "${canonical}" --repo "${GH_REPO}" --json body --jq '.body')"
+          if [[ "${canonical_state}" != "OPEN" ]]; then
+            echo "error: canonical issue ${canonical} is not open." >&2
+            exit 1
+          fi
+          if [[ "${canonical_title}" != Operations\ alerts\ queued:* ]]; then
+            echo "error: canonical issue ${canonical} is not an operations alert issue." >&2
+            exit 1
+          fi
           if [[ "${canonical_body}" != *"operations-alert:fingerprint="* ]]; then
             echo "error: canonical issue must contain an operations-alert fingerprint marker in its body." >&2
             exit 1

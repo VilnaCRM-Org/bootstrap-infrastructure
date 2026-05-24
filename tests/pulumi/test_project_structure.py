@@ -340,6 +340,12 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     assert "declare -A seen_issues" in reconcile_run  # nosec B101
     assert "legacy_issue_ids" in reconcile_run  # nosec B101
     assert "provide at least one legacy issue number" in reconcile_run  # nosec B101
+    assert "canonical_state" in reconcile_run  # nosec B101
+    assert "canonical_title" in reconcile_run  # nosec B101
+    assert "canonical issue ${canonical} is not open" in reconcile_run  # nosec B101
+    assert (
+        "canonical issue ${canonical} is not an operations alert issue" in reconcile_run
+    )  # nosec B101
     assert "gh issue close" in reconcile_run  # nosec B101
     assert "--duplicate-of" in reconcile_run  # nosec B101
 
@@ -369,7 +375,9 @@ def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
 
     for phrase in (
         "AWS Secrets Manager remains the source of truth",
-        "Pulumi ESC is the fixed projection and OIDC layer",
+        "Pulumi Cloud/ESC is not the vault",
+        "fixed projection and OIDC layer",
+        "fd313a4",
         "invalid organization vilnacrm-org",
         "InvalidClientTokenId",
         "ResourceNotFoundException",

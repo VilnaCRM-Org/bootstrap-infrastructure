@@ -8,9 +8,9 @@ Recorded on 2026-05-25 in the `Europe/Sofia` timezone for branch
 | Field | Value |
 | --- | --- |
 | PR | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/57` |
-| Audited head SHA | `0321fa706134c77960a3e87a46bf093e15b84326` |
-| Audited short SHA | `0321fa7` |
-| Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi ESC is the fixed projection and OIDC layer. |
+| Audited head SHA | `fd313a41695319c8beb1bbce75ec4c5860affe9d` |
+| Audited short SHA | `fd313a4` |
+| Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi Cloud/ESC is not the vault and is only the fixed projection and OIDC layer. |
 | Secret handling | No secret values, `GetSecretValue` responses, decrypted stack outputs, access keys, or tokens were read or recorded. |
 
 ## GitHub State
@@ -29,9 +29,10 @@ Open repository issues at the time of this audit:
 | `#56` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream. |
 
 Current PR `#57` review state is approved, but merge state is still blocked.
-Current checks on head `5eb202e` are `28` passing, `5` skipped, and `2`
+Current checks on head `fd313a4` are `28` passing, `5` skipped, and `2`
 failing privileged setup checks. All repo-side checks are green, including
-`Local Battery`, `Mutation`, `CodeRabbit`, `qlty check`, and `qlty fmt`.
+`Local Battery`, `Mutation`, `CodeRabbit`, `qlty check`, `qlty fmt`, `CodeQL`,
+`Bandit`, and `Actionlint`.
 
 The current privileged `Preview` and `Test Account Evidence` checks fail before
 ESC values or AWS credentials are loaded:
@@ -100,7 +101,7 @@ complete yet.
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
 | Fixed privileged ESC environments | Workflows call `.github/actions/load-esc-ci-env` with fixed suffixes such as `test-pr`, `test`, `prod-preview`, and `prod`. | GitOps implemented |
-| AWS Secrets Manager source of truth | Pulumi creates secret containers and ESC read roles; docs/tests state values stay in AWS Secrets Manager and must not be copied into ESC encrypted literals. | GitOps implemented |
+| AWS Secrets Manager source of truth | Pulumi creates secret containers and ESC read roles; docs/tests state values stay in AWS Secrets Manager and must not be copied into ESC encrypted literals, Pulumi Cloud secrets, or any other ESC-managed secret value. | GitOps implemented |
 | No GitHub `test` or `prod-preview` deployment environments for non-approval jobs | Workflow contracts and tests enforce only protected production apply uses `environment: prod`. | GitOps implemented |
 | Production approval preserved | Protected GitHub `prod` Environment remains the production apply approval boundary. | GitOps implemented; repository-admin verification still required |
 | Protected manual reconcile gate | The repository controls helper now prints, applies, and verifies both `prod` and `operations-alert-reconcile`; the manual reconcile workflow requires `operations-alert-reconcile` and has no AWS/OIDC permission. | GitOps implemented; repository-admin verification still required |
