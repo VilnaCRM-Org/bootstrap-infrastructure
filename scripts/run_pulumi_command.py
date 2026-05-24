@@ -586,17 +586,17 @@ def _run_validated_up_plan_stack(
     manifest: dict[str, Any] | None,
     stack: str,
 ) -> tuple[dict[str, Any] | None, int | None]:
-    status = _select_or_init_stack(context, stack)
     plan_path = _selected_plan_path(context, selected_plan_file, stack)
+    status = _validate_plan_file_exists(plan_path)
 
-    if status is None:
-        status = _validate_plan_file_exists(plan_path)
     if status is None and manifest is None:
         manifest = _load_plan_manifest(context)
         if manifest is None:
             status = 1
     if status is None and manifest is not None:
         status = _validate_plan_manifest(context, manifest, stack, plan_path)
+    if status is None:
+        status = _select_or_init_stack(context, stack)
     if status is None:
         status = _run_up_plan_stack(context, stack, plan_path)
     return manifest, status

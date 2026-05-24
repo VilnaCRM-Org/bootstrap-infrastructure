@@ -1502,7 +1502,11 @@ class GitHubAutomation(pulumi.ComponentResource):
             resource_context,
             role,
         )
-        policy_dependencies = [inline_policy, *policy_attachments]
+        policy_dependencies = [
+            inline_policy,
+            *policy_attachments,
+            exclusive_policy_attachments,
+        ]
         operations_alert_triage_role, operations_alert_triage_policy = (
             _create_operations_alert_triage_role(
                 resource_context,

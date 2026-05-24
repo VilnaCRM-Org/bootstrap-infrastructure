@@ -4393,7 +4393,7 @@ def test_run_pulumi_command_builds_expected_pulumi_invocations(
     )
     up_command = module._pulumi_command(context, module.StackCommand("up", "test"))
     up_without_policy_command = module._pulumi_command(
-        context, module.StackCommand("up", "prod", include_policy_pack=False)
+        context, module.StackCommand("up", "test", include_policy_pack=False)
     )
     refresh_command = module._pulumi_command(
         context, module.StackCommand("refresh", "test")
@@ -7986,8 +7986,15 @@ def test_run_pulumi_command_branch_helpers_return_select_failures(
     monkeypatch.setattr(module, "_select_or_init_stack", lambda *args: 7)
     assert module._run_plan_command(context, ["test"]) == 7  # nosec B101
 
-    monkeypatch.setattr(module, "_select_or_init_stack", lambda *args: 9)
-    assert module._run_up_plan_command(context, ["test"]) == 9  # nosec B101
+    select_calls = []
+
+    def fake_up_plan_select(*args):
+        select_calls.append(args)
+        return 9
+
+    monkeypatch.setattr(module, "_select_or_init_stack", fake_up_plan_select)
+    assert module._run_up_plan_command(context, ["test"]) == 1  # nosec B101
+    assert select_calls == []  # nosec B101
 
 
 def test_run_pulumi_command_validates_plan_manifest_error_paths(
