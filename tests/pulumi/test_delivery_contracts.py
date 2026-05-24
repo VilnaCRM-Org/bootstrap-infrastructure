@@ -744,6 +744,24 @@ def test_esc_loader_uses_committed_pulumi_esc_target() -> None:
         "project": "bootstrap-infrastructure",
     }
     assert "organization" not in action["inputs"]  # nosec B101
+    assert (  # nosec B101
+        action["name"] == "Load AWS Secrets Manager-backed ESC CI environment"
+    )
+    assert (  # nosec B101
+        "AWS Secrets Manager-backed environment variables" in action["description"]
+    )
+    assert (
+        "from AWS Secrets Manager via ESC"
+        in action["outputs"]["aws-account-id"][  # nosec B101
+            "description"
+        ]
+    )
+    assert (
+        "from AWS Secrets Manager via ESC"
+        in action["outputs"]["aws-region"][  # nosec B101
+            "description"
+        ]
+    )
     assert "github.repository_owner" not in ESC_LOADER_ACTION.read_text(  # nosec B101
         encoding="utf-8"
     )
@@ -762,6 +780,7 @@ def test_esc_loader_uses_committed_pulumi_esc_target() -> None:
     )
     assert "AWS Secrets Manager remains the source of truth" in boundary_step["run"]  # nosec B101
     assert "ESC projects values through aws-secrets" in boundary_step["run"]  # nosec B101
+    assert esc_step["name"] == "Project AWS Secrets Manager values through ESC"  # nosec B101
     assert "GITHUB_STEP_SUMMARY" in boundary_step["run"]  # nosec B101
     assert (
         "no ESC values or AWS credentials have been loaded yet"
@@ -1259,8 +1278,12 @@ def test_multi_account_environment_docs_are_explicit() -> None:
 
     assert "pulumi esc environments" in normalized_docs  # nosec B101
     assert "aws secrets manager is the source of truth" in normalized_docs  # nosec B101
+    assert "pulumi cloud control plane" in normalized_docs  # nosec B101
+    assert "are not the vault" in normalized_docs  # nosec B101
+    assert "not stored in pulumi cloud" in normalized_docs  # nosec B101
+    assert "pulumi cloud secrets" in normalized_docs  # nosec B101
     assert "esc-managed secret" in normalized_docs  # nosec B101
-    assert "do not copy those values into esc" in normalized_docs  # nosec B101
+    assert "do not copy those values into" in normalized_docs  # nosec B101
     assert "encrypted literals" in normalized_docs  # nosec B101
     assert "store role arns in the owning aws secrets manager json secret" in (  # nosec B101
         normalized_docs

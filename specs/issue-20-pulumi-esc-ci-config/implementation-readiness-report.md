@@ -12,6 +12,9 @@ cloud metadata checks pass.
 - AWS Secrets Manager is the source of truth for account-local CI values; ESC
   imports those JSON secrets with `aws-secrets` and projects workflow
   `environmentVariables`.
+- Pulumi Cloud/ESC is not the vault; it stores only the fixed environment
+  definition and provider bindings needed to project AWS Secrets Manager
+  values.
 - Pulumi manages the AWS Secrets Manager secret containers and the ESC read
   roles, but not the JSON secret values.
 - GitHub `prod` remains the only deployment environment because it provides

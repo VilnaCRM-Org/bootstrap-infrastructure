@@ -5,11 +5,12 @@ validation, PR-comment plan/apply commands, drift detection, operations alert
 triage, and Well-Architected evidence jobs use short-lived credentials. Do not
 add long-lived AWS access keys to GitHub.
 
-Privileged account configuration is loaded from fixed Pulumi ESC environments,
-but AWS Secrets Manager remains the source of truth for the account-local
-values. ESC is the projection layer that authenticates with AWS through OIDC,
-imports the per-environment JSON secret through the `aws-secrets` provider, and
-exports the selected keys as workflow `environmentVariables`. GitHub
+Privileged account configuration is loaded from AWS Secrets Manager through
+fixed Pulumi ESC environments. AWS Secrets Manager remains the source of truth
+for the account-local values. ESC, including the Pulumi Cloud control plane
+that opens those environments, is not the vault; it authenticates with AWS
+through OIDC, imports the per-environment JSON secret through the `aws-secrets`
+provider, and exports selected keys as workflow `environmentVariables`. GitHub
 Environments are not used as an account-configuration store. The only
 privileged deployment GitHub Environment that remains required is `prod`, which
 gates production apply with reviewers and deployment branch restrictions. The
@@ -34,10 +35,11 @@ environment path before it can open ESC. Update
 differs from the committed value. Do not store AWS account IDs, role ARNs,
 Pulumi backend URLs, stack lists, or secrets-provider URIs in that file.
 
-In this repository, ESC stores only environment definitions and provider
-bindings. Account-local CI values stay in AWS Secrets Manager and are read at
-runtime with the `aws-secrets` provider; do not copy those values into ESC
-encrypted literals or any ESC-managed secret value.
+In this repository, ESC stores only environment definitions, provider bindings,
+and projections. Account-local CI values stay in AWS Secrets Manager and are
+read at runtime with the `aws-secrets` provider; do not copy those values into
+ESC encrypted literals, Pulumi Cloud secrets, or any other ESC-managed secret
+value.
 
 Each privileged workflow authenticates to ESC through GitHub OIDC, opens one
 fixed ESC environment with `pulumi/auth-actions` and `pulumi/esc-action`,
@@ -115,9 +117,9 @@ values:
 
 ## ESC Environment Variables
 
-Define these `environmentVariables` values in ESC as projections from the AWS
-Secrets Manager JSON secret. They are exported into the GitHub job environment
-by `.github/actions/load-esc-ci-env`.
+Define these `environmentVariables` values in ESC only as projections from the
+AWS Secrets Manager JSON secret. They are exported into the GitHub job
+environment by `.github/actions/load-esc-ci-env`.
 
 | Variable | Required in | Purpose |
 | --- | --- | --- |
@@ -139,7 +141,8 @@ Optional non-secret evidence pointers such as restore-drill, alert-route,
 security-attestation, and external-control evidence may remain repository
 variables when they are not account credentials. Keep AWS account IDs, role
 ARNs, Pulumi backend URLs, stack lists, and Pulumi secrets-provider URIs in AWS
-Secrets Manager and expose them through ESC.
+Secrets Manager; ESC may expose them only by projecting the `aws-secrets`
+result.
 
 ## ESC Pulumi Config
 
@@ -180,7 +183,7 @@ template-sync credentials that are not AWS deployment credentials:
 1. Create an IAM OIDC identity provider for `https://token.actions.githubusercontent.com` in each AWS account if one does not already exist.
 2. Create purpose-specific preview, apply, drift, and operations alert triage roles where the environment needs them.
 3. Scope AWS role trust to the repository, the `sts.amazonaws.com` audience, fixed workflow files, and the intended ref or GitHub production environment subject.
-4. Store role ARNs in the owning AWS Secrets Manager JSON secret, then expose them through ESC as `AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`, or `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN`.
+4. Store role ARNs in the owning AWS Secrets Manager JSON secret, then project them through ESC as `AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`, or `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN`.
 5. Keep `allowed-account-ids` wired to the AWS Secrets Manager value projected by ESC as `AWS_ACCOUNT_ID`.
 
 Non-approval jobs use branch or pull-request subjects:
@@ -231,7 +234,7 @@ the exact PR head SHA before entering `prod-preview` or protected `prod`.
 3. Create the four ESC environments listed above and configure them to import those JSON secrets through `fn::open::aws-secrets`; do not store the JSON payloads directly in ESC.
 4. Configure ESC AWS OIDC so each environment can assume the AWS Secrets Manager read role exported as `pulumiEscSecretsReadRoleArn`.
 5. Configure GitHub OIDC for the repository and ESC organization so workflows can open the fixed ESC environments without `PULUMI_ACCESS_TOKEN`.
-6. Move AWS account IDs, role ARNs, regions, Pulumi backend URLs, KMS secrets-provider URIs, and stack lists out of GitHub Environment variables and into AWS Secrets Manager, projected by ESC.
+6. Move AWS account IDs, role ARNs, regions, Pulumi backend URLs, KMS secrets-provider URIs, and stack lists out of GitHub Environment variables and into AWS Secrets Manager; ESC should only project those AWS Secrets Manager values.
 7. Keep the protected `prod` GitHub Environment for production approval.
 8. Create or verify the protected `operations-alert-reconcile` GitHub
    Environment with required SRE or reviewer approval before running the legacy

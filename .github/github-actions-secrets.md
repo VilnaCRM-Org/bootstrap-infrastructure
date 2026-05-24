@@ -1,15 +1,16 @@
 # GitHub Actions Secrets for Pulumi Workflows
 
 Privileged Pulumi workflows use GitHub OIDC and fixed Pulumi ESC environments.
-AWS Secrets Manager is the source of truth for account-local CI values; ESC
-imports those values with the `aws-secrets` provider and projects them into
-workflow environment variables. Do not add long-lived AWS access keys to
-GitHub.
+AWS Secrets Manager is the source of truth for account-local CI values; ESC and
+the Pulumi Cloud control plane are not the vault. ESC imports those values with
+the `aws-secrets` provider and projects them into workflow environment
+variables. Do not add long-lived AWS access keys to GitHub.
 
 ## ESC Configuration
 
 Account-specific deployment values belong in AWS Secrets Manager and are
-projected by Pulumi ESC, not stored in GitHub Environment variables:
+projected by Pulumi ESC, not stored in Pulumi Cloud or GitHub Environment
+variables:
 
 - `vilnacrm-org/bootstrap-infrastructure/test-pr`
 - `vilnacrm-org/bootstrap-infrastructure/test`

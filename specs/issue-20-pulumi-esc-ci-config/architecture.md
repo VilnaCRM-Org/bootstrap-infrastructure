@@ -3,12 +3,13 @@
 ## Control Boundaries
 
 AWS Secrets Manager owns the privileged account-local configuration. Pulumi ESC
-is the environment projection layer: each ESC environment uses AWS OIDC and the
-`aws-secrets` provider to import one AWS Secrets Manager JSON secret, then
-exports selected keys as workflow `environmentVariables`. GitHub OIDC remains
-the AWS identity mechanism for the deployment jobs. GitHub `prod` remains the
-only deployment environment because it adds human approval and branch
-restrictions for production apply.
+is the environment projection layer, not the secret store: each ESC environment
+uses AWS OIDC and the `aws-secrets` provider to import one AWS Secrets Manager
+JSON secret, then exports selected keys as workflow `environmentVariables`.
+Pulumi Cloud/ESC holds only the environment definition and provider bindings.
+GitHub OIDC remains the AWS identity mechanism for the deployment jobs. GitHub
+`prod` remains the only deployment environment because it adds human approval
+and branch restrictions for production apply.
 
 ```text
 GitHub workflow

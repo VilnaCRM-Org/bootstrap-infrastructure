@@ -196,11 +196,12 @@ semantic validation for the rendered policy documents.
 The guardrail workflows are OIDC-first. They do not use long-lived
 `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` repository secrets.
 
-Privileged jobs read account-specific values from fixed Pulumi ESC
-environments, not GitHub Environment variables or repository-wide variables.
-AWS Secrets Manager is the source of truth for the account-local values; ESC
-uses AWS OIDC plus the `aws-secrets` provider to import each environment's JSON
-secret and project selected keys as `environmentVariables`. The ESC
+Privileged jobs read account-specific values from AWS Secrets Manager through
+fixed Pulumi ESC environments, not from GitHub Environment variables or
+repository-wide variables. AWS Secrets Manager is the source of truth for the
+account-local values; ESC and the Pulumi Cloud control plane are not the vault.
+ESC uses AWS OIDC plus the `aws-secrets` provider to import each environment's
+JSON secret and project selected keys as `environmentVariables`. The ESC
 environments are:
 
 | ESC environment | Use |
@@ -242,8 +243,8 @@ Account-local CI values may appear in ESC only as projections from AWS Secrets
 Manager through `aws-secrets`.
 
 This is not a migration of account-local CI values into ESC-managed secret
-values. ESC is the runtime projection layer; AWS Secrets Manager remains the
-vault and source of truth for those values.
+values or Pulumi Cloud secrets. ESC is the runtime projection layer; AWS
+Secrets Manager remains the vault and source of truth for those values.
 
 Use `subjectAttributes: [currentEnvironment.name]` in the `aws-login` OIDC
 block so AWS trust can bind each role to the exact ESC environment name.

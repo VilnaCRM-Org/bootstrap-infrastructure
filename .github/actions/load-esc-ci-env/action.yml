@@ -1,5 +1,5 @@
-name: Load ESC CI environment
-description: Authenticate to Pulumi ESC, load fixed environment variables, and validate them.
+name: Load AWS Secrets Manager-backed ESC CI environment
+description: Authenticate to Pulumi ESC, project AWS Secrets Manager-backed environment variables, and validate them.
 
 inputs:
   environment:
@@ -9,27 +9,27 @@ inputs:
     description: Human-readable role purpose used in validation evidence.
     required: true
   required-keys:
-    description: Comma-separated ESC environmentVariables keys required by the job.
+    description: Comma-separated AWS Secrets Manager-backed ESC environmentVariables keys required by the job.
     required: true
 
 outputs:
   aws-account-id:
-    description: Expected AWS account ID from ESC.
+    description: Expected AWS account ID from AWS Secrets Manager via ESC.
     value: ${{ steps.collect.outputs.aws_account_id }}
   aws-region:
-    description: AWS region from ESC.
+    description: AWS region from AWS Secrets Manager via ESC.
     value: ${{ steps.collect.outputs.aws_region }}
   aws-preview-role-arn:
-    description: Preview role ARN from ESC when requested.
+    description: Preview role ARN from AWS Secrets Manager via ESC when requested.
     value: ${{ steps.collect.outputs.aws_preview_role_arn }}
   aws-apply-role-arn:
-    description: Apply role ARN from ESC when requested.
+    description: Apply role ARN from AWS Secrets Manager via ESC when requested.
     value: ${{ steps.collect.outputs.aws_apply_role_arn }}
   aws-drift-role-arn:
-    description: Drift role ARN from ESC when requested.
+    description: Drift role ARN from AWS Secrets Manager via ESC when requested.
     value: ${{ steps.collect.outputs.aws_drift_role_arn }}
   aws-operations-alert-triage-role-arn:
-    description: Operations alert triage role ARN from ESC when requested.
+    description: Operations alert triage role ARN from AWS Secrets Manager via ESC when requested.
     value: ${{ steps.collect.outputs.aws_operations_alert_triage_role_arn }}
 
 runs:
@@ -99,7 +99,7 @@ runs:
         organization: ${{ steps.esc-target.outputs.organization }}
         requested-token-type: urn:pulumi:token-type:access_token:organization
 
-    - name: Load ESC environment variables
+    - name: Project AWS Secrets Manager values through ESC
       uses: pulumi/esc-action@6cf9520e68354d86f81c455e8d43eabd58f5c9f5
       with:
         environment: ${{ steps.esc-target.outputs.environment }}
