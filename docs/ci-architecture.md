@@ -46,7 +46,7 @@ fixed Pulumi ESC environments:
 | `vilnacrm-org/bootstrap-infrastructure/prod-preview` | Production account preview-only access | Production preview, IAM validation, and production drift |
 | `vilnacrm-org/bootstrap-infrastructure/prod` | Production account apply access | Production apply after protected GitHub `prod` approval |
 
-The Pulumi organization and project prefix is resolved from
+The ESC organization and project prefix is resolved from
 `.github/ci/pulumi-esc.json` before `pulumi/auth-actions` runs. The workflows
 pass only fixed suffixes such as `test`, `prod-preview`, or `prod` to the local
 ESC loader action.

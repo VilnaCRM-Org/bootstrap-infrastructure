@@ -41,7 +41,7 @@ configuration drift outside GitOps review.
 | `vilnacrm-org/bootstrap-infrastructure/prod-preview` | Production preview, IAM validation, and drift |
 | `vilnacrm-org/bootstrap-infrastructure/prod` | Production apply after protected GitHub approval |
 
-The Pulumi organization and project prefix is committed in
+The ESC organization and project prefix is committed in
 `.github/ci/pulumi-esc.json`, while workflow call sites pass only fixed suffixes
 such as `test-pr` or `prod`. Account-local values remain AWS Secrets
 Manager-owned and are imported by ESC with the `aws-secrets` provider.

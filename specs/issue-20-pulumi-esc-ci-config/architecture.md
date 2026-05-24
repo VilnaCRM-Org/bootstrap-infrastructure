@@ -12,7 +12,7 @@ restrictions for production apply.
 
 ```text
 GitHub workflow
-  -> .github/ci/pulumi-esc.json resolves Pulumi org/project prefix
+  -> .github/ci/pulumi-esc.json resolves ESC org/project prefix
   -> pulumi/auth-actions OIDC token for the ESC control plane
   -> pulumi/esc-action opens fixed ESC environment suffix
   -> ESC imports AWS Secrets Manager JSON through aws-secrets
@@ -119,8 +119,8 @@ with `gh issue close --duplicate-of`.
 - Populate the four AWS Secrets Manager JSON values in the owning AWS accounts.
 - Create the four ESC environments and configure each one to import its JSON
   secret with `fn::open::aws-secrets`.
-- Configure hosted ESC/Pulumi OIDC trust for this GitHub repository and for
-  each AWS Secrets Manager read role.
+- Configure GitHub-to-ESC OIDC for this repository and ESC AWS OIDC for each
+  AWS Secrets Manager read role.
 - Apply the Pulumi trust-policy update in each AWS account through the normal
   stack process.
 - Keep protected GitHub `prod` reviewers and deployment branch restrictions in

@@ -709,7 +709,7 @@ def test_actions_are_pinned_to_full_commit_shas() -> None:
 
 
 def test_esc_loader_uses_committed_pulumi_esc_target() -> None:
-    """Resolve Pulumi org/project from GitOps config before opening ESC."""
+    """Resolve the ESC org/project from GitOps config before opening ESC."""
     action = yaml.safe_load(ESC_LOADER_ACTION.read_text(encoding="utf-8"))
     config = yaml.safe_load(ESC_TARGET_CONFIG.read_text(encoding="utf-8"))
     resolve_step = action["runs"]["steps"][0]
@@ -1177,6 +1177,9 @@ def test_multi_account_environment_docs_are_explicit() -> None:
 
     assert "pulumi esc environments" in normalized_docs  # nosec B101
     assert "aws secrets manager is the source of truth" in normalized_docs  # nosec B101
+    assert "esc-managed secret" in normalized_docs  # nosec B101
+    assert "do not copy those values into esc" in normalized_docs  # nosec B101
+    assert "encrypted literals" in normalized_docs  # nosec B101
     assert "pulumiescsecretsreadrolearn" in normalized_docs  # nosec B101
     assert "subjectAttributes" in docs  # nosec B101
     assert "fn::open::aws-secrets" in docs  # nosec B101

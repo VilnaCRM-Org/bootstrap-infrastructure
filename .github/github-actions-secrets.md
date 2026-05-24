@@ -16,7 +16,7 @@ projected by Pulumi ESC, not stored in GitHub Environment variables:
 - `vilnacrm-org/bootstrap-infrastructure/prod-preview`
 - `vilnacrm-org/bootstrap-infrastructure/prod`
 
-The Pulumi organization and project slugs are committed in
+The ESC organization and project slugs are committed in
 `.github/ci/pulumi-esc.json` because the ESC control plane needs them before an
 environment opens. Account-specific deployment values belong in AWS Secrets
 Manager JSON secrets, not in that file.
@@ -33,7 +33,7 @@ Use one AWS Secrets Manager JSON secret per ESC environment, for example:
 The Pulumi `test` and `prod` stacks create the AWS Secrets Manager secret
 containers and `PulumiEscCiSecretsRead-*` roles. Maintainers still populate the
 JSON values directly in AWS Secrets Manager; Pulumi does not manage secret
-versions or store those values in Pulumi Cloud.
+versions, and the values must not be copied into ESC encrypted literals.
 
 Each ESC environment should authenticate to AWS with `fn::open::aws-login`,
 read the corresponding JSON secret with `fn::open::aws-secrets`, parse it with

@@ -16,7 +16,7 @@ production apply with reviewers and deployment branch restrictions.
 
 ## Pulumi ESC Environments
 
-Create these ESC environments in the Pulumi organization configured by
+Create these ESC environments in the ESC organization configured by
 `.github/ci/pulumi-esc.json`:
 
 | ESC environment | Purpose |
@@ -26,11 +26,16 @@ Create these ESC environments in the Pulumi organization configured by
 | `vilnacrm-org/bootstrap-infrastructure/prod-preview` | Production preview, production drift, and production IAM validation without apply permissions |
 | `vilnacrm-org/bootstrap-infrastructure/prod` | Production apply only, after GitHub `prod` approval |
 
-The Pulumi organization slug is a GitOps setting because the hosted ESC control
-plane needs it before the environment can be opened. Update
+The ESC organization slug is a GitOps setting because the loader needs an
+environment path before it can open ESC. Update
 `.github/ci/pulumi-esc.json` if the real Pulumi organization or project slug
 differs from the committed value. Do not store AWS account IDs, role ARNs,
 Pulumi backend URLs, stack lists, or secrets-provider URIs in that file.
+
+In this repository, ESC stores only environment definitions and provider
+bindings. Account-local CI values stay in AWS Secrets Manager and are read at
+runtime with the `aws-secrets` provider; do not copy those values into ESC
+encrypted literals or any ESC-managed secret value.
 
 Each privileged workflow authenticates to ESC through GitHub OIDC, opens one
 fixed ESC environment with `pulumi/auth-actions` and `pulumi/esc-action`,
@@ -219,9 +224,9 @@ the exact PR head SHA before entering `prod-preview` or protected `prod`.
 
 1. Apply the Pulumi `test` and `prod` stacks so AWS contains the four Secrets Manager containers and the `PulumiEscCiSecretsRead-*` roles.
 2. Populate the four AWS Secrets Manager JSON secret values listed above in the owning AWS accounts.
-3. Create the four ESC environments listed above and configure them to import those JSON secrets through `fn::open::aws-secrets`.
-4. Configure hosted ESC/Pulumi OIDC so the environments can assume the AWS Secrets Manager read role exported as `pulumiEscSecretsReadRoleArn`.
-5. Configure GitHub OIDC for the repository and organization so workflows can open the fixed ESC environments.
+3. Create the four ESC environments listed above and configure them to import those JSON secrets through `fn::open::aws-secrets`; do not store the JSON payloads directly in ESC.
+4. Configure ESC AWS OIDC so each environment can assume the AWS Secrets Manager read role exported as `pulumiEscSecretsReadRoleArn`.
+5. Configure GitHub OIDC for the repository and ESC organization so workflows can open the fixed ESC environments without `PULUMI_ACCESS_TOKEN`.
 6. Move AWS account IDs, role ARNs, regions, Pulumi backend URLs, KMS secrets-provider URIs, and stack lists out of GitHub Environment variables and into AWS Secrets Manager, projected by ESC.
 7. Keep only the protected `prod` GitHub Environment for production approval.
 8. Re-run privileged previews, test deploy, drift, operations alert triage, and Well-Architected evidence before removing any legacy GitHub variables.

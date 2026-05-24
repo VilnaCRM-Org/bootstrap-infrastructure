@@ -210,7 +210,7 @@ environments are:
 | `vilnacrm-org/bootstrap-infrastructure/prod-preview` | Production preview, IAM validation, and drift |
 | `vilnacrm-org/bootstrap-infrastructure/prod` | Production apply after protected GitHub `prod` approval |
 
-The Pulumi organization and project prefix is resolved from
+The ESC organization and project prefix is resolved from
 `.github/ci/pulumi-esc.json` before the ESC environment opens. Workflow call
 sites pass fixed suffixes like `test`, `test-pr`, `prod-preview`, and `prod`;
 PR input, issue comments, and repository-dispatch payloads cannot choose the
@@ -238,6 +238,10 @@ The ESC YAML should use `fn::open::aws-login`, `fn::open::aws-secrets`, and
 `environmentVariables`. Do not store AWS account IDs, role ARNs, backend URLs,
 stack lists, or secrets-provider URIs directly as ESC encrypted values unless a
 maintainer records a specific exception.
+
+This is not a migration of account-local CI values into ESC-managed secret
+values. ESC is the runtime projection layer; AWS Secrets Manager remains the
+vault and source of truth for those values.
 
 Use `subjectAttributes: [currentEnvironment.name]` in the `aws-login` OIDC
 block so AWS trust can bind each role to the exact ESC environment name.
@@ -552,9 +556,10 @@ The workflows are committed in this repository, but maintainers still need to:
 3. create the four Pulumi ESC environments listed above and configure each one
    to import its AWS Secrets Manager JSON secret through `aws-secrets`
 4. populate the four AWS Secrets Manager JSON values in the owning AWS accounts
-5. configure ESC/Pulumi OIDC so each environment can assume the AWS Secrets
+5. configure ESC AWS OIDC so each environment can assume the AWS Secrets
    Manager read role exported as `pulumiEscSecretsReadRoleArn`
-6. configure hosted ESC/Pulumi OIDC for this repository and organization
+6. configure GitHub OIDC for this repository and ESC organization so workflows
+   can open the fixed ESC environments without `PULUMI_ACCESS_TOKEN`
 7. apply the Pulumi test and production stacks so the updated IAM trust policies
    converge in AWS from the AWS Secrets Manager values projected by the Pulumi
    ESC environments

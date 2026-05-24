@@ -39,7 +39,8 @@ cloud metadata checks pass.
   Pulumi-managed secret containers exist.
 - ESC environments must be created with `aws-secrets` imports and OIDC access
   to the relevant AWS Secrets Manager read roles.
-- Pulumi/ESC OIDC organization/repository trust must be enabled.
+- ESC AWS OIDC and GitHub-to-ESC OIDC trust must be enabled without moving
+  account-local values out of AWS Secrets Manager.
 - GitHub `prod` Environment reviewer and branch restrictions require repository
   admin rights.
 - AWS account trust-policy changes require applying the Pulumi stack through the
