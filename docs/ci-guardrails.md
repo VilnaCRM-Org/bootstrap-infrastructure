@@ -79,8 +79,8 @@ developers use:
 
 1. a credential-free mode-selection job checks whether the pull request came
    from a fork
-2. trusted same-repo runs use `make start` and
-   `make publish-pulumi-preview-summary` in the `test` GitHub environment
+2. trusted same-repo runs load the fixed `test-pr` ESC environment, then use
+   `make start` and `make publish-pulumi-preview-summary`
 3. fork pull requests use `make start` and `make test-preview-unprivileged`
    without a GitHub environment, OIDC permission, AWS credentials, or
    environment variables
@@ -92,11 +92,11 @@ Preview artifacts are written under `.artifacts/pulumi-preview/` and uploaded to
 GitHub Actions. The preview summary is appended to `GITHUB_STEP_SUMMARY` so
 reviewers can inspect the plan without digging through raw logs first.
 
-For issue 18, privileged previews are environment-scoped:
+For issue 20, privileged previews are ESC-scoped:
 
-- trusted same-repo PRs use the `test` GitHub environment and preview the
+- trusted same-repo PRs use the fixed `test-pr` ESC environment and preview the
   configured test stack
-- production release previews use the `prod-preview` GitHub environment and
+- production release previews use the fixed `prod-preview` ESC environment and
   preview the production stack without apply permissions
 - fork PRs stay on the unprivileged artifact path and never receive AWS
   credentials or `id-token: write` permission
@@ -196,30 +196,79 @@ semantic validation for the rendered policy documents.
 The guardrail workflows are OIDC-first. They do not use long-lived
 `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` repository secrets.
 
-Privileged jobs read account-specific values from the active GitHub
-environment, not repository-wide variables. The required environment variables
-are:
+Privileged jobs read account-specific values from fixed Pulumi ESC
+environments, not GitHub Environment variables or repository-wide variables.
+AWS Secrets Manager is the source of truth for the account-local values; ESC
+uses AWS OIDC plus the `aws-secrets` provider to import each environment's JSON
+secret and project selected keys as `environmentVariables`. The ESC
+environments are:
+
+| ESC environment | Use |
+| --- | --- |
+| `vilnacrm-org/bootstrap-infrastructure/test-pr` | Trusted same-repo PR preview and IAM validation |
+| `vilnacrm-org/bootstrap-infrastructure/test` | Test apply, test drift, operations alert triage, and Well-Architected evidence |
+| `vilnacrm-org/bootstrap-infrastructure/prod-preview` | Production preview, IAM validation, and drift |
+| `vilnacrm-org/bootstrap-infrastructure/prod` | Production apply after protected GitHub `prod` approval |
+
+The Pulumi organization and project prefix is resolved from
+`.github/ci/pulumi-esc.json` before the ESC environment opens. Workflow call
+sites pass fixed suffixes like `test`, `test-pr`, `prod-preview`, and `prod`;
+PR input, issue comments, and repository-dispatch payloads cannot choose the
+ESC path.
+
+Each ESC environment should read one AWS Secrets Manager JSON secret from the
+owning AWS account:
+
+| ESC environment suffix | AWS Secrets Manager secret ID |
+| --- | --- |
+| `test-pr` | `/bootstrap-infrastructure/ci/test-pr` |
+| `test` | `/bootstrap-infrastructure/ci/test` |
+| `prod-preview` | `/bootstrap-infrastructure/ci/prod-preview` |
+| `prod` | `/bootstrap-infrastructure/ci/prod` |
+
+The Pulumi `test` and `prod` stacks manage these AWS Secrets Manager secret
+containers and the account-local `PulumiEscCiSecretsRead-*` roles. Pulumi does
+not create a `SecretVersion` or own the JSON values. Maintainers populate and
+rotate the JSON values in AWS Secrets Manager after the stack creates the
+container, then configure each ESC environment to assume the role exported as
+`pulumiEscSecretsReadRoleArn`.
+
+The ESC YAML should use `fn::open::aws-login`, `fn::open::aws-secrets`, and
+`fn::fromJSON` to load that secret, then map only the required keys to
+`environmentVariables`. Do not store AWS account IDs, role ARNs, backend URLs,
+stack lists, or secrets-provider URIs directly as ESC encrypted values unless a
+maintainer records a specific exception.
+
+Use `subjectAttributes: [currentEnvironment.name]` in the `aws-login` OIDC
+block so AWS trust can bind each role to the exact ESC environment name.
+
+The required ESC `environmentVariables` are:
 
 | Variable | Purpose |
 | --- | --- |
 | `AWS_ACCOUNT_ID` | Expected AWS account for `allowed-account-ids` and audit evidence |
+| `AWS_REGION` | AWS region used by `configure-aws-credentials` and Pulumi |
 | `AWS_PREVIEW_ROLE_ARN` | OIDC role assumed by preview and IAM validation jobs |
+| `AWS_APPLY_ROLE_ARN` | OIDC role used by test or production apply jobs |
 | `AWS_DRIFT_ROLE_ARN` | OIDC role assumed by drift jobs |
 | `PULUMI_BACKEND_URL` | Account-specific shared Pulumi backend |
 | `PULUMI_SECRETS_PROVIDER` | AWS KMS Pulumi secrets provider URI used by stacks |
+| `PULUMI_PREVIEW_STACKS` | Comma-separated stack list for preview and apply |
+| `PULUMI_DRIFT_STACKS` | Comma-separated stack list for drift checks |
 
-Optional or job-specific environment variables:
+Job-specific ESC variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `AWS_REGION` | AWS region used by `configure-aws-credentials`; defaults to `eu-central-1` |
-| `PULUMI_PR_BACKEND_URL` | Optional PR-only backend, useful while a legacy shared test stack is being migrated |
-| `PULUMI_PR_PREVIEW_STACKS` | Optional PR-only stack list; used by trusted PR and test deploy fallbacks |
-| `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for preview |
-| `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks |
-| `AWS_APPLY_ROLE_ARN` | OIDC role used by test or production apply jobs |
+| `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` | Dedicated OIDC role for operations alert triage |
+| `OPERATIONS_ALERT_QUEUE_NAME` | SQS queue drained by operations alert triage |
 | `OPERATIONS_TOPIC_ARN` | Standard metadata input for evidence collection when the environment reuses an existing operations SNS topic |
 | `OPERATIONS_CLOUDTRAIL_NAME` | Standard metadata input for evidence collection when the environment reuses an existing operations CloudTrail |
+
+Optional non-secret repository variables:
+
+| Variable | Purpose |
+| --- | --- |
 | `RESTORE_DRILL_EVIDENCE` | Standard metadata input pointing to the latest workload-scoped restore drill evidence record |
 | `DEPENDABOT_EXCEPTION_EVIDENCE` | Optional non-secret exception evidence covering exact open default-branch Dependabot alert numbers when remediation cannot land immediately |
 | `ALERT_ROUTE_OBSERVATION_EVIDENCE` | Optional non-secret SRE-approved downstream alert-route observation evidence matching the live operations route |
@@ -228,20 +277,11 @@ Optional or job-specific environment variables:
 | `QUESTION_MATRIX_EVIDENCE` | Standard metadata input pointing to the structured 57-question review evidence record |
 | `EXTERNAL_CONTROL_EVIDENCE` | Standard metadata input pointing to the structured external-control owner and freshness evidence record |
 
-Optional environment secrets:
-
-| Secret | Purpose |
-| --- | --- |
-| `PULUMI_ACCESS_TOKEN` | Required only when the backend is the Pulumi Service |
-
 Shared backends should use an AWS KMS-backed Pulumi secrets provider rather
 than a passphrase-managed stack secret flow.
 
-`Pulumi Test Deploy` uses the generic backend, stack, apply-role, and drift-role
-variables when they exist. In the `test` environment it can fall back to
-`PULUMI_PR_BACKEND_URL`, `PULUMI_PR_PREVIEW_STACKS`, and `AWS_PREVIEW_ROLE_ARN`
-so an existing single bootstrap automation role can apply its own narrowed
-policy before creating new operations and cost-control resources.
+`Pulumi Test Deploy` uses the `test` ESC backend, stack list, apply role, and
+drift role. Missing ESC values fail fast before AWS credentials are requested.
 
 Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate. Same-repo pull requests fail fast when required
@@ -251,7 +291,7 @@ paths remain same-repo only because they require OIDC-issued AWS credentials.
 
 Privileged jobs should emit sanitized evidence in the job summary or logs:
 
-- GitHub environment name
+- ESC environment name
 - expected AWS account ID and selected AWS region
 - role purpose, such as preview, drift, or apply
 - Pulumi backend type, stack names, and guardrail mode
@@ -418,9 +458,10 @@ The accepted Dependabot exception shape is also non-secret:
 
 ### Example IAM trust policy
 
-Replace the account ID, organization, repository name, and GitHub environment
+Replace the account ID, organization, repository name, workflow file, and branch
 with your own values. `<ACCOUNT_ID>` must be the target 12-digit AWS account ID
-using digits only:
+using digits only. Non-approval preview, drift, evidence, and test apply roles
+trust fixed repository refs or pull requests plus fixed workflow refs:
 
 ```json
 {
@@ -435,7 +476,20 @@ using digits only:
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:<ENVIRONMENT>"
+          "token.actions.githubusercontent.com:sub": [
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+          ]
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:job_workflow_ref": [
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-pr-guardrails.yml@refs/*",
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-test-deploy.yml@refs/heads/main",
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/nightly-guardrails.yml@refs/heads/main",
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-prod.yml@refs/heads/main",
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-pr-command-runner.yml@refs/heads/main",
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/well-architected-evidence.yml@refs/*"
+          ]
         }
       }
     }
@@ -443,16 +497,27 @@ using digits only:
 }
 ```
 
-Use `environment:test` for test preview/apply roles, `environment:prod-preview`
-for production preview and drift roles, and `environment:prod` only for the
-production apply role.
+Production apply is the only privileged path that should include a GitHub
+Environment subject:
+
+```text
+repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod
+```
+
+Production apply does not trust branch or pull request subjects. Production
+preview, IAM validation, and drift jobs run from the protected default branch
+through fixed `prod-preview` ESC configuration, while production apply requires
+only the protected GitHub `prod` Environment subject.
+
+The operations alert triage role should trust only
+`operations-alert-triage.yml@refs/heads/main`.
 
 ## Production protection
 
 Production release automation has two boundaries:
 
-- `prod-preview` can create review evidence but cannot apply changes
-- `prod` can apply only after GitHub environment approval, branch protection,
+- `prod-preview` ESC can create review evidence but cannot apply changes
+- protected GitHub `prod` approval can apply only after branch protection,
   and commit SHA verification
 
 The production workflow also checks that the requested commit SHA already has a
@@ -481,15 +546,32 @@ fresh GitHub runner would be misleading.
 
 The workflows are committed in this repository, but maintainers still need to:
 
-1. create the GitHub OIDC IAM role in AWS
-2. create `test`, `prod-preview`, and `prod` GitHub environments
-3. set the environment variables and optional secrets listed above
-4. enable required reviewers and branch restrictions on `prod`
-5. mark the required PR checks in GitHub branch protection
-6. decide whether production repositories want stricter stack lists or narrower
+1. create the GitHub OIDC IAM roles in AWS
+2. apply the Pulumi `test` and `prod` stacks so AWS creates the four Secrets
+   Manager containers and Pulumi ESC read roles
+3. create the four Pulumi ESC environments listed above and configure each one
+   to import its AWS Secrets Manager JSON secret through `aws-secrets`
+4. populate the four AWS Secrets Manager JSON values in the owning AWS accounts
+5. configure ESC/Pulumi OIDC so each environment can assume the AWS Secrets
+   Manager read role exported as `pulumiEscSecretsReadRoleArn`
+6. configure hosted ESC/Pulumi OIDC for this repository and organization
+7. apply the Pulumi test and production stacks so the updated IAM trust policies
+   converge in AWS from the AWS Secrets Manager values projected by the Pulumi
+   ESC environments
+8. run **GitHub Environment Legacy Variable Cleanup** first as a dry run, then
+   with the documented confirmation sentence after ESC-backed privileged CI is
+   green
+9. delete the temporary `GH_ENVIRONMENT_ADMIN_TOKEN` repository secret after
+   cleanup succeeds
+10. create only the protected `prod` GitHub Environment for production approval
+11. enable required reviewers and branch restrictions on `prod`
+12. mark the required PR checks in GitHub branch protection
+13. confirm no stale AWS trust subjects or privileged GitHub Environment account
+   variables remain outside the protected `prod` approval boundary
+14. decide whether production repositories want stricter stack lists or narrower
    IAM role scopes than the template defaults
 
-Repository administrators can make steps 4 and 5 reproducible with:
+Repository administrators can make the GitHub protection steps reproducible with:
 
 ```bash
 gh api graphql \

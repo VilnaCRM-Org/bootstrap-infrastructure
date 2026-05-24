@@ -149,15 +149,20 @@ omitting `central-logging` during this migration. State bucket logging depends
 on the concrete central logging bucket resources, so a full-stack preview/apply
 keeps the logging and state replica changes ordered together.
 
-## GitHub Environment Operations
+## ESC and GitHub Environment Operations
 
-The deployment boundary is the GitHub environment:
+The account-configuration boundary is the Pulumi ESC environment:
 
-- `test` handles trusted PR previews, main-branch test applies, and test drift
-- `prod-preview` handles production preview and drift without production apply
-  permissions
-- `prod` handles production apply and must require reviewers plus deployment
-  branch restrictions
+- `vilnacrm-org/bootstrap-infrastructure/test-pr` handles trusted PR previews
+- `vilnacrm-org/bootstrap-infrastructure/test` handles main-branch test
+  applies, test drift, operations alert triage, and evidence collection
+- `vilnacrm-org/bootstrap-infrastructure/prod-preview` handles production
+  preview and drift without production apply permissions
+- `vilnacrm-org/bootstrap-infrastructure/prod` handles production apply values
+
+The approval boundary is the protected GitHub `prod` Environment. It must
+require reviewers plus deployment branch restrictions. Do not use GitHub
+`test` or `prod-preview` Environments for privileged account variables.
 
 Before approving `prod`, compare the reviewed commit SHA with the apply SHA and
 review the preview summary, destructive diff result, IAM validation result, AWS
@@ -165,7 +170,7 @@ account evidence, stack name, and role purpose. Do not approve a production
 apply from a different SHA than the preview you reviewed.
 
 Privileged runs should preserve evidence that is useful but not sensitive:
-GitHub environment, account ID, region, OIDC role purpose, backend type, stack
+ESC environment, account ID, region, OIDC role purpose, backend type, stack
 names, guardrail mode, commit SHA, and artifact names. Evidence must not include
 stack exports, decrypted secret values, access keys, tokens, or private keys.
 

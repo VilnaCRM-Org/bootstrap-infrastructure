@@ -148,11 +148,13 @@ concurrency groups, bounded job timeouts, pinned actions, and a shared
 `make start` bootstrap path so local and GitHub-hosted
 validation stay aligned.
 
-Privileged issue 18 workflows use GitHub environments for account separation:
-`test` for trusted PR preview, test apply, and test drift; `prod-preview` for
-production preview and drift; and protected `prod` for production apply.
-Configure account-local variables, OIDC roles, Pulumi backend URLs, and AWS
-KMS-backed Pulumi secrets providers in the [GitHub Actions Secrets guide](github-actions-secrets.md).
+Privileged issue 20 workflows use fixed Pulumi ESC environments for account
+separation: `test-pr` for trusted PR preview, `test` for test apply, drift,
+operations alert triage, and evidence, `prod-preview` for production preview
+and drift, and `prod` for production apply. GitHub keeps only the protected
+`prod` Environment for approval. Configure account-local variables, OIDC roles,
+Pulumi backend URLs, and AWS KMS-backed Pulumi secrets providers in the
+[GitHub Actions Secrets guide](github-actions-secrets.md).
 The PR-comment path accepts `/pulumi test plan`, `/pulumi test up`,
 `/pulumi prod plan`, and `/pulumi prod up`; production comments run the test
 account apply and post-apply drift gates successfully before production starts.
@@ -266,7 +268,7 @@ Use the dedicated [testing guide](testing.md) when you need to know exactly what
 
 ## Repository Synchronization
 
-This template feeds other VilnaCRM infrastructure projects through [`actions-template-sync`](https://github.com/AndreasAugustin/actions-template-sync). For authentication guidance, see the [Template Sync secrets](github-actions-secrets.md#template-sync-secrets).
+This template feeds other VilnaCRM infrastructure projects through [`actions-template-sync`](https://github.com/AndreasAugustin/actions-template-sync). For authentication guidance, see the [GitHub Actions secrets and variables guide](github-actions-secrets.md).
 
 Remember to grant least privilege, rotate secrets regularly, and monitor workflow logs.
 

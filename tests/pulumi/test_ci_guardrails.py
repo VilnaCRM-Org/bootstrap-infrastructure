@@ -141,15 +141,18 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         "",
     )
     destructive_diff_job_if = " ".join(jobs["destructive_diff"]["if"].split())
-    pr_backend_expression = (
-        "${{ github.event_name == 'pull_request' && "
-        + "vars.PULUMI_PR_BACKEND_URL || vars.PULUMI_BACKEND_URL || "
-        + "vars.PULUMI_PR_BACKEND_URL }}"
+    preview_esc_step = next(
+        step
+        for step in jobs["preview"]["steps"]
+        if step.get("uses") == "./.github/actions/load-esc-ci-env"
     )
-    pr_stack_expression = (
-        "${{ github.event_name == 'pull_request' && "
-        + "vars.PULUMI_PR_PREVIEW_STACKS || vars.PULUMI_PREVIEW_STACKS || "
-        + "vars.PULUMI_PR_PREVIEW_STACKS }}"
+    iam_esc_step = next(
+        step
+        for step in jobs["iam_validation"]["steps"]
+        if step.get("uses") == "./.github/actions/load-esc-ci-env"
+    )
+    pr_esc_environment = (
+        "${{ github.event_name == 'pull_request' && 'test-pr' || 'test' }}"
     )
 
     assert workflow["concurrency"]["cancel-in-progress"] is True
@@ -160,13 +163,11 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         == "${{ needs.preview_mode.outputs.privileged == 'true' }}"
     )
     assert jobs["preview"]["needs"] == ["preview_mode"]  # nosec B101
-    assert jobs["preview"]["environment"] == "test"  # nosec B101
-    assert (  # nosec B101
-        jobs["preview"]["env"]["PULUMI_BACKEND_URL"] == pr_backend_expression
-    )
-    assert (  # nosec B101
-        jobs["preview"]["env"]["PULUMI_PREVIEW_STACKS"] == pr_stack_expression
-    )
+    assert "environment" not in jobs["preview"]  # nosec B101
+    assert preview_esc_step["with"]["environment"] == pr_esc_environment  # nosec B101
+    assert iam_esc_step["with"]["environment"] == pr_esc_environment  # nosec B101
+    assert "PULUMI_BACKEND_URL" in preview_esc_step["with"]["required-keys"]  # nosec B101
+    assert "PULUMI_PREVIEW_STACKS" in preview_esc_step["with"]["required-keys"]  # nosec B101
     assert jobs["preview"]["permissions"] == {  # nosec B101
         "contents": "read",
         "id-token": "write",
@@ -180,6 +181,7 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         == "${{ needs.preview_unprivileged.result == 'success' }}"
     )
     assert "environment" not in jobs["iam_validation_unprivileged"]  # nosec B101
+    assert "environment" not in jobs["iam_validation"]  # nosec B101
     assert jobs["iam_validation_unprivileged"]["permissions"] == {"contents": "read"}  # nosec B101
     assert destructive_diff_job_if == destructive_diff_if  # nosec B101
     assert jobs["destructive_diff"]["needs"] == [  # nosec B101
@@ -204,16 +206,28 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     assert preview_upload_step["with"]["name"] == "pulumi-preview"  # nosec B101
     assert "if" not in preview_oidc_step  # nosec B101
     assert (  # nosec B101
-        preview_oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"
+        preview_oidc_step["with"]["role-to-assume"]
+        == "${{ steps.esc.outputs.aws-preview-role-arn }}"
     )
     assert (  # nosec B101
-        preview_oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"
+        preview_oidc_step["with"]["allowed-account-ids"]
+        == "${{ steps.esc.outputs.aws-account-id }}"
     )
-    assert preview_oidc_step["with"]["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
+    assert (  # nosec B101
+        preview_oidc_step["with"]["aws-region"] == "${{ steps.esc.outputs.aws-region }}"
+    )
     assert "if" not in iam_oidc_step  # nosec B101
-    assert iam_oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"  # nosec B101
-    assert iam_oidc_step["with"]["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
-    assert iam_oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+    assert (  # nosec B101
+        iam_oidc_step["with"]["role-to-assume"]
+        == "${{ steps.esc.outputs.aws-preview-role-arn }}"
+    )
+    assert (  # nosec B101
+        iam_oidc_step["with"]["aws-region"] == "${{ steps.esc.outputs.aws-region }}"
+    )
+    assert (  # nosec B101
+        iam_oidc_step["with"]["allowed-account-ids"]
+        == "${{ steps.esc.outputs.aws-account-id }}"
+    )
     assert "make publish-pulumi-preview-summary" in preview_run_step["run"]  # nosec B101
     assert "make test-preview-unprivileged" in unprivileged_preview_run  # nosec B101
     assert preview_run_step["env"] == {  # nosec B101
@@ -331,6 +345,16 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
     ]
     test_drift_steps = jobs["test_drift_detection"]["steps"]
     prod_drift_steps = jobs["prod_drift_detection"]["steps"]
+    test_esc_step = next(
+        step
+        for step in test_drift_steps
+        if step.get("uses") == "./.github/actions/load-esc-ci-env"
+    )
+    prod_esc_step = next(
+        step
+        for step in prod_drift_steps
+        if step.get("uses") == "./.github/actions/load-esc-ci-env"
+    )
     preflight_step = next(
         (
             step
@@ -351,16 +375,16 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
         jobs["prod_drift_detection"]["concurrency"]["group"]
         == "bootstrap-infrastructure-prod-state"
     )
-    assert jobs["test_drift_detection"]["environment"] == "test"  # nosec B101
-    assert jobs["prod_drift_detection"]["environment"] == "prod-preview"  # nosec B101
+    assert "environment" not in jobs["test_drift_detection"]  # nosec B101
+    assert "environment" not in jobs["prod_drift_detection"]  # nosec B101
+    assert test_esc_step["with"]["environment"] == "test"  # nosec B101
+    assert prod_esc_step["with"]["environment"] == "prod-preview"  # nosec B101
     expected_drift_permissions = {
         "contents": "read",
         "id-token": "write",
     }
-    expected_expression = "".join(("${{ secrets.", "PULUMI_ACCESS_", "TOKEN", " }}"))
     assert jobs["test_drift_detection"]["permissions"] == expected_drift_permissions  # nosec B101
-    drift_access_token = jobs["test_drift_detection"]["env"]["PULUMI_ACCESS_TOKEN"]
-    assert drift_access_token == expected_expression  # nosec B101
+    assert jobs["test_drift_detection"]["env"] == {"PULUMI_SKIP_UPDATE_CHECK": "true"}  # nosec B101
     assert preflight_step is not None, "drift preflight step not found"  # nosec B101
     assert "AWS_DRIFT_ROLE_ARN" in preflight_step["run"]  # nosec B101
     assert "PULUMI_BACKEND_URL" in preflight_step["run"]  # nosec B101
@@ -373,9 +397,17 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
             for step in drift_steps
             if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
         )
-        assert oidc_step["with"]["role-to-assume"] == "${{ env.AWS_DRIFT_ROLE_ARN }}"  # nosec B101
-        assert oidc_step["with"]["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
-        assert oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+        assert (  # nosec B101
+            oidc_step["with"]["role-to-assume"]
+            == "${{ steps.esc.outputs.aws-drift-role-arn }}"
+        )
+        assert (  # nosec B101
+            oidc_step["with"]["aws-region"] == "${{ steps.esc.outputs.aws-region }}"
+        )
+        assert (  # nosec B101
+            oidc_step["with"]["allowed-account-ids"]
+            == "${{ steps.esc.outputs.aws-account-id }}"
+        )
         assert any(step.get("run") == "make test-drift" for step in drift_steps)  # nosec B101
     assert any("ossf/scorecard-action@" in uses for uses in scorecard_uses)  # nosec B101
     assert any("upload-sarif@" in uses for uses in scorecard_uses)  # nosec B101
@@ -402,6 +434,11 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         step
         for step in evidence_steps
         if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+    )
+    esc_step = next(
+        step
+        for step in evidence_steps
+        if step.get("uses") == "./.github/actions/load-esc-ci-env"
     )
     checkout_step = next(
         step
@@ -444,7 +481,9 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         "privileged": "${{ steps.evidence_mode.outputs.privileged }}"
     }
     assert "Fork pull request detected" in mode_step["run"]  # nosec B101
-    assert jobs["test_account_evidence"]["environment"] == "test"  # nosec B101
+    assert "environment" not in jobs["test_account_evidence"]  # nosec B101
+    assert esc_step["with"]["environment"] == "test"  # nosec B101
+    assert "OPERATIONS_TOPIC_ARN" in esc_step["with"]["required-keys"]  # nosec B101
     assert jobs["test_account_evidence"]["permissions"] == {  # nosec B101
         "contents": "read",
         "id-token": "write",
@@ -505,8 +544,14 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         jobs["test_account_evidence"]["env"]["PRODUCTION_DR_OWNER_EVIDENCE"]
         == production_dr_evidence
     )
-    assert oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"  # nosec B101
-    assert oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+    assert (  # nosec B101
+        oidc_step["with"]["role-to-assume"]
+        == "${{ steps.esc.outputs.aws-preview-role-arn }}"
+    )
+    assert (  # nosec B101
+        oidc_step["with"]["allowed-account-ids"]
+        == "${{ steps.esc.outputs.aws-account-id }}"
+    )
     assert "uv==0.9.21" in " ".join(  # nosec B101
         step.get("run", "") for step in evidence_steps
     )
@@ -589,6 +634,8 @@ def test_new_workflows_keep_actions_pinned_to_full_shas() -> None:
             for step in job.get("steps", []):
                 uses = step.get("uses")
                 if uses is None:
+                    continue
+                if uses.startswith("./"):
                     continue
                 assert ACTION_SHA_REF.match(uses), (
                     f"{workflow_name} must pin `{uses}` to a full commit SHA"

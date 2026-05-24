@@ -128,6 +128,9 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
         "pulumiSecretsAliases",
         "pulumiSecretsProviderUrls",
         "deployRoleArns",
+        "ciConfigurationSecretIds",
+        "ciConfigurationSecretArns",
+        "pulumiEscSecretsReadRoleArn",
         "managedRepositoryProjects",
         "managedRepositoryMetadata",
         "backupVaultName",
@@ -300,12 +303,88 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     """Avoid baking volatile SQS queue depth into retained review evidence."""
     alert_doc = (ROOT / "docs" / "alert-routing-evidence.md").read_text()
     operating_doc = (ROOT / "docs" / "operating-review-2026-05-09.md").read_text()
+    reconcile_workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "operations-alert-reconcile.yml").read_text()
+    )
+    reconcile_triggers = reconcile_workflow.get("on", reconcile_workflow.get(True, {}))
+    reconcile_run = reconcile_workflow["jobs"]["reconcile"]["steps"][0]["run"]
     docs = f"{alert_doc}\n{operating_doc}"
 
     assert "observation-only metadata" in alert_doc  # nosec B101
+    assert "Legacy operations-alert issues" in alert_doc  # nosec B101
+    assert "workflow searches issue bodies for the marker" in alert_doc  # nosec B101
+    assert "Operations Alert Legacy Reconcile" in alert_doc  # nosec B101
     assert "stable SNS/SQS route metadata" in operating_doc  # nosec B101
     assert "ApproximateNumberOfMessages=" not in docs  # nosec B101
     assert "two visible messages" not in docs  # nosec B101
+    assert "workflow_dispatch" in reconcile_triggers  # nosec B101
+    assert reconcile_workflow["permissions"] == {  # nosec B101
+        "contents": "read",
+        "issues": "write",
+    }
+    assert "id-token" not in reconcile_workflow["permissions"]  # nosec B101
+    assert "operations-alert:fingerprint=" in reconcile_run  # nosec B101
+    assert reconcile_workflow["jobs"]["reconcile"]["steps"][0]["shell"] == "bash"  # nosec B101
+    assert "GH_REPO: ${{ github.repository }}" in yaml.safe_dump(  # nosec B101
+        reconcile_workflow["jobs"]["reconcile"]["env"]
+    )
+    assert '--repo "${GH_REPO}"' in reconcile_run  # nosec B101
+    assert "declare -A seen_issues" in reconcile_run  # nosec B101
+    assert "legacy_issue_ids" in reconcile_run  # nosec B101
+    assert "provide at least one legacy issue number" in reconcile_run  # nosec B101
+    assert "gh issue close" in reconcile_run  # nosec B101
+    assert "--duplicate-of" in reconcile_run  # nosec B101
+
+
+def test_ci_guardrails_manual_follow_up_completes_esc_cutover() -> None:
+    """Keep the issue 20 operator checklist aligned with the cleanup path."""
+    ci_guardrails = (ROOT / "docs" / "ci-guardrails.md").read_text()
+
+    assert "apply the Pulumi test and production stacks" in ci_guardrails  # nosec B101
+    assert "AWS Secrets Manager values projected by the Pulumi" in ci_guardrails  # nosec B101
+    assert "fn::open::aws-secrets" in ci_guardrails  # nosec B101
+    assert "GitHub Environment Legacy Variable Cleanup" in ci_guardrails  # nosec B101
+    assert "GH_ENVIRONMENT_ADMIN_TOKEN" in ci_guardrails  # nosec B101
+    assert "no stale AWS trust subjects" in ci_guardrails  # nosec B101
+    assert "protected `prod` approval boundary" in ci_guardrails  # nosec B101
+
+
+def test_github_environment_cleanup_is_manual_and_guarded() -> None:
+    """Keep post-ESC GitHub Environment cleanup explicit and non-AWS."""
+    cleanup_workflow = yaml.safe_load(
+        (
+            ROOT / ".github" / "workflows" / "github-environment-legacy-cleanup.yml"
+        ).read_text()
+    )
+    cleanup_triggers = cleanup_workflow.get("on", cleanup_workflow.get(True, {}))
+    cleanup_run = cleanup_workflow["jobs"]["cleanup"]["steps"][0]["run"]
+    setup_doc = (ROOT / "docs" / "github-actions-secrets.md").read_text()
+
+    assert "workflow_dispatch" in cleanup_triggers  # nosec B101
+    assert cleanup_workflow["permissions"] == {  # nosec B101
+        "contents": "read",
+    }
+    assert "actions" not in cleanup_workflow["permissions"]  # nosec B101
+    assert "id-token" not in cleanup_workflow["permissions"]  # nosec B101
+    assert cleanup_triggers["workflow_dispatch"]["inputs"]["dry_run"][  # nosec B101
+        "default"
+    ]
+    assert cleanup_workflow["jobs"]["cleanup"]["steps"][0]["shell"] == "bash"  # nosec B101
+    assert "GH_ENVIRONMENT_ADMIN_TOKEN" in cleanup_run  # nosec B101
+    assert "github.token" not in yaml.safe_dump(cleanup_workflow)  # nosec B101
+    assert "legacy GitHub Environment variables can be removed" in cleanup_run  # nosec B101
+    assert "gh variable delete" in cleanup_run  # nosec B101
+    assert '--env "${environment_name}"' in cleanup_run  # nosec B101
+    assert "AWS_ACCOUNT_ID" in cleanup_run  # nosec B101
+    assert "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN" in cleanup_run  # nosec B101
+    assert "PULUMI_BACKEND_URL" in cleanup_run  # nosec B101
+    assert "PULUMI_PR_BACKEND_URL" in cleanup_run  # nosec B101
+    assert "PULUMI_PR_PREVIEW_STACKS" in cleanup_run  # nosec B101
+    assert "remaining_names" in cleanup_run  # nosec B101
+    assert "GitHub Environment Legacy Variable Cleanup" in setup_doc  # nosec B101
+    assert "repository **Environments** write permission" in setup_doc  # nosec B101
+    assert "`PULUMI_PR_*`" in setup_doc  # nosec B101
+    assert "dry_run=false" in setup_doc  # nosec B101
 
 
 def test_completion_audit_avoids_self_stale_exact_head_metadata() -> None:

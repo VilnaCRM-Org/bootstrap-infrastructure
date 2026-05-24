@@ -24,24 +24,25 @@ jobs:
     concurrency:
       group: bootstrap-infrastructure-test-state
       cancel-in-progress: false
-    environment: test
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+
+      - name: Load test ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: test
+          purpose: test drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
 
       - name: Validate drift detection prerequisites
         run: |
@@ -76,17 +77,19 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_DRIFT_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-drift-role-arn }}
           role-session-name: gha-test-drift-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Emit drift evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: test"
+          echo "ESC environment: ${PULUMI_ESC_ENVIRONMENT}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${GITHUB_SHA}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_DRIFT_STACKS}"
           echo "Role purpose: drift"
 
@@ -103,24 +106,25 @@ jobs:
     concurrency:
       group: bootstrap-infrastructure-prod-state
       cancel-in-progress: false
-    environment: prod-preview
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+
+      - name: Load prod preview ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: prod-preview
+          purpose: prod drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
 
       - name: Validate drift detection prerequisites
         run: |
@@ -155,17 +159,19 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_DRIFT_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-drift-role-arn }}
           role-session-name: gha-prod-drift-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Emit drift evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: prod-preview"
+          echo "ESC environment: ${PULUMI_ESC_ENVIRONMENT}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${GITHUB_SHA}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_DRIFT_STACKS}"
           echo "Role purpose: drift"
 

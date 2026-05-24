@@ -5,6 +5,7 @@ from .backup import S3BackupPlan
 from .bootstrap_dependencies import BootstrapInfrastructureDependencies
 from .bootstrap_infrastructure import BootstrapInfrastructure
 from .bootstrap_settings import BootstrapSettings
+from .ci_config import CiConfiguration
 from .cost_controls import CostControlInputs, CostControls
 from .logging_bucket import CentralLoggingBuckets
 from .managed_repository import ManagedRepository
@@ -18,6 +19,7 @@ __all__ = (
     "BootstrapInfrastructure",
     "BootstrapInfrastructureDependencies",
     "BootstrapSettings",
+    "CiConfiguration",
     "CostControlInputs",
     "CostControls",
     "GitHubAutomation",

@@ -41,6 +41,7 @@ def _apply_mock_resource_defaults(
         "aws:ecr/repository:Repository": _mock_ecr_repository,
         "aws:kms/key:Key": _mock_kms_key,
         "aws:kms/alias:Alias": _mock_kms_alias,
+        "aws:secretsmanager/secret:Secret": _mock_secretsmanager_secret,
         "aws:backup/vault:Vault": _mock_backup_vault,
         "aws:sns/topic:Topic": _mock_sns_topic,
         "aws:sns/topicSubscription:TopicSubscription": _mock_sns_topic_subscription,
@@ -81,11 +82,14 @@ def _mock_iam_policy(name: str, inputs: dict[str, Any], state: dict[str, Any]) -
 
 
 def _mock_oidc_provider(
-    _name: str, _inputs: dict[str, Any], state: dict[str, Any]
+    _name: str, inputs: dict[str, Any], state: dict[str, Any]
 ) -> None:
+    provider_url = str(
+        inputs.get("url") or "https://token.actions.githubusercontent.com"
+    ).removeprefix("https://")
     state.setdefault(
         "arn",
-        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+        f"arn:aws:iam::123456789012:oidc-provider/{provider_url}",
     )
 
 
@@ -109,6 +113,17 @@ def _mock_kms_alias(name: str, inputs: dict[str, Any], state: dict[str, Any]) ->
     alias_name = inputs.get("name") or name
     state.setdefault("name", alias_name)
     state.setdefault("arn", f"arn:aws:kms:us-east-1:123456789012:{alias_name}")
+
+
+def _mock_secretsmanager_secret(
+    name: str, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
+    secret_name = inputs.get("name") or name
+    state.setdefault("name", secret_name)
+    state.setdefault(
+        "arn",
+        f"arn:aws:secretsmanager:us-east-1:123456789012:secret:{secret_name}-mock",
+    )
 
 
 def _mock_backup_vault(

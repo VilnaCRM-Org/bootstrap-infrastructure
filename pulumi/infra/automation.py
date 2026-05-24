@@ -44,6 +44,8 @@ _AUTOMATION_MANAGED_POLICY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
                 "ManageBootstrapIam",
                 "CreateBootstrapOidcProvider",
                 "ListBootstrapOidcProviders",
+                "CreateBootstrapCiSecrets",
+                "ManageBootstrapCiSecrets",
                 "PassBootstrapRolesToBackup",
                 "PassBootstrapRolesToConfig",
                 "ManageBootstrapBackup",
@@ -266,6 +268,18 @@ _OPERATIONS_ALERT_TRIAGE_CONSUME_ACTIONS = (
     "sqs:ReceiveMessage",
     "sqs:DeleteMessage",
 )
+_AUTOMATION_SECRETS_MANAGER_CREATE_ACTIONS = (
+    "secretsmanager:CreateSecret",
+    "secretsmanager:TagResource",
+)
+_AUTOMATION_SECRETS_MANAGER_RESOURCE_ACTIONS = (
+    "secretsmanager:DeleteSecret",
+    "secretsmanager:DescribeSecret",
+    "secretsmanager:ListSecretVersionIds",
+    "secretsmanager:RestoreSecret",
+    "secretsmanager:TagResource",
+    "secretsmanager:UntagResource",
+)
 _AUTOMATION_BUDGETS_ACTIONS = (
     "budgets:ModifyBudget",
     "budgets:DescribeBudget",
@@ -475,9 +489,15 @@ def _automation_iam_role_resources(
         settings,
         repo_name,
     )
+    repo_part = settings.sanitize_bucket_component(repo_name, "repoSlug").replace(
+        ".",
+        "-",
+    )
+    env_part = _environment_resource_part(settings).replace(".", "-")
     return [
         f"arn:aws:iam::{account_id}:role/{automation_role_name}",
         f"arn:aws:iam::{account_id}:role/{operations_alert_triage_role_name}",
+        f"arn:aws:iam::{account_id}:role/PulumiEscCiSecretsRead-{repo_part}-{env_part}",
         f"arn:aws:iam::{account_id}:role/PulumiDeploy-*",
         f"arn:aws:iam::{account_id}:role/PulumiStateRepl-*",
         f"arn:aws:iam::{account_id}:role/central-logging-replication-role-*",
@@ -529,6 +549,30 @@ def _automation_sqs_resources(
     """Scope SQS management to the bootstrap operations alert queue."""
     environment = _environment_resource_part(settings).replace(".", "-")
     return [f"arn:aws:sqs:*:{account_id}:bootstrap-{environment}-operations-alerts"]
+
+
+def _automation_ci_secret_suffixes(environment: str) -> tuple[str, ...]:
+    """Return ESC secret suffixes owned by one bootstrap stack."""
+    return {
+        "test": ("test-pr", "test"),
+        "prod": ("prod-preview", "prod"),
+    }.get(environment, (environment,))
+
+
+def _automation_ci_secret_resources(
+    account_id: str,
+    settings: BootstrapSettings,
+    repo_name: str,
+) -> list[str]:
+    """Scope Secrets Manager management to CI config secret containers."""
+    repo_part = settings.sanitize_bucket_component(repo_name, "repoSlug").replace(
+        ".",
+        "-",
+    )
+    return [
+        f"arn:aws:secretsmanager:*:{account_id}:secret:/{repo_part}/ci/{suffix}-*"
+        for suffix in _automation_ci_secret_suffixes(settings.environment)
+    ]
 
 
 def _automation_budget_resources(
@@ -590,9 +634,22 @@ def _automation_aws_config_recorder_resources(
 
 
 def _automation_assume_role_policy(
-    oidc_provider_arn: str, org: str, repo_name: str, environment: str
+    oidc_provider_arn: str,
+    org: str,
+    repo_name: str,
+    production_environment: str,
+    branch_name: str,
 ) -> str:
-    """Build the GitHub OIDC trust policy for environment-scoped automation."""
+    """Build the GitHub OIDC trust policy for fixed workflow automation."""
+    workflow_prefix = f"{org}/{repo_name}/.github/workflows"
+    if production_environment == "prod":
+        subjects = [f"repo:{org}/{repo_name}:environment:{production_environment}"]
+    else:
+        subjects = [
+            f"repo:{org}/{repo_name}:ref:refs/heads/{branch_name}",
+            f"repo:{org}/{repo_name}:pull_request",
+        ]
+
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -606,10 +663,33 @@ def _automation_assume_role_policy(
                             "token.actions.githubusercontent.com:aud": (
                                 "sts.amazonaws.com"
                             ),
-                            "token.actions.githubusercontent.com:sub": (
-                                f"repo:{org}/{repo_name}:environment:{environment}"
-                            ),
-                        }
+                            "token.actions.githubusercontent.com:sub": subjects,
+                        },
+                        "StringLike": {
+                            "token.actions.githubusercontent.com:job_workflow_ref": [
+                                (f"{workflow_prefix}/pulumi-pr-guardrails.yml@refs/*"),
+                                (
+                                    f"{workflow_prefix}/pulumi-test-deploy.yml"
+                                    f"@refs/heads/{branch_name}"
+                                ),
+                                (
+                                    f"{workflow_prefix}/nightly-guardrails.yml"
+                                    f"@refs/heads/{branch_name}"
+                                ),
+                                (
+                                    f"{workflow_prefix}/pulumi-prod.yml"
+                                    f"@refs/heads/{branch_name}"
+                                ),
+                                (
+                                    f"{workflow_prefix}/pulumi-pr-command-runner.yml"
+                                    f"@refs/heads/{branch_name}"
+                                ),
+                                (
+                                    f"{workflow_prefix}/well-architected-evidence.yml"
+                                    "@refs/*"
+                                ),
+                            ]
+                        },
                     },
                 }
             ],
@@ -643,7 +723,6 @@ def _operations_alert_triage_assume_role_policy(
     oidc_provider_arn: str,
     org: str,
     repo_name: str,
-    environment: str,
     branch_name: str,
 ) -> str:
     """Build the OIDC trust policy for the alert triage workflow only."""
@@ -661,14 +740,16 @@ def _operations_alert_triage_assume_role_policy(
                                 "sts.amazonaws.com"
                             ),
                             "token.actions.githubusercontent.com:sub": (
-                                f"repo:{org}/{repo_name}:environment:{environment}"
+                                f"repo:{org}/{repo_name}:ref:refs/heads/{branch_name}"
                             ),
+                        },
+                        "StringLike": {
                             "token.actions.githubusercontent.com:job_workflow_ref": (
                                 f"{org}/{repo_name}/.github/workflows/"
                                 "operations-alert-triage.yml"
                                 f"@refs/heads/{branch_name}"
                             ),
-                        }
+                        },
                     },
                 }
             ],
@@ -700,10 +781,18 @@ def _automation_policy(
     account_id: str, settings: BootstrapSettings, repo_name: str
 ) -> str:
     """Return the policy used by GitHub automation for bootstrap operations."""
-    oidc_provider_arn = (
+    github_oidc_provider_arn = (
         f"arn:aws:iam::{account_id}:oidc-provider/token.actions.githubusercontent.com"
     )
+    pulumi_esc_oidc_provider_arn = (
+        f"arn:aws:iam::{account_id}:oidc-provider/api.pulumi.com/oidc"
+    )
     iam_role_resources = _automation_iam_role_resources(account_id, settings, repo_name)
+    ci_secret_resources = _automation_ci_secret_resources(
+        account_id,
+        settings,
+        repo_name,
+    )
     kms_purposes = ["pulumi-secrets", "operations-alerting", "operations-cloudtrail"]
     kms_tag_condition = {
         "StringEquals": {
@@ -715,6 +804,18 @@ def _automation_policy(
         "StringEquals": {
             AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
             AWS_REQUEST_TAG_PURPOSE_KEY: kms_purposes,
+        }
+    }
+    ci_secret_request_tag_condition = {
+        "StringEquals": {
+            AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_REQUEST_TAG_PURPOSE_KEY: "ci-configuration",
+        }
+    }
+    ci_secret_resource_tag_condition = {
+        "StringEquals": {
+            AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
+            AWS_RESOURCE_TAG_PURPOSE_KEY: "ci-configuration",
         }
     }
     kms_alias_condition = {
@@ -833,7 +934,11 @@ def _automation_policy(
                         "iam:UpdateAssumeRolePolicy",
                         "iam:UpdateOpenIDConnectProviderThumbprint",
                     ],
-                    "Resource": [*iam_role_resources, oidc_provider_arn],
+                    "Resource": [
+                        *iam_role_resources,
+                        github_oidc_provider_arn,
+                        pulumi_esc_oidc_provider_arn,
+                    ],
                 },
                 {
                     "Sid": "CreateBootstrapOidcProvider",
@@ -846,6 +951,20 @@ def _automation_policy(
                     "Effect": "Allow",
                     "Action": ["iam:ListOpenIDConnectProviders"],
                     "Resource": "*",
+                },
+                {
+                    "Sid": "CreateBootstrapCiSecrets",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_SECRETS_MANAGER_CREATE_ACTIONS),
+                    "Resource": ci_secret_resources,
+                    "Condition": ci_secret_request_tag_condition,
+                },
+                {
+                    "Sid": "ManageBootstrapCiSecrets",
+                    "Effect": "Allow",
+                    "Action": list(_AUTOMATION_SECRETS_MANAGER_RESOURCE_ACTIONS),
+                    "Resource": ci_secret_resources,
+                    "Condition": ci_secret_resource_tag_condition,
                 },
                 {
                     "Sid": "PassBootstrapRolesToBackup",
@@ -1278,6 +1397,7 @@ def _create_automation_role(
                 context.settings.org,
                 context.repo_name,
                 context.settings.environment,
+                context.settings.github_branch or "main",
             ),
         ),
         tags=_automation_tags(
@@ -1424,7 +1544,6 @@ def _create_operations_alert_triage_role(
                 arn,
                 context.settings.org,
                 context.repo_name,
-                context.settings.environment,
                 branch_name,
             ),
         ),

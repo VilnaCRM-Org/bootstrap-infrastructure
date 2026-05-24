@@ -8,6 +8,7 @@ from infra import (
     BootstrapInfrastructure,
     BootstrapInfrastructureDependencies,
     CentralLoggingBuckets,
+    CiConfiguration,
     CostControlInputs,
     CostControls,
     GitHubAutomation,
@@ -18,6 +19,7 @@ from infra import (
     S3BackupPlan,
     SecurityAccountControls,
     automation,
+    ci_config,
     config,
     logging_bucket,
     operations_monitoring,
@@ -216,6 +218,207 @@ def test_github_automation_policy_normalizes_sns_environment_and_allocation_tags
             }
         }
     )
+
+
+def test_github_automation_trust_keeps_environment_subject_prod_only():
+    provider_arn = (
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    )
+
+    test_policy = json.loads(
+        automation._automation_assume_role_policy(
+            provider_arn,
+            "VilnaCRM-Org",
+            "bootstrap-infrastructure",
+            "test",
+            "main",
+        )
+    )
+    prod_policy = json.loads(
+        automation._automation_assume_role_policy(
+            provider_arn,
+            "VilnaCRM-Org",
+            "bootstrap-infrastructure",
+            "prod",
+            "main",
+        )
+    )
+
+    test_subjects = test_policy["Statement"][0]["Condition"]["StringEquals"][
+        "token.actions.githubusercontent.com:sub"
+    ]
+    prod_subjects = prod_policy["Statement"][0]["Condition"]["StringEquals"][
+        "token.actions.githubusercontent.com:sub"
+    ]
+
+    assert test_subjects == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request",
+    ]
+    assert prod_subjects == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"
+    ]
+
+
+def test_ci_configuration_manages_aws_secret_containers_and_esc_read_role(
+    pulumi_mocks,
+    monkeypatch,
+):  # noqa: ARG001
+    monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
+    monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
+    monkeypatch.setattr(
+        ci_config,
+        "_existing_pulumi_esc_oidc_provider_arn",
+        lambda: None,
+    )
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="test",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    start = len(pulumi_mocks.resources)
+    component = CiConfiguration("ci-configuration", settings=settings)
+
+    read_role_arn = _sync_await(future_output(component.read_role.arn))
+    assert read_role_arn.endswith(  # nosec B101
+        ":role/PulumiEscCiSecretsRead-bootstrap-infrastructure-test"
+    )
+    assert component.secret_ids == {  # nosec B101
+        "test-pr": "/bootstrap-infrastructure/ci/test-pr",
+        "test": "/bootstrap-infrastructure/ci/test",
+    }
+
+    new_resources = pulumi_mocks.resources[start:]
+    secret_states = {
+        state["name"]: state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:secretsmanager/secret:Secret"
+    }
+    assert set(secret_states) == {  # nosec B101
+        "/bootstrap-infrastructure/ci/test-pr",
+        "/bootstrap-infrastructure/ci/test",
+    }
+    assert all(  # nosec B101
+        state["tags"]["Purpose"] == "ci-configuration"
+        for state in secret_states.values()
+    )
+
+    provider_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-pulumi-esc-oidc-provider",
+    )
+    assert provider_state["url"] == ci_config.PULUMI_ESC_OIDC_URL  # nosec B101
+    assert provider_state["clientIdLists"] == ["aws:vilnacrm-org"]  # nosec B101
+
+    role_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-pulumi-esc-secrets-read-role",
+    )
+    assume_role_policy = json.loads(role_state["assumeRolePolicy"])
+    condition = assume_role_policy["Statement"][0]["Condition"]["StringEquals"]
+    assert condition == {  # nosec B101
+        "api.pulumi.com/oidc:aud": "aws:vilnacrm-org",
+        "api.pulumi.com/oidc:sub": [
+            (
+                "pulumi:environments:pulumi.organization.login:vilnacrm-org:"
+                "currentEnvironment.name:bootstrap-infrastructure/test-pr"
+            ),
+            (
+                "pulumi:environments:pulumi.organization.login:vilnacrm-org:"
+                "currentEnvironment.name:bootstrap-infrastructure/test"
+            ),
+        ],
+    }
+
+    policy_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-pulumi-esc-secrets-read-policy",
+    )
+    policy = json.loads(policy_state["policy"])
+    statement = policy["Statement"][0]
+    assert statement["Action"] == [  # nosec B101
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+    ]
+    policy_text = json.dumps(policy)
+    assert "/bootstrap-infrastructure/ci/test-pr" in policy_text  # nosec B101
+    assert "/bootstrap-infrastructure/ci/test" in policy_text  # nosec B101
+
+
+def test_ci_configuration_reuses_existing_pulumi_esc_oidc_provider(
+    pulumi_mocks,
+    monkeypatch,
+):  # noqa: ARG001
+    existing_provider_arn = (
+        "arn:aws:iam::123456789012:oidc-provider/api.pulumi.com/oidc"
+    )
+    captured = {}
+
+    class FakeProvider:
+        arn = pulumi.Output.from_input(existing_provider_arn)
+
+    def fake_get_provider(resource_name, provider_arn, **_kwargs):
+        captured["resource_name"] = resource_name
+        captured["provider_arn"] = provider_arn
+        return FakeProvider()
+
+    monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
+    monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
+    monkeypatch.setattr(
+        ci_config,
+        "_existing_pulumi_esc_oidc_provider_arn",
+        lambda: existing_provider_arn,
+    )
+    monkeypatch.setattr(
+        ci_config.aws.iam.OpenIdConnectProvider,
+        "get",
+        fake_get_provider,
+    )
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="prod",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    start = len(pulumi_mocks.resources)
+    component = CiConfiguration("ci-configuration-existing", settings=settings)
+
+    _sync_await(future_output(component.read_role.arn))
+    assert captured == {  # nosec B101
+        "resource_name": "ci-configuration-existing-pulumi-esc-oidc-provider",
+        "provider_arn": existing_provider_arn,
+    }
+    provider_resources = {
+        name
+        for resource_type, name, _state in pulumi_mocks.resources[start:]
+        if resource_type == "aws:iam/openIdConnectProvider:OpenIdConnectProvider"
+    }
+    assert provider_resources == set()  # nosec B101
+    assert component.secret_ids == {  # nosec B101
+        "prod-preview": "/bootstrap-infrastructure/ci/prod-preview",
+        "prod": "/bootstrap-infrastructure/ci/prod",
+    }
 
 
 def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
@@ -873,6 +1076,9 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert "operationsAlertQueueSubscriptionArn" in bootstrap.outputs  # nosec B101
     assert "backupVaultArn" in bootstrap.outputs  # nosec B101
     assert "backupRoleArn" in bootstrap.outputs  # nosec B101
+    assert "ciConfigurationSecretIds" in bootstrap.outputs  # nosec B101
+    assert "ciConfigurationSecretArns" in bootstrap.outputs  # nosec B101
+    assert "pulumiEscSecretsReadRoleArn" in bootstrap.outputs  # nosec B101
     assert "guardDutyDetectorId" in bootstrap.outputs  # nosec B101
     assert "securityHubAccountArn" in bootstrap.outputs  # nosec B101
     assert "awsConfigRecorderName" in bootstrap.outputs  # nosec B101
@@ -1292,12 +1498,28 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert role_type == "aws:iam/role:Role"  # nosec B101
     assert triage_role_type == "aws:iam/role:Role"  # nosec B101
     assert (
-        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
         in role_state["assumeRolePolicy"]
     )  # nosec B101
     assert (  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+        in role_state["assumeRolePolicy"]
+    )
+    assert (  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
+        not in role_state["assumeRolePolicy"]
+    )
+    assert (  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
         in triage_role_state["assumeRolePolicy"]
+    )
+    assert (  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
+        not in triage_role_state["assumeRolePolicy"]
+    )
+    assert (  # nosec B101
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-pr-guardrails.yml@refs/*" in role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
         "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
@@ -1357,6 +1579,14 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "arn:aws:iam::123456789012:role/OperationsAlertTriage-"
         "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
     )
+    assert (  # nosec B101
+        "arn:aws:iam::123456789012:role/PulumiEscCiSecretsRead-"
+        "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
+    )
+    assert (  # nosec B101
+        "arn:aws:iam::123456789012:oidc-provider/api.pulumi.com/oidc"
+        in statements["ManageBootstrapIam"]["Resource"]
+    )
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
         "arn:aws:s3:::pulumi-*-test-state-*-replication",
@@ -1387,6 +1617,9 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert "cloudtrail:DescribeTrails" in all_actions  # nosec B101
     assert "sqs:ReceiveMessage" not in all_allow_actions  # nosec B101
     assert "sqs:DeleteMessage" not in all_allow_actions  # nosec B101
+    assert "secretsmanager:GetSecretValue" not in all_allow_actions  # nosec B101
+    assert "secretsmanager:PutSecretValue" not in all_allow_actions  # nosec B101
+    assert "secretsmanager:UpdateSecret" not in all_allow_actions  # nosec B101
     assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
         "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
     ]
@@ -1408,6 +1641,38 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "sns:GetSubscriptionAttributes",
         "sns:Unsubscribe",
     ]
+    assert statements["CreateBootstrapCiSecrets"]["Resource"] == [  # nosec B101
+        (
+            "arn:aws:secretsmanager:*:123456789012:secret:"
+            "/bootstrap-infrastructure/ci/test-pr-*"
+        ),
+        (
+            "arn:aws:secretsmanager:*:123456789012:secret:"
+            "/bootstrap-infrastructure/ci/test-*"
+        ),
+    ]
+    assert statements["CreateBootstrapCiSecrets"]["Condition"] == {  # nosec B101
+        "StringEquals": {
+            "aws:RequestTag/Environment": "test",
+            "aws:RequestTag/Purpose": "ci-configuration",
+        }
+    }
+    assert (
+        statements["ManageBootstrapCiSecrets"]["Resource"]
+        == (  # nosec B101
+            statements["CreateBootstrapCiSecrets"]["Resource"]
+        )
+    )
+    assert statements["CreateBootstrapCiSecrets"]["Action"] == [  # nosec B101
+        "secretsmanager:CreateSecret",
+        "secretsmanager:TagResource",
+    ]
+    assert (
+        "secretsmanager:TagResource"
+        in statements["ManageBootstrapCiSecrets"][  # nosec B101
+            "Action"
+        ]
+    )
     assert statements["DenyBootstrapSqsConsumption"] == {  # nosec B101
         "Sid": "DenyBootstrapSqsConsumption",
         "Effect": "Deny",

@@ -19,7 +19,7 @@ Production-ready scaffold for teams that want to ship infrastructure-as-code wit
 - Pulumi (Python) starter that exports environment metadata and tagging helpers.
 - Reproducible Docker Compose workspace with a Pulumi-ready container and helper `make` tasks.
 - CI pipelines for structural, policy, preview, security, unit, integration, mutation, and CLI-level checks.
-- Multi-account GitHub environment guidance for `test`, `prod-preview`, and protected `prod` workflows.
+- Multi-account Pulumi ESC guidance for `test-pr`, `test`, `prod-preview`, and protected `prod` workflows.
 - Release and template-sync automations to keep downstream repos aligned.
 - Documentation on AWS credential management for secure automation using GitHub OIDC and short-lived credentials.
 
@@ -140,7 +140,8 @@ also log into the configured backend automatically, falling back to the local
 file backend under `.pulumi-backend/` when no shared backend is configured,
 select the first committed `Pulumi.<stack>.yaml` file by default, and expect
 shared backends to use an AWS KMS-backed secrets provider. For test/prod CI
-setup, configure account-local GitHub environments and OIDC roles in
+setup, store account-local values in AWS Secrets Manager JSON secrets, project
+them through Pulumi ESC environments, and configure OIDC roles as described in
 [GitHub Actions Secrets and Variables](docs/github-actions-secrets.md).
 
 ## Security

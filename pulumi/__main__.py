@@ -51,6 +51,8 @@ if bootstrap_requested:
     security_account_controls = bootstrap.security_account_controls
     if bootstrap.automation is not None:
         automation = bootstrap.automation
+    if bootstrap.ci_config is not None:
+        ci_config = bootstrap.ci_config
 
     pulumi.export("centralLogBucket", bootstrap.outputs["centralLogBucket"])
     pulumi.export("centralLogBucketArn", bootstrap.outputs["centralLogBucketArn"])
@@ -61,6 +63,19 @@ if bootstrap_requested:
     pulumi_secrets_provider_urls = bootstrap.outputs["pulumiSecretsProviderUrls"]
     pulumi.export("pulumiSecretsProviderUrls", pulumi_secrets_provider_urls)
     pulumi.export("deployRoleArns", bootstrap.outputs["deployRoleArns"])
+    if bootstrap.ci_config is not None:
+        pulumi.export(
+            "ciConfigurationSecretIds",
+            bootstrap.outputs["ciConfigurationSecretIds"],
+        )
+        pulumi.export(
+            "ciConfigurationSecretArns",
+            bootstrap.outputs["ciConfigurationSecretArns"],
+        )
+        pulumi.export(
+            "pulumiEscSecretsReadRoleArn",
+            bootstrap.outputs["pulumiEscSecretsReadRoleArn"],
+        )
     managed_repository_projects = bootstrap.outputs["managedRepositoryProjects"]
     pulumi.export("managedRepositoryProjects", managed_repository_projects)
     managed_repository_metadata = bootstrap.outputs["managedRepositoryMetadata"]

@@ -68,14 +68,36 @@ service-event injection.
 ## Human Consumption Route
 
 Operations alerts are consumed by the scheduled
-`.github/workflows/operations-alert-triage.yml` workflow. The workflow assumes
-the dedicated test account operations alert triage role through GitHub OIDC,
-reads metadata-only messages from `bootstrap-test-operations-alerts`, creates a
-GitHub issue in
-`VilnaCRM-Org/bootstrap-infrastructure` with sanitized SNS/EventBridge source,
-detail type, and event-time metadata, and deletes messages only after the issue
-is created. It must not write raw alert payloads, stack exports, credentials,
-tokens, or private incident notes to GitHub.
+`.github/workflows/operations-alert-triage.yml` workflow. The workflow loads the
+fixed `vilnacrm-org/bootstrap-infrastructure/test` ESC environment, assumes the
+dedicated test account operations alert triage role through GitHub OIDC, reads
+metadata-only messages from `bootstrap-test-operations-alerts`, and writes
+sanitized GitHub issue records in `VilnaCRM-Org/bootstrap-infrastructure`.
+
+The issue body includes an `operations-alert:fingerprint=<hash>` marker built
+from stable event fields such as source, detail type, state, backup vault,
+backup plan, backup rule, and resource ARN. Repeated notifications for the same
+underlying route update the open canonical issue with a comment instead of
+creating duplicate issues. The workflow deletes SQS messages only after the
+GitHub issue create or comment operation succeeds. It must not write raw alert
+payloads, stack exports, credentials, tokens, or private incident notes to
+GitHub.
+
+Legacy operations-alert issues that predate the fingerprint marker are not
+automatically absorbed by the search query. Treat the first post-merge
+fingerprinted issue as the canonical record for that alert stream, then link
+and close older duplicate issues only after an SRE confirms the sanitized
+events share the same underlying AWS Backup state, vault, plan or rule, and
+protected resource. A comment on a legacy issue is not enough for future
+workflow dedupe because the workflow searches issue bodies for the marker.
+
+After SRE confirmation, use the manual **Operations Alert Legacy Reconcile**
+workflow to close legacy duplicates. The workflow requires a canonical issue
+whose body already contains `operations-alert:fingerprint=`, accepts only
+unmarked open `Operations alerts queued:` issues as legacy duplicates, and uses
+GitHub duplicate closure semantics. It does not request AWS or GitHub OIDC
+credentials; it only writes issue comments and duplicate closures.
+
 The shared Pulumi automation role carries an explicit deny for alert-queue
 `sqs:ReceiveMessage` and `sqs:DeleteMessage`; only the dedicated triage role
 may drain alert messages.
@@ -110,7 +132,11 @@ The `Well-Architected Evidence` workflow now runs on pull requests, pushes to
 Scheduled runs remain advisory even if evidence enforcement is enabled, upload
 the metadata-only evidence bundle, and retain the artifact for 90 days. The
 separate operations alert triage workflow creates GitHub issues from queued
-alert metadata every 30 minutes.
+alert metadata every 30 minutes. Mixed SQS batches are split by stable alert
+stream before GitHub issue search/create/comment operations, so unrelated
+streams do not collapse into one duplicate marker. Legacy issues without the
+`operations-alert:fingerprint=` marker still require SRE confirmation before
+closure.
 
 After a scheduled or manual collector run, SRE can render a dated observation
 record from `.artifacts/well-architected/evidence.json`:

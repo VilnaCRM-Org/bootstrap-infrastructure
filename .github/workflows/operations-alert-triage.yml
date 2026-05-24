@@ -22,19 +22,27 @@ jobs:
     name: Triage Operations Alerts
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: test
     permissions:
       contents: read
       issues: write
       id-token: write
     env:
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN: ${{ vars.AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN }}
       GH_TOKEN: ${{ github.token }}
-      OPERATIONS_ALERT_QUEUE_NAME: ${{ vars.OPERATIONS_ALERT_QUEUE_NAME || 'bootstrap-test-operations-alerts' }}
     steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Load test ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: test
+          purpose: operations alert triage
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN,
+            OPERATIONS_ALERT_QUEUE_NAME
+
       - name: Validate triage prerequisites
         run: |
           missing=()
@@ -58,12 +66,17 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-operations-alert-triage-role-arn }}
           role-session-name: gha-operations-alert-triage-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
-      - name: Create GitHub issue for queued operations alerts
+      - name: Install uv for triage renderer
+        run: |
+          python3 -m pip install --user 'uv==0.9.21'
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Create or update GitHub issue for queued operations alerts
         env:
           GITHUB_REPOSITORY_NAME: ${{ github.repository }}
         run: |
@@ -110,68 +123,59 @@ jobs:
             printf 'Reached receive page limit after collecting %s operations alert message(s).\n' "${alert_count}"
           fi
 
-          body_file="$(mktemp)"
-          {
-            printf 'The operations alert queue contains %s message(s).\n\n' "${alert_count}"
-            printf 'This issue intentionally records sanitized metadata only. Use the message IDs, event source, detail type, event time, CloudTrail, and linked runbooks for investigation; do not paste raw alert payloads, stack exports, credentials, tokens, or private incident notes.\n\n'
-            printf 'Queue: <code>%s</code>\n' "${OPERATIONS_ALERT_QUEUE_NAME}"
-            printf 'AWS account: <code>%s</code>\n' "${AWS_ACCOUNT_ID}"
-            printf 'AWS region: <code>%s</code>\n\n' "${AWS_REGION}"
-            printf 'Messages:\n'
-            python - "${alerts_json}" <<'PY'
-          import json
-          import sys
+          aggregate_body_file="$(mktemp)"
+          aggregate_fingerprint_file="$(mktemp)"
+          groups_file="$(mktemp)"
+          uv run python scripts/operations_alert_triage.py \
+            --alerts-json "${alerts_json}" \
+            --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
+            --account-id "${AWS_ACCOUNT_ID}" \
+            --region "${AWS_REGION}" \
+            --body-file "${aggregate_body_file}" \
+            --fingerprint-file "${aggregate_fingerprint_file}" \
+            --groups-file "${groups_file}"
 
-
-          def load_json(value):
-              if isinstance(value, dict):
-                  return value
-              if not isinstance(value, str) or not value:
-                  return {}
-              try:
-                  loaded = json.loads(value)
-              except json.JSONDecodeError:
-                  return {}
-              return loaded if isinstance(loaded, dict) else {}
-
-
-          def safe_value(value):
-              if value in (None, ""):
-                  return "unknown"
-              text = str(value).replace("`", "'").replace("\n", " ")
-              return text[:200]
-
-
-          with open(sys.argv[1], encoding="utf-8") as alerts_file:
-              alerts = json.load(alerts_file)
-
-          for message in alerts.get("Messages", []):
-              sns = load_json(message.get("Body"))
-              event = load_json(sns.get("Message"))
-              attributes = message.get("Attributes") or {}
-              fields = {
-                  "sqsMessageId": message.get("MessageId"),
-                  "snsMessageId": sns.get("MessageId"),
-                  "sentTimestamp": attributes.get("SentTimestamp"),
-                  "eventSource": event.get("source"),
-                  "detailType": event.get("detail-type"),
-                  "eventTime": event.get("time") or sns.get("Timestamp"),
-              }
-              rendered = ", ".join(
-                  f"{name}: `{safe_value(value)}`"
-                  for name, value in fields.items()
-              )
-              print(f"- {rendered}")
-          PY
-          } > "${body_file}"
-
-          issue_url="$(
-            gh issue create \
-              --repo "${GITHUB_REPOSITORY_NAME}" \
-              --title "Operations alerts queued: ${alert_count} message(s)" \
-              --body-file "${body_file}"
-          )"
-          printf 'Created operations alert issue: %s\n' "${issue_url}"
+          group_count="$(jq '.groups | length' "${groups_file}")"
+          for ((group_index = 0; group_index < group_count; group_index++)); do
+            group_alerts_json="$(mktemp)"
+            body_file="$(mktemp)"
+            fingerprint_file="$(mktemp)"
+            jq ".groups[${group_index}].alerts" "${groups_file}" > "${group_alerts_json}"
+            group_alert_count="$(jq '.Messages | length' "${group_alerts_json}")"
+            uv run python scripts/operations_alert_triage.py \
+              --alerts-json "${group_alerts_json}" \
+              --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
+              --account-id "${AWS_ACCOUNT_ID}" \
+              --region "${AWS_REGION}" \
+              --body-file "${body_file}" \
+              --fingerprint-file "${fingerprint_file}"
+            fingerprint="$(cat "${fingerprint_file}")"
+            existing_issue="$(
+              gh issue list \
+                --repo "${GITHUB_REPOSITORY_NAME}" \
+                --state open \
+                --search "operations-alert:fingerprint=${fingerprint} in:body" \
+                --json number \
+                --jq '.[0].number // ""'
+            )"
+            if [[ -n "${existing_issue}" ]]; then
+              gh issue comment \
+                "${existing_issue}" \
+                --repo "${GITHUB_REPOSITORY_NAME}" \
+                --body-file "${body_file}"
+              printf 'Updated operations alert issue #%s for fingerprint %s.\n' \
+                "${existing_issue}" \
+                "${fingerprint}"
+            else
+              issue_url="$(
+                gh issue create \
+                  --repo "${GITHUB_REPOSITORY_NAME}" \
+                  --title "Operations alerts queued: ${group_alert_count} message(s)" \
+                  --body-file "${body_file}"
+              )"
+              printf 'Created operations alert issue: %s\n' "${issue_url}"
+            fi
+          done
 
           jq -r '.Messages[].ReceiptHandle' "${alerts_json}" |
             while IFS= read -r receipt_handle; do

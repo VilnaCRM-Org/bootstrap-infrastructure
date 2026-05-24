@@ -1,5 +1,9 @@
 # Epics and Stories: Multi-Account Pulumi Environments
 
+> Superseded by issue 20 for privileged CI configuration. Fixed Pulumi ESC
+> environments now carry account configuration; protected GitHub `prod` remains
+> the approval boundary.
+
 ## Epic 1: Stack And Discovery Contracts
 
 ### Story 1.1: Add non-secret test and prod stack configs
@@ -22,11 +26,11 @@ As an SRE, I want CI stack discovery to avoid example files so shared backend jo
 ## Epic 2: GitHub Actions Deployment Paths
 
 ### Story 2.1: Refactor PR guardrails for the test environment
-As a maintainer, I want trusted PR guardrails to use the `test` environment and fork PRs to stay unprivileged.
+As a maintainer, I want trusted PR guardrails to use fixed test PR account configuration and fork PRs to stay unprivileged.
 
 **Acceptance Criteria:**
-- Given a trusted same-repo PR runs guardrails, Then privileged jobs use `environment: test`.
-- Given a privileged PR guardrail job runs, Then it reads environment-scoped variables.
+- Given a trusted same-repo PR runs guardrails, Then privileged jobs use fixed test PR account configuration.
+- Given a privileged PR guardrail job runs, Then it reads account-scoped variables.
 - Given OIDC credentials are configured, Then the workflow uses `AWS_PREVIEW_ROLE_ARN` and `allowed-account-ids`.
 - Given a fork PR runs guardrails, Then it runs unprivileged preview and IAM input extraction.
 - Given privileged config is missing for a same-repo run, Then the workflow fails before preview.
@@ -37,7 +41,7 @@ As an SRE, I want `main` merges to deploy to the test account only after preview
 **Acceptance Criteria:**
 - Given code is pushed to `main`, Then the test deploy workflow runs.
 - Given a maintainer manually dispatches the workflow, Then the test deploy workflow runs.
-- Given the workflow runs, Then it uses `environment: test`.
+- Given the workflow runs, Then it uses fixed test account configuration.
 - Given preview completes, Then the same preview artifact feeds destructive-diff and IAM validation.
 - Given apply runs, Then it uses `AWS_APPLY_ROLE_ARN`.
 - Given post-apply drift runs, Then it uses `AWS_DRIFT_ROLE_ARN`.
@@ -47,7 +51,7 @@ As a release approver, I want production apply to require a reviewed preview and
 
 **Acceptance Criteria:**
 - Given a maintainer dispatches production, Then the workflow accepts a commit SHA.
-- Given production preview runs, Then the preview job uses `environment: prod-preview`.
+- Given production preview runs, Then the preview job uses fixed production preview account configuration.
 - Given production apply runs, Then the apply job uses `environment: prod`.
 - Given apply starts, Then it verifies the approved SHA matches the preview SHA.
 - Given a Pulumi plan artifact exists, Then apply uses that saved plan.
@@ -58,13 +62,13 @@ As an SRE, I want drift detection to run separately for test and prod with expli
 **Acceptance Criteria:**
 - Given nightly guardrails run, Then the workflow has a `test` drift job.
 - Given nightly guardrails run, Then the workflow has a `prod-preview` drift job.
-- Given either drift job runs, Then it uses environment-scoped variables.
+- Given either drift job runs, Then it uses account-scoped variables.
 - Given required variables are missing, Then the drift job fails.
 
 ## Epic 3: Documentation And Auditability
 
-### Story 3.1: Document GitHub environment variables and protection
-As a repository administrator, I want setup docs for the `test`, `prod-preview`, and `prod` environments.
+### Story 3.1: Document privileged CI variables and production protection
+As a repository administrator, I want setup docs for the test, production preview, and protected production paths.
 
 **Acceptance Criteria:**
 - Given setup docs are read, Then `docs/github-actions-secrets.md` documents environment variables and optional secrets.

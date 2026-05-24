@@ -134,25 +134,26 @@ jobs:
     needs:
       - preflight
     timeout-minutes: 25
-    environment: test
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
+
+      - name: Load test ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: test
+          purpose: PR test preview
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
 
       - name: Validate test preview prerequisites
         run: |
@@ -187,17 +188,19 @@ jobs:
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-preview-role-arn }}
           role-session-name: gha-pr-test-preview-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Emit test preview evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: test"
+          echo "ESC environment: ${PULUMI_ESC_ENVIRONMENT}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: preview"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
@@ -272,33 +275,34 @@ jobs:
       - test_preview
       - test_destructive_diff
     timeout-minutes: 15
-    environment: test
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Load test ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: test
+          purpose: PR test IAM validation
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-preview-role-arn }}
           role-session-name: gha-pr-test-iam-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Start development environment
         run: make start
@@ -327,40 +331,43 @@ jobs:
       - test_destructive_diff
       - test_iam_validation
     timeout-minutes: 30
-    environment: test
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Load test ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: test
+          purpose: PR test apply
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
       - name: Configure AWS apply credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_APPLY_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-apply-role-arn }}
           role-session-name: gha-pr-test-apply-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Emit test apply evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: test"
+          echo "ESC environment: ${PULUMI_ESC_ENVIRONMENT}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: apply"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
@@ -406,33 +413,34 @@ jobs:
       - preflight
       - test_apply
     timeout-minutes: 20
-    environment: test
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Load test ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: test
+          purpose: PR test drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
+
       - name: Configure AWS drift credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_DRIFT_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-drift-role-arn }}
           role-session-name: gha-pr-test-drift-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Start development environment
         run: make start
@@ -450,27 +458,27 @@ jobs:
       - preflight
       - test_post_apply_drift
     timeout-minutes: 25
-    environment: prod-preview
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
+
+      - name: Load prod preview ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: prod-preview
+          purpose: PR prod preview
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,
+            PULUMI_PREVIEW_STACKS,PULUMI_DRIFT_STACKS
 
       - name: Validate production preview prerequisites
         run: |
@@ -507,17 +515,19 @@ jobs:
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-preview-role-arn }}
           role-session-name: gha-pr-prod-preview-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Emit production preview evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: prod-preview"
+          echo "ESC environment: ${PULUMI_ESC_ENVIRONMENT}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: preview"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
@@ -594,33 +604,34 @@ jobs:
       - prod_preview
       - prod_destructive_diff
     timeout-minutes: 15
-    environment: prod-preview
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Load prod preview ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: prod-preview
+          purpose: PR prod IAM validation
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-preview-role-arn }}
           role-session-name: gha-pr-prod-iam-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Start development environment
         run: make start
@@ -654,14 +665,6 @@ jobs:
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -677,20 +680,33 @@ jobs:
           fi
           echo "Approved production SHA: ${checked_out_sha}"
 
+      - name: Load prod ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: prod
+          purpose: PR prod apply
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
       - name: Configure AWS apply credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_APPLY_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-apply-role-arn }}
           role-session-name: gha-pr-prod-apply-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Emit production apply evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
           echo "GitHub environment: prod"
+          echo "ESC environment: ${PULUMI_ESC_ENVIRONMENT}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: apply"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
@@ -722,33 +738,34 @@ jobs:
       - preflight
       - prod_apply
     timeout-minutes: 20
-    environment: prod-preview
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Load prod preview ESC configuration
+        id: esc
+        uses: ./.github/actions/load-esc-ci-env
+        with:
+          environment: prod-preview
+          purpose: PR prod drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
+
       - name: Configure AWS drift credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_DRIFT_ROLE_ARN }}
+          role-to-assume: ${{ steps.esc.outputs.aws-drift-role-arn }}
           role-session-name: gha-pr-prod-drift-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.esc.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
 
       - name: Start development environment
         run: make start
