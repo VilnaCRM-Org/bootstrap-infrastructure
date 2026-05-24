@@ -3,13 +3,13 @@
 Recorded on 2026-05-25 in the `Europe/Sofia` timezone for branch
 `codex/issue20-pulumi-esc`.
 
-## Current Head
+## Audited PR Head
 
 | Field | Value |
 | --- | --- |
 | PR | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/57` |
-| Head SHA | `5eb202e0afeba6f6e8d15b16fc14f0a85c3d4dbc` |
-| Short SHA | `5eb202e` |
+| Audited head SHA | `0321fa706134c77960a3e87a46bf093e15b84326` |
+| Audited short SHA | `0321fa7` |
 | Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi ESC is the fixed projection and OIDC layer. |
 | Secret handling | No secret values, `GetSecretValue` responses, decrypted stack outputs, access keys, or tokens were read or recorded. |
 
