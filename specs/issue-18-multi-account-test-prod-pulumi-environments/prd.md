@@ -51,7 +51,7 @@ Infrastructure automation changes must use least privilege, short-lived credenti
 
 ## Innovation Analysis
 
-The original design used GitHub environments as the configuration and approval boundary instead of repository-wide variables. Issue 20 supersedes that model by moving account, role, backend, and stack selection into fixed Pulumi ESC environments while preserving protected GitHub `prod` approval controls.
+The original design used GitHub environments as the configuration and approval boundary instead of repository-wide variables. Issue 20 supersedes that model by keeping account, role, backend, and stack selection in AWS Secrets Manager JSON values that fixed Pulumi ESC environments project at runtime, while preserving protected GitHub `prod` approval controls.
 
 ## Project-Type Requirements
 

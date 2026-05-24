@@ -1221,6 +1221,10 @@ def test_multi_account_environment_docs_are_explicit() -> None:
     assert "esc-managed secret" in normalized_docs  # nosec B101
     assert "do not copy those values into esc" in normalized_docs  # nosec B101
     assert "encrypted literals" in normalized_docs  # nosec B101
+    assert "store role arns in the owning aws secrets manager json secret" in (  # nosec B101
+        normalized_docs
+    )
+    assert "store role arns in esc" not in normalized_docs  # nosec B101
     assert "pulumiescsecretsreadrolearn" in normalized_docs  # nosec B101
     assert "subjectAttributes" in docs  # nosec B101
     assert "fn::open::aws-secrets" in docs  # nosec B101

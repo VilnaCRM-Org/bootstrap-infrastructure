@@ -176,8 +176,8 @@ template-sync credentials that are not AWS deployment credentials:
 1. Create an IAM OIDC identity provider for `https://token.actions.githubusercontent.com` in each AWS account if one does not already exist.
 2. Create purpose-specific preview, apply, drift, and operations alert triage roles where the environment needs them.
 3. Scope AWS role trust to the repository, the `sts.amazonaws.com` audience, fixed workflow files, and the intended ref or GitHub production environment subject.
-4. Store role ARNs in ESC as `AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`, or `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN`.
-5. Keep `allowed-account-ids` wired to the ESC-provided `AWS_ACCOUNT_ID`.
+4. Store role ARNs in the owning AWS Secrets Manager JSON secret, then expose them through ESC as `AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`, or `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN`.
+5. Keep `allowed-account-ids` wired to the AWS Secrets Manager value projected by ESC as `AWS_ACCOUNT_ID`.
 
 Non-approval jobs use branch or pull-request subjects:
 
