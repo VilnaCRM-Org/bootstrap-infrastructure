@@ -236,8 +236,9 @@ container, then configure each ESC environment to assume the role exported as
 The ESC YAML should use `fn::open::aws-login`, `fn::open::aws-secrets`, and
 `fn::fromJSON` to load that secret, then map only the required keys to
 `environmentVariables`. Do not store AWS account IDs, role ARNs, backend URLs,
-stack lists, or secrets-provider URIs directly as ESC encrypted values unless a
-maintainer records a specific exception.
+stack lists, or secrets-provider URIs directly as ESC encrypted values.
+Account-local CI values may appear in ESC only as projections from AWS Secrets
+Manager through `aws-secrets`.
 
 This is not a migration of account-local CI values into ESC-managed secret
 values. ESC is the runtime projection layer; AWS Secrets Manager remains the
@@ -568,12 +569,15 @@ The workflows are committed in this repository, but maintainers still need to:
    green
 9. delete the temporary `GH_ENVIRONMENT_ADMIN_TOKEN` repository secret after
    cleanup succeeds
-10. create only the protected `prod` GitHub Environment for production approval
+10. create the protected `prod` GitHub Environment for production approval
 11. enable required reviewers and branch restrictions on `prod`
-12. mark the required PR checks in GitHub branch protection
-13. confirm no stale AWS trust subjects or privileged GitHub Environment account
+12. create the protected `operations-alert-reconcile` GitHub Environment with
+   required SRE or reviewer approval and no account configuration before legacy
+   operations-alert issue closure
+13. mark the required PR checks in GitHub branch protection
+14. confirm no stale AWS trust subjects or privileged GitHub Environment account
    variables remain outside the protected `prod` approval boundary
-14. decide whether production repositories want stricter stack lists or narrower
+15. decide whether production repositories want stricter stack lists or narrower
    IAM role scopes than the template defaults
 
 Repository administrators can make the GitHub protection steps reproducible with:

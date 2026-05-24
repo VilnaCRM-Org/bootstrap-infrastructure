@@ -290,6 +290,8 @@ def test_ci_configuration_manages_aws_secret_containers_and_esc_read_role(
     start = len(pulumi_mocks.resources)
     component = CiConfiguration("ci-configuration", settings=settings)
 
+    _sync_await(future_output(component.secret_arns["test-pr"]))
+    _sync_await(future_output(component.secret_arns["test"]))
     read_role_arn = _sync_await(future_output(component.read_role.arn))
     assert read_role_arn.endswith(  # nosec B101
         ":role/PulumiEscCiSecretsRead-bootstrap-infrastructure-test"
@@ -305,6 +307,10 @@ def test_ci_configuration_manages_aws_secret_containers_and_esc_read_role(
         for resource_type, _name, state in new_resources
         if resource_type == "aws:secretsmanager/secret:Secret"
     }
+    assert not any(  # nosec B101
+        resource_type == "aws:secretsmanager/secretVersion:SecretVersion"
+        for resource_type, _name, _state in new_resources
+    )
     assert set(secret_states) == {  # nosec B101
         "/bootstrap-infrastructure/ci/test-pr",
         "/bootstrap-infrastructure/ci/test",

@@ -314,10 +314,18 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     assert "Legacy operations-alert issues" in alert_doc  # nosec B101
     assert "workflow searches issue bodies for the marker" in alert_doc  # nosec B101
     assert "Operations Alert Legacy Reconcile" in alert_doc  # nosec B101
+    assert "operations-alert-reconcile" in alert_doc  # nosec B101
+    assert (
+        "I confirm these legacy issues match the canonical operations alert stream"
+        in alert_doc
+    )  # nosec B101
     assert "stable SNS/SQS route metadata" in operating_doc  # nosec B101
     assert "ApproximateNumberOfMessages=" not in docs  # nosec B101
     assert "two visible messages" not in docs  # nosec B101
     assert "workflow_dispatch" in reconcile_triggers  # nosec B101
+    assert reconcile_workflow["jobs"]["reconcile"]["environment"] == (  # nosec B101
+        "operations-alert-reconcile"
+    )
     assert reconcile_workflow["permissions"] == {  # nosec B101
         "contents": "read",
         "issues": "write",
@@ -347,6 +355,7 @@ def test_ci_guardrails_manual_follow_up_completes_esc_cutover() -> None:
     assert "GH_ENVIRONMENT_ADMIN_TOKEN" in ci_guardrails  # nosec B101
     assert "no stale AWS trust subjects" in ci_guardrails  # nosec B101
     assert "protected `prod` approval boundary" in ci_guardrails  # nosec B101
+    assert "operations-alert-reconcile" in ci_guardrails  # nosec B101
 
 
 def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:

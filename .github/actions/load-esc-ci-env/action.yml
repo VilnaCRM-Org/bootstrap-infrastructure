@@ -11,9 +11,6 @@ inputs:
   required-keys:
     description: Comma-separated ESC environmentVariables keys required by the job.
     required: true
-  organization:
-    description: Optional Pulumi organization override for GitHub OIDC. Defaults to .github/ci/pulumi-esc.json.
-    required: false
 
 outputs:
   aws-account-id:
@@ -43,7 +40,6 @@ runs:
       shell: bash
       env:
         PULUMI_ESC_ENVIRONMENT_SUFFIX: ${{ inputs.environment }}
-        PULUMI_ESC_ORGANIZATION_INPUT: ${{ inputs.organization }}
       run: |
         python3 - <<'PY'
         import json
@@ -52,9 +48,14 @@ runs:
         from pathlib import Path
 
         config = json.loads(Path(".github/ci/pulumi-esc.json").read_text(encoding="utf-8"))
-        organization = os.environ["PULUMI_ESC_ORGANIZATION_INPUT"].strip() or str(
-            config.get("organization", "")
-        ).strip()
+        allowed_keys = {"organization", "project"}
+        if not isinstance(config, dict) or set(config) != allowed_keys:
+            raise SystemExit(
+                "error: .github/ci/pulumi-esc.json may contain only "
+                "organization and project. Keep account-local values in "
+                "AWS Secrets Manager."
+            )
+        organization = str(config.get("organization", "")).strip()
         project = str(config.get("project", "")).strip()
         suffix = os.environ["PULUMI_ESC_ENVIRONMENT_SUFFIX"].strip()
         slug_pattern = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -72,6 +73,25 @@ runs:
             output.write(f"organization={organization}\n")
             output.write(f"environment={organization}/{project}/{suffix}\n")
         PY
+
+    - name: Record ESC source-of-truth boundary
+      shell: bash
+      env:
+        PULUMI_ESC_ENVIRONMENT: ${{ steps.esc-target.outputs.environment }}
+      run: |
+        echo "::notice title=ESC source of truth::Opening ${PULUMI_ESC_ENVIRONMENT}; AWS Secrets Manager remains the source of truth, while ESC projects values through aws-secrets."
+        echo "::notice title=ESC manual setup::If Pulumi auth reports invalid organization, update .github/ci/pulumi-esc.json through review or configure GitHub-to-ESC OIDC for the real organization before rerunning privileged checks."
+        if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+          {
+            echo "### Pulumi ESC CI target"
+            echo ""
+            echo "- ESC environment: \`${PULUMI_ESC_ENVIRONMENT}\`"
+            echo "- Source of truth: AWS Secrets Manager JSON imported through \`aws-secrets\`"
+            echo "- Pre-auth status: no ESC values or AWS credentials have been loaded yet"
+            echo ""
+            echo "If Pulumi auth reports invalid organization, update \`.github/ci/pulumi-esc.json\` through review or configure GitHub-to-ESC OIDC for the real organization before rerunning privileged checks."
+          } >> "${GITHUB_STEP_SUMMARY}"
+        fi
 
     - name: Authenticate with Pulumi ESC
       uses: pulumi/auth-actions@1c89817aab0c66407723cdef72b05266e7376640

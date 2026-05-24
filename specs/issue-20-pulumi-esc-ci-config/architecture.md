@@ -63,9 +63,12 @@ Purpose-specific ESC variables:
 - `PULUMI_PREVIEW_STACKS`
 - `PULUMI_DRIFT_STACKS`
 
-Stack `pulumiConfig` may also live in ESC, but shared CI stacks still initialize
-or migrate with `--secrets-provider "$PULUMI_SECRETS_PROVIDER"` and the provider
-must be `awskms://`.
+Stack `pulumiConfig` may include only non-account-local static configuration or
+values projected from AWS Secrets Manager. Do not use ESC `pulumiConfig` to
+store AWS account IDs, role ARNs, backend URLs, stack lists, or
+secrets-provider URIs directly. Shared CI stacks still initialize or migrate
+with `--secrets-provider "$PULUMI_SECRETS_PROVIDER"`, and the provider must be
+`awskms://`.
 
 ## AWS Trust Model
 

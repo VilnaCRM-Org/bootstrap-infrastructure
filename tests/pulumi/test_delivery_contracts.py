@@ -733,18 +733,44 @@ def test_esc_loader_uses_committed_pulumi_esc_target() -> None:
         for step in action["runs"]["steps"]
         if step.get("name") == "Validate ESC configuration"
     )
+    boundary_step = next(
+        step
+        for step in action["runs"]["steps"]
+        if step.get("name") == "Record ESC source-of-truth boundary"
+    )
 
     assert config == {  # nosec B101
         "organization": "vilnacrm-org",
         "project": "bootstrap-infrastructure",
     }
-    assert "default" not in action["inputs"]["organization"]  # nosec B101
+    assert "organization" not in action["inputs"]  # nosec B101
     assert "github.repository_owner" not in ESC_LOADER_ACTION.read_text(  # nosec B101
         encoding="utf-8"
     )
     assert "PULUMI_CLOUD_ORG" not in ESC_LOADER_ACTION.read_text(encoding="utf-8")  # nosec B101
+    assert "PULUMI_ESC_ORGANIZATION_INPUT" not in resolve_step["run"]  # nosec B101
     assert ".github/ci/pulumi-esc.json" in resolve_step["run"]  # nosec B101
+    assert 'allowed_keys = {"organization", "project"}' in resolve_step["run"]  # nosec B101
+    assert "may contain only" in resolve_step["run"]  # nosec B101
+    assert "Keep account-local values in" in resolve_step["run"]  # nosec B101
     assert "lowercase slug without slashes" in resolve_step["run"]  # nosec B101
+    assert action["runs"]["steps"].index(resolve_step) < action["runs"]["steps"].index(  # nosec B101
+        boundary_step
+    )
+    assert action["runs"]["steps"].index(boundary_step) < action["runs"]["steps"].index(  # nosec B101
+        auth_step
+    )
+    assert "AWS Secrets Manager remains the source of truth" in boundary_step["run"]  # nosec B101
+    assert "ESC projects values through aws-secrets" in boundary_step["run"]  # nosec B101
+    assert "GITHUB_STEP_SUMMARY" in boundary_step["run"]  # nosec B101
+    assert (
+        "no ESC values or AWS credentials have been loaded yet"
+        in (  # nosec B101
+            boundary_step["run"]
+        )
+    )
+    assert "invalid organization" in boundary_step["run"]  # nosec B101
+    assert ".github/ci/pulumi-esc.json" in boundary_step["run"]  # nosec B101
     assert auth_step["with"]["organization"] == (  # nosec B101
         "${{ steps.esc-target.outputs.organization }}"
     )
@@ -899,6 +925,7 @@ def test_multi_account_workflows_use_fixed_esc_contracts() -> None:
         )
         assert esc_step["id"] == "esc"  # nosec B101
         assert esc_step["with"]["environment"] == expected_esc_environment  # nosec B101
+        assert "organization" not in esc_step["with"]  # nosec B101
         assert "/" not in esc_step["with"]["environment"]  # nosec B101
         assert "inputs." not in esc_step["with"]["environment"]  # nosec B101
         assert "client_payload" not in esc_step["with"]["environment"]  # nosec B101
@@ -1212,6 +1239,20 @@ def test_multi_account_environment_docs_are_explicit() -> None:
         (
             SECRETS_DOC.read_text(encoding="utf-8"),
             (PROJECT_ROOT / "docs" / "ci-guardrails.md").read_text(encoding="utf-8"),
+            (PROJECT_ROOT / ".github" / "github-actions-secrets.md").read_text(
+                encoding="utf-8"
+            ),
+            (PROJECT_ROOT / "docs" / "ci-architecture.md").read_text(encoding="utf-8"),
+            (PROJECT_ROOT / "docs" / "security-operating-evidence.md").read_text(
+                encoding="utf-8"
+            ),
+            (PROJECT_ROOT / "docs" / "sre-operations.md").read_text(encoding="utf-8"),
+            (
+                PROJECT_ROOT
+                / "specs"
+                / "issue-20-pulumi-esc-ci-config"
+                / "architecture.md"
+            ).read_text(encoding="utf-8"),
         )
     )
     normalized_docs = docs.lower()
@@ -1225,6 +1266,30 @@ def test_multi_account_environment_docs_are_explicit() -> None:
         normalized_docs
     )
     assert "store role arns in esc" not in normalized_docs  # nosec B101
+    assert "unless a maintainer records a specific exception" not in (  # nosec B101
+        normalized_docs
+    )
+    assert "stack configuration can also be stored in esc" not in (  # nosec B101
+        normalized_docs
+    )
+    assert "stack pulumiconfig may also live in esc" not in normalized_docs  # nosec B101
+    assert "do not use esc `pulumiconfig` to" in normalized_docs  # nosec B101
+    assert "store aws account ids" in normalized_docs  # nosec B101
+    assert "account-local ci values may appear in esc only as projections" in (  # nosec B101
+        normalized_docs
+    )
+    assert "pulumi esc loads account-local config" not in normalized_docs  # nosec B101
+    assert (  # nosec B101
+        "account-configuration boundary is the pulumi esc environment"
+        not in normalized_docs
+    )
+    assert (  # nosec B101
+        "load privileged account configuration from the correct fixed esc environment"
+        not in normalized_docs
+    )
+    assert "aws secrets manager is the account-configuration boundary" in (  # nosec B101
+        normalized_docs
+    )
     assert "pulumiescsecretsreadrolearn" in normalized_docs  # nosec B101
     assert "subjectAttributes" in docs  # nosec B101
     assert "fn::open::aws-secrets" in docs  # nosec B101

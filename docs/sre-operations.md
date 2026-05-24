@@ -151,7 +151,8 @@ keeps the logging and state replica changes ordered together.
 
 ## ESC and GitHub Environment Operations
 
-The account-configuration boundary is the Pulumi ESC environment:
+AWS Secrets Manager is the account-configuration boundary. The fixed Pulumi ESC
+environment is the runtime projection boundary:
 
 - `vilnacrm-org/bootstrap-infrastructure/test-pr` handles trusted PR previews
 - `vilnacrm-org/bootstrap-infrastructure/test` handles main-branch test

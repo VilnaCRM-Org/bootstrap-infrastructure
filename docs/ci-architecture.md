@@ -152,7 +152,7 @@ Use this checklist:
 4. add `concurrency`
 5. set `timeout-minutes`
 6. call `make start` if the job uses the Docker workspace
-7. load privileged account configuration from the correct fixed ESC environment
+7. load AWS Secrets Manager-backed configuration through the correct fixed ESC environment
 8. use OIDC with explicit account allow-listing for AWS jobs
 9. extend the structural tests and docs in the same PR
 

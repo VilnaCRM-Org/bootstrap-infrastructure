@@ -11,8 +11,10 @@ values. ESC is the projection layer that authenticates with AWS through OIDC,
 imports the per-environment JSON secret through the `aws-secrets` provider, and
 exports the selected keys as workflow `environmentVariables`. GitHub
 Environments are not used as an account-configuration store. The only
-privileged GitHub Environment that remains required is `prod`, which gates
-production apply with reviewers and deployment branch restrictions.
+privileged deployment GitHub Environment that remains required is `prod`, which
+gates production apply with reviewers and deployment branch restrictions. The
+optional `operations-alert-reconcile` Environment gates the manual non-AWS issue
+closure workflow and must not contain account configuration.
 
 ## Pulumi ESC Environments
 
@@ -141,9 +143,11 @@ Secrets Manager and expose them through ESC.
 
 ## ESC Pulumi Config
 
-Stack configuration can also be stored in ESC through `pulumiConfig` where that
-reduces duplicated stack YAML. Stack initialization and migration still must use
-the AWS KMS secrets provider from ESC:
+ESC `pulumiConfig` may contain non-account-local static stack configuration or
+values projected from AWS Secrets Manager. Do not use ESC `pulumiConfig` to
+store AWS account IDs, role ARNs, backend URLs, stack lists, or
+secrets-provider URIs directly. Stack initialization and migration still must
+use the AWS KMS secrets provider projected from AWS Secrets Manager:
 
 ```bash
 pulumi -C pulumi stack init <stack> --secrets-provider "$PULUMI_SECRETS_PROVIDER"
@@ -228,13 +232,14 @@ the exact PR head SHA before entering `prod-preview` or protected `prod`.
 4. Configure ESC AWS OIDC so each environment can assume the AWS Secrets Manager read role exported as `pulumiEscSecretsReadRoleArn`.
 5. Configure GitHub OIDC for the repository and ESC organization so workflows can open the fixed ESC environments without `PULUMI_ACCESS_TOKEN`.
 6. Move AWS account IDs, role ARNs, regions, Pulumi backend URLs, KMS secrets-provider URIs, and stack lists out of GitHub Environment variables and into AWS Secrets Manager, projected by ESC.
-7. Keep only the protected `prod` GitHub Environment for production approval.
-8. Re-run privileged previews, test deploy, drift, operations alert triage, and Well-Architected evidence before removing any legacy GitHub variables.
-9. Create the temporary `GH_ENVIRONMENT_ADMIN_TOKEN` repository secret for the cleanup operator. It must grant repository **Environments** write permission only for this repository; do not use an AWS credential.
-10. Run **GitHub Environment Legacy Variable Cleanup** in dry-run mode and verify it reports only legacy account-configuration variables, including any older `PULUMI_PR_*` backend or stack-list aliases.
-11. Re-run **GitHub Environment Legacy Variable Cleanup** with `dry_run=false` and this exact confirmation sentence: `I confirm ESC-backed privileged CI is green and legacy GitHub Environment variables can be removed`.
-12. Confirm GitHub `prod` still keeps reviewer and branch protections; this cleanup removes only variable names and does not manage Environment protection rules.
-13. Delete the temporary `GH_ENVIRONMENT_ADMIN_TOKEN` repository secret.
+7. Keep the protected `prod` GitHub Environment for production approval.
+8. Create the protected `operations-alert-reconcile` GitHub Environment with required SRE or reviewer approval before running the legacy operations-alert closure workflow; keep it free of account configuration.
+9. Re-run privileged previews, test deploy, drift, operations alert triage, and Well-Architected evidence before removing any legacy GitHub variables.
+10. Create the temporary `GH_ENVIRONMENT_ADMIN_TOKEN` repository secret for the cleanup operator. It must grant repository **Environments** write permission only for this repository; do not use an AWS credential.
+11. Run **GitHub Environment Legacy Variable Cleanup** in dry-run mode and verify it reports only legacy account-configuration variables, including any older `PULUMI_PR_*` backend or stack-list aliases.
+12. Re-run **GitHub Environment Legacy Variable Cleanup** with `dry_run=false` and this exact confirmation sentence: `I confirm ESC-backed privileged CI is green and legacy GitHub Environment variables can be removed`.
+13. Confirm GitHub `prod` still keeps reviewer and branch protections; this cleanup removes only variable names and does not manage Environment protection rules.
+14. Delete the temporary `GH_ENVIRONMENT_ADMIN_TOKEN` repository secret.
 
 Rotate credentials regularly and audit workflow runs for unexpected privileged
 access.
