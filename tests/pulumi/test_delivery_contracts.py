@@ -950,6 +950,47 @@ def test_operations_alert_triage_uses_repo_python_runner() -> None:
     assert "python3 scripts/operations_alert_triage.py" not in triage_step["run"]  # nosec B101
 
 
+def test_operations_alert_triage_searches_fingerprint_before_queue_delete() -> None:
+    """Update or create canonical alert issues before deleting SQS messages."""
+    workflow = yaml.safe_load(
+        (WORKFLOWS_DIR / "operations-alert-triage.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["triage_operations_alerts"]["steps"]
+    triage_run = next(
+        step["run"]
+        for step in steps
+        if step.get("name")
+        == "Create or update GitHub issue for queued operations alerts"
+    )
+
+    group_loop_index = triage_run.index("for ((group_index = 0;")
+    fingerprint_index = triage_run.index('fingerprint="$(cat "${fingerprint_file}")"')
+    search_index = triage_run.index(
+        '--search "operations-alert:fingerprint=${fingerprint} in:body"'
+    )
+    comment_index = triage_run.index("gh issue comment")
+    create_index = triage_run.index("gh issue create")
+    receipt_index = triage_run.index("jq -r '.Messages[].ReceiptHandle'")
+    delete_index = triage_run.index("aws sqs delete-message")
+
+    assert group_loop_index < search_index  # nosec B101
+    assert fingerprint_index < search_index  # nosec B101
+    assert search_index < comment_index < receipt_index < delete_index  # nosec B101
+    assert search_index < create_index < receipt_index < delete_index  # nosec B101
+    assert '--repo "${GITHUB_REPOSITORY_NAME}"' in triage_run  # nosec B101
+    assert "--state open" in triage_run  # nosec B101
+    assert "--json number" in triage_run  # nosec B101
+    assert "--jq '.[0].number // \"\"'" in triage_run  # nosec B101
+    assert 'existing_issue="$(' in triage_run  # nosec B101
+    assert 'if [[ -n "${existing_issue}" ]]; then' in triage_run  # nosec B101
+    assert '--body-file "${body_file}"' in triage_run  # nosec B101
+    assert (  # nosec B101
+        '--title "Operations alerts queued: ${group_alert_count} message(s)"'
+        in triage_run
+    )
+    assert triage_run.count("aws sqs delete-message") == 1  # nosec B101
+
+
 def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     """Production release input must already have a green test deployment."""
     prod_workflow = yaml.safe_load(
