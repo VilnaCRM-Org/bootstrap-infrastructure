@@ -40,7 +40,7 @@ variables into fixed AWS Secrets Manager JSON secrets:
 
 | CI suffix | AWS Secrets Manager secret ID | Workflow use |
 | --- | --- | --- |
-| `test-pr` | `/bootstrap-infrastructure/ci/test-pr` | Trusted same-repo PR previews and IAM validation |
+| `test-pr` | `/bootstrap-infrastructure/ci/test-pr` | Trusted same-repo PR previews, IAM validation, and PR evidence collection |
 | `test` | `/bootstrap-infrastructure/ci/test` | Main-branch test applies, test drift, operations alert triage, Well-Architected evidence |
 | `prod-preview` | `/bootstrap-infrastructure/ci/prod-preview` | Production preview, IAM validation, and production drift |
 | `prod` | `/bootstrap-infrastructure/ci/prod` | Production apply after protected GitHub `prod` approval |

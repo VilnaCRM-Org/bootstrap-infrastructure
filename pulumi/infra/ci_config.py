@@ -97,6 +97,7 @@ def _github_actions_workflow_refs(
     workflow_refs_by_suffix = {
         "test-pr": [
             f"{workflow_prefix}/pulumi-pr-guardrails.yml@refs/*",
+            f"{workflow_prefix}/well-architected-evidence.yml@refs/*",
         ],
         "test": [
             f"{workflow_prefix}/pulumi-pr-guardrails.yml@refs/*",
@@ -104,7 +105,7 @@ def _github_actions_workflow_refs(
             f"{workflow_prefix}/nightly-guardrails.yml@refs/heads/{branch}",
             f"{workflow_prefix}/pulumi-pr-command-runner.yml@refs/heads/{branch}",
             f"{workflow_prefix}/operations-alert-triage.yml@refs/heads/{branch}",
-            f"{workflow_prefix}/well-architected-evidence.yml@refs/*",
+            f"{workflow_prefix}/well-architected-evidence.yml@refs/heads/{branch}",
         ],
         "prod-preview": [
             f"{workflow_prefix}/pulumi-prod.yml@refs/heads/{branch}",

@@ -353,7 +353,8 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
     assert test_pr_condition["StringLike"][  # nosec B101
         "token.actions.githubusercontent.com:job_workflow_ref"
     ] == [
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-pr-guardrails.yml@refs/*"
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-pr-guardrails.yml@refs/*",
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/well-architected-evidence.yml@refs/*",
     ]
     assert test_condition["StringEquals"] == {  # nosec B101
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",

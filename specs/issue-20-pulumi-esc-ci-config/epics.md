@@ -16,9 +16,11 @@
   nightly guardrails, operations alert triage, and Well-Architected evidence to
   load AWS Secrets Manager CI config instead of GitHub Environment variables.
 - Keep GitHub `environment: prod` only on production apply jobs.
-- Remove privileged workflow dependencies on `vars.AWS_*`,
-  `vars.PULUMI_BACKEND_URL`, `vars.PULUMI_SECRETS_PROVIDER`, and
-  `secrets.PULUMI_ACCESS_TOKEN`.
+- Remove privileged workflow dependencies on account-local GitHub variables
+  such as `vars.PULUMI_BACKEND_URL`, `vars.PULUMI_SECRETS_PROVIDER`, and
+  role/account variables loaded from AWS Secrets Manager. Keep only the minimal
+  repository variables that identify the config-read role ARNs and regions, and
+  remove `secrets.PULUMI_ACCESS_TOKEN`.
 
 ## Epic 3: AWS Trust Policy
 

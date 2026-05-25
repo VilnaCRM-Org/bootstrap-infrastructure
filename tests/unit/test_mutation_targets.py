@@ -184,6 +184,16 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
     assert ci_config._github_actions_subjects(settings, "test-pr") == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
     ]
+    assert ci_config._github_actions_workflow_refs(settings, "test-pr") == [  # nosec B101
+        (
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+            "pulumi-pr-guardrails.yml@refs/*"
+        ),
+        (
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+            "well-architected-evidence.yml@refs/*"
+        ),
+    ]
     assert ci_config._github_actions_subjects(settings, "prod") == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"
     ]

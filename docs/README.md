@@ -149,11 +149,12 @@ concurrency groups, bounded job timeouts, pinned actions, and a shared
 validation stay aligned.
 
 Privileged issue 20 workflows use fixed AWS Secrets Manager CI secrets for account
-separation: `test-pr` for trusted PR preview, `test` for test apply, drift,
-operations alert triage, and evidence, `prod-preview` for production preview
-and drift, and `prod` for production apply. GitHub keeps only the protected
-`prod` Environment for approval. Configure account-local variables, OIDC roles,
-Pulumi backend URLs, and AWS KMS-backed Pulumi secrets providers in the
+separation: `test-pr` for trusted PR preview, IAM validation, and same-repo PR
+evidence, `test` for test apply, drift, operations alert triage, and main-branch
+evidence, `prod-preview` for production preview and drift, and `prod` for
+production apply. GitHub keeps only the protected `prod` Environment for
+approval. Configure account-local variables, OIDC roles, Pulumi backend URLs,
+and AWS KMS-backed Pulumi secrets providers in the
 [GitHub Actions Secrets guide](github-actions-secrets.md).
 Use the [AWS Secrets Manager CI cutover manual](aws-secrets-manager-ci-cutover.md)
 for the human setup sequence that populates AWS Secrets Manager, configures

@@ -154,7 +154,8 @@ keeps the logging and state replica changes ordered together.
 AWS Secrets Manager is the account-configuration boundary. The fixed CI suffixes
 load these AWS Secrets Manager JSON secrets:
 
-- `/bootstrap-infrastructure/ci/test-pr` handles trusted PR previews
+- `/bootstrap-infrastructure/ci/test-pr` handles trusted PR previews,
+  IAM validation, and same-repo PR evidence collection
 - `/bootstrap-infrastructure/ci/test` handles main-branch test
   applies, test drift, operations alert triage, and evidence collection
 - `/bootstrap-infrastructure/ci/prod-preview` handles production

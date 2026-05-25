@@ -202,7 +202,7 @@ source of truth for account-local values. The fixed CI suffixes are:
 
 | CI suffix | Use |
 | --- | --- |
-| `test-pr` | Trusted same-repo PR preview and IAM validation |
+| `test-pr` | Trusted same-repo PR preview, IAM validation, and PR evidence collection |
 | `test` | Test apply, test drift, operations alert triage, and Well-Architected evidence |
 | `prod-preview` | Production preview, IAM validation, and drift |
 | `prod` | Production apply after protected GitHub `prod` approval |

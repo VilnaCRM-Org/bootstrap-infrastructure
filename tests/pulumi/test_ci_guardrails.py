@@ -485,7 +485,18 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
     }
     assert "Fork pull request detected" in mode_step["run"]  # nosec B101
     assert "environment" not in jobs["test_account_evidence"]  # nosec B101
-    assert ci_config_step["with"]["environment"] == "test"  # nosec B101
+    test_pr_environment = (
+        "${{ github.event_name == 'pull_request' && 'test-pr' || 'test' }}"
+    )
+    test_pr_config_role = (
+        "${{ github.event_name == 'pull_request' && "
+        "vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN || "
+        "vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}"
+    )
+    assert ci_config_step["with"]["environment"] == test_pr_environment  # nosec B101
+    assert (  # nosec B101
+        ci_config_step["with"]["config-role-arn"] == test_pr_config_role
+    )
     assert "OPERATIONS_TOPIC_ARN" in ci_config_step["with"]["required-keys"]  # nosec B101
     assert jobs["test_account_evidence"]["permissions"] == {  # nosec B101
         "contents": "read",

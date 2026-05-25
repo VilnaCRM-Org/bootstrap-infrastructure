@@ -77,8 +77,11 @@ jobs:
         id: ci_config
         uses: ./.github/actions/load-aws-ci-env
         with:
-          environment: test
-          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          environment: ${{ github.event_name == 'pull_request' && 'test-pr' || 'test' }}
+          config-role-arn: >-
+            ${{ github.event_name == 'pull_request' &&
+            vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN ||
+            vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
           aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: Well-Architected evidence
           required-keys: >-

@@ -37,7 +37,7 @@ configuration drift outside GitOps review.
 
 | CI suffix | AWS Secrets Manager secret ID | Purpose |
 | --- | --- |
-| `test-pr` | `/bootstrap-infrastructure/ci/test-pr` | Trusted PR preview and IAM validation |
+| `test-pr` | `/bootstrap-infrastructure/ci/test-pr` | Trusted PR preview, IAM validation, and PR evidence collection |
 | `test` | `/bootstrap-infrastructure/ci/test` | Test apply, drift, operations triage, and evidence |
 | `prod-preview` | `/bootstrap-infrastructure/ci/prod-preview` | Production preview, IAM validation, and drift |
 | `prod` | `/bootstrap-infrastructure/ci/prod` | Production apply after protected GitHub approval |
@@ -50,8 +50,10 @@ local AWS CI action through GitHub OIDC.
 
 - Privileged workflows load one fixed AWS Secrets Manager CI secret through a
   local composite action and never derive the suffix from PR/comment payloads.
-- Workflows have no references to `vars.AWS_*`, GitHub `test` or
-  `prod-preview` deployment environments, or `secrets.PULUMI_ACCESS_TOKEN`.
+- Workflows keep only the minimal repository variables needed to locate the
+  account-local config-read roles and regions; account-local AWS values move to
+  AWS Secrets Manager, and workflows do not use GitHub `test` or `prod-preview`
+  deployment environments or `secrets.PULUMI_ACCESS_TOKEN`.
 - Production apply jobs are the only privileged jobs bound to GitHub
   `environment: prod`.
 - Pulumi component tests prove non-production automation roles do not trust
