@@ -8,8 +8,8 @@ Recorded on 2026-05-25 in the `Europe/Sofia` timezone for branch
 | Field | Value |
 | --- | --- |
 | PR | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/57` |
-| Audited head SHA | `fd313a41695319c8beb1bbce75ec4c5860affe9d` |
-| Audited short SHA | `fd313a4` |
+| Latest implementation head SHA | `e0242f029d3e34217af13ec01328dd49778f1089` |
+| Latest implementation short SHA | `e0242f0` |
 | Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi Cloud and Pulumi ESC are not used for CI configuration. |
 | Secret handling | No secret values, `GetSecretValue` responses, decrypted stack outputs, access keys, or tokens were read or recorded. |
 
@@ -28,15 +28,16 @@ Open repository issues at the time of this audit:
 | `#55` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
 | `#56` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
 
-Current PR `#57` review state is approved, but merge state is still blocked.
-The latest fully settled audited checks before this evidence-refresh commit
-were on head `fd313a4`: `28` passing, `5` skipped, and `2` failing privileged
-setup checks. All repo-side checks were green, including `Local Battery`,
-`Mutation`, `CodeRabbit`, `qlty check`, `qlty fmt`, `CodeQL`, `Bandit`, and
-`Actionlint`.
+Current PR `#57` review state is approved, but merge state is still blocked
+until the current local commits are pushed, hosted checks rerun, and external
+AWS setup is completed. The latest audited remote checks before this refresh
+had all repo-owned jobs green except a CodeQL check for clear-text logging of a
+CI secret identifier and two expected privileged setup checks. The CodeQL issue
+is fixed on implementation head `e0242f0` by removing the secret ID from the
+validator summary.
 
-The prior privileged `Preview` and `Test Account Evidence` checks failed before
-AWS CI values or AWS credentials were loaded:
+The prior Pulumi Cloud-era privileged checks failed before AWS-only loading was
+implemented:
 
 ```text
 Invalid response from token exchange 400: Bad Request (invalid_request: invalid organization vilnacrm-org)
@@ -44,27 +45,52 @@ Invalid response from token exchange 400: Bad Request (invalid_request: invalid 
 
 The AWS-only setup removes that Pulumi Cloud token exchange path. Remaining live
 setup work is limited to valid AWS credentials, AWS Secrets Manager payloads,
-and GitHub repository variables.
+and GitHub repository variables. Current AWS-only remote failures stop before
+AWS credentials are requested because the repository variables are still empty:
+
+```text
+config-role-arn must be an AWS IAM role ARN.
+```
+
+Local validation on this implementation head passed:
+
+- `uv run pytest tests/pulumi/test_ci_guardrails.py::test_well_architected_evidence_workflow_uploads_enforced_reports tests/pulumi/test_delivery_contracts.py::test_multi_account_workflows_use_fixed_aws_ci_config_contracts tests/unit/test_components.py::test_ci_configuration_manages_aws_secret_containers_and_github_read_roles tests/unit/test_mutation_targets.py::test_mutation_target_ci_config_validation_and_lookup_helpers -q`
+- `uv run pytest tests/unit/test_validate_ci_environment.py -q`
+- `uv run ruff check pulumi/infra/ci_config.py tests/pulumi/test_ci_guardrails.py tests/pulumi/test_delivery_contracts.py tests/unit/test_components.py tests/unit/test_mutation_targets.py scripts/validate_ci_environment.py tests/unit/test_validate_ci_environment.py`
+- `make test-actionlint`
+- `make test-yaml`
+- `git diff --check`
 
 ## AWS Metadata Checks
 
 ### Test Account
 
 Local AWS CLI checks for the test account could not prove live state because
-the configured local token is invalid. `aws configure list` shows credentials
-coming from local environment variables and region `eu-central-1` from
-`~/.aws/config`; no other AWS CLI profile is configured locally.
+the current Codex process still inherits stale `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` values from its parent environment. `aws configure list`
+therefore reports credentials from `env` and region `eu-central-1` from
+`~/.aws/config` in this running session:
 
 ```text
 aws sts get-caller-identity --output json
 An error occurred (InvalidClientTokenId) when calling the GetCallerIdentity operation: The security token included in the request is invalid.
-
-aws sqs get-queue-url --queue-name bootstrap-test-operations-alerts --region eu-central-1 --output json
-An error occurred (InvalidClientTokenId) when calling the GetQueueUrl operation: The security token included in the request is invalid.
 ```
 
-No test-account issue should be closed from this workstation until a maintainer
-refreshes the local AWS CLI session and reruns metadata-only verification.
+The stale shell startup exports were removed from `~/.bashrc`; backup:
+`/home/kravtsov/.bashrc.codex-backup-20260525171555`. When those inherited
+environment variables are explicitly unset for a command, AWS CLI uses the
+shared credentials file and authenticates to production account `933245420672`,
+not the test account `891377212104`:
+
+```text
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN aws sts get-caller-identity --output json
+Account: 933245420672
+Arn: arn:aws:iam::933245420672:user/codex
+```
+
+No test-account profile is configured locally yet. No test-account issue should
+be closed from this workstation until a maintainer configures a dedicated test
+profile and reruns metadata-only verification against account `891377212104`.
 
 ### Production Account
 
@@ -100,7 +126,7 @@ complete yet.
 
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
-| Fixed privileged AWS Secrets Manager CI secrets | Workflows call `.github/actions/load-aws-ci-env` with fixed suffixes such as `test-pr`, `test`, `prod-preview`, and `prod`. | GitOps implemented |
+| Fixed privileged AWS Secrets Manager CI secrets | Workflows call `.github/actions/load-aws-ci-env` with fixed suffixes such as `test-pr`, `test`, `prod-preview`, and `prod`; same-repo PR Well-Architected evidence now uses `test-pr` instead of the main-branch `test` trust path. | GitOps implemented |
 | AWS Secrets Manager source of truth | Pulumi creates secret containers and GitHub OIDC read roles; docs/tests state values stay in AWS Secrets Manager and must not be copied into Pulumi config, GitHub variables, workflow logs, or docs. | GitOps implemented |
 | No GitHub `test` or `prod-preview` deployment environments for non-approval jobs | Workflow contracts and tests enforce only protected production apply uses `environment: prod`. | GitOps implemented |
 | Production approval preserved | Protected GitHub `prod` Environment remains the production apply approval boundary. | GitOps implemented; repository-admin verification still required |
@@ -143,23 +169,22 @@ canonical fingerprinted issue and records the sanitized confirmation reference.
 1. Apply the reviewed Pulumi `test` and `prod` stacks so AWS creates the four
    Secrets Manager containers and `GitHubCiConfigRead-*` roles.
 2. Populate the four AWS Secrets Manager JSON values in the owning AWS accounts.
-3. Populate the four AWS Secrets Manager CI secrets with private JSON payloads.
-4. Configure GitHub repository variables with the `GitHubCiConfigRead-*` role
+3. Configure GitHub repository variables with the `GitHubCiConfigRead-*` role
    ARNs and account regions.
-5. Refresh local test-account AWS CLI credentials and rerun metadata-only
+4. Refresh local test-account AWS CLI credentials and rerun metadata-only
    verification.
-6. Have a repository administrator run
+5. Have a repository administrator run
    `GITHUB_REPOSITORY_CONTROLS_MODE=--apply make configure-github-repository-controls`
    and then `GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only make configure-github-repository-controls`
    so GitHub has both protected `prod` and `operations-alert-reconcile`
    Environments.
-7. Rerun privileged PR checks and confirm `Preview` and `Test Account Evidence`
+6. Rerun privileged PR checks and confirm `Preview` and `Test Account Evidence`
    pass on the current head.
-8. Run GitHub Environment legacy variable cleanup only after AWS Secrets Manager-backed
+7. Run GitHub Environment legacy variable cleanup only after AWS Secrets Manager-backed
    privileged CI is green, then delete the temporary cleanup token.
-9. Close `#20` only after the successful run and reviewer acceptance of the AWS
+8. Close `#20` only after the successful run and reviewer acceptance of the AWS
    Secrets Manager source-of-truth refinement.
-10. Close `#49`, `#50`, and `#52` through `#56` only through the manual legacy
+9. Close `#49`, `#50`, and `#52` through `#56` only through the manual legacy
    reconcile workflow after SRE confirmation, including the required
    `sre_confirmation_reference`.
 
