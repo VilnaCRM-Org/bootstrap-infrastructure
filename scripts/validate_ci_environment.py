@@ -166,10 +166,9 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"error: {exc}.")
         return 1
-    ci_config_secret_id = os.environ.get("CI_CONFIG_SECRET_ID", "unknown")
     print(
         "Validated AWS Secrets Manager-derived CI configuration "
-        f"for {args.purpose} using {ci_config_secret_id}."
+        f"for {args.purpose} using a fixed CI secret."
     )
     return 0
 

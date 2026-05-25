@@ -206,13 +206,14 @@ def test_main_rejects_empty_required_keys(capsys) -> None:
 def test_main_writes_default_region_and_summary(tmp_path: Path, capsys) -> None:
     original_environ = dict(os.environ)
     github_env = tmp_path / "github-env"
+    secret_id = "/bootstrap-infrastructure/ci/test"
     try:
         os.environ.clear()
         os.environ.update(
             {
                 **_valid_environment(),
                 "GITHUB_ENV": str(github_env),
-                "CI_CONFIG_SECRET_ID": "/bootstrap-infrastructure/ci/test",
+                "CI_CONFIG_SECRET_ID": secret_id,
             }
         )
 
@@ -233,7 +234,9 @@ def test_main_writes_default_region_and_summary(tmp_path: Path, capsys) -> None:
         os.environ.update(original_environ)
 
     assert github_env.read_text(encoding="utf-8") == "AWS_DEFAULT_REGION=eu-central-1\n"
-    assert "/bootstrap-infrastructure/ci/test" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "using a fixed CI secret" in output
+    assert secret_id not in output
 
 
 def test_main_rejects_multiline_github_env_write(tmp_path: Path, capsys) -> None:
