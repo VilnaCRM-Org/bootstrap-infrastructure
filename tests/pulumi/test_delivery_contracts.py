@@ -925,11 +925,17 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
                 for step in job.get("steps", [])
                 if step.get("name") == "Select test AWS CI configuration"
             )
-            assert "AWS_TEST_PR_CI_CONFIG_ROLE_ARN" in (  # nosec B101
-                ci_config_target_step["run"]
+            assert (
+                "AWS_TEST_PR_CI_CONFIG_ROLE_ARN"
+                in (  # nosec B101
+                    ci_config_target_step["run"]
+                )
             )
-            assert "AWS_TEST_CI_CONFIG_ROLE_ARN" in (  # nosec B101
-                ci_config_target_step["run"]
+            assert (
+                "AWS_TEST_CI_CONFIG_ROLE_ARN"
+                in (  # nosec B101
+                    ci_config_target_step["run"]
+                )
             )
             assert "must be set" in ci_config_target_step["run"]  # nosec B101
         assert ci_config_step["id"] == "ci_config"  # nosec B101
