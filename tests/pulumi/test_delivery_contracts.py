@@ -498,6 +498,9 @@ def test_makefile_keeps_pulumi_guardrails_secret_safe() -> None:
     assert "stack change-secrets-provider" not in pulumi_command_combined_text  # nosec B101
     assert '"--save-plan"' in pulumi_command_combined_text  # nosec B101
     assert '"summarize"' in pulumi_command_combined_text  # nosec B101
+    assert "direct Pulumi up is disabled in GitHub Actions" in (  # nosec B101
+        pulumi_command_combined_text
+    )
 
 
 def test_bats_suite_covers_every_public_make_target() -> None:

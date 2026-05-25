@@ -131,7 +131,7 @@ pulumi-plan: ## Save a reviewed Pulumi update plan for the selected stack.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
 		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py plan
 
-pulumi-up: ## Apply the current Pulumi infrastructure plan.
+pulumi-up: ## Apply directly for local/admin use only; GitHub Actions must use pulumi-up-plan.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
 		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py up
 

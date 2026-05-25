@@ -508,6 +508,15 @@ def _pulumi_cancel_command(context: CommandContext, stack: str) -> list[str]:
 def _run_up_stack(
     context: CommandContext, stack: str, *, include_policy_pack: bool = True
 ) -> int | None:
+    if context.env.get("GITHUB_ACTIONS") == "true":
+        print(
+            "error: direct Pulumi up is disabled in GitHub Actions; "
+            "generate and apply a reviewed saved plan with pulumi-plan and "
+            "pulumi-up-plan.",
+            file=sys.stderr,
+        )
+        return 1
+
     result = _run_with_observable_output(
         context,
         _pulumi_command(

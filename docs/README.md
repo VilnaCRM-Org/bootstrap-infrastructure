@@ -69,7 +69,7 @@ report-security-account-attestation  Render a non-secret security account attest
 report-production-dr-owner-evidence  Render non-secret production DR owner evidence from collector evidence.
 start             Initialize and start the Pulumi development environment.
 pulumi-preview    Preview infrastructure changes with the policy pack enforced.
-pulumi-up         Apply the current infrastructure plan with the policy pack enforced.
+pulumi-up         Apply directly for local/admin use only; GitHub Actions must use saved plans.
 pulumi-refresh    Sync the Pulumi stack with live cloud resources.
 pulumi-destroy    Tear down the stack (irreversible; use with caution).
 sh                Open a shell inside the Pulumi container.

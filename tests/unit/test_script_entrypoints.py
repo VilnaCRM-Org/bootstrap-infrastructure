@@ -8739,7 +8739,7 @@ def test_run_up_stack_does_not_retry_after_lock(
 
     context = module.CommandContext(
         root_dir=context_dir,
-        env={"GITHUB_ACTIONS": "true", "PULUMI_EXPECTED_SHA": "b" * 40},
+        env={},
         pulumi_dir=context_dir / "pulumi",
         policy_pack_dir=context_dir / "policy",
         plan_dir=context_dir / ".artifacts" / "pulumi-plan",
@@ -8754,6 +8754,39 @@ def test_run_up_stack_does_not_retry_after_lock(
         len(command) > 3 and command[3] == "cancel" for command in applied
     )
     assert up_attempts == 1  # nosec B101
+
+
+def test_run_up_stack_rejects_direct_apply_in_github_actions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """GitHub applies must use a reviewed saved plan."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    context_dir = tmp_path / "repo"
+    calls: list[list[str]] = []
+
+    def fake_runner(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    context = module.CommandContext(
+        root_dir=context_dir,
+        env={"GITHUB_ACTIONS": "true", "PULUMI_EXPECTED_SHA": "b" * 40},
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=fake_runner,
+    )
+
+    assert module._run_up_stack(context, "test") == 1  # nosec B101
+    assert "direct Pulumi up is disabled in GitHub Actions" in (  # nosec B101
+        capsys.readouterr().err
+    )
+    assert calls == []  # nosec B101
 
 
 def test_run_pulumi_command_observable_output_paths(
@@ -8905,17 +8938,15 @@ def test_run_pulumi_command_unhandled_apply_failures_return_status(
         secrets_provider="awskms://alias/example?region=eu-central-1",
         runner=ci_success_runner,
     )
-    assert module._run_up_stack(ci_success_context, "test") is None
-    assert any(  # nosec B101
-        len(command) > 3 and command[3] == "up" for command in ci_success_calls
-    )
+    assert module._run_up_stack(ci_success_context, "test") == 1  # nosec B101
+    assert ci_success_calls == []  # nosec B101
 
     def direct_failure_runner(command, **kwargs):
         return subprocess.CompletedProcess(command, 17, stdout="", stderr="boom")
 
     failed_context = module.CommandContext(
         root_dir=context_dir,
-        env={"GITHUB_ACTIONS": "true", "PULUMI_EXPECTED_SHA": "f" * 40},
+        env={},
         pulumi_dir=context_dir / "pulumi",
         policy_pack_dir=context_dir / "policy",
         plan_dir=context_dir / ".artifacts" / "pulumi-plan",
