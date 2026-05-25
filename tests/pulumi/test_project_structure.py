@@ -46,6 +46,44 @@ def test_multi_account_stack_files_are_non_secret() -> None:
         assert stack_config["secretsprovider"].startswith("awskms://")  # nosec B101
 
 
+def test_github_ci_bootstrap_stack_is_isolated_and_non_secret() -> None:
+    """Keep one-time CI bootstrap out of normal Pulumi stack discovery."""
+    project_dir = ROOT / "pulumi" / "github-ci-bootstrap"
+    manifest = yaml.safe_load((project_dir / "Pulumi.yaml").read_text())
+    stack_file_names = {path.name for path in project_dir.glob("Pulumi.*.yaml")}
+    root_stack_file_names = {
+        path.name for path in (ROOT / "pulumi").glob("Pulumi.*.yaml")
+    }
+    entrypoint = (project_dir / "__main__.py").read_text()
+
+    assert manifest["name"] == "github-ci-bootstrap"  # nosec B101
+    assert manifest["runtime"]["name"] == "python"  # nosec B101
+    assert stack_file_names == {  # nosec B101
+        "Pulumi.example.yaml",
+        "Pulumi.prod.yaml",
+        "Pulumi.test.yaml",
+    }
+    assert "Pulumi.github-ci-bootstrap.yaml" not in root_stack_file_names  # nosec B101
+    assert "GitHubCiBootstrap" in entrypoint  # nosec B101
+    assert "BootstrapInfrastructure" not in entrypoint  # nosec B101
+    assert "pulumi/__main__.py" not in entrypoint  # nosec B101
+
+    for stack_file in ("Pulumi.test.yaml", "Pulumi.prod.yaml"):
+        stack_text = (project_dir / stack_file).read_text()
+        stack_config = yaml.safe_load(stack_text)
+        config_keys = set(stack_config["config"])
+
+        assert "secure:" not in stack_text  # nosec B101
+        assert "encryptedkey" not in stack_text  # nosec B101
+        assert "encryptionsalt" not in stack_text  # nosec B101
+        assert "PULUMI_ACCESS_TOKEN" not in stack_text  # nosec B101
+        assert "Pulumi Cloud" not in stack_text  # nosec B101
+        assert "Pulumi ESC" not in stack_text  # nosec B101
+        assert "bootstrap-infrastructure:repoSlug" not in config_keys  # nosec B101
+        assert "github-ci-bootstrap:repoSlug" in config_keys  # nosec B101
+        assert stack_config["secretsprovider"].startswith("awskms://")  # nosec B101
+
+
 def test_multi_account_stack_replication_regions_match_policy_allowlist() -> None:
     """Committed stack defaults must pass the repository region guardrail."""
     policy_config = yaml.safe_load(
@@ -408,7 +446,12 @@ def test_ci_guardrails_manual_follow_up_completes_aws_ci_cutover() -> None:
 
 def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
     """Keep the human AWS-only cutover runbook explicit and source-of-truth safe."""
-    manual = (ROOT / "docs" / "aws-secrets-manager-ci-cutover.md").read_text()
+    manual = "\n".join(
+        (
+            (ROOT / "docs" / "aws-secrets-manager-ci-cutover.md").read_text(),
+            (ROOT / "docs" / "github-ci-bootstrap-stack.md").read_text(),
+        )
+    )
     setup_doc = (ROOT / "docs" / "github-actions-secrets.md").read_text()
     github_setup_doc = (ROOT / ".github" / "github-actions-secrets.md").read_text()
     readme = (ROOT / "README.md").read_text()
@@ -425,7 +468,12 @@ def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
         "put-secret-value",
         "Do not use `get-secret-value` for verification",
         "Fix Local AWS CLI For Test",
+        "pulumi/github-ci-bootstrap",
         "GitHubCiConfigRead",
+        "GitHubCiPreview",
+        "GitHubCiApply",
+        "GitHubCiDrift",
+        "AdministratorAccess",
         "githubCiConfigReadRoleArns",
         "GH_ENVIRONMENT_ADMIN_TOKEN",
         "Operations Alert Legacy Reconcile",
@@ -479,6 +527,7 @@ def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
     ):
         assert re.search(r"make pulumi-up(?!-)", operator_doc) is None  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in setup_doc  # nosec B101
+    assert "github-ci-bootstrap-stack.md" in setup_doc  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in github_setup_doc  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in readme  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in docs_readme  # nosec B101

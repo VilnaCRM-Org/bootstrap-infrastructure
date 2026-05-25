@@ -77,6 +77,9 @@ Follow [AWS Secrets Manager CI cutover manual](aws-secrets-manager-ci-cutover.md
 to refresh AWS CLI credentials, apply Pulumi stacks, populate Secrets Manager
 payloads, set GitHub variables, verify privileged CI, and remove legacy GitHub
 Environment variables.
+Use [GitHub CI AWS bootstrap stack](github-ci-bootstrap-stack.md) for the
+one-time local administrator apply that creates the OIDC roles and CI secret
+payloads without Pulumi Cloud.
 
 Never paste secret payloads into chat, GitHub issues, workflow logs, docs, or
 Pulumi config. Use `put-secret-value` with a private local JSON file, and use

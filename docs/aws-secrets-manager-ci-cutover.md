@@ -35,10 +35,14 @@ Set these repository variables. They are metadata, not secrets:
 | `AWS_PROD_CI_CONFIG_ROLE_ARN` | Reads `/bootstrap-infrastructure/ci/prod` |
 
 The Pulumi stack output `githubCiConfigReadRoleArns` contains the role ARNs.
+The one-time bootstrap stack also exports `githubVariables` with these values.
 
 ## Required Secrets Manager Payloads
 
-Create one JSON secret value per fixed CI suffix:
+Create one JSON secret value per fixed CI suffix. The one-time bootstrap stack
+writes these payloads automatically by default; use manual `put-secret-value`
+only when `github-ci-bootstrap:writeSecretValues` is disabled or a repair is
+needed.
 
 | Suffix | Secret ID |
 | --- | --- |
@@ -102,26 +106,41 @@ session tokens.
 
 ## Bootstrap Or Update AWS Resources
 
-Apply the Pulumi `test` and `prod` stacks with credentials for the owning AWS
-account. The stacks create:
+Apply the isolated Pulumi project at `pulumi/github-ci-bootstrap` with
+administrator credentials for the owning AWS account. The stack creates:
 
 - Secrets Manager secret containers
 - one `GitHubCiConfigRead-*` role per CI suffix
-- least-privilege policies scoped to the matching secret only
+- `GitHubCiPreview-*`, `GitHubCiApply-*`, and `GitHubCiDrift-*` roles
+- the test-account `OperationsAlertTriage-*` role
+- least-privilege policies scoped to CI job purpose
 - GitHub OIDC trust limited by repo subject and workflow ref
+- encrypted AWS Secrets Manager CI JSON payloads by default
+
+Use the detailed [GitHub CI AWS bootstrap stack manual](github-ci-bootstrap-stack.md)
+for AWS CLI profile repair, one-time local admin apply commands, role and
+permission mapping, and post-apply verification.
 
 After each apply, capture:
 
 ```bash
-pulumi -C pulumi stack output ciConfigurationSecretIds --stack test
-pulumi -C pulumi stack output githubCiConfigReadRoleArns --stack test
-pulumi -C pulumi stack output ciConfigurationSecretIds --stack prod
-pulumi -C pulumi stack output githubCiConfigReadRoleArns --stack prod
+pulumi -C pulumi/github-ci-bootstrap stack output githubVariables --stack test
+pulumi -C pulumi/github-ci-bootstrap stack output ciConfigurationSecretIds --stack test
+pulumi -C pulumi/github-ci-bootstrap stack output githubCiConfigReadRoleArns --stack test
+pulumi -C pulumi/github-ci-bootstrap stack output githubCiDeploymentRoleArns --stack test
+pulumi -C pulumi/github-ci-bootstrap stack output operationsAlertTriageRoleArn --stack test
+
+pulumi -C pulumi/github-ci-bootstrap stack output githubVariables --stack prod
+pulumi -C pulumi/github-ci-bootstrap stack output ciConfigurationSecretIds --stack prod
+pulumi -C pulumi/github-ci-bootstrap stack output githubCiConfigReadRoleArns --stack prod
+pulumi -C pulumi/github-ci-bootstrap stack output githubCiDeploymentRoleArns --stack prod
 ```
 
-## Populate Secret Values
+## Populate Secret Values Manually If Needed
 
-For each suffix, prepare a private JSON file and write it with:
+The one-time bootstrap stack writes the CI secret values by default. If
+`github-ci-bootstrap:writeSecretValues` is disabled or a payload needs repair,
+prepare a private JSON file for each suffix and write it with:
 
 ```bash
 AWS_PROFILE=<profile> aws secretsmanager put-secret-value \

@@ -8,6 +8,7 @@ import pulumi
 
 from .bootstrap_dependencies import BootstrapInfrastructureDependencies
 from .bootstrap_settings import BootstrapSettings
+from .ci_config import CiConfigurationArgs
 from .cost_controls import CostControlInputs
 from .managed_repository import ManagedRepository
 from .repository_catalog import ManagedRepositoryCatalog
@@ -36,8 +37,10 @@ def _create_ci_config(
         return None
     return dependencies.ci_config_cls(
         "ci-configuration",
-        settings=settings,
-        oidc_provider_arn=bootstrap.oidc.provider.arn,
+        args=CiConfigurationArgs(
+            settings=settings,
+            oidc_provider_arn=bootstrap.oidc.provider.arn,
+        ),
         opts=opts,
     )
 

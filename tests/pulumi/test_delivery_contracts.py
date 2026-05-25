@@ -1311,6 +1311,9 @@ def test_multi_account_environment_docs_are_explicit() -> None:
             (PROJECT_ROOT / "docs" / "aws-secrets-manager-ci-cutover.md").read_text(
                 encoding="utf-8"
             ),
+            (PROJECT_ROOT / "docs" / "github-ci-bootstrap-stack.md").read_text(
+                encoding="utf-8"
+            ),
             (
                 PROJECT_ROOT
                 / "specs"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 import pulumi_aws as aws
 
@@ -18,6 +19,15 @@ CI_CONFIG_SECRET_SUFFIXES_BY_STACK = {
     "test": ("test-pr", "test"),
     "prod": ("prod-preview", "prod"),
 }
+
+
+@dataclass(frozen=True)
+class CiConfigurationArgs:
+    """Configuration for AWS-side GitHub CI config resources."""
+
+    settings: BootstrapSettings | None = None
+    oidc_provider_arn: pulumi.Input[str] | None = None
+    protect_resources: bool = False
 
 
 def _ci_config_project(settings: BootstrapSettings) -> str:
@@ -236,14 +246,16 @@ class CiConfiguration(pulumi.ComponentResource):
         self,
         name: str,
         *,
-        settings: BootstrapSettings | None = None,
-        oidc_provider_arn: pulumi.Input[str] | None = None,
+        args: CiConfigurationArgs | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("bootstrap:ci:CiConfiguration", name, None, opts)
 
-        self._settings = settings or default_settings
-        provider_arn = oidc_provider_arn or self._settings.github_oidc_provider_arn
+        config = args or CiConfigurationArgs()
+        self._settings = config.settings or default_settings
+        provider_arn = (
+            config.oidc_provider_arn or self._settings.github_oidc_provider_arn
+        )
         if provider_arn is None:
             raise ValueError(
                 "githubOidcProviderArn config is required for AWS CI configuration."
@@ -254,6 +266,7 @@ class CiConfiguration(pulumi.ComponentResource):
         partition = aws.get_partition().partition
 
         self.secret_ids: dict[str, str] = {}
+        self.secrets: dict[str, aws.secretsmanager.Secret] = {}
         self.secret_arns: dict[str, pulumi.Output[str]] = {}
         self.read_roles: dict[str, aws.iam.Role] = {}
         self.read_role_arns: dict[str, pulumi.Output[str]] = {}
@@ -280,9 +293,11 @@ class CiConfiguration(pulumi.ComponentResource):
                 opts=pulumi.ResourceOptions(
                     parent=self,
                     import_=secret_id if _secret_exists(secret_id) else None,
+                    protect=config.protect_resources,
                 ),
             )
             self.secret_ids[suffix] = secret_id
+            self.secrets[suffix] = secret
             self.secret_arns[suffix] = secret.arn
 
             role_name = _ci_config_read_role_name(self._settings, suffix)
@@ -307,6 +322,7 @@ class CiConfiguration(pulumi.ComponentResource):
                 opts=pulumi.ResourceOptions(
                     parent=self,
                     import_=role_name if _iam_role_exists(role_name) else None,
+                    protect=config.protect_resources,
                 ),
             )
             self.read_roles[suffix] = role
@@ -321,7 +337,10 @@ class CiConfiguration(pulumi.ComponentResource):
                     settings=self._settings,
                     suffixes=(suffix,),
                 ),
-                opts=pulumi.ResourceOptions(parent=self),
+                opts=pulumi.ResourceOptions(
+                    parent=self,
+                    protect=config.protect_resources,
+                ),
             )
             self.read_policies[suffix] = policy
 

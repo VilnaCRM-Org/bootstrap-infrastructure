@@ -1,0 +1,18 @@
+# Initialize with:
+# pulumi -C pulumi/github-ci-bootstrap stack init prod --secrets-provider "$PULUMI_SECRETS_PROVIDER"
+config:
+  aws:region: eu-central-1
+  github-ci-bootstrap:costCenter: core
+  github-ci-bootstrap:criticality: high
+  github-ci-bootstrap:dataClassification: internal
+  github-ci-bootstrap:environment: prod
+  github-ci-bootstrap:githubBranch: main
+  github-ci-bootstrap:githubOrg: VilnaCRM-Org
+  github-ci-bootstrap:loggingPrefix: company
+  github-ci-bootstrap:owner: platform
+  github-ci-bootstrap:pulumiSecretsProvider: awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1
+  github-ci-bootstrap:repoSlug: bootstrap-infrastructure
+  github-ci-bootstrap:retentionClass: standard
+  github-ci-bootstrap:serviceName: bootstrap-infrastructure
+  github-ci-bootstrap:writeSecretValues: "true"
+secretsprovider: awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1
