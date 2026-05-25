@@ -1111,10 +1111,10 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert "make pulumi-plan" in prod_preview_lines  # nosec B101
     assert "make pulumi-plan" in test_preview_lines  # nosec B101
     assert "make pulumi-up-plan" in test_apply_lines  # nosec B101
-    assert "decrypting secret value: cipher: message authentication failed" in (  # nosec B101
+    assert "decrypting secret value: cipher: message authentication failed" not in (  # nosec B101
         test_apply_lines
     )
-    assert re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
+    assert not re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
     assert "decrypting secret value: cipher: message authentication failed" not in (  # nosec B101
         prod_apply_lines
     )
@@ -1220,10 +1220,10 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
         _run_lines(runner["jobs"]["test_iam_validation"]["steps"])
     )
     assert "make pulumi-up-plan" in test_apply_lines  # nosec B101
-    assert "decrypting secret value: cipher: message authentication failed" in (  # nosec B101
+    assert "decrypting secret value: cipher: message authentication failed" not in (  # nosec B101
         test_apply_lines
     )
-    assert re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
+    assert not re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
     assert "make test-drift" in "\n".join(  # nosec B101
         _run_lines(runner["jobs"]["test_post_apply_drift"]["steps"])
     )
