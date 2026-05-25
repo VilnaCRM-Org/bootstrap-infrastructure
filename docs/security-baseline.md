@@ -119,9 +119,9 @@ When you add new workflows:
 
 ### Review Before Apply
 
-Use `make pulumi-preview` before `make pulumi-up`, and keep reviewable PRs as
-the normal path for infrastructure changes. A preview that is not tied to the
-code under review is much harder to trust later.
+Use `make pulumi-plan` before `make pulumi-up-plan`, and keep reviewable PRs as
+the normal path for infrastructure changes. An apply that is not tied to the
+reviewed saved plan is much harder to trust later.
 
 ### Prefer Ephemeral Validation Stacks
 

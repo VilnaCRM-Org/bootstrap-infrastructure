@@ -294,7 +294,8 @@ def test_docs_cover_current_testing_and_guardrail_guidance() -> None:
         "make ci-pr",
         "make ci",
         "make pulumi-preview",
-        "make pulumi-up",
+        "make pulumi-plan",
+        "make pulumi-up-plan",
     ):
         assert phrase in testing_doc  # nosec B101
 
@@ -412,6 +413,10 @@ def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
     github_setup_doc = (ROOT / ".github" / "github-actions-secrets.md").read_text()
     readme = (ROOT / "README.md").read_text()
     docs_readme = (ROOT / "docs" / "README.md").read_text()
+    sre_operations = (ROOT / "docs" / "sre-operations.md").read_text()
+    security_baseline = (ROOT / "docs" / "security-baseline.md").read_text()
+    pulumi_guardrails = (ROOT / "docs" / "pulumi-guardrails.md").read_text()
+    env_dist = (ROOT / ".env.dist").read_text()
 
     for phrase in (
         "does not require Pulumi Cloud or Pulumi ESC",
@@ -464,6 +469,15 @@ def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
 
     assert "SecretAccessKey" not in manual  # nosec B101
     assert "secretAccessKey" not in manual  # nosec B101
+    assert "PULUMI_ACCESS_TOKEN" not in env_dist  # nosec B101
+    for operator_doc in (
+        readme,
+        docs_readme,
+        sre_operations,
+        security_baseline,
+        pulumi_guardrails,
+    ):
+        assert re.search(r"make pulumi-up(?!-)", operator_doc) is None  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in setup_doc  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in github_setup_doc  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in readme  # nosec B101
@@ -483,10 +497,11 @@ def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
         "AWS Secrets Manager remains the source of truth",
         "Pulumi Cloud and Pulumi ESC are not used",
         "AWS-only setup removes that Pulumi Cloud token exchange path",
-        "e0242f0",
+        "622e9aa",
         "invalid organization vilnacrm-org",
         "InvalidClientTokenId",
         "config-role-arn must be an AWS IAM role ARN",
+        "Not authorized to perform sts:AssumeRoleWithWebIdentity",
         "No test-account profile is configured locally yet",
         "ResourceNotFoundException",
         "NoSuchEntityException",
@@ -498,7 +513,7 @@ def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
     ):
         assert phrase in closeout  # nosec B101
 
-    for issue in ("#20", "#49", "#50", "#52", "#53", "#54", "#55", "#56"):
+    for issue in ("#20", "#49", "#50", "#52", "#53", "#54", "#55", "#56", "#58"):
         assert issue in closeout  # nosec B101
 
     assert "No secret values" in closeout  # nosec B101

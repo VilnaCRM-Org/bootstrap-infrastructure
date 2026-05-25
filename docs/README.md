@@ -247,7 +247,7 @@ Continuous integration runs automatically on every pull request. You can also va
 - Use the focused suites when you only need one slice: `make build`, `make test-pulumi`, `make test-repository-fanout`, `make test-policy`, `make test-crossguard`, `make test-quality`, `make test-repo-hygiene`, `make test-unit`, `make test-integration`, `make test-coverage`, `make test-mutation`, `make test-cli`, `make test-security`, `make test-guardrails`.
 - Use `make test-policy` when you are changing guardrails or adding new AWS resource types that should be covered by the policy pack.
 - `make test-mutation` intentionally uses the focused `pulumi/app` unit-test surface by default so the PR mutation check stays fast; override `MUTATION_TEST_TARGETS` or `MUTATION_TESTS_DIR` only when you explicitly need a broader, slower mutation run.
-- `make pulumi-preview` and `make pulumi-up` sync the shared `uv` environment if needed, refresh `policy/.venv`, and then run Pulumi with the repository policy pack enabled.
+- `make pulumi-preview`, `make pulumi-plan`, and `make pulumi-up-plan` sync the shared `uv` environment if needed, refresh `policy/.venv`, and then run Pulumi with the repository policy pack enabled.
 - Run `make test` to execute the faster structural, policy, quality, repo-hygiene, unit, integration, coverage, and CLI checks together after a prerequisite sanity check.
 - Use `make ci-pr` to mirror the non-mutation GitHub pull-request battery, including the prerequisite check, image build, security scans, preview generation, and policy suite.
 - Execute `make ci` to run the full local equivalent of all GitHub checks, including the prerequisite check, image build, and mutation suite.
@@ -255,8 +255,8 @@ Continuous integration runs automatically on every pull request. You can also va
 - If Pulumi plugin downloads hit GitHub rate limits locally, pass
   `GITHUB_TOKEN="$(gh auth token)"` explicitly to the preview-oriented target
   you are running instead of exporting it globally.
-- `make pulumi-preview` to review planned resources before applying.
-- `make pulumi-up` followed by `pulumi stack output` to inspect applied results.
+- `make pulumi-plan` to save a reviewed plan for the selected stack.
+- `make pulumi-up-plan` followed by `pulumi stack output` to inspect applied results from the reviewed saved plan.
 - GitHub Actions mirrors `make ci-pr` through the `Pulumi Local Test Battery` workflow, while mutation remains isolated in `pulumi-mutation.yml`.
 - `Pulumi PR Guardrails` and `Security Scans` also expose their focused Make entrypoints as dedicated CI checks.
 

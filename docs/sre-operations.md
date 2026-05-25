@@ -66,14 +66,16 @@ critical resources without requiring live AWS credentials. Keep
 `make test-iam-validation` for the separate Access Analyzer check when you
 intentionally have AWS credentials configured.
 
-Apply only after the preview is understood and reviewed:
+Apply only through a reviewed saved plan:
 
 ```bash
-make pulumi-up
+make pulumi-plan
+make pulumi-up-plan
 pulumi -C pulumi stack output
 ```
 
-`make pulumi-up` uses the same policy-pack enforcement path as preview.
+`make pulumi-plan` and `make pulumi-up-plan` use the same policy-pack
+enforcement path as preview while preserving the reviewed plan artifact.
 
 For drift reconciliation without applying a fresh plan:
 
