@@ -1,22 +1,19 @@
-# Architecture: Issue 20 Pulumi ESC CI Configuration
+# Architecture: Issue 20 AWS Secrets Manager CI Configuration
 
 ## Control Boundaries
 
-AWS Secrets Manager owns the privileged account-local configuration. Pulumi ESC
-is the environment projection layer, not the secret store: each ESC environment
-uses AWS OIDC and the `aws-secrets` provider to import one AWS Secrets Manager
-JSON secret, then exports selected keys as workflow `environmentVariables`.
-Pulumi Cloud/ESC holds only the environment definition and provider bindings.
-GitHub OIDC remains the AWS identity mechanism for the deployment jobs. GitHub
+AWS Secrets Manager owns the privileged account-local configuration. GitHub
+Actions uses GitHub OIDC to assume one `GitHubCiConfigRead-*` role per fixed CI
+suffix, reads one AWS Secrets Manager JSON secret, and exports selected keys as
+workflow environment variables. Pulumi Cloud and Pulumi ESC are not used. GitHub
 `prod` remains the only deployment environment because it adds human approval
 and branch restrictions for production apply.
 
 ```text
 GitHub workflow
-  -> .github/ci/pulumi-esc.json resolves ESC org/project prefix
-  -> pulumi/auth-actions OIDC token for the ESC control plane
-  -> pulumi/esc-action opens fixed ESC environment suffix
-  -> ESC imports AWS Secrets Manager JSON through aws-secrets
+  -> GitHub repository variables select the config-read role ARN and region
+  -> GitHub OIDC assumes the fixed GitHubCiConfigRead-* role
+  -> AWS Secrets Manager loader reads the fixed CI secret suffix
   -> scripts/validate_ci_environment.py validates exported variables
   -> aws-actions/configure-aws-credentials assumes purpose-specific role
   -> Make/Pulumi command runs with sanitized evidence
@@ -25,11 +22,11 @@ GitHub workflow
 Fork pull requests stay on the existing unprivileged artifact path and do not
 request OIDC.
 
-## ESC Contract
+## AWS CI Config Contract
 
-Each ESC environment imports one AWS Secrets Manager JSON secret:
+Each fixed suffix maps to one AWS Secrets Manager JSON secret:
 
-| ESC environment suffix | AWS Secrets Manager secret ID |
+| AWS Secrets Manager CI secret suffix | AWS Secrets Manager secret ID |
 | --- | --- |
 | `test-pr` | `/bootstrap-infrastructure/ci/test-pr` |
 | `test` | `/bootstrap-infrastructure/ci/test` |
@@ -37,22 +34,21 @@ Each ESC environment imports one AWS Secrets Manager JSON secret:
 | `prod` | `/bootstrap-infrastructure/ci/prod` |
 
 The Pulumi `test` stack creates the `test-pr` and `test` AWS Secrets Manager
-secret containers plus the ESC read role. The Pulumi `prod` stack creates the
-`prod-preview` and `prod` containers plus the production ESC read role. Pulumi
-does not own secret versions or secret values; operators populate and rotate
-the JSON payloads directly in AWS Secrets Manager after the containers exist.
-ESC uses the `pulumiEscSecretsReadRoleArn` stack output and
-`subjectAttributes: [currentEnvironment.name]` to bind AWS trust to each fixed
-environment.
+secret containers plus matching `GitHubCiConfigRead-*` roles. The Pulumi `prod`
+stack creates the `prod-preview` and `prod` containers plus matching production
+read roles. Pulumi does not own secret versions or secret values; operators
+populate and rotate the JSON payloads directly in AWS Secrets Manager after the
+containers exist. The `githubCiConfigReadRoleArns` stack output gives operators
+the role ARNs to store as GitHub repository variables.
 
-Common projected ESC `environmentVariables`:
+Common AWS CI config variables:
 
 - `AWS_ACCOUNT_ID`
 - `AWS_REGION`
 - `PULUMI_BACKEND_URL`
 - `PULUMI_SECRETS_PROVIDER`
 
-Purpose-specific ESC variables:
+Purpose-specific AWS CI variables:
 
 - `AWS_PREVIEW_ROLE_ARN`
 - `AWS_APPLY_ROLE_ARN`
@@ -64,12 +60,11 @@ Purpose-specific ESC variables:
 - `PULUMI_PREVIEW_STACKS`
 - `PULUMI_DRIFT_STACKS`
 
-Stack `pulumiConfig` may include only non-account-local static configuration or
-values projected from AWS Secrets Manager. Do not use ESC `pulumiConfig` to
-store AWS account IDs, role ARNs, backend URLs, stack lists, or
-secrets-provider URIs directly. Shared CI stacks still initialize or migrate
-with `--secrets-provider "$PULUMI_SECRETS_PROVIDER"`, and the provider must be
-`awskms://`.
+Pulumi stack config may include only non-account-local static configuration.
+Do not use Pulumi config to store AWS account IDs, role ARNs, backend URLs,
+stack lists, or secrets-provider URIs. Shared CI stacks still initialize or
+migrate with `--secrets-provider "$PULUMI_SECRETS_PROVIDER"`, and the provider
+must be `awskms://`.
 
 ## AWS Trust Model
 
@@ -120,11 +115,11 @@ legacy issues, and closes confirmed legacy issues with
 ## Manual Secure Steps
 
 - Apply the Pulumi `test` and `prod` stacks so AWS contains the four Secrets
-  Manager containers and ESC read roles.
+  Manager containers and AWS CI config read roles.
 - Populate the four AWS Secrets Manager JSON values in the owning AWS accounts.
-- Create the four ESC environments and configure each one to import its JSON
-  secret with `fn::open::aws-secrets`.
-- Configure GitHub-to-ESC OIDC for this repository and ESC AWS OIDC for each
+- Create the four AWS Secrets Manager CI secrets and configure each one to import its JSON
+  secret with `aws secretsmanager get-secret-value`.
+- Configure GitHub-to-AWS OIDC for this repository and GitHub OIDC for each
   AWS Secrets Manager read role.
 - Apply the Pulumi trust-policy update in each AWS account through the normal
   stack process.

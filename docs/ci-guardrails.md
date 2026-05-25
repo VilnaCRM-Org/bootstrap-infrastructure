@@ -79,7 +79,7 @@ developers use:
 
 1. a credential-free mode-selection job checks whether the pull request came
    from a fork
-2. trusted same-repo runs load the fixed `test-pr` ESC environment, then use
+2. trusted same-repo runs load the fixed `test-pr` AWS Secrets Manager CI secret, then use
    `make start` and `make publish-pulumi-preview-summary`
 3. fork pull requests use `make start` and `make test-preview-unprivileged`
    without a GitHub environment, OIDC permission, AWS credentials, or
@@ -92,11 +92,11 @@ Preview artifacts are written under `.artifacts/pulumi-preview/` and uploaded to
 GitHub Actions. The preview summary is appended to `GITHUB_STEP_SUMMARY` so
 reviewers can inspect the plan without digging through raw logs first.
 
-For issue 20, privileged previews are ESC-scoped:
+For issue 20, privileged previews are AWS Secrets Manager-scoped:
 
-- trusted same-repo PRs use the fixed `test-pr` ESC environment and preview the
+- trusted same-repo PRs use the fixed `test-pr` AWS Secrets Manager CI secret and preview the
   configured test stack
-- production release previews use the fixed `prod-preview` ESC environment and
+- production release previews use the fixed `prod-preview` AWS Secrets Manager CI secret and
   preview the production stack without apply permissions
 - fork PRs stay on the unprivileged artifact path and never receive AWS
   credentials or `id-token: write` permission
@@ -196,32 +196,24 @@ semantic validation for the rendered policy documents.
 The guardrail workflows are OIDC-first. They do not use long-lived
 `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` repository secrets.
 
-Privileged jobs read account-specific values from AWS Secrets Manager through
-fixed Pulumi ESC environments, not from GitHub Environment variables or
-repository-wide variables. AWS Secrets Manager is the source of truth for the
-account-local values; ESC and the Pulumi Cloud control plane are not the vault.
-ESC uses AWS OIDC plus the `aws-secrets` provider to import each environment's
-JSON secret and project selected keys as `environmentVariables`. The ESC
-environments are:
+Privileged jobs read account-specific values directly from fixed AWS Secrets
+Manager JSON secrets, not from GitHub Environment variables, repository-wide
+variables, Pulumi Cloud, or Pulumi ESC. AWS Secrets Manager is the vault and
+source of truth for account-local values. The fixed CI suffixes are:
 
-| ESC environment | Use |
+| CI suffix | Use |
 | --- | --- |
-| `vilnacrm-org/bootstrap-infrastructure/test-pr` | Trusted same-repo PR preview and IAM validation |
-| `vilnacrm-org/bootstrap-infrastructure/test` | Test apply, test drift, operations alert triage, and Well-Architected evidence |
-| `vilnacrm-org/bootstrap-infrastructure/prod-preview` | Production preview, IAM validation, and drift |
-| `vilnacrm-org/bootstrap-infrastructure/prod` | Production apply after protected GitHub `prod` approval |
+| `test-pr` | Trusted same-repo PR preview and IAM validation |
+| `test` | Test apply, test drift, operations alert triage, and Well-Architected evidence |
+| `prod-preview` | Production preview, IAM validation, and drift |
+| `prod` | Production apply after protected GitHub `prod` approval |
 
-The ESC organization and project prefix is resolved from
-`.github/ci/pulumi-esc.json` before the ESC environment opens. Workflow call
-sites pass fixed suffixes like `test`, `test-pr`, `prod-preview`, and `prod`;
-PR input, issue comments, and repository-dispatch payloads cannot supply
-arbitrary ESC environment names. Trusted commands can only select supported
-workflow paths that map to those fixed ESC environments.
+Workflow call sites pass fixed suffixes like `test`, `test-pr`, `prod-preview`,
+and `prod`; PR input, issue comments, and repository-dispatch payloads cannot
+supply arbitrary secret names. Each suffix maps to one AWS Secrets Manager JSON
+secret in the owning AWS account:
 
-Each ESC environment should read one AWS Secrets Manager JSON secret from the
-owning AWS account:
-
-| ESC environment suffix | AWS Secrets Manager secret ID |
+| AWS Secrets Manager CI secret suffix | AWS Secrets Manager secret ID |
 | --- | --- |
 | `test-pr` | `/bootstrap-infrastructure/ci/test-pr` |
 | `test` | `/bootstrap-infrastructure/ci/test` |
@@ -229,27 +221,16 @@ owning AWS account:
 | `prod` | `/bootstrap-infrastructure/ci/prod` |
 
 The Pulumi `test` and `prod` stacks manage these AWS Secrets Manager secret
-containers and the account-local `PulumiEscCiSecretsRead-*` roles. Pulumi does
-not create a `SecretVersion` or own the JSON values. Maintainers populate and
-rotate the JSON values in AWS Secrets Manager after the stack creates the
-container, then configure each ESC environment to assume the role exported as
-`pulumiEscSecretsReadRoleArn`.
+containers and the account-local `GitHubCiConfigRead-*` roles. Pulumi does not
+create a `SecretVersion` or own the JSON values. Maintainers populate and rotate
+the JSON values in AWS Secrets Manager after the stack creates the containers.
+The workflow loader assumes the matching `GitHubCiConfigRead-*` role through
+GitHub OIDC, calls `aws secretsmanager get-secret-value`, parses JSON, validates
+the required keys, and exports only validated environment variables. Do not store
+AWS account IDs, role ARNs, backend URLs, stack lists, or secrets-provider URIs
+in Pulumi config, GitHub Environment variables, workflow logs, or docs.
 
-The ESC YAML should use `fn::open::aws-login`, `fn::open::aws-secrets`, and
-`fn::fromJSON` to load that secret, then map only the required keys to
-`environmentVariables`. Do not store AWS account IDs, role ARNs, backend URLs,
-stack lists, or secrets-provider URIs directly as ESC encrypted values.
-Account-local CI values may appear in ESC only as projections from AWS Secrets
-Manager through `aws-secrets`.
-
-This is not a migration of account-local CI values into ESC-managed secret
-values or Pulumi Cloud secrets. ESC is the runtime projection layer; AWS
-Secrets Manager remains the vault and source of truth for those values.
-
-Use `subjectAttributes: [currentEnvironment.name]` in the `aws-login` OIDC
-block so AWS trust can bind each role to the exact ESC environment name.
-
-The required ESC `environmentVariables` are:
+The required AWS CI config `environmentVariables` are:
 
 | Variable | Purpose |
 | --- | --- |
@@ -263,7 +244,7 @@ The required ESC `environmentVariables` are:
 | `PULUMI_PREVIEW_STACKS` | Comma-separated stack list for preview and apply |
 | `PULUMI_DRIFT_STACKS` | Comma-separated stack list for drift checks |
 
-Job-specific ESC variables:
+Job-specific AWS CI variables:
 
 | Variable | Purpose |
 | --- | --- |
@@ -287,8 +268,8 @@ Optional non-secret repository variables:
 Shared backends should use an AWS KMS-backed Pulumi secrets provider rather
 than a passphrase-managed stack secret flow.
 
-`Pulumi Test Deploy` uses the `test` ESC backend, stack list, apply role, and
-drift role. Missing ESC values fail fast before AWS credentials are requested.
+`Pulumi Test Deploy` uses the `test` AWS Secrets Manager CI backend, stack list, apply role, and
+drift role. Missing AWS CI values fail fast before AWS credentials are requested.
 
 Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate. Same-repo pull requests fail fast when required
@@ -298,7 +279,7 @@ paths remain same-repo only because they require OIDC-issued AWS credentials.
 
 Privileged jobs should emit sanitized evidence in the job summary or logs:
 
-- ESC environment name
+- AWS Secrets Manager CI secret name
 - expected AWS account ID and selected AWS region
 - role purpose, such as preview, drift, or apply
 - Pulumi backend type, stack names, and guardrail mode
@@ -513,7 +494,7 @@ repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod
 
 Production apply does not trust branch or pull request subjects. Production
 preview, IAM validation, and drift jobs run from the protected default branch
-through fixed `prod-preview` ESC configuration, while production apply requires
+through fixed `prod-preview` AWS CI configuration, while production apply requires
 only the protected GitHub `prod` Environment subject.
 
 The operations alert triage role should trust only
@@ -523,7 +504,7 @@ The operations alert triage role should trust only
 
 Production release automation has two boundaries:
 
-- `prod-preview` ESC can create review evidence but cannot apply changes
+- `prod-preview` AWS CI config can create review evidence but cannot apply changes
 - protected GitHub `prod` approval can apply only after branch protection,
   and commit SHA verification
 
@@ -553,23 +534,18 @@ fresh GitHub runner would be misleading.
 
 The workflows are committed in this repository, but maintainers still need to:
 
-1. create the GitHub OIDC IAM roles in AWS
+1. create or adopt the GitHub OIDC provider in AWS
 2. apply the Pulumi `test` and `prod` stacks so AWS creates the four Secrets
-   Manager containers and Pulumi ESC read roles
-3. create the four Pulumi ESC environments listed above and configure each one
-   to import its AWS Secrets Manager JSON secret through `aws-secrets`
-4. populate the four AWS Secrets Manager JSON values in the owning AWS accounts
-5. configure ESC AWS OIDC so each environment can assume the AWS Secrets
-   Manager read role exported as `pulumiEscSecretsReadRoleArn`
-6. configure GitHub OIDC for this repository and ESC organization so workflows
-   can open the fixed ESC environments without `PULUMI_ACCESS_TOKEN`
-7. apply the Pulumi test and production stacks so the updated IAM trust policies
-   converge in AWS from the AWS Secrets Manager values projected by the Pulumi
-   ESC environments
-8. run **GitHub Environment Legacy Variable Cleanup** first as a dry run, then
-   with the documented confirmation sentence after ESC-backed privileged CI is
+   Manager containers and `GitHubCiConfigRead-*` roles
+3. populate the four AWS Secrets Manager JSON values in the owning AWS accounts
+4. set the repository variables from `githubCiConfigReadRoleArns` and the AWS
+   regions
+5. apply the Pulumi test and production stacks so the updated IAM trust policies
+   converge in AWS
+6. run **GitHub Environment Legacy Variable Cleanup** first as a dry run, then
+   with the documented confirmation sentence after AWS Secrets Manager-backed privileged CI is
    green
-9. delete the temporary `GH_ENVIRONMENT_ADMIN_TOKEN` repository secret after
+7. delete the temporary `GH_ENVIRONMENT_ADMIN_TOKEN` repository secret after
    cleanup succeeds
 10. create the protected `prod` GitHub Environment for production approval
 11. enable required reviewers and branch restrictions on `prod`

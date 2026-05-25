@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate ESC-derived CI configuration without printing secret values."""
+"""Validate AWS Secrets Manager-derived CI configuration without printing values."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def validate_environment(
     keys: tuple[str, ...],
     environ: Mapping[str, str],
 ) -> list[ValidationIssue]:
-    """Return non-secret validation failures for ESC-derived values."""
+    """Return non-secret validation failures for AWS Secrets Manager-derived values."""
     issues = [
         ValidationIssue(key, "is required") for key in missing_or_blank(keys, environ)
     ]
@@ -141,7 +141,7 @@ def _github_env_value(name: str, value: str) -> str:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate CI configuration injected from Pulumi ESC."
+        description="Validate CI configuration injected from AWS Secrets Manager."
     )
     parser.add_argument("--purpose", required=True)
     parser.add_argument("--required-keys", required=True)
@@ -166,10 +166,10 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         print(f"error: {exc}.")
         return 1
-    esc_environment = os.environ.get("PULUMI_ESC_ENVIRONMENT", "unknown")
+    ci_config_secret_id = os.environ.get("CI_CONFIG_SECRET_ID", "unknown")
     print(
-        "Validated ESC-derived CI configuration "
-        f"for {args.purpose} using {esc_environment}."
+        "Validated AWS Secrets Manager-derived CI configuration "
+        f"for {args.purpose} using {ci_config_secret_id}."
     )
     return 0
 

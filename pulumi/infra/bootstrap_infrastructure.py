@@ -26,16 +26,18 @@ def _repository_project(
 
 def _create_ci_config(
     *,
+    bootstrap,
     dependencies: BootstrapInfrastructureDependencies,
     settings: BootstrapSettings,
     opts: pulumi.ResourceOptions,
 ):
-    """Create Pulumi ESC AWS backing resources when a runner repo is configured."""
+    """Create AWS Secrets Manager CI config resources when a runner repo exists."""
     if not settings.repo:
         return None
     return dependencies.ci_config_cls(
         "ci-configuration",
         settings=settings,
+        oidc_provider_arn=bootstrap.oidc.provider.arn,
         opts=opts,
     )
 
@@ -134,13 +136,13 @@ def _automation_outputs(automation) -> dict[str, pulumi.Input[object]]:
 
 
 def _ci_config_outputs(ci_config) -> dict[str, pulumi.Input[object]]:
-    """Return outputs for AWS Secrets Manager backed Pulumi ESC resources."""
+    """Return outputs for AWS Secrets Manager backed CI config resources."""
     if ci_config is None:
         return {}
     return {
         "ciConfigurationSecretIds": ci_config.secret_ids,
         "ciConfigurationSecretArns": ci_config.secret_arns,
-        "pulumiEscSecretsReadRoleArn": ci_config.read_role.arn,
+        "githubCiConfigReadRoleArns": ci_config.read_role_arns,
     }
 
 
@@ -205,6 +207,7 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             opts=child_opts,
         )
         self.ci_config = _create_ci_config(
+            bootstrap=self,
             dependencies=self.dependencies,
             settings=settings,
             opts=child_opts,

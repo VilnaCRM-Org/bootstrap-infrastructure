@@ -1,4 +1,4 @@
-"""AWS-side resources that back Pulumi ESC CI configuration."""
+"""AWS-side resources that back GitHub Actions CI configuration."""
 
 from __future__ import annotations
 
@@ -14,25 +14,16 @@ from .config import settings as default_settings
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
-PULUMI_ESC_OIDC_URL = "https://api.pulumi.com/oidc"
-ESC_SECRET_SUFFIXES_BY_STACK = {
+CI_CONFIG_SECRET_SUFFIXES_BY_STACK = {
     "test": ("test-pr", "test"),
     "prod": ("prod-preview", "prod"),
 }
 
 
-def _pulumi_esc_org(settings: BootstrapSettings) -> str:
-    """Return the Pulumi ESC organization slug expected by this repository."""
-    return settings.sanitize_bucket_component(settings.org, "githubOrg").replace(
-        ".",
-        "-",
-    )
-
-
-def _pulumi_esc_project(settings: BootstrapSettings) -> str:
-    """Return the Pulumi ESC project name expected by this repository."""
+def _ci_config_project(settings: BootstrapSettings) -> str:
+    """Return the repository project name used in CI secret IDs."""
     if not settings.repo:
-        raise ValueError("repoSlug config is required for Pulumi ESC CI resources.")
+        raise ValueError("repoSlug config is required for AWS CI configuration.")
     return settings.sanitize_bucket_component(settings.repo, "repoSlug").replace(
         ".",
         "-",
@@ -40,13 +31,13 @@ def _pulumi_esc_project(settings: BootstrapSettings) -> str:
 
 
 def _ci_secret_suffixes(environment: str) -> tuple[str, ...]:
-    """Return ESC secret suffixes owned by one bootstrap stack."""
-    return ESC_SECRET_SUFFIXES_BY_STACK.get(environment, (environment,))
+    """Return CI secret suffixes owned by one bootstrap stack."""
+    return CI_CONFIG_SECRET_SUFFIXES_BY_STACK.get(environment, (environment,))
 
 
 def _ci_secret_id(settings: BootstrapSettings, suffix: str) -> str:
-    """Return the AWS Secrets Manager secret ID used by one ESC environment."""
-    project = _pulumi_esc_project(settings)
+    """Return the AWS Secrets Manager secret ID used by one CI configuration."""
+    project = _ci_config_project(settings)
     return f"/{project}/ci/{suffix}"
 
 
@@ -65,47 +56,78 @@ def _ci_secret_arn_patterns(
     ]
 
 
-def _esc_read_role_name(settings: BootstrapSettings) -> str:
-    """Return the IAM role name Pulumi ESC assumes to read CI secrets."""
-    project = _pulumi_esc_project(settings)
-    environment = settings.sanitize_bucket_component(
-        settings.environment,
-        "environment",
-    ).replace(".", "-")
-    name = f"PulumiEscCiSecretsRead-{project}-{environment}"
+def _ci_config_read_role_name(settings: BootstrapSettings, suffix: str) -> str:
+    """Return the GitHub OIDC role name allowed to read one CI secret."""
+    project = _ci_config_project(settings)
+    safe_suffix = settings.sanitize_bucket_component(suffix, "ciConfigSuffix").replace(
+        ".",
+        "-",
+    )
+    name = f"GitHubCiConfigRead-{project}-{safe_suffix}"
     if len(name) > 64:
         raise ValueError(
-            "Combined repo/environment produce Pulumi ESC read role name "
+            "Combined repo/CI suffix produce GitHub CI config read role name "
             f"'{name}' longer than 64 characters."
         )
     return name
 
 
-def _pulumi_esc_audience(settings: BootstrapSettings) -> str:
-    """Return the AWS OIDC audience for Pulumi ESC."""
-    return f"aws:{_pulumi_esc_org(settings)}"
+def _github_actions_subjects(settings: BootstrapSettings, suffix: str) -> list[str]:
+    """Return allowed GitHub OIDC subject claims for one CI config suffix."""
+    if not settings.repo:
+        raise ValueError("repoSlug config is required for GitHub OIDC subjects.")
+    branch = settings.github_branch or "main"
+    repo = f"{settings.org}/{settings.repo}"
+    if suffix == "test-pr":
+        return [f"repo:{repo}:pull_request"]
+    if suffix == "prod":
+        return [f"repo:{repo}:environment:prod"]
+    return [f"repo:{repo}:ref:refs/heads/{branch}"]
 
 
-def _pulumi_esc_subjects(
+def _github_actions_workflow_refs(
     settings: BootstrapSettings,
-    suffixes: Sequence[str],
+    suffix: str,
 ) -> list[str]:
-    """Return allowed Pulumi ESC OIDC subject claims for CI environments."""
-    org = _pulumi_esc_org(settings)
-    project = _pulumi_esc_project(settings)
-    return [
-        "pulumi:environments:pulumi.organization.login:"
-        f"{org}:currentEnvironment.name:{project}/{suffix}"
-        for suffix in suffixes
-    ]
+    """Return allowed workflow refs for one CI config suffix."""
+    if not settings.repo:
+        raise ValueError("repoSlug config is required for GitHub workflow refs.")
+    branch = settings.github_branch or "main"
+    workflow_prefix = f"{settings.org}/{settings.repo}/.github/workflows"
+    workflow_refs_by_suffix = {
+        "test-pr": [
+            f"{workflow_prefix}/pulumi-pr-guardrails.yml@refs/*",
+        ],
+        "test": [
+            f"{workflow_prefix}/pulumi-pr-guardrails.yml@refs/*",
+            f"{workflow_prefix}/pulumi-test-deploy.yml@refs/heads/{branch}",
+            f"{workflow_prefix}/nightly-guardrails.yml@refs/heads/{branch}",
+            f"{workflow_prefix}/pulumi-pr-command-runner.yml@refs/heads/{branch}",
+            f"{workflow_prefix}/operations-alert-triage.yml@refs/heads/{branch}",
+            f"{workflow_prefix}/well-architected-evidence.yml@refs/*",
+        ],
+        "prod-preview": [
+            f"{workflow_prefix}/pulumi-prod.yml@refs/heads/{branch}",
+            f"{workflow_prefix}/nightly-guardrails.yml@refs/heads/{branch}",
+            f"{workflow_prefix}/pulumi-pr-command-runner.yml@refs/heads/{branch}",
+        ],
+        "prod": [
+            f"{workflow_prefix}/pulumi-prod.yml@refs/heads/{branch}",
+            f"{workflow_prefix}/pulumi-pr-command-runner.yml@refs/heads/{branch}",
+        ],
+    }
+    return workflow_refs_by_suffix.get(
+        suffix,
+        [f"{workflow_prefix}/*.yml@refs/heads/{branch}"],
+    )
 
 
-def _esc_read_assume_role_policy(
+def _ci_config_read_assume_role_policy(
     provider_arn: str,
     settings: BootstrapSettings,
-    suffixes: Sequence[str],
+    suffix: str,
 ) -> str:
-    """Return trust policy for the Pulumi ESC AWS secrets read role."""
+    """Return trust policy for the GitHub AWS CI config read role."""
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -116,12 +138,18 @@ def _esc_read_assume_role_policy(
                     "Action": "sts:AssumeRoleWithWebIdentity",
                     "Condition": {
                         "StringEquals": {
-                            "api.pulumi.com/oidc:aud": _pulumi_esc_audience(settings),
-                            "api.pulumi.com/oidc:sub": _pulumi_esc_subjects(
-                                settings,
-                                suffixes,
+                            "token.actions.githubusercontent.com:aud": (
+                                "sts.amazonaws.com"
                             ),
-                        }
+                            "token.actions.githubusercontent.com:sub": (
+                                _github_actions_subjects(settings, suffix)
+                            ),
+                        },
+                        "StringLike": {
+                            "token.actions.githubusercontent.com:job_workflow_ref": (
+                                _github_actions_workflow_refs(settings, suffix)
+                            )
+                        },
                     },
                 }
             ],
@@ -130,14 +158,14 @@ def _esc_read_assume_role_policy(
     )
 
 
-def _esc_read_policy(
+def _ci_config_read_policy(
     *,
     account_id: str,
     partition: str,
     settings: BootstrapSettings,
     suffixes: Sequence[str],
 ) -> str:
-    """Return least-privilege policy for ESC to read CI secret payloads."""
+    """Return least-privilege policy for GitHub to read CI secret payloads."""
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -192,46 +220,44 @@ def _iam_role_exists(name: str) -> bool:
         role = aws.iam.get_role(name=name)
     except Exception as exc:
         if _is_missing_lookup_error(
-            str(exc), ("NoSuchEntity", "NoSuchEntityException")
+            str(exc),
+            ("NoSuchEntity", "NoSuchEntityException"),
         ):
             return False
         raise
     return bool(getattr(role, "arn", None))
 
 
-def _existing_pulumi_esc_oidc_provider_arn() -> str | None:
-    """Return the account-level Pulumi ESC OIDC provider ARN if present."""
-    try:
-        provider = aws.iam.get_open_id_connect_provider(url=PULUMI_ESC_OIDC_URL)
-    except Exception as exc:
-        if _is_missing_lookup_error(
-            str(exc), ("NoSuchEntity", "NoSuchEntityException")
-        ):
-            return None
-        raise
-    arn = getattr(provider, "arn", None)
-    return arn if isinstance(arn, str) and arn else None
-
-
 class CiConfiguration(pulumi.ComponentResource):
-    """Provision AWS resources that Pulumi ESC uses for CI configuration."""
+    """Provision AWS resources GitHub Actions uses for CI configuration."""
 
     def __init__(
         self,
         name: str,
         *,
         settings: BootstrapSettings | None = None,
+        oidc_provider_arn: pulumi.Input[str] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("bootstrap:ci:CiConfiguration", name, None, opts)
 
         self._settings = settings or default_settings
+        provider_arn = oidc_provider_arn or self._settings.github_oidc_provider_arn
+        if provider_arn is None:
+            raise ValueError(
+                "githubOidcProviderArn config is required for AWS CI configuration."
+            )
+
         suffixes = _ci_secret_suffixes(self._settings.environment)
         account_id = aws.get_caller_identity().account_id
         partition = aws.get_partition().partition
 
         self.secret_ids: dict[str, str] = {}
         self.secret_arns: dict[str, pulumi.Output[str]] = {}
+        self.read_roles: dict[str, aws.iam.Role] = {}
+        self.read_role_arns: dict[str, pulumi.Output[str]] = {}
+        self.read_policies: dict[str, aws.iam.RolePolicy] = {}
+
         for suffix in suffixes:
             secret_id = _ci_secret_id(self._settings, suffix)
             secret = aws.secretsmanager.Secret(
@@ -239,14 +265,14 @@ class CiConfiguration(pulumi.ComponentResource):
                 name=secret_id,
                 description=(
                     "AWS Secrets Manager source-of-truth JSON for "
-                    f"{_pulumi_esc_project(self._settings)}/{suffix} CI."
+                    f"{_ci_config_project(self._settings)}/{suffix} CI."
                 ),
                 recovery_window_in_days=30,
                 tags=base_tags(
                     {
                         "Purpose": "ci-configuration",
-                        "EscEnvironment": suffix,
-                        "Repository": _pulumi_esc_project(self._settings),
+                        "CiConfigSuffix": suffix,
+                        "Repository": _ci_config_project(self._settings),
                     },
                     settings=self._settings,
                 ),
@@ -258,63 +284,50 @@ class CiConfiguration(pulumi.ComponentResource):
             self.secret_ids[suffix] = secret_id
             self.secret_arns[suffix] = secret.arn
 
-        provider_arn = _existing_pulumi_esc_oidc_provider_arn()
-        if provider_arn is not None:
-            self.oidc_provider = aws.iam.OpenIdConnectProvider.get(
-                f"{name}-pulumi-esc-oidc-provider",
-                provider_arn,
-                opts=pulumi.ResourceOptions(parent=self),
-            )
-        else:
-            self.oidc_provider = aws.iam.OpenIdConnectProvider(
-                f"{name}-pulumi-esc-oidc-provider",
-                client_id_lists=[_pulumi_esc_audience(self._settings)],
+            role_name = _ci_config_read_role_name(self._settings, suffix)
+            role = aws.iam.Role(
+                f"{name}-github-ci-config-read-role-{suffix}",
+                name=role_name,
+                assume_role_policy=apply_output(
+                    pulumi.Output.from_input(provider_arn),
+                    lambda arn, ci_suffix=suffix: _ci_config_read_assume_role_policy(
+                        arn,
+                        self._settings,
+                        ci_suffix,
+                    ),
+                ),
                 tags=base_tags(
-                    {"Purpose": "pulumi-esc-oidc"},
+                    {
+                        "Purpose": "github-ci-configuration-read",
+                        "CiConfigSuffix": suffix,
+                    },
                     settings=self._settings,
                 ),
-                url=PULUMI_ESC_OIDC_URL,
+                opts=pulumi.ResourceOptions(
+                    parent=self,
+                    import_=role_name if _iam_role_exists(role_name) else None,
+                ),
+            )
+            self.read_roles[suffix] = role
+            self.read_role_arns[suffix] = role.arn
+            policy = aws.iam.RolePolicy(
+                f"{name}-github-ci-config-read-policy-{suffix}",
+                name=f"{role_name}-policy",
+                role=role.id,
+                policy=_ci_config_read_policy(
+                    account_id=account_id,
+                    partition=partition,
+                    settings=self._settings,
+                    suffixes=(suffix,),
+                ),
                 opts=pulumi.ResourceOptions(parent=self),
             )
-
-        role_name = _esc_read_role_name(self._settings)
-        self.read_role = aws.iam.Role(
-            f"{name}-pulumi-esc-secrets-read-role",
-            name=role_name,
-            assume_role_policy=apply_output(
-                pulumi.Output.from_input(self.oidc_provider.arn),
-                lambda arn: _esc_read_assume_role_policy(
-                    arn,
-                    self._settings,
-                    suffixes,
-                ),
-            ),
-            tags=base_tags(
-                {"Purpose": "pulumi-esc-ci-secrets-read"},
-                settings=self._settings,
-            ),
-            opts=pulumi.ResourceOptions(
-                parent=self,
-                import_=role_name if _iam_role_exists(role_name) else None,
-            ),
-        )
-        self.read_policy = aws.iam.RolePolicy(
-            f"{name}-pulumi-esc-secrets-read-policy",
-            name=f"{role_name}-policy",
-            role=self.read_role.id,
-            policy=_esc_read_policy(
-                account_id=account_id,
-                partition=partition,
-                settings=self._settings,
-                suffixes=suffixes,
-            ),
-            opts=pulumi.ResourceOptions(parent=self),
-        )
+            self.read_policies[suffix] = policy
 
         self.register_outputs(
             {
                 "secret_ids": self.secret_ids,
                 "secret_arns": self.secret_arns,
-                "read_role_arn": self.read_role.arn,
+                "read_role_arns": self.read_role_arns,
             }
         )

@@ -57,11 +57,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Load test PR ESC configuration
-        id: esc
-        uses: ./.github/actions/load-esc-ci-env
+      - name: Load test PR AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
         with:
           environment: ${{ github.event_name == 'pull_request' && 'test-pr' || 'test' }}
+          config-role-arn: ${{ github.event_name == 'pull_request' && vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN || vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: test preview
           required-keys: >-
             AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
@@ -82,7 +84,7 @@ jobs:
           done
           if [[ "${#missing[@]}" -gt 0 ]]; then
             printf 'error: trusted PR guardrails are missing %s\n' "${missing[*]}" >&2
-            echo "Populate the fixed Pulumi ESC environment for the test PR preview or shared test stack." >&2
+            echo "Populate the fixed AWS Secrets Manager CI config secret for the test PR preview or shared test stack." >&2
             exit 1
           fi
           if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
@@ -101,15 +103,15 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ steps.esc.outputs.aws-preview-role-arn }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-test-preview-${{ github.run_id }}
-          aws-region: ${{ steps.esc.outputs.aws-region }}
-          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
       - name: Emit preview evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "ESC environment: ${PULUMI_ESC_ENVIRONMENT}"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${GITHUB_SHA}"
           echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
@@ -216,11 +218,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Load test PR ESC configuration
-        id: esc
-        uses: ./.github/actions/load-esc-ci-env
+      - name: Load test PR AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
         with:
           environment: ${{ github.event_name == 'pull_request' && 'test-pr' || 'test' }}
+          config-role-arn: ${{ github.event_name == 'pull_request' && vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN || vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: test IAM validation
           required-keys: >-
             AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
@@ -229,10 +233,10 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ steps.esc.outputs.aws-preview-role-arn }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-test-iam-validate-${{ github.run_id }}
-          aws-region: ${{ steps.esc.outputs.aws-region }}
-          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
       - name: Start development environment
         run: make start

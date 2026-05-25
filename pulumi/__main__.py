@@ -73,8 +73,8 @@ if bootstrap_requested:
             bootstrap.outputs["ciConfigurationSecretArns"],
         )
         pulumi.export(
-            "pulumiEscSecretsReadRoleArn",
-            bootstrap.outputs["pulumiEscSecretsReadRoleArn"],
+            "githubCiConfigReadRoleArns",
+            bootstrap.outputs["githubCiConfigReadRoleArns"],
         )
     managed_repository_projects = bootstrap.outputs["managedRepositoryProjects"]
     pulumi.export("managedRepositoryProjects", managed_repository_projects)

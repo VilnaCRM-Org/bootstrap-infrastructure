@@ -91,19 +91,15 @@ def test_mutation_target_ci_config_secret_contract():
     assert ci_config._ci_secret_id(settings, "test") == (  # nosec B101
         "/bootstrap-infrastructure/ci/test"
     )
-    assert ci_config._pulumi_esc_subjects(settings, ("test-pr", "test")) == [  # nosec B101
-        (
-            "pulumi:environments:pulumi.organization.login:vilnacrm-org:"
-            "currentEnvironment.name:bootstrap-infrastructure/test-pr"
-        ),
-        (
-            "pulumi:environments:pulumi.organization.login:vilnacrm-org:"
-            "currentEnvironment.name:bootstrap-infrastructure/test"
-        ),
+    assert ci_config._github_actions_subjects(settings, "test-pr") == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+    ]
+    assert ci_config._github_actions_subjects(settings, "test") == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
     ]
 
     policy = json.loads(
-        ci_config._esc_read_policy(
+        ci_config._ci_config_read_policy(
             account_id="123456789012",
             partition="aws",
             settings=settings,
@@ -175,12 +171,28 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
     )
 
     with pytest.raises(ValueError, match="repoSlug config is required"):
-        ci_config._pulumi_esc_project(no_repo_settings)
+        ci_config._ci_config_project(no_repo_settings)
     with pytest.raises(ValueError, match="longer than 64 characters"):
-        ci_config._esc_read_role_name(long_role_settings)
-    assert ci_config._esc_read_role_name(settings) == (  # nosec B101
-        "PulumiEscCiSecretsRead-bootstrap-infrastructure-test"
+        ci_config._ci_config_read_role_name(long_role_settings, "test")
+    assert ci_config._ci_config_read_role_name(settings, "test") == (  # nosec B101
+        "GitHubCiConfigRead-bootstrap-infrastructure-test"
     )
+    assert ci_config._github_actions_subjects(settings, "test-pr") == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+    ]
+    assert ci_config._github_actions_subjects(settings, "prod") == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"
+    ]
+    trust_policy = json.loads(
+        ci_config._ci_config_read_assume_role_policy(
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+            settings,
+            "prod-preview",
+        )
+    )
+    assert trust_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+        "token.actions.githubusercontent.com:sub"
+    ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"]
     assert ci_config._is_missing_lookup_error(  # nosec B101
         "reading KMS Alias: empty result",
         (),
@@ -230,41 +242,6 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
     monkeypatch.setattr(ci_config.aws.iam, "get_role", failing_role)
     with pytest.raises(RuntimeError, match="iam throttled"):
         ci_config._iam_role_exists("failing")
-
-    monkeypatch.setattr(
-        ci_config.aws.iam,
-        "get_open_id_connect_provider",
-        lambda *, url: SimpleNamespace(arn=f"arn:aws:iam:::oidc-provider/{url}"),
-    )
-    assert ci_config._existing_pulumi_esc_oidc_provider_arn() == (  # nosec B101
-        f"arn:aws:iam:::oidc-provider/{ci_config.PULUMI_ESC_OIDC_URL}"
-    )
-    monkeypatch.setattr(
-        ci_config.aws.iam,
-        "get_open_id_connect_provider",
-        lambda *, url: SimpleNamespace(url=url),
-    )
-    assert ci_config._existing_pulumi_esc_oidc_provider_arn() is None  # nosec B101
-
-    def missing_provider(*, url):  # noqa: ARG001
-        raise RuntimeError("NoSuchEntityException")
-
-    def failing_provider(*, url):  # noqa: ARG001
-        raise RuntimeError("oidc throttled")
-
-    monkeypatch.setattr(
-        ci_config.aws.iam,
-        "get_open_id_connect_provider",
-        missing_provider,
-    )
-    assert ci_config._existing_pulumi_esc_oidc_provider_arn() is None  # nosec B101
-    monkeypatch.setattr(
-        ci_config.aws.iam,
-        "get_open_id_connect_provider",
-        failing_provider,
-    )
-    with pytest.raises(RuntimeError, match="oidc throttled"):
-        ci_config._existing_pulumi_esc_oidc_provider_arn()
 
 
 def test_mutation_target_adoption_helpers_treat_not_found_as_absent(monkeypatch):

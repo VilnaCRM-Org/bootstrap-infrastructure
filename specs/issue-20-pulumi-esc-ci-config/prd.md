@@ -1,4 +1,4 @@
-# PRD: Issue 20 Pulumi ESC CI Configuration
+# PRD: Issue 20 AWS Secrets Manager CI Configuration
 
 ## Problem
 
@@ -10,16 +10,17 @@ configuration drift outside GitOps review.
 
 ## Goals
 
-- Move privileged CI account configuration into AWS Secrets Manager JSON secrets
-  that are projected through fixed Pulumi ESC environments.
-- Manage the AWS Secrets Manager secret containers and ESC read roles through
-  Pulumi while leaving secret JSON values human-populated in AWS Secrets
-  Manager.
+- Move privileged CI account configuration into fixed AWS Secrets Manager JSON
+  secrets.
+- Manage the AWS Secrets Manager secret containers and `GitHubCiConfigRead-*`
+  roles through Pulumi while leaving secret JSON values human-populated in AWS
+  Secrets Manager.
 - Keep the protected GitHub `prod` Environment only as a production approval
   boundary.
-- Authenticate to ESC and AWS with OIDC; do not introduce long-lived AWS keys
-  or Pulumi access tokens.
-- Validate ESC-loaded configuration before AWS credentials are requested.
+- Authenticate to AWS with GitHub OIDC; do not introduce long-lived AWS keys or
+  Pulumi access tokens.
+- Validate AWS Secrets Manager-loaded configuration before deployment
+  credentials are requested.
 - Update AWS OIDC trust to fixed repository subjects and workflow refs, with a
   GitHub environment subject only for production apply.
 - Deduplicate operations alert issues created from repeated AWS Backup failure
@@ -32,24 +33,23 @@ configuration drift outside GitOps review.
 - Migrating Pulumi state secrets away from the existing AWS KMS provider.
 - Replacing GitHub branch protection or production reviewer controls.
 
-## Required ESC Environments
+## Required AWS CI Config Secrets
 
-| ESC environment | Purpose |
+| CI suffix | AWS Secrets Manager secret ID | Purpose |
 | --- | --- |
-| `vilnacrm-org/bootstrap-infrastructure/test-pr` | Trusted PR preview and IAM validation |
-| `vilnacrm-org/bootstrap-infrastructure/test` | Test apply, drift, operations triage, and evidence |
-| `vilnacrm-org/bootstrap-infrastructure/prod-preview` | Production preview, IAM validation, and drift |
-| `vilnacrm-org/bootstrap-infrastructure/prod` | Production apply after protected GitHub approval |
+| `test-pr` | `/bootstrap-infrastructure/ci/test-pr` | Trusted PR preview and IAM validation |
+| `test` | `/bootstrap-infrastructure/ci/test` | Test apply, drift, operations triage, and evidence |
+| `prod-preview` | `/bootstrap-infrastructure/ci/prod-preview` | Production preview, IAM validation, and drift |
+| `prod` | `/bootstrap-infrastructure/ci/prod` | Production apply after protected GitHub approval |
 
-The ESC organization and project prefix is committed in
-`.github/ci/pulumi-esc.json`, while workflow call sites pass only fixed suffixes
-such as `test-pr` or `prod`. Account-local values remain AWS Secrets
-Manager-owned and are imported by ESC with the `aws-secrets` provider.
+Workflow call sites pass only fixed suffixes such as `test-pr` or `prod`.
+Account-local values remain AWS Secrets Manager-owned and are loaded by the
+local AWS CI action through GitHub OIDC.
 
 ## Acceptance Criteria
 
-- Privileged workflows load one fixed ESC environment through a local composite
-  action and never derive the environment name from PR/comment payloads.
+- Privileged workflows load one fixed AWS Secrets Manager CI secret through a
+  local composite action and never derive the suffix from PR/comment payloads.
 - Workflows have no references to `vars.AWS_*`, GitHub `test` or
   `prod-preview` deployment environments, or `secrets.PULUMI_ACCESS_TOKEN`.
 - Production apply jobs are the only privileged jobs bound to GitHub
@@ -58,10 +58,11 @@ Manager-owned and are imported by ESC with the `aws-secrets` provider.
   `environment:test` and production roles still trust `environment:prod`.
 - Operations alert triage comments on an existing open canonical issue when a
   stable alert fingerprint already exists.
-- Operator documentation describes AWS Secrets Manager-backed ESC keys, OIDC
+- Operator documentation describes AWS Secrets Manager-backed CI keys, OIDC
   trust, stack migration, and manual secure setup steps.
-- Pulumi outputs expose the AWS Secrets Manager container IDs and ESC read role
-  ARN needed to configure the hosted ESC environments.
+- Pulumi outputs expose the AWS Secrets Manager container IDs and
+  `GitHubCiConfigRead-*` role ARNs needed to configure GitHub repository
+  variables.
 
 ## BMAD/BMALPH Notes
 

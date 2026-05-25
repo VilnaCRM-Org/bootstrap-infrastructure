@@ -1,4 +1,4 @@
-# Current Closeout Evidence: Issue 20 Pulumi ESC CI Configuration
+# Current Closeout Evidence: Issue 20 AWS Secrets Manager CI Configuration
 
 Recorded on 2026-05-25 in the `Europe/Sofia` timezone for branch
 `codex/issue20-pulumi-esc`.
@@ -10,7 +10,7 @@ Recorded on 2026-05-25 in the `Europe/Sofia` timezone for branch
 | PR | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/57` |
 | Audited head SHA | `fd313a41695319c8beb1bbce75ec4c5860affe9d` |
 | Audited short SHA | `fd313a4` |
-| Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi Cloud/ESC is not the vault and is only the fixed projection and OIDC layer. |
+| Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi Cloud and Pulumi ESC are not used for CI configuration. |
 | Secret handling | No secret values, `GetSecretValue` responses, decrypted stack outputs, access keys, or tokens were read or recorded. |
 
 ## GitHub State
@@ -19,7 +19,7 @@ Open repository issues at the time of this audit:
 
 | Issue | State | Current disposition |
 | --- | --- | --- |
-| `#20` | Open | GitOps implementation is present in PR `#57`; live closeout still needs external ESC/AWS setup and successful privileged checks. |
+| `#20` | Open | GitOps implementation is present in PR `#57`; live closeout still needs external AWS CI config/AWS setup and successful privileged checks. |
 | `#49` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
 | `#50` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
 | `#52` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
@@ -35,18 +35,16 @@ setup checks. All repo-side checks were green, including `Local Battery`,
 `Mutation`, `CodeRabbit`, `qlty check`, `qlty fmt`, `CodeQL`, `Bandit`, and
 `Actionlint`.
 
-The current privileged `Preview` and `Test Account Evidence` checks fail before
-ESC values or AWS credentials are loaded:
+The prior privileged `Preview` and `Test Account Evidence` checks failed before
+AWS CI values or AWS credentials were loaded:
 
 ```text
 Invalid response from token exchange 400: Bad Request (invalid_request: invalid organization vilnacrm-org)
 ```
 
-This failure is outside the repository runtime path unless the committed ESC
-organization slug is wrong. If `vilnacrm-org` is the real ESC organization, a
-human maintainer must configure GitHub-to-ESC OIDC for that organization. If it
-is not the real organization, update `.github/ci/pulumi-esc.json` through
-review.
+The AWS-only setup removes that Pulumi Cloud token exchange path. Remaining live
+setup work is limited to valid AWS credentials, AWS Secrets Manager payloads,
+and GitHub repository variables.
 
 ## AWS Metadata Checks
 
@@ -85,13 +83,14 @@ The production operations queue exists:
 | Delayed messages | `0` |
 | SSE | `SqsManagedSseEnabled=true` |
 
-The production ESC AWS backing resources for this PR are not present yet:
+The production AWS CI config AWS backing resources for this PR are not present yet:
 
 | Resource | Metadata-only result |
 | --- | --- |
 | `/bootstrap-infrastructure/ci/prod-preview` | `ResourceNotFoundException` from `secretsmanager:DescribeSecret` |
 | `/bootstrap-infrastructure/ci/prod` | `ResourceNotFoundException` from `secretsmanager:DescribeSecret` |
-| `PulumiEscCiSecretsRead-bootstrap-infrastructure-prod` | `NoSuchEntityException` from `iam:GetRole` |
+| `GitHubCiConfigRead-bootstrap-infrastructure-prod-preview` | `NoSuchEntityException` from `iam:GetRole` |
+| `GitHubCiConfigRead-bootstrap-infrastructure-prod` | `NoSuchEntityException` from `iam:GetRole` |
 
 That absence is expected before the reviewed Pulumi `prod` stack has been
 applied. It also proves production privileged checks cannot be treated as
@@ -101,16 +100,16 @@ complete yet.
 
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
-| Fixed privileged ESC environments | Workflows call `.github/actions/load-esc-ci-env` with fixed suffixes such as `test-pr`, `test`, `prod-preview`, and `prod`. | GitOps implemented |
-| AWS Secrets Manager source of truth | Pulumi creates secret containers and ESC read roles; docs/tests state values stay in AWS Secrets Manager and must not be copied into ESC encrypted literals, Pulumi Cloud secrets, or any other ESC-managed secret value. | GitOps implemented |
+| Fixed privileged AWS Secrets Manager CI secrets | Workflows call `.github/actions/load-aws-ci-env` with fixed suffixes such as `test-pr`, `test`, `prod-preview`, and `prod`. | GitOps implemented |
+| AWS Secrets Manager source of truth | Pulumi creates secret containers and GitHub OIDC read roles; docs/tests state values stay in AWS Secrets Manager and must not be copied into Pulumi config, GitHub variables, workflow logs, or docs. | GitOps implemented |
 | No GitHub `test` or `prod-preview` deployment environments for non-approval jobs | Workflow contracts and tests enforce only protected production apply uses `environment: prod`. | GitOps implemented |
 | Production approval preserved | Protected GitHub `prod` Environment remains the production apply approval boundary. | GitOps implemented; repository-admin verification still required |
 | Protected manual reconcile gate | The repository controls helper now prints, applies, and verifies both `prod` and `operations-alert-reconcile`; the manual reconcile workflow requires `operations-alert-reconcile` and has no AWS/OIDC permission. | GitOps implemented; repository-admin verification still required |
-| Fork PR isolation | Fork paths stay unprivileged and do not open ESC or request AWS credentials. | GitOps implemented |
+| Fork PR isolation | Fork paths stay unprivileged and do not open AWS CI config or request AWS credentials. | GitOps implemented |
 | KMS-backed Pulumi secrets provider | Validators require `awskms://` for shared CI stack configuration. | GitOps implemented |
-| Live ESC open and AWS role assumption | Current privileged checks fail at GitHub-to-ESC token exchange for `vilnacrm-org`. | Manual secure setup required |
+| Live AWS secret load and AWS role assumption | Privileged checks require the AWS-only GitHub variables, read roles, and Secrets Manager payloads. | Manual secure setup required |
 | AWS Secrets Manager payloads populated | Pulumi intentionally does not manage `SecretVersion` resources or JSON values. | Manual secure setup required |
-| Legacy GitHub Environment variable cleanup | Cleanup workflow is present and confirmation-gated. | Run manually only after ESC-backed privileged CI is green |
+| Legacy GitHub Environment variable cleanup | Cleanup workflow is present and confirmation-gated. | Run manually only after AWS Secrets Manager-backed privileged CI is green |
 
 ## Legacy Operations Alert Issues
 
@@ -142,12 +141,11 @@ canonical fingerprinted issue and records the sanitized confirmation reference.
 ## Manual Secure Steps Still Required
 
 1. Apply the reviewed Pulumi `test` and `prod` stacks so AWS creates the four
-   Secrets Manager containers and `PulumiEscCiSecretsRead-*` roles.
+   Secrets Manager containers and `GitHubCiConfigRead-*` roles.
 2. Populate the four AWS Secrets Manager JSON values in the owning AWS accounts.
-3. Create the four ESC environments and configure each one to import its AWS
-   Secrets Manager JSON secret with `fn::open::aws-secrets`.
-4. Configure GitHub-to-ESC OIDC for the real ESC organization and ESC AWS OIDC
-   for each Secrets Manager read role.
+3. Populate the four AWS Secrets Manager CI secrets with private JSON payloads.
+4. Configure GitHub repository variables with the `GitHubCiConfigRead-*` role
+   ARNs and account regions.
 5. Refresh local test-account AWS CLI credentials and rerun metadata-only
    verification.
 6. Have a repository administrator run
@@ -157,7 +155,7 @@ canonical fingerprinted issue and records the sanitized confirmation reference.
    Environments.
 7. Rerun privileged PR checks and confirm `Preview` and `Test Account Evidence`
    pass on the current head.
-8. Run GitHub Environment legacy variable cleanup only after ESC-backed
+8. Run GitHub Environment legacy variable cleanup only after AWS Secrets Manager-backed
    privileged CI is green, then delete the temporary cleanup token.
 9. Close `#20` only after the successful run and reviewer acceptance of the AWS
    Secrets Manager source-of-truth refinement.

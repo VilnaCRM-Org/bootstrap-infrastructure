@@ -1,4 +1,4 @@
-# Implementation Readiness Report: Issue 20 Pulumi ESC CI Configuration
+# Implementation Readiness Report: Issue 20 AWS Secrets Manager CI Configuration
 
 ## Status
 
@@ -7,28 +7,25 @@ cloud metadata checks pass.
 
 ## Completed Design Decisions
 
-- Fixed ESC environment names are committed in workflows; user-controlled event
-  payloads cannot select an ESC environment.
-- AWS Secrets Manager is the source of truth for account-local CI values; ESC
-  imports those JSON secrets with `aws-secrets` and projects workflow
-  `environmentVariables`.
-- Pulumi Cloud/ESC is not the vault; it stores only the fixed environment
-  definition and provider bindings needed to project AWS Secrets Manager
-  values.
-- Pulumi manages the AWS Secrets Manager secret containers and the ESC read
-  roles, but not the JSON secret values.
+- Fixed AWS Secrets Manager CI secret names are committed in workflows; user-controlled event
+  payloads cannot select an AWS Secrets Manager CI secret.
+- AWS Secrets Manager is the source of truth for account-local CI values; the
+  workflow loader reads those JSON secrets directly through GitHub OIDC.
+- Pulumi Cloud and Pulumi ESC are not used for CI configuration.
+- Pulumi manages the AWS Secrets Manager secret containers and
+  `GitHubCiConfigRead-*` roles, but not the JSON secret values.
 - GitHub `prod` remains the only deployment environment because it provides
   human production approval.
 - AWS role trust uses repository ref, pull request, protected production
   environment, and workflow-ref conditions.
-- ESC validation happens before AWS credentials are requested.
+- AWS CI config validation happens before AWS credentials are requested.
 - Operations alert dedupe uses a stable issue fingerprint and preserves the SQS
   message until GitHub write success.
 
 ## Validation Plan
 
 - `uv run ruff check` over changed scripts and tests.
-- `uv run pytest` over ESC validator, operations alert triage, component trust,
+- `uv run pytest` over AWS CI config validator, operations alert triage, component trust,
   and Pulumi workflow-contract tests.
 - `make test-actionlint` and `make test-yaml`.
 - Test account metadata-only AWS CLI checks for caller identity, EventBridge,
@@ -40,9 +37,9 @@ cloud metadata checks pass.
 
 - AWS Secrets Manager JSON values must be populated outside this PR after the
   Pulumi-managed secret containers exist.
-- ESC environments must be created with `aws-secrets` imports and OIDC access
-  to the relevant AWS Secrets Manager read roles.
-- ESC AWS OIDC and GitHub-to-ESC OIDC trust must be enabled without moving
+- AWS Secrets Manager CI secrets and `GitHubCiConfigRead-*` roles must exist in
+  the owning AWS accounts.
+- GitHub OIDC and GitHub-to-AWS OIDC trust must be enabled without moving
   account-local values out of AWS Secrets Manager.
 - GitHub `prod` Environment reviewer and branch restrictions require repository
   admin rights.
@@ -51,9 +48,8 @@ cloud metadata checks pass.
 
 The current PR and AWS metadata audit is retained in
 `current-closeout-evidence-2026-05-25.md`; it records the failing
-GitHub-to-ESC organization exchange, invalid local test-account AWS token, and
-missing production Secrets Manager containers/read role as external closeout
-dependencies.
+invalid local test-account AWS token, and missing production Secrets Manager
+containers/read roles as external closeout dependencies.
 
 ## Residual Risks
 

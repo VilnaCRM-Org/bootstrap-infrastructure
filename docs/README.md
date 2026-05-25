@@ -148,17 +148,17 @@ concurrency groups, bounded job timeouts, pinned actions, and a shared
 `make start` bootstrap path so local and GitHub-hosted
 validation stay aligned.
 
-Privileged issue 20 workflows use fixed Pulumi ESC environments for account
+Privileged issue 20 workflows use fixed AWS Secrets Manager CI secrets for account
 separation: `test-pr` for trusted PR preview, `test` for test apply, drift,
 operations alert triage, and evidence, `prod-preview` for production preview
 and drift, and `prod` for production apply. GitHub keeps only the protected
 `prod` Environment for approval. Configure account-local variables, OIDC roles,
 Pulumi backend URLs, and AWS KMS-backed Pulumi secrets providers in the
 [GitHub Actions Secrets guide](github-actions-secrets.md).
-Use the [Pulumi ESC and AWS Secrets Manager cutover manual](esc-aws-secrets-manager-cutover.md)
+Use the [AWS Secrets Manager CI cutover manual](aws-secrets-manager-ci-cutover.md)
 for the human setup sequence that populates AWS Secrets Manager, configures
-ESC, verifies privileged CI, removes legacy GitHub Environment variables, and
-reconciles legacy operations-alert issues.
+GitHub repository variables, verifies privileged CI, removes legacy GitHub
+Environment variables, and reconciles legacy operations-alert issues.
 The PR-comment path accepts `/pulumi test plan`, `/pulumi test up`,
 `/pulumi prod plan`, and `/pulumi prod up`; production comments run the test
 account apply and post-apply drift gates successfully before production starts.

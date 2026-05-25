@@ -36,29 +36,25 @@ Docker-backed pull request checks use the same Docker workspace and the same
 ## Multi-Account Environments
 
 Issue 20 moves privileged account configuration from GitHub Environment
-variables into AWS Secrets Manager JSON secrets that are projected through
-fixed Pulumi ESC environments:
+variables into fixed AWS Secrets Manager JSON secrets:
 
-| ESC environment | AWS account intent | Workflow use |
+| CI suffix | AWS Secrets Manager secret ID | Workflow use |
 | --- | --- | --- |
-| `vilnacrm-org/bootstrap-infrastructure/test-pr` | Test account preview access | Trusted same-repo PR previews and IAM validation |
-| `vilnacrm-org/bootstrap-infrastructure/test` | Test account apply, drift, and evidence access | Main-branch test applies, test drift, operations alert triage, Well-Architected evidence |
-| `vilnacrm-org/bootstrap-infrastructure/prod-preview` | Production account preview-only access | Production preview, IAM validation, and production drift |
-| `vilnacrm-org/bootstrap-infrastructure/prod` | Production account apply access | Production apply after protected GitHub `prod` approval |
+| `test-pr` | `/bootstrap-infrastructure/ci/test-pr` | Trusted same-repo PR previews and IAM validation |
+| `test` | `/bootstrap-infrastructure/ci/test` | Main-branch test applies, test drift, operations alert triage, Well-Architected evidence |
+| `prod-preview` | `/bootstrap-infrastructure/ci/prod-preview` | Production preview, IAM validation, and production drift |
+| `prod` | `/bootstrap-infrastructure/ci/prod` | Production apply after protected GitHub `prod` approval |
 
-The ESC organization and project prefix is resolved from
-`.github/ci/pulumi-esc.json` before `pulumi/auth-actions` runs. The workflows
-pass only fixed suffixes such as `test`, `prod-preview`, or `prod` to the local
-ESC loader action.
-
-Each ESC environment imports its own AWS Secrets Manager JSON secret with the
-`aws-secrets` provider and projects `AWS_ACCOUNT_ID`, OIDC role ARNs,
-`PULUMI_BACKEND_URL`, `PULUMI_SECRETS_PROVIDER`, region, and stack list into
-workflow `environmentVariables`. The Pulumi stacks manage the Secrets Manager
-secret containers and the `PulumiEscCiSecretsRead-*` role that ESC assumes, but
-humans populate the JSON values in AWS Secrets Manager. Shared Pulumi backends
-must use AWS KMS secrets providers via `PULUMI_SECRETS_PROVIDER`, and stack
-initialization or migration must pass
+The workflows pass only fixed suffixes such as `test`, `prod-preview`, or
+`prod` to `.github/actions/load-aws-ci-env`. The loader assumes the matching
+`GitHubCiConfigRead-*` role through GitHub OIDC, reads the JSON secret, validates
+`AWS_ACCOUNT_ID`, OIDC role ARNs, `PULUMI_BACKEND_URL`,
+`PULUMI_SECRETS_PROVIDER`, region, and stack lists, then exports only validated
+keys to the job environment. The Pulumi stacks manage the Secrets Manager secret
+containers and the `GitHubCiConfigRead-*` roles, but humans populate the JSON
+values in AWS Secrets Manager. Shared Pulumi backends must use AWS KMS secrets
+providers via `PULUMI_SECRETS_PROVIDER`, and stack initialization or migration
+must pass
 `--secrets-provider "$PULUMI_SECRETS_PROVIDER"`. GitHub keeps only the protected
 `prod` Environment for approval; `test` and `prod-preview` are not GitHub
 deployment environments.
@@ -114,11 +110,11 @@ ask for broader access only where automation actually needs to write tags,
 releases, or pull requests.
 
 Privileged infrastructure jobs add `id-token: write` only when they need GitHub
-OIDC or ESC OIDC. Fork pull-request jobs do not load ESC, do not bind a GitHub
+OIDC. Fork pull-request jobs do not load AWS credentials, do not bind a GitHub
 environment, and do not request OIDC token permission. Privileged jobs pass
-`allowed-account-ids` with the ESC-projected `AWS_ACCOUNT_ID` from AWS Secrets
-Manager and use purpose-specific roles: preview/drift roles for non-mutating
-checks and apply roles for deployments.
+`allowed-account-ids` with the `AWS_ACCOUNT_ID` loaded from AWS Secrets Manager
+and use purpose-specific roles: preview/drift roles for non-mutating checks and
+apply roles for deployments.
 
 ## Local Parity
 
@@ -152,7 +148,7 @@ Use this checklist:
 4. add `concurrency`
 5. set `timeout-minutes`
 6. call `make start` if the job uses the Docker workspace
-7. load AWS Secrets Manager-backed configuration through the correct fixed ESC environment
+7. load AWS Secrets Manager-backed configuration through the correct fixed AWS Secrets Manager CI secret
 8. use OIDC with explicit account allow-listing for AWS jobs
 9. extend the structural tests and docs in the same PR
 

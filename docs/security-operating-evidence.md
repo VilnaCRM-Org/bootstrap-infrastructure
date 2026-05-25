@@ -15,8 +15,8 @@ Current vulnerability-review evidence is retained in
 
 | Principal | Current control | Evidence source | Owner | Cadence | Fallback |
 | --- | --- | --- | --- | --- | --- |
-| GitHub Actions preview and IAM validation | AWS Secrets Manager holds account-local config; fixed Pulumi ESC environments project it at runtime; AWS OIDC trust is scoped to fixed repo subjects and workflow refs; no static AWS keys. | `.github/workflows/pulumi-pr-guardrails.yml`, `.github/actions/load-esc-ci-env/action.yml`, `docs/github-actions-secrets.md`, `pulumi/infra/automation.py`. | Maintainer plus security reviewer | Per workflow or trust-policy change | Fail privileged jobs when ESC variables are missing or account ID does not match. |
-| GitHub Actions apply | Separate apply role, protected GitHub `prod` Environment for production approval, saved-plan manifest, and commit SHA checks. | `.github/workflows/pulumi-test-deploy.yml`, `.github/workflows/pulumi-prod.yml`, `scripts/run_pulumi_command.py`. | Maintainer plus SRE | Per deploy workflow change | Do not apply until the ESC environment, SHA, manifest, destructive diff, and IAM validation evidence match. |
+| GitHub Actions preview and IAM validation | AWS Secrets Manager holds account-local config; fixed AWS Secrets Manager CI secrets are loaded at runtime; AWS OIDC trust is scoped to fixed repo subjects and workflow refs; no static AWS keys. | `.github/workflows/pulumi-pr-guardrails.yml`, `.github/actions/load-aws-ci-env/action.yml`, `docs/github-actions-secrets.md`, `pulumi/infra/automation.py`. | Maintainer plus security reviewer | Per workflow or trust-policy change | Fail privileged jobs when AWS CI config variables are missing or account ID does not match. |
+| GitHub Actions apply | Separate apply role, protected GitHub `prod` Environment for production approval, saved-plan manifest, and commit SHA checks. | `.github/workflows/pulumi-test-deploy.yml`, `.github/workflows/pulumi-prod.yml`, `scripts/run_pulumi_command.py`. | Maintainer plus SRE | Per deploy workflow change | Do not apply until the AWS Secrets Manager CI secret, SHA, manifest, destructive diff, and IAM validation evidence match. |
 | Local maintainer AWS access | Local credentials are outside the repository and are passed only through explicit Docker environment flags. | `.env` is ignored; `.env.empty` is committed; `docs/security-baseline.md`. | Maintainer | Quarterly | Treat local static keys as an exception requiring external owner approval and rotation evidence. |
 | Human GitHub administration | Branch rulesets and environments require repository admin rights. | `scripts/configure_github_repository_controls.py` documents the desired state. | Repository admin | Per ruleset or environment change | Keep branch protection and production approval unresolved until GitHub metadata proves the controls. |
 
@@ -24,8 +24,8 @@ Current vulnerability-review evidence is retained in
 
 | Role or policy surface | Scope | Boundary | Validation |
 | --- | --- | --- | --- |
-| Preview role | Reads stack state, generates Pulumi previews, runs destructive diff and IAM Access Analyzer validation. | Fixed ESC environment, fixed workflow-ref OIDC trust, and account allow-listing. | Same-repo PR guardrail workflow and `make test-guardrails`. |
-| Apply role | Applies saved plans only in `test` or protected `prod`. | Fixed ESC environment, protected GitHub `prod` approval for production, commit SHA checks, saved-plan manifest, backend match, and plan hash verification. | `make pulumi-plan`, `make pulumi-up-plan`, workflow tests, and unit coverage. |
+| Preview role | Reads stack state, generates Pulumi previews, runs destructive diff and IAM Access Analyzer validation. | Fixed AWS Secrets Manager CI secret, fixed workflow-ref OIDC trust, and account allow-listing. | Same-repo PR guardrail workflow and `make test-guardrails`. |
+| Apply role | Applies saved plans only in `test` or protected `prod`. | Fixed AWS Secrets Manager CI secret, protected GitHub `prod` approval for production, commit SHA checks, saved-plan manifest, backend match, and plan hash verification. | `make pulumi-plan`, `make pulumi-up-plan`, workflow tests, and unit coverage. |
 | Bootstrap automation policy | Manages repository-prefixed S3, KMS, IAM, Backup, ECR, EventBridge, CloudTrail, SNS/SQS, Budgets, Cost Anomaly, GuardDuty, Security Hub, and AWS Config resources. | Resource ARNs, deterministic name prefixes, request/resource tags, service constraints, and policy-pack wildcard checks. | `tests/unit/test_components.py`, `tests/policies/test_policy_pack.py`, `make test-iam-validation` when AWS credentials are available. |
 | AWS Config recorder role | Allows AWS Config to describe supported resources and write delivery objects to the dedicated Config bucket. | Service principal trust for `config.amazonaws.com` and bucket-prefix policy. | Pulumi unit tests and real preview policy-pack validation. |
 | Backup role | Allows AWS Backup to protect repository state/log buckets and restore to isolated drill locations. | `iam:PassedToService` condition for AWS Backup plus scoped backup resources. | Restore evidence and backup component tests. |
@@ -56,7 +56,7 @@ self-managed by the same bootstrap automation role it is meant to constrain.
 
 Current compensating controls are:
 
-- ESC-scoped CI configuration with fixed GitHub OIDC trust subjects
+- AWS Secrets Manager-scoped CI configuration with fixed GitHub OIDC trust subjects
 - account allow-listing in privileged jobs
 - deterministic AWS resource names and ARN scopes
 - request and resource tag conditions where AWS supports them

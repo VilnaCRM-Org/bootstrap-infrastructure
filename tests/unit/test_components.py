@@ -260,16 +260,14 @@ def test_github_automation_trust_keeps_environment_subject_prod_only():
     ]
 
 
-def test_ci_configuration_manages_aws_secret_containers_and_esc_read_role(
+def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
     monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
     monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
-    monkeypatch.setattr(
-        ci_config,
-        "_existing_pulumi_esc_oidc_provider_arn",
-        lambda: None,
+    provider_arn = (
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
     )
     settings = config.BootstrapSettings(
         org="VilnaCRM-Org",
@@ -288,13 +286,21 @@ def test_ci_configuration_manages_aws_secret_containers_and_esc_read_role(
     )
 
     start = len(pulumi_mocks.resources)
-    component = CiConfiguration("ci-configuration", settings=settings)
+    component = CiConfiguration(
+        "ci-configuration",
+        settings=settings,
+        oidc_provider_arn=provider_arn,
+    )
 
     _sync_await(future_output(component.secret_arns["test-pr"]))
     _sync_await(future_output(component.secret_arns["test"]))
-    read_role_arn = _sync_await(future_output(component.read_role.arn))
-    assert read_role_arn.endswith(  # nosec B101
-        ":role/PulumiEscCiSecretsRead-bootstrap-infrastructure-test"
+    test_pr_role_arn = _sync_await(future_output(component.read_role_arns["test-pr"]))
+    test_role_arn = _sync_await(future_output(component.read_role_arns["test"]))
+    assert test_pr_role_arn.endswith(  # nosec B101
+        ":role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr"
+    )
+    assert test_role_arn.endswith(  # nosec B101
+        ":role/GitHubCiConfigRead-bootstrap-infrastructure-test"
     )
     assert component.secret_ids == {  # nosec B101
         "test-pr": "/bootstrap-infrastructure/ci/test-pr",
@@ -319,78 +325,76 @@ def test_ci_configuration_manages_aws_secret_containers_and_esc_read_role(
         state["tags"]["Purpose"] == "ci-configuration"
         for state in secret_states.values()
     )
-
-    provider_state = _resource_state_by_name(
-        pulumi_mocks,
-        "ci-configuration-pulumi-esc-oidc-provider",
+    assert (
+        secret_states["/bootstrap-infrastructure/ci/test-pr"]["tags"][  # nosec B101
+            "CiConfigSuffix"
+        ]
+        == "test-pr"
     )
-    assert provider_state["url"] == ci_config.PULUMI_ESC_OIDC_URL  # nosec B101
-    assert provider_state["clientIdLists"] == ["aws:vilnacrm-org"]  # nosec B101
 
-    role_state = _resource_state_by_name(
+    test_pr_role_state = _resource_state_by_name(
         pulumi_mocks,
-        "ci-configuration-pulumi-esc-secrets-read-role",
+        "ci-configuration-github-ci-config-read-role-test-pr",
     )
-    assume_role_policy = json.loads(role_state["assumeRolePolicy"])
-    condition = assume_role_policy["Statement"][0]["Condition"]["StringEquals"]
-    assert condition == {  # nosec B101
-        "api.pulumi.com/oidc:aud": "aws:vilnacrm-org",
-        "api.pulumi.com/oidc:sub": [
-            (
-                "pulumi:environments:pulumi.organization.login:vilnacrm-org:"
-                "currentEnvironment.name:bootstrap-infrastructure/test-pr"
-            ),
-            (
-                "pulumi:environments:pulumi.organization.login:vilnacrm-org:"
-                "currentEnvironment.name:bootstrap-infrastructure/test"
-            ),
+    test_role_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-github-ci-config-read-role-test",
+    )
+    test_pr_policy = json.loads(test_pr_role_state["assumeRolePolicy"])
+    test_policy = json.loads(test_role_state["assumeRolePolicy"])
+    test_pr_condition = test_pr_policy["Statement"][0]["Condition"]
+    test_condition = test_policy["Statement"][0]["Condition"]
+    assert test_pr_condition["StringEquals"] == {  # nosec B101
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": [
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+        ],
+    }
+    assert test_pr_condition["StringLike"][  # nosec B101
+        "token.actions.githubusercontent.com:job_workflow_ref"
+    ] == [
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-pr-guardrails.yml@refs/*"
+    ]
+    assert test_condition["StringEquals"] == {  # nosec B101
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": [
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
         ],
     }
 
-    policy_state = _resource_state_by_name(
+    test_pr_policy_state = _resource_state_by_name(
         pulumi_mocks,
-        "ci-configuration-pulumi-esc-secrets-read-policy",
+        "ci-configuration-github-ci-config-read-policy-test-pr",
     )
-    policy = json.loads(policy_state["policy"])
+    test_policy_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-github-ci-config-read-policy-test",
+    )
+    policy = json.loads(test_pr_policy_state["policy"])
     statement = policy["Statement"][0]
     assert statement["Action"] == [  # nosec B101
         "secretsmanager:DescribeSecret",
         "secretsmanager:GetSecretValue",
     ]
-    policy_text = json.dumps(policy)
-    assert "/bootstrap-infrastructure/ci/test-pr" in policy_text  # nosec B101
-    assert "/bootstrap-infrastructure/ci/test" in policy_text  # nosec B101
+    assert statement["Resource"] == [  # nosec B101
+        "arn:aws:secretsmanager:*:123456789012:secret:"
+        "/bootstrap-infrastructure/ci/test-pr-*"
+    ]
+    test_policy_document = json.loads(test_policy_state["policy"])
+    assert (  # nosec B101
+        "/bootstrap-infrastructure/ci/test" in json.dumps(test_policy_document)
+    )
 
 
-def test_ci_configuration_reuses_existing_pulumi_esc_oidc_provider(
+def test_ci_configuration_uses_github_oidc_provider_for_prod_suffixes(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
-    existing_provider_arn = (
-        "arn:aws:iam::123456789012:oidc-provider/api.pulumi.com/oidc"
+    provider_arn = (
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
     )
-    captured = {}
-
-    class FakeProvider:
-        arn = pulumi.Output.from_input(existing_provider_arn)
-
-    def fake_get_provider(resource_name, provider_arn, **_kwargs):
-        captured["resource_name"] = resource_name
-        captured["provider_arn"] = provider_arn
-        return FakeProvider()
-
     monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
     monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
-    monkeypatch.setattr(
-        ci_config,
-        "_existing_pulumi_esc_oidc_provider_arn",
-        lambda: existing_provider_arn,
-    )
-    monkeypatch.setattr(
-        ci_config.aws.iam.OpenIdConnectProvider,
-        "get",
-        fake_get_provider,
-    )
     settings = config.BootstrapSettings(
         org="VilnaCRM-Org",
         repo="bootstrap-infrastructure",
@@ -408,13 +412,14 @@ def test_ci_configuration_reuses_existing_pulumi_esc_oidc_provider(
     )
 
     start = len(pulumi_mocks.resources)
-    component = CiConfiguration("ci-configuration-existing", settings=settings)
+    component = CiConfiguration(
+        "ci-configuration-prod",
+        settings=settings,
+        oidc_provider_arn=provider_arn,
+    )
 
-    _sync_await(future_output(component.read_role.arn))
-    assert captured == {  # nosec B101
-        "resource_name": "ci-configuration-existing-pulumi-esc-oidc-provider",
-        "provider_arn": existing_provider_arn,
-    }
+    _sync_await(future_output(component.read_role_arns["prod-preview"]))
+    _sync_await(future_output(component.read_role_arns["prod"]))
     provider_resources = {
         name
         for resource_type, name, _state in pulumi_mocks.resources[start:]
@@ -425,6 +430,22 @@ def test_ci_configuration_reuses_existing_pulumi_esc_oidc_provider(
         "prod-preview": "/bootstrap-infrastructure/ci/prod-preview",
         "prod": "/bootstrap-infrastructure/ci/prod",
     }
+    preview_role_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-prod-github-ci-config-read-role-prod-preview",
+    )
+    prod_role_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-prod-github-ci-config-read-role-prod",
+    )
+    preview_policy = json.loads(preview_role_state["assumeRolePolicy"])
+    prod_policy = json.loads(prod_role_state["assumeRolePolicy"])
+    assert preview_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+        "token.actions.githubusercontent.com:sub"
+    ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"]
+    assert prod_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+        "token.actions.githubusercontent.com:sub"
+    ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"]
 
 
 def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
@@ -1084,7 +1105,7 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert "backupRoleArn" in bootstrap.outputs  # nosec B101
     assert "ciConfigurationSecretIds" in bootstrap.outputs  # nosec B101
     assert "ciConfigurationSecretArns" in bootstrap.outputs  # nosec B101
-    assert "pulumiEscSecretsReadRoleArn" in bootstrap.outputs  # nosec B101
+    assert "githubCiConfigReadRoleArns" in bootstrap.outputs  # nosec B101
     assert "guardDutyDetectorId" in bootstrap.outputs  # nosec B101
     assert "securityHubAccountArn" in bootstrap.outputs  # nosec B101
     assert "awsConfigRecorderName" in bootstrap.outputs  # nosec B101
@@ -1586,12 +1607,17 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
     )
     assert (  # nosec B101
-        "arn:aws:iam::123456789012:role/PulumiEscCiSecretsRead-"
+        "arn:aws:iam::123456789012:role/GitHubCiConfigRead-"
+        "bootstrap-infrastructure-test-pr"
+        in statements["ManageBootstrapIam"]["Resource"]
+    )
+    assert (  # nosec B101
+        "arn:aws:iam::123456789012:role/GitHubCiConfigRead-"
         "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
     )
     assert (  # nosec B101
         "arn:aws:iam::123456789012:oidc-provider/api.pulumi.com/oidc"
-        in statements["ManageBootstrapIam"]["Resource"]
+        not in statements["ManageBootstrapIam"]["Resource"]
     )
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",

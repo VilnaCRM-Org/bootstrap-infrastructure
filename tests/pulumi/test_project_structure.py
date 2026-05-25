@@ -130,7 +130,7 @@ def test_deploy_stack_exports_bootstrap_outputs() -> None:
         "deployRoleArns",
         "ciConfigurationSecretIds",
         "ciConfigurationSecretArns",
-        "pulumiEscSecretsReadRoleArn",
+        "githubCiConfigReadRoleArns",
         "managedRepositoryProjects",
         "managedRepositoryMetadata",
         "backupVaultName",
@@ -365,13 +365,13 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     )
 
 
-def test_ci_guardrails_manual_follow_up_completes_esc_cutover() -> None:
+def test_ci_guardrails_manual_follow_up_completes_aws_ci_cutover() -> None:
     """Keep the issue 20 operator checklist aligned with the cleanup path."""
     ci_guardrails = (ROOT / "docs" / "ci-guardrails.md").read_text()
 
     assert "apply the Pulumi test and production stacks" in ci_guardrails  # nosec B101
-    assert "AWS Secrets Manager values projected by the Pulumi" in ci_guardrails  # nosec B101
-    assert "fn::open::aws-secrets" in ci_guardrails  # nosec B101
+    assert "AWS Secrets Manager" in ci_guardrails  # nosec B101
+    assert "GitHubCiConfigRead" in ci_guardrails  # nosec B101
     assert "GitHub Environment Legacy Variable Cleanup" in ci_guardrails  # nosec B101
     assert "GH_ENVIRONMENT_ADMIN_TOKEN" in ci_guardrails  # nosec B101
     assert "no stale AWS trust subjects" in ci_guardrails  # nosec B101
@@ -380,40 +380,37 @@ def test_ci_guardrails_manual_follow_up_completes_esc_cutover() -> None:
 
 
 def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
-    """Keep the human ESC cutover runbook explicit and source-of-truth safe."""
-    manual = (ROOT / "docs" / "esc-aws-secrets-manager-cutover.md").read_text()
+    """Keep the human AWS-only cutover runbook explicit and source-of-truth safe."""
+    manual = (ROOT / "docs" / "aws-secrets-manager-ci-cutover.md").read_text()
     setup_doc = (ROOT / "docs" / "github-actions-secrets.md").read_text()
     github_setup_doc = (ROOT / ".github" / "github-actions-secrets.md").read_text()
     readme = (ROOT / "README.md").read_text()
     docs_readme = (ROOT / "docs" / "README.md").read_text()
 
     for phrase in (
-        "AWS Secrets Manager is the source of truth",
-        "OIDC and projection layer",
+        "does not require Pulumi Cloud or Pulumi ESC",
+        "Required GitHub Variables",
         "Required Secrets Manager Payloads",
         "put-secret-value",
         "Do not use `get-secret-value` for verification",
-        "fn::open::aws-secrets",
-        "fn::fromJSON",
-        "subjectAttributes:",
-        "currentEnvironment.name",
-        "invalid organization",
-        "GitHub-to-ESC OIDC",
+        "Fix Local AWS CLI For Test",
+        "GitHubCiConfigRead",
+        "githubCiConfigReadRoleArns",
         "GH_ENVIRONMENT_ADMIN_TOKEN",
         "Operations Alert Legacy Reconcile",
         "sre_confirmation_reference",
-        "I confirm ESC-backed privileged CI is green",
+        "I confirm AWS Secrets Manager-backed privileged CI is green",
         "I confirm these legacy issues match the canonical operations alert stream",
     ):
         assert phrase in manual  # nosec B101
 
-    for environment_name in (
-        "vilnacrm-org/bootstrap-infrastructure/test-pr",
-        "vilnacrm-org/bootstrap-infrastructure/test",
-        "vilnacrm-org/bootstrap-infrastructure/prod-preview",
-        "vilnacrm-org/bootstrap-infrastructure/prod",
+    for github_var in (
+        "AWS_TEST_PR_CI_CONFIG_ROLE_ARN",
+        "AWS_TEST_CI_CONFIG_ROLE_ARN",
+        "AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN",
+        "AWS_PROD_CI_CONFIG_ROLE_ARN",
     ):
-        assert environment_name in manual  # nosec B101
+        assert github_var in manual  # nosec B101
 
     for secret_id in (
         "/bootstrap-infrastructure/ci/test-pr",
@@ -441,10 +438,10 @@ def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
 
     assert "SecretAccessKey" not in manual  # nosec B101
     assert "secretAccessKey" not in manual  # nosec B101
-    assert "esc-aws-secrets-manager-cutover.md" in setup_doc  # nosec B101
-    assert "esc-aws-secrets-manager-cutover.md" in github_setup_doc  # nosec B101
-    assert "esc-aws-secrets-manager-cutover.md" in readme  # nosec B101
-    assert "esc-aws-secrets-manager-cutover.md" in docs_readme  # nosec B101
+    assert "aws-secrets-manager-ci-cutover.md" in setup_doc  # nosec B101
+    assert "aws-secrets-manager-ci-cutover.md" in github_setup_doc  # nosec B101
+    assert "aws-secrets-manager-ci-cutover.md" in readme  # nosec B101
+    assert "aws-secrets-manager-ci-cutover.md" in docs_readme  # nosec B101
 
 
 def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
@@ -458,8 +455,8 @@ def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
 
     for phrase in (
         "AWS Secrets Manager remains the source of truth",
-        "Pulumi Cloud/ESC is not the vault",
-        "fixed projection and OIDC layer",
+        "Pulumi Cloud and Pulumi ESC are not used",
+        "AWS-only setup removes that Pulumi Cloud token exchange path",
         "fd313a4",
         "invalid organization vilnacrm-org",
         "InvalidClientTokenId",
@@ -481,7 +478,7 @@ def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
 
 
 def test_github_environment_cleanup_is_manual_and_guarded() -> None:
-    """Keep post-ESC GitHub Environment cleanup explicit and non-AWS."""
+    """Keep post-AWS-cutover GitHub Environment cleanup explicit and non-AWS."""
     cleanup_workflow = yaml.safe_load(
         (
             ROOT / ".github" / "workflows" / "github-environment-legacy-cleanup.yml"

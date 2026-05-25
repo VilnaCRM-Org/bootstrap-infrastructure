@@ -73,11 +73,13 @@ jobs:
           fi
           echo "Pulumi Test Deploy run: ${run_id}"
 
-      - name: Load prod preview ESC configuration
-        id: esc
-        uses: ./.github/actions/load-esc-ci-env
+      - name: Load prod preview AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
         with:
           environment: prod-preview
+          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
           purpose: prod preview
           required-keys: >-
             AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,AWS_DRIFT_ROLE_ARN,
@@ -119,17 +121,17 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ steps.esc.outputs.aws-preview-role-arn }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-prod-preview-${{ github.run_id }}
-          aws-region: ${{ steps.esc.outputs.aws-region }}
-          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
       - name: Emit production preview evidence
         env:
           PREVIEW_SHA: ${{ steps.resolve_sha.outputs.preview_sha }}
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "ESC environment: ${PULUMI_ESC_ENVIRONMENT}"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${PREVIEW_SHA}"
           echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
@@ -201,11 +203,13 @@ jobs:
           ref: ${{ needs.preview.outputs.preview_sha }}
           persist-credentials: false
 
-      - name: Load prod preview ESC configuration
-        id: esc
-        uses: ./.github/actions/load-esc-ci-env
+      - name: Load prod preview AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
         with:
           environment: prod-preview
+          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
           purpose: prod IAM validation
           required-keys: >-
             AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
@@ -214,10 +218,10 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ steps.esc.outputs.aws-preview-role-arn }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-prod-iam-${{ github.run_id }}
-          aws-region: ${{ steps.esc.outputs.aws-region }}
-          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
       - name: Start development environment
         run: make start
@@ -262,11 +266,13 @@ jobs:
           fi
           echo "Approved production SHA: ${PREVIEW_SHA}"
 
-      - name: Load prod ESC configuration
-        id: esc
-        uses: ./.github/actions/load-esc-ci-env
+      - name: Load prod AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
         with:
           environment: prod
+          config-role-arn: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
           purpose: prod apply
           required-keys: >-
             AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
@@ -275,10 +281,10 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ steps.esc.outputs.aws-apply-role-arn }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
           role-session-name: gha-prod-apply-${{ github.run_id }}
-          aws-region: ${{ steps.esc.outputs.aws-region }}
-          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
       - name: Emit production apply evidence
         env:
@@ -286,7 +292,7 @@ jobs:
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
           echo "GitHub environment: prod"
-          echo "ESC environment: ${PULUMI_ESC_ENVIRONMENT}"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${PREVIEW_SHA}"
           echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
@@ -327,11 +333,13 @@ jobs:
           ref: ${{ needs.preview.outputs.preview_sha }}
           persist-credentials: false
 
-      - name: Load prod preview ESC configuration
-        id: esc
-        uses: ./.github/actions/load-esc-ci-env
+      - name: Load prod preview AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
         with:
           environment: prod-preview
+          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
           purpose: prod drift
           required-keys: >-
             AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
@@ -340,10 +348,10 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ steps.esc.outputs.aws-drift-role-arn }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
           role-session-name: gha-prod-drift-${{ github.run_id }}
-          aws-region: ${{ steps.esc.outputs.aws-region }}
-          allowed-account-ids: ${{ steps.esc.outputs.aws-account-id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
       - name: Start development environment
         run: make start

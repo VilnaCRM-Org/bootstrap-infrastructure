@@ -36,7 +36,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          expected="I confirm ESC-backed privileged CI is green and legacy GitHub Environment variables can be removed"
+          expected="I confirm AWS Secrets Manager-backed privileged CI is green and legacy GitHub Environment variables can be removed"
           if [[ "${CONFIRMATION}" != "${expected}" ]]; then
             echo "error: confirmation sentence does not match the documented value." >&2
             exit 1

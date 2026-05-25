@@ -41,7 +41,7 @@ def test_parse_required_keys_strips_blank_items() -> None:
     )
 
 
-def test_validate_environment_accepts_esc_derived_values() -> None:
+def test_validate_environment_accepts_aws_secrets_manager_derived_values() -> None:
     keys = validator.parse_required_keys(
         "AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,"
         "PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS"
@@ -212,7 +212,7 @@ def test_main_writes_default_region_and_summary(tmp_path: Path, capsys) -> None:
             {
                 **_valid_environment(),
                 "GITHUB_ENV": str(github_env),
-                "PULUMI_ESC_ENVIRONMENT": "org/project/test",
+                "CI_CONFIG_SECRET_ID": "/bootstrap-infrastructure/ci/test",
             }
         )
 
@@ -233,7 +233,7 @@ def test_main_writes_default_region_and_summary(tmp_path: Path, capsys) -> None:
         os.environ.update(original_environ)
 
     assert github_env.read_text(encoding="utf-8") == "AWS_DEFAULT_REGION=eu-central-1\n"
-    assert "org/project/test" in capsys.readouterr().out
+    assert "/bootstrap-infrastructure/ci/test" in capsys.readouterr().out
 
 
 def test_main_rejects_multiline_github_env_write(tmp_path: Path, capsys) -> None:

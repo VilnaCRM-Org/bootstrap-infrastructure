@@ -149,17 +149,17 @@ omitting `central-logging` during this migration. State bucket logging depends
 on the concrete central logging bucket resources, so a full-stack preview/apply
 keeps the logging and state replica changes ordered together.
 
-## ESC and GitHub Environment Operations
+## AWS CI config and GitHub Environment Operations
 
-AWS Secrets Manager is the account-configuration boundary. The fixed Pulumi ESC
-environment is the runtime projection boundary:
+AWS Secrets Manager is the account-configuration boundary. The fixed CI suffixes
+load these AWS Secrets Manager JSON secrets:
 
-- `vilnacrm-org/bootstrap-infrastructure/test-pr` handles trusted PR previews
-- `vilnacrm-org/bootstrap-infrastructure/test` handles main-branch test
+- `/bootstrap-infrastructure/ci/test-pr` handles trusted PR previews
+- `/bootstrap-infrastructure/ci/test` handles main-branch test
   applies, test drift, operations alert triage, and evidence collection
-- `vilnacrm-org/bootstrap-infrastructure/prod-preview` handles production
+- `/bootstrap-infrastructure/ci/prod-preview` handles production
   preview and drift without production apply permissions
-- `vilnacrm-org/bootstrap-infrastructure/prod` handles production apply values
+- `/bootstrap-infrastructure/ci/prod` handles production apply values
 
 The approval boundary is the protected GitHub `prod` Environment. It must
 require reviewers plus deployment branch restrictions. Do not use GitHub
@@ -171,9 +171,10 @@ account evidence, stack name, and role purpose. Do not approve a production
 apply from a different SHA than the preview you reviewed.
 
 Privileged runs should preserve evidence that is useful but not sensitive:
-ESC environment, account ID, region, OIDC role purpose, backend type, stack
-names, guardrail mode, commit SHA, and artifact names. Evidence must not include
-stack exports, decrypted secret values, access keys, tokens, or private keys.
+AWS Secrets Manager secret ID, account ID, region, OIDC role purpose, backend
+type, stack names, guardrail mode, commit SHA, and artifact names. Evidence must
+not include stack exports, decrypted secret values, access keys, tokens, or
+private keys.
 
 ## Safe AWS Validation
 

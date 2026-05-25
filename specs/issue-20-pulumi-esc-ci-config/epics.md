@@ -1,10 +1,10 @@
-# Epics: Issue 20 Pulumi ESC CI Configuration
+# Epics: Issue 20 AWS Secrets Manager CI Configuration
 
-## Epic 1: ESC Loading and Validation
+## Epic 1: AWS CI Config Loading and Validation
 
-- Add a local composite action that authenticates to ESC through OIDC, opens a
-  fixed ESC environment backed by AWS Secrets Manager, exports environment
-  variables, and exposes safe outputs for workflow `with:` blocks.
+- Add a local composite action that authenticates to AWS through GitHub OIDC,
+  reads a fixed AWS Secrets Manager CI secret, exports environment variables,
+  and exposes safe outputs for workflow `with:` blocks.
 - Add a Python validator for required keys, account ID shape, AWS region shape,
   role ARN shape, S3 backend URLs, AWS KMS secrets-provider URLs, stack-list
   shape, SNS topic ARNs, and resource names.
@@ -14,7 +14,7 @@
 
 - Update PR guardrails, test deploy, production deploy, PR command runner,
   nightly guardrails, operations alert triage, and Well-Architected evidence to
-  load ESC instead of GitHub Environment variables.
+  load AWS Secrets Manager CI config instead of GitHub Environment variables.
 - Keep GitHub `environment: prod` only on production apply jobs.
 - Remove privileged workflow dependencies on `vars.AWS_*`,
   `vars.PULUMI_BACKEND_URL`, `vars.PULUMI_SECRETS_PROVIDER`, and
@@ -39,6 +39,6 @@
 ## Epic 5: Documentation and Evidence
 
 - Update CI, SRE, security, and alert-routing docs to describe the AWS Secrets
-  Manager-backed ESC contract.
+  Manager-backed CI config contract.
 - Record BMAD/BMALPH planning artifacts under `specs/`.
 - Call out manual setup and validation steps in the PR and final report.

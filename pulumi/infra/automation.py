@@ -493,11 +493,20 @@ def _automation_iam_role_resources(
         ".",
         "-",
     )
-    env_part = _environment_resource_part(settings).replace(".", "-")
+    ci_config_read_role_resources = []
+    for suffix in _automation_ci_secret_suffixes(settings.environment):
+        safe_suffix = settings.sanitize_bucket_component(
+            suffix,
+            "ciConfigSuffix",
+        ).replace(".", "-")
+        ci_config_read_role_resources.append(
+            f"arn:aws:iam::{account_id}:role/GitHubCiConfigRead-"
+            f"{repo_part}-{safe_suffix}"
+        )
     return [
         f"arn:aws:iam::{account_id}:role/{automation_role_name}",
         f"arn:aws:iam::{account_id}:role/{operations_alert_triage_role_name}",
-        f"arn:aws:iam::{account_id}:role/PulumiEscCiSecretsRead-{repo_part}-{env_part}",
+        *ci_config_read_role_resources,
         f"arn:aws:iam::{account_id}:role/PulumiDeploy-*",
         f"arn:aws:iam::{account_id}:role/PulumiStateRepl-*",
         f"arn:aws:iam::{account_id}:role/central-logging-replication-role-*",
@@ -552,7 +561,7 @@ def _automation_sqs_resources(
 
 
 def _automation_ci_secret_suffixes(environment: str) -> tuple[str, ...]:
-    """Return ESC secret suffixes owned by one bootstrap stack."""
+    """Return CI secret suffixes owned by one bootstrap stack."""
     return {
         "test": ("test-pr", "test"),
         "prod": ("prod-preview", "prod"),
@@ -784,9 +793,6 @@ def _automation_policy(
     github_oidc_provider_arn = (
         f"arn:aws:iam::{account_id}:oidc-provider/token.actions.githubusercontent.com"
     )
-    pulumi_esc_oidc_provider_arn = (
-        f"arn:aws:iam::{account_id}:oidc-provider/api.pulumi.com/oidc"
-    )
     iam_role_resources = _automation_iam_role_resources(account_id, settings, repo_name)
     ci_secret_resources = _automation_ci_secret_resources(
         account_id,
@@ -937,7 +943,6 @@ def _automation_policy(
                     "Resource": [
                         *iam_role_resources,
                         github_oidc_provider_arn,
-                        pulumi_esc_oidc_provider_arn,
                     ],
                 },
                 {

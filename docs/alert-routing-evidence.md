@@ -69,7 +69,7 @@ service-event injection.
 
 Operations alerts are consumed by the scheduled
 `.github/workflows/operations-alert-triage.yml` workflow. The workflow loads the
-fixed `vilnacrm-org/bootstrap-infrastructure/test` ESC environment, assumes the
+fixed `vilnacrm-org/bootstrap-infrastructure/test` AWS Secrets Manager CI secret, assumes the
 dedicated test account operations alert triage role through GitHub OIDC, reads
 metadata-only messages from `bootstrap-test-operations-alerts`, and writes
 sanitized GitHub issue records in `VilnaCRM-Org/bootstrap-infrastructure`.
