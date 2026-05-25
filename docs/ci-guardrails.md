@@ -109,11 +109,10 @@ artifact, so apply jobs use a plan whose preview has already passed guardrails.
 selected stack, backend URL, commit SHA, plan hash, and preview hash. `make
 pulumi-up-plan` refuses to apply when the manifest is missing, stale, from a
 different commit or backend, or when the saved plan hash no longer matches.
-Production applies remain saved-plan-only. The test deployment workflow may
-fall back to a direct `make pulumi-up` only when `pulumi up --plan` fails with
-Pulumi's known KMS-backed saved-plan decryption error after the same-run
-preview, destructive-diff, and IAM validation gates have passed under the
-test-state concurrency lock.
+Test and production applies remain saved-plan-only. If a saved plan cannot be
+applied, the workflow fails instead of switching to a direct apply path; rerun
+preview and plan generation after fixing the underlying backend, KMS, or plan
+artifact issue.
 
 Stack selection follows this order:
 

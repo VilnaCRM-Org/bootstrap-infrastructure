@@ -1,8 +1,8 @@
 # Epics and Stories: Multi-Account Pulumi Environments
 
-> Superseded by issue 20 for privileged CI configuration. Fixed Pulumi ESC
-> environments now carry account configuration; protected GitHub `prod` remains
-> the approval boundary.
+> Superseded by issue 20 for privileged CI configuration. Fixed AWS Secrets
+> Manager CI configuration secrets now carry account configuration; protected
+> GitHub `prod` remains the approval boundary.
 
 ## Epic 1: Stack And Discovery Contracts
 

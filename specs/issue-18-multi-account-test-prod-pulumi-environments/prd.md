@@ -1,8 +1,9 @@
 # PRD: Multi-Account Pulumi Environments
 
 > Superseded by issue 20 for privileged CI configuration. GitHub
-> non-production environments from this plan have been replaced by fixed Pulumi
-> ESC environments; protected GitHub `prod` remains the approval boundary.
+> non-production environments from this plan have been replaced by fixed AWS
+> Secrets Manager CI configuration secrets; protected GitHub `prod` remains the
+> approval boundary.
 
 ## Executive Summary
 This change makes the bootstrap infrastructure repository deployable across separate AWS test and production accounts with account-scoped CI configuration, OIDC-only credentials, S3 Pulumi backends, and AWS KMS Pulumi secrets providers. The primary users are maintainers and SREs who need auditable preview, apply, drift, and smoke-validation paths without sharing state or credentials between environments.
@@ -51,7 +52,7 @@ Infrastructure automation changes must use least privilege, short-lived credenti
 
 ## Innovation Analysis
 
-The original design used GitHub environments as the configuration and approval boundary instead of repository-wide variables. Issue 20 supersedes that model by keeping account, role, backend, and stack selection in AWS Secrets Manager JSON values that fixed Pulumi ESC environments project at runtime, while preserving protected GitHub `prod` approval controls.
+The original design used GitHub environments as the configuration and approval boundary instead of repository-wide variables. Issue 20 supersedes that model by keeping account, role, backend, and stack selection in AWS Secrets Manager JSON values read by fixed GitHub OIDC roles at runtime, while preserving protected GitHub `prod` approval controls.
 
 ## Project-Type Requirements
 

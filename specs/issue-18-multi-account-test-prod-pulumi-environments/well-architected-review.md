@@ -50,7 +50,7 @@ Overall score:
 
 ## Remaining Improvements
 
-1. Move CI configuration to Pulumi ESC and minimize GitHub Environment
+1. Move CI configuration to AWS Secrets Manager and minimize GitHub Environment
    variables. Tracked in issue #20.
 2. Add a saved-plan manifest that records stack name, backend URL, commit SHA,
    and SHA-256 for each plan, then verify it before `pulumi up --plan`.
