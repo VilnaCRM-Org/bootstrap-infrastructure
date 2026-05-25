@@ -91,5 +91,7 @@ Review the planned deletion of legacy keys, including old `PULUMI_PR_*`
 variables, then rerun with `dry_run=false` and the documented confirmation
 sentence from the cutover manual.
 
-If legacy operations-alert issues need reconciliation, use **Operations Alert
-Legacy Reconcile** and provide the required `sre_confirmation_reference`.
+If legacy operations-alert issues need reconciliation and no new queued alert
+exists to create a canonical issue, use **Operations Alert Canonical Backfill**
+with SRE-confirmed stable fields first. Then use **Operations Alert Legacy
+Reconcile** and provide the required `sre_confirmation_reference`.

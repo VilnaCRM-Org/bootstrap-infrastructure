@@ -988,6 +988,7 @@ def test_operations_alert_triage_uses_repo_python_runner() -> None:
     assert "--groups-file" in triage_step["run"]  # nosec B101
     assert "jq '.groups | length'" in triage_step["run"]  # nosec B101
     assert "for ((group_index = 0;" in triage_step["run"]  # nosec B101
+    assert "--visibility-timeout 600" in triage_step["run"]  # nosec B101
     assert "python3 scripts/operations_alert_triage.py" not in triage_step["run"]  # nosec B101
 
 
@@ -1030,6 +1031,33 @@ def test_operations_alert_triage_searches_fingerprint_before_queue_delete() -> N
         in triage_run
     )
     assert triage_run.count("aws sqs delete-message") == 1  # nosec B101
+
+
+def test_operations_alert_backfill_requires_protected_manual_confirmation() -> None:
+    """Backfilled canonical alert issues must be protected and fingerprinted."""
+    workflow = yaml.safe_load(
+        (WORKFLOWS_DIR / "operations-alert-backfill.yml").read_text(encoding="utf-8")
+    )
+    triggers = _triggers(workflow)
+    job = workflow["jobs"]["backfill"]
+    run = job["steps"][1]["run"]
+
+    assert "workflow_dispatch" in triggers  # nosec B101
+    assert job["environment"] == "operations-alert-reconcile"  # nosec B101
+    assert workflow["permissions"] == {"contents": "read", "issues": "write"}  # nosec B101
+    assert "id-token" not in workflow["permissions"]  # nosec B101
+    assert job["steps"][0]["uses"] == (  # nosec B101
+        "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+    )
+    assert (  # nosec B101
+        "I confirm these stable fields represent the canonical operations alert stream"
+        in run
+    )
+    assert "sre_confirmation_reference must be an HTTPS URL" in run  # nosec B101
+    assert "python3 scripts/operations_alert_triage.py" in run  # nosec B101
+    assert "operations-alert:fingerprint=${fingerprint} in:body" in run  # nosec B101
+    assert "gh issue create" in run  # nosec B101
+    assert "gh issue comment" in run  # nosec B101
 
 
 def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:

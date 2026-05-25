@@ -100,6 +100,7 @@ jobs:
               --queue-url "${queue_url}" \
               --max-number-of-messages 10 \
               --wait-time-seconds 10 \
+              --visibility-timeout 600 \
               --attribute-names SentTimestamp \
               --output json > "${page_json}"
 

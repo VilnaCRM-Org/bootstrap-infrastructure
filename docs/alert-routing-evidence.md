@@ -90,6 +90,16 @@ and close older duplicate issues only after an SRE confirms the sanitized
 events share the same underlying AWS Backup state, vault, plan or rule, and
 protected resource. A comment on a legacy issue is not enough for future
 workflow dedupe because the workflow searches issue bodies for the marker.
+If the original SQS messages were already drained and no new matching alert
+arrives, use the manual **Operations Alert Canonical Backfill** workflow to
+create or update the canonical fingerprinted issue from SRE-confirmed stable
+fields before running legacy reconciliation. The backfill workflow runs behind
+the same `operations-alert-reconcile` GitHub Environment, requires an HTTPS
+`sre_confirmation_reference`, and requires this exact confirmation sentence:
+
+```text
+I confirm these stable fields represent the canonical operations alert stream
+```
 
 After SRE confirmation, use the manual **Operations Alert Legacy Reconcile**
 workflow to close legacy duplicates. The workflow requires a canonical issue
@@ -149,7 +159,7 @@ alert metadata every 30 minutes. Mixed SQS batches are split by stable alert
 stream before GitHub issue search/create/comment operations, so unrelated
 streams do not collapse into one duplicate marker. Legacy issues without the
 `operations-alert:fingerprint=` marker still require SRE confirmation and an
-HTTPS `sre_confirmation_reference` before closure.
+HTTPS `sre_confirmation_reference` before backfill or closure.
 
 After a scheduled or manual collector run, SRE can render a dated observation
 record from `.artifacts/well-architected/evidence.json`:

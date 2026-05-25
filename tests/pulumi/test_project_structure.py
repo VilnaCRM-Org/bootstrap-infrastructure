@@ -308,15 +308,25 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     reconcile_workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "operations-alert-reconcile.yml").read_text()
     )
+    backfill_workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "operations-alert-backfill.yml").read_text()
+    )
     reconcile_triggers = reconcile_workflow.get("on", reconcile_workflow.get(True, {}))
+    backfill_triggers = backfill_workflow.get("on", backfill_workflow.get(True, {}))
     reconcile_run = reconcile_workflow["jobs"]["reconcile"]["steps"][0]["run"]
+    backfill_run = backfill_workflow["jobs"]["backfill"]["steps"][1]["run"]
     docs = f"{alert_doc}\n{operating_doc}"
 
     assert "observation-only metadata" in alert_doc  # nosec B101
     assert "Legacy operations-alert issues" in alert_doc  # nosec B101
+    assert "Operations Alert Canonical Backfill" in alert_doc  # nosec B101
     assert "workflow searches issue bodies for the marker" in alert_doc  # nosec B101
     assert "Operations Alert Legacy Reconcile" in alert_doc  # nosec B101
     assert "operations-alert-reconcile" in alert_doc  # nosec B101
+    assert (
+        "I confirm these stable fields represent the canonical operations alert stream"
+        in alert_doc
+    )  # nosec B101
     assert (
         "I confirm these legacy issues match the canonical operations alert stream"
         in alert_doc
@@ -342,6 +352,20 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
         "sre_confirmation_reference"
     ]["required"]
     assert reconcile_workflow["jobs"]["reconcile"]["steps"][0]["shell"] == "bash"  # nosec B101
+    assert "workflow_dispatch" in backfill_triggers  # nosec B101
+    assert backfill_workflow["jobs"]["backfill"]["environment"] == (  # nosec B101
+        "operations-alert-reconcile"
+    )
+    assert backfill_workflow["permissions"] == {  # nosec B101
+        "contents": "read",
+        "issues": "write",
+    }
+    assert "id-token" not in backfill_workflow["permissions"]  # nosec B101
+    assert "stable_detail_json" in backfill_triggers["workflow_dispatch"]["inputs"]  # nosec B101
+    assert "resources_json" in backfill_triggers["workflow_dispatch"]["inputs"]  # nosec B101
+    assert "sre_confirmation_reference" in backfill_run  # nosec B101
+    assert "operations-alert:fingerprint=${fingerprint} in:body" in backfill_run  # nosec B101
+    assert "python3 scripts/operations_alert_triage.py" in backfill_run  # nosec B101
     assert "GH_REPO: ${{ github.repository }}" in yaml.safe_dump(  # nosec B101
         reconcile_workflow["jobs"]["reconcile"]["env"]
     )

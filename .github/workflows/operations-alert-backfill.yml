@@ -1,0 +1,227 @@
+name: Operations Alert Canonical Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: EventBridge source, for example aws.backup
+        required: true
+        type: string
+      detail_type:
+        description: EventBridge detail type
+        required: true
+        type: string
+      state:
+        description: Stable alert state
+        required: true
+        type: string
+      backup_vault_name:
+        description: Stable AWS Backup vault name, if applicable
+        required: false
+        type: string
+      backup_plan_id:
+        description: Stable AWS Backup plan ID, if applicable
+        required: false
+        type: string
+      backup_rule_id:
+        description: Stable AWS Backup rule ID, if applicable
+        required: false
+        type: string
+      resource_arn:
+        description: Stable protected resource ARN
+        required: true
+        type: string
+      stable_detail_json:
+        description: Additional stable EventBridge detail JSON object
+        required: true
+        default: '{}'
+        type: string
+      resources_json:
+        description: Stable EventBridge resources JSON array
+        required: true
+        default: '[]'
+        type: string
+      message_count:
+        description: Legacy alert message count represented by this backfill
+        required: true
+        default: '1'
+        type: string
+      queue_name:
+        description: Operations alert queue name
+        required: true
+        default: bootstrap-test-operations-alerts
+        type: string
+      aws_account_id:
+        description: AWS account ID from SRE-confirmed alert metadata
+        required: true
+        default: '891377212104'
+        type: string
+      aws_region:
+        description: AWS region from SRE-confirmed alert metadata
+        required: true
+        default: eu-central-1
+        type: string
+      confirmation:
+        description: Type the documented confirmation sentence
+        required: true
+        type: string
+      sre_confirmation_reference:
+        description: HTTPS URL for the SRE confirmation comment or ticket
+        required: true
+        type: string
+
+concurrency:
+  group: operations-alert-canonical-backfill
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  backfill:
+    name: Create Or Update Canonical Alert Issue
+    runs-on: ubuntu-latest
+    environment: operations-alert-reconcile
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ALERT_SOURCE: ${{ inputs.source }}
+      ALERT_DETAIL_TYPE: ${{ inputs.detail_type }}
+      ALERT_STATE: ${{ inputs.state }}
+      BACKUP_VAULT_NAME: ${{ inputs.backup_vault_name }}
+      BACKUP_PLAN_ID: ${{ inputs.backup_plan_id }}
+      BACKUP_RULE_ID: ${{ inputs.backup_rule_id }}
+      RESOURCE_ARN: ${{ inputs.resource_arn }}
+      STABLE_DETAIL_JSON: ${{ inputs.stable_detail_json }}
+      RESOURCES_JSON: ${{ inputs.resources_json }}
+      MESSAGE_COUNT: ${{ inputs.message_count }}
+      OPERATIONS_ALERT_QUEUE_NAME: ${{ inputs.queue_name }}
+      AWS_ACCOUNT_ID: ${{ inputs.aws_account_id }}
+      AWS_REGION: ${{ inputs.aws_region }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      SRE_CONFIRMATION_REFERENCE: ${{ inputs.sre_confirmation_reference }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Create or update canonical operations alert issue
+        run: |
+          expected="I confirm these stable fields represent the canonical operations alert stream"
+          if [[ "${CONFIRMATION}" != "${expected}" ]]; then
+            echo "error: confirmation sentence does not match the documented value." >&2
+            exit 1
+          fi
+          if [[ ! "${SRE_CONFIRMATION_REFERENCE}" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "error: sre_confirmation_reference must be an HTTPS URL without whitespace." >&2
+            exit 1
+          fi
+          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
+            echo "error: aws_account_id must be a 12-digit AWS account ID." >&2
+            exit 1
+          fi
+          if [[ ! "${AWS_REGION}" =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]]; then
+            echo "error: aws_region must look like an AWS region." >&2
+            exit 1
+          fi
+          if [[ ! "${MESSAGE_COUNT}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "error: message_count must be a positive integer." >&2
+            exit 1
+          fi
+
+          stable_detail_file="$(mktemp)"
+          resources_file="$(mktemp)"
+          alerts_json="$(mktemp)"
+          body_file="$(mktemp)"
+          fingerprint_file="$(mktemp)"
+          issue_body_file="$(mktemp)"
+
+          printf '%s\n' "${STABLE_DETAIL_JSON}" |
+            jq -e 'if type == "object" then . else error("stable_detail_json must be an object") end' \
+              > "${stable_detail_file}"
+          printf '%s\n' "${RESOURCES_JSON}" |
+            jq -e 'if type == "array" then . else error("resources_json must be an array") end' \
+              > "${resources_file}"
+
+          jq -n \
+            --arg source "${ALERT_SOURCE}" \
+            --arg detail_type "${ALERT_DETAIL_TYPE}" \
+            --arg state "${ALERT_STATE}" \
+            --arg backup_vault_name "${BACKUP_VAULT_NAME}" \
+            --arg backup_plan_id "${BACKUP_PLAN_ID}" \
+            --arg backup_rule_id "${BACKUP_RULE_ID}" \
+            --arg resource_arn "${RESOURCE_ARN}" \
+            --arg reviewed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile stable_detail "${stable_detail_file}" \
+            --slurpfile resources "${resources_file}" \
+            '{
+              Messages: [
+                {
+                  MessageId: "backfill-sre-confirmed",
+                  Attributes: {SentTimestamp: "backfill"},
+                  Body: ({
+                    MessageId: "backfill-sre-confirmed",
+                    Timestamp: $reviewed_at,
+                    Message: ({
+                      source: $source,
+                      "detail-type": $detail_type,
+                      time: $reviewed_at,
+                      resources: ($resources[0] // []),
+                      detail: (
+                        ($stable_detail[0] // {}) + {
+                          state: $state,
+                          backupVaultName: $backup_vault_name,
+                          backupPlanId: $backup_plan_id,
+                          backupRuleId: $backup_rule_id,
+                          resourceArn: $resource_arn
+                        }
+                        | with_entries(select(.value != ""))
+                      )
+                    } | tostring)
+                  } | tostring)
+                }
+              ]
+            }' > "${alerts_json}"
+
+          python3 scripts/operations_alert_triage.py \
+            --alerts-json "${alerts_json}" \
+            --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
+            --account-id "${AWS_ACCOUNT_ID}" \
+            --region "${AWS_REGION}" \
+            --body-file "${body_file}" \
+            --fingerprint-file "${fingerprint_file}"
+
+          fingerprint="$(cat "${fingerprint_file}")"
+          {
+            cat "${body_file}"
+            printf '\nCanonical backfill: this issue was created from SRE-confirmed stable fields for %s legacy message(s).\n' "${MESSAGE_COUNT}"
+            printf 'SRE confirmation reference: %s\n' "${SRE_CONFIRMATION_REFERENCE}"
+          } > "${issue_body_file}"
+
+          existing_issue="$(
+            gh issue list \
+              --repo "${GH_REPO}" \
+              --state open \
+              --search "operations-alert:fingerprint=${fingerprint} in:body" \
+              --json number \
+              --jq '.[0].number // ""'
+          )"
+          if [[ -n "${existing_issue}" ]]; then
+            gh issue comment \
+              "${existing_issue}" \
+              --repo "${GH_REPO}" \
+              --body-file "${issue_body_file}"
+            printf 'Updated canonical operations alert issue #%s for fingerprint %s.\n' \
+              "${existing_issue}" \
+              "${fingerprint}"
+          else
+            issue_url="$(
+              gh issue create \
+                --repo "${GH_REPO}" \
+                --title "Operations alerts queued: canonical backfill (${MESSAGE_COUNT} message(s))" \
+                --body-file "${issue_body_file}"
+            )"
+            printf 'Created canonical operations alert issue: %s\n' "${issue_url}"
+          fi

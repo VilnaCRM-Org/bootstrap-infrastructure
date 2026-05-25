@@ -187,6 +187,14 @@ I confirm AWS Secrets Manager-backed privileged CI is green and legacy GitHub En
 
 Run `Operations Alert Legacy Reconcile` separately if legacy alert issues need
 manual reconciliation, and provide the required `sre_confirmation_reference`.
+If no new queued alert exists to create a canonical fingerprinted issue, run
+`Operations Alert Canonical Backfill` first with SRE-confirmed stable fields and
+this confirmation:
+
+```text
+I confirm these stable fields represent the canonical operations alert stream
+```
+
 Use this reconciliation confirmation when closing duplicates:
 
 ```text
