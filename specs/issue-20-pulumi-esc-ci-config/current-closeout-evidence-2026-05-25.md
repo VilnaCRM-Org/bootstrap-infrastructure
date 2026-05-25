@@ -8,8 +8,8 @@ Recorded on 2026-05-25 in the `Europe/Sofia` timezone for branch
 | Field | Value |
 | --- | --- |
 | PR | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/57` |
-| Latest implementation head SHA | `622e9aad9e198f0db9e5d22d4aceb3c99256932c` |
-| Latest implementation short SHA | `622e9aa` |
+| Latest implementation code head SHA | `95bcb9eb5a0a722405029778a1a0a76ddb4e0182` |
+| Latest implementation code short SHA | `95bcb9e` |
 | Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi Cloud and Pulumi ESC are not used for CI configuration. |
 | Secret handling | No secret values, `GetSecretValue` responses, decrypted stack outputs, access keys, or tokens were read or recorded. |
 
@@ -66,16 +66,24 @@ but the test account still needs the reviewed Pulumi stack apply or equivalent
 GitOps-controlled IAM trust update before the runner can read the test
 Secrets Manager CI configuration.
 
+The latest implementation code head additionally enforces that direct
+`pulumi up` is disabled whenever `GITHUB_ACTIONS=true`; GitHub apply paths must
+generate and apply a reviewed saved plan with `pulumi-plan` and
+`pulumi-up-plan`.
+
 Local validation on this implementation head passed:
 
 - `uv run pytest tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_rejects_plan_decrypt_without_direct_apply tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_recovers_from_saved_plan_lock tests/unit/test_script_entrypoints.py::test_run_up_stack_does_not_retry_after_lock tests/unit/test_script_entrypoints.py::test_run_pulumi_command_unhandled_apply_failures_return_status -q`
 - `uv run pytest tests/unit/test_script_entrypoints.py -k "run_up_plan_stack or run_up_stack or run_pulumi_command_unhandled_apply_failures_return_status or dispatch_propagates_apply_failures" -q`
+- `uv run pytest tests/unit/test_script_entrypoints.py::test_run_up_stack_does_not_retry_after_lock tests/unit/test_script_entrypoints.py::test_run_up_stack_rejects_direct_apply_in_github_actions tests/unit/test_script_entrypoints.py::test_run_pulumi_command_unhandled_apply_failures_return_status tests/unit/test_script_entrypoints.py::test_run_pulumi_command_dispatch_propagates_apply_failures -q`
 - `uv run pytest tests/pulumi/test_delivery_contracts.py::test_docker_compose_keeps_workspace_and_credentials_contract tests/pulumi/test_delivery_contracts.py::test_aws_ci_loader_reads_secrets_manager_without_pulumi_cloud tests/pulumi/test_delivery_contracts.py::test_multi_account_workflows_use_fixed_aws_ci_config_contracts tests/pulumi/test_delivery_contracts.py::test_multi_account_environment_docs_are_explicit -q`
+- `uv run pytest tests/pulumi/test_delivery_contracts.py::test_makefile_keeps_pulumi_guardrails_secret_safe tests/pulumi/test_project_structure.py::test_issue20_cutover_manual_is_secret_safe_and_actionable -q`
 - `uv run pytest tests/pulumi/test_project_structure.py::test_ci_guardrails_manual_follow_up_completes_aws_ci_cutover tests/pulumi/test_project_structure.py::test_issue20_cutover_manual_is_secret_safe_and_actionable tests/pulumi/test_project_structure.py::test_issue20_closeout_evidence_tracks_external_manual_steps -q`
 - `uv run pytest tests/pulumi/test_ci_guardrails.py::test_well_architected_evidence_workflow_uploads_enforced_reports tests/pulumi/test_delivery_contracts.py::test_multi_account_workflows_use_fixed_aws_ci_config_contracts tests/unit/test_components.py::test_ci_configuration_manages_aws_secret_containers_and_github_read_roles tests/unit/test_mutation_targets.py::test_mutation_target_ci_config_validation_and_lookup_helpers -q`
 - `uv run pytest tests/unit/test_validate_ci_environment.py -q`
 - `uv run ruff check pulumi/infra/ci_config.py tests/pulumi/test_ci_guardrails.py tests/pulumi/test_delivery_contracts.py tests/unit/test_components.py tests/unit/test_mutation_targets.py scripts/validate_ci_environment.py tests/unit/test_validate_ci_environment.py`
 - `uv run ruff check scripts/run_pulumi_command.py tests/unit/test_script_entrypoints.py tests/conftest.py tests/pulumi/test_delivery_contracts.py`
+- `uv run ruff check scripts/run_pulumi_command.py tests/unit/test_script_entrypoints.py tests/pulumi/test_delivery_contracts.py`
 - `make test-actionlint`
 - `make test-yaml`
 - `make test-secrets`
@@ -89,12 +97,14 @@ Local validation on this implementation head passed:
 Local AWS CLI checks for the test account could not prove live state because
 the current Codex process still inherits stale `AWS_ACCESS_KEY_ID` and
 `AWS_SECRET_ACCESS_KEY` values from its parent environment. `aws configure list`
-therefore reports credentials from `env` and region `eu-central-1` from
-`~/.aws/config` in this running session:
+therefore reports credential sources as `env` and region `eu-central-1` from
+`~/.aws/config` in this running session. The values were not recorded.
 
 ```text
-aws sts get-caller-identity --output json
-An error occurred (InvalidClientTokenId) when calling the GetCallerIdentity operation: The security token included in the request is invalid.
+aws configure list
+access_key: env
+secret_key: env
+region: eu-central-1
 ```
 
 The stale shell startup exports were removed from `~/.bashrc`; backup:
