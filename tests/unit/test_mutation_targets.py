@@ -172,6 +172,10 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
 
     with pytest.raises(ValueError, match="repoSlug config is required"):
         ci_config._ci_config_project(no_repo_settings)
+    with pytest.raises(ValueError, match="repoSlug config is required"):
+        ci_config._github_actions_subjects(no_repo_settings, "test")
+    with pytest.raises(ValueError, match="repoSlug config is required"):
+        ci_config._github_actions_workflow_refs(no_repo_settings, "test")
     with pytest.raises(ValueError, match="longer than 64 characters"):
         ci_config._ci_config_read_role_name(long_role_settings, "test")
     assert ci_config._ci_config_read_role_name(settings, "test") == (  # nosec B101

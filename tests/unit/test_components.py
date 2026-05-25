@@ -448,6 +448,32 @@ def test_ci_configuration_uses_github_oidc_provider_for_prod_suffixes(
     ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"]
 
 
+def test_ci_configuration_requires_github_oidc_provider(
+    pulumi_mocks,
+    monkeypatch,
+):  # noqa: ARG001
+    monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
+    monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="test",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    with pytest.raises(ValueError, match="githubOidcProviderArn config is required"):
+        CiConfiguration("ci-configuration-no-provider", settings=settings)
+
+
 def test_components_build(pulumi_mocks, monkeypatch):  # noqa: ARG001
     monkeypatch.setattr(config.settings, "logging_prefix", "company")
     monkeypatch.setattr(config.settings, "repo", "bootstrap-infrastructure")
