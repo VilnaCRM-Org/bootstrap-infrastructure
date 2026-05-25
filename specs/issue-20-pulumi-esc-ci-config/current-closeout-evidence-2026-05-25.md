@@ -8,8 +8,8 @@ Recorded on 2026-05-25 in the `Europe/Sofia` timezone for branch
 | Field | Value |
 | --- | --- |
 | PR | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/57` |
-| Latest implementation code head SHA | `95bcb9eb5a0a722405029778a1a0a76ddb4e0182` |
-| Latest implementation code short SHA | `95bcb9e` |
+| Latest implementation code head SHA | `1470d289e910765f7a772806a31819dd428ca717` |
+| Latest implementation code short SHA | `1470d28` |
 | Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi Cloud and Pulumi ESC are not used for CI configuration. |
 | Secret handling | No secret values, `GetSecretValue` responses, decrypted stack outputs, access keys, or tokens were read or recorded. |
 
@@ -71,6 +71,11 @@ The latest implementation code head additionally enforces that direct
 generate and apply a reviewed saved plan with `pulumi-plan` and
 `pulumi-up-plan`.
 
+The same head also removes the silent pull-request fallback from
+`AWS_TEST_PR_CI_CONFIG_ROLE_ARN` to `AWS_TEST_CI_CONFIG_ROLE_ARN`. Pull request
+jobs now select the exact `test-pr` CI configuration in a shell step and fail
+fast if the PR config-read role variable is missing.
+
 Local validation on this implementation head passed:
 
 - `uv run pytest tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_rejects_plan_decrypt_without_direct_apply tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_recovers_from_saved_plan_lock tests/unit/test_script_entrypoints.py::test_run_up_stack_does_not_retry_after_lock tests/unit/test_script_entrypoints.py::test_run_pulumi_command_unhandled_apply_failures_return_status -q`
@@ -80,6 +85,7 @@ Local validation on this implementation head passed:
 - `uv run pytest tests/pulumi/test_delivery_contracts.py::test_makefile_keeps_pulumi_guardrails_secret_safe tests/pulumi/test_project_structure.py::test_issue20_cutover_manual_is_secret_safe_and_actionable -q`
 - `uv run pytest tests/pulumi/test_project_structure.py::test_ci_guardrails_manual_follow_up_completes_aws_ci_cutover tests/pulumi/test_project_structure.py::test_issue20_cutover_manual_is_secret_safe_and_actionable tests/pulumi/test_project_structure.py::test_issue20_closeout_evidence_tracks_external_manual_steps -q`
 - `uv run pytest tests/pulumi/test_ci_guardrails.py::test_well_architected_evidence_workflow_uploads_enforced_reports tests/pulumi/test_delivery_contracts.py::test_multi_account_workflows_use_fixed_aws_ci_config_contracts tests/unit/test_components.py::test_ci_configuration_manages_aws_secret_containers_and_github_read_roles tests/unit/test_mutation_targets.py::test_mutation_target_ci_config_validation_and_lookup_helpers -q`
+- `uv run pytest tests/pulumi/test_ci_guardrails.py::test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs tests/pulumi/test_ci_guardrails.py::test_well_architected_evidence_workflow_uploads_enforced_reports tests/pulumi/test_delivery_contracts.py::test_multi_account_workflows_use_fixed_aws_ci_config_contracts -q`
 - `uv run pytest tests/unit/test_validate_ci_environment.py -q`
 - `uv run ruff check pulumi/infra/ci_config.py tests/pulumi/test_ci_guardrails.py tests/pulumi/test_delivery_contracts.py tests/unit/test_components.py tests/unit/test_mutation_targets.py scripts/validate_ci_environment.py tests/unit/test_validate_ci_environment.py`
 - `uv run ruff check scripts/run_pulumi_command.py tests/unit/test_script_entrypoints.py tests/conftest.py tests/pulumi/test_delivery_contracts.py`
@@ -163,6 +169,7 @@ complete yet.
 | Production approval preserved | Protected GitHub `prod` Environment remains the production apply approval boundary. | GitOps implemented; repository-admin verification still required |
 | Protected manual reconcile gate | The repository controls helper now prints, applies, and verifies both `prod` and `operations-alert-reconcile`; the manual reconcile workflow requires `operations-alert-reconcile` and has no AWS/OIDC permission. | GitOps implemented; repository-admin verification still required |
 | Fork PR isolation | Fork paths stay unprivileged and do not open AWS CI config or request AWS credentials. | GitOps implemented |
+| No PR role fallback | Same-repo pull request jobs use `test-pr` and fail fast when `AWS_TEST_PR_CI_CONFIG_ROLE_ARN` is missing instead of falling back to `AWS_TEST_CI_CONFIG_ROLE_ARN`. | GitOps implemented |
 | KMS-backed Pulumi secrets provider | Validators require `awskms://` for shared CI stack configuration. | GitOps implemented |
 | Live AWS secret load and AWS role assumption | Privileged checks require the AWS-only GitHub variables, read roles, and Secrets Manager payloads. | Manual secure setup required |
 | AWS Secrets Manager payloads populated | Pulumi intentionally does not manage `SecretVersion` resources or JSON values. | Manual secure setup required |
