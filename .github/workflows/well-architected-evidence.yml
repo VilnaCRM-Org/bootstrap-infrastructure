@@ -73,15 +73,39 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      - name: Select test AWS CI configuration
+        id: ci_config_target
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          AWS_TEST_PR_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN }}
+          AWS_TEST_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            ci_environment="test-pr"
+            config_role_arn="${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}"
+            config_variable_name="AWS_TEST_PR_CI_CONFIG_ROLE_ARN"
+          else
+            ci_environment="test"
+            config_role_arn="${AWS_TEST_CI_CONFIG_ROLE_ARN}"
+            config_variable_name="AWS_TEST_CI_CONFIG_ROLE_ARN"
+          fi
+          if [[ -z "${config_role_arn}" ]]; then
+            printf 'error: %s must be set for %s AWS CI configuration.\n' \
+              "${config_variable_name}" "${ci_environment}" >&2
+            exit 1
+          fi
+          {
+            echo "environment=${ci_environment}"
+            echo "config-role-arn=${config_role_arn}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Load test AWS CI configuration
         id: ci_config
         uses: ./.github/actions/load-aws-ci-env
         with:
-          environment: ${{ github.event_name == 'pull_request' && 'test-pr' || 'test' }}
-          config-role-arn: >-
-            ${{ github.event_name == 'pull_request' &&
-            vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN ||
-            vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          environment: ${{ steps.ci_config_target.outputs.environment }}
+          config-role-arn: ${{ steps.ci_config_target.outputs.config-role-arn }}
           aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: Well-Architected evidence
           required-keys: >-

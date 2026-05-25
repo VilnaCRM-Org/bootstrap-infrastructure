@@ -151,9 +151,17 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         for step in jobs["iam_validation"]["steps"]
         if step.get("uses") == "./.github/actions/load-aws-ci-env"
     )
-    pr_ci_environment = (
-        "${{ github.event_name == 'pull_request' && 'test-pr' || 'test' }}"
+    preview_ci_config_target_step = next(
+        step
+        for step in jobs["preview"]["steps"]
+        if step.get("name") == "Select test AWS CI configuration"
     )
+    iam_ci_config_target_step = next(
+        step
+        for step in jobs["iam_validation"]["steps"]
+        if step.get("name") == "Select test AWS CI configuration"
+    )
+    pr_ci_environment = "${{ steps.ci_config_target.outputs.environment }}"
 
     assert workflow["concurrency"]["cancel-in-progress"] is True
     assert "environment" not in jobs["preview_mode"]  # nosec B101
@@ -166,6 +174,16 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     assert "environment" not in jobs["preview"]  # nosec B101
     assert preview_ci_config_step["with"]["environment"] == pr_ci_environment  # nosec B101
     assert iam_ci_config_step["with"]["environment"] == pr_ci_environment  # nosec B101
+    assert preview_ci_config_step["with"]["config-role-arn"] == (  # nosec B101
+        "${{ steps.ci_config_target.outputs.config-role-arn }}"
+    )
+    assert iam_ci_config_step["with"]["config-role-arn"] == (  # nosec B101
+        "${{ steps.ci_config_target.outputs.config-role-arn }}"
+    )
+    for target_step in (preview_ci_config_target_step, iam_ci_config_target_step):
+        assert "AWS_TEST_PR_CI_CONFIG_ROLE_ARN" in target_step["run"]  # nosec B101
+        assert "AWS_TEST_CI_CONFIG_ROLE_ARN" in target_step["run"]  # nosec B101
+        assert "must be set" in target_step["run"]  # nosec B101
     assert "PULUMI_BACKEND_URL" in preview_ci_config_step["with"]["required-keys"]  # nosec B101
     assert "PULUMI_PREVIEW_STACKS" in preview_ci_config_step["with"]["required-keys"]  # nosec B101
     assert jobs["preview"]["permissions"] == {  # nosec B101
@@ -443,6 +461,11 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         for step in evidence_steps
         if step.get("uses") == "./.github/actions/load-aws-ci-env"
     )
+    ci_config_target_step = next(
+        step
+        for step in evidence_steps
+        if step.get("name") == "Select test AWS CI configuration"
+    )
     checkout_step = next(
         step
         for step in evidence_steps
@@ -485,18 +508,18 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
     }
     assert "Fork pull request detected" in mode_step["run"]  # nosec B101
     assert "environment" not in jobs["test_account_evidence"]  # nosec B101
-    test_pr_environment = (
-        "${{ github.event_name == 'pull_request' && 'test-pr' || 'test' }}"
-    )
-    test_pr_config_role = (
-        "${{ github.event_name == 'pull_request' && "
-        "vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN || "
-        "vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}"
-    )
-    assert ci_config_step["with"]["environment"] == test_pr_environment  # nosec B101
     assert (  # nosec B101
-        ci_config_step["with"]["config-role-arn"] == test_pr_config_role
+        ci_config_step["with"]["environment"]
+        == "${{ steps.ci_config_target.outputs.environment }}"
     )
+    assert (  # nosec B101
+        ci_config_step["with"]["config-role-arn"]
+        == "${{ steps.ci_config_target.outputs.config-role-arn }}"
+    )
+    assert "AWS_TEST_PR_CI_CONFIG_ROLE_ARN" in ci_config_target_step["run"]  # nosec B101
+    assert "AWS_TEST_CI_CONFIG_ROLE_ARN" in ci_config_target_step["run"]  # nosec B101
+    assert "must be set" in ci_config_target_step["run"]  # nosec B101
+    assert "||" not in ci_config_step["with"]["config-role-arn"]  # nosec B101
     assert "OPERATIONS_TOPIC_ARN" in ci_config_step["with"]["required-keys"]  # nosec B101
     assert jobs["test_account_evidence"]["permissions"] == {  # nosec B101
         "contents": "read",

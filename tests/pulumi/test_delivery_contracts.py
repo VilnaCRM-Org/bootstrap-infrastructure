@@ -777,9 +777,7 @@ def test_aws_ci_loader_reads_secrets_manager_without_pulumi_cloud() -> None:
 
 def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
     """Load privileged CI config from fixed AWS Secrets Manager secrets."""
-    test_pr_environment = (
-        "${{ github.event_name == 'pull_request' && 'test-pr' || 'test' }}"
-    )
+    test_pr_environment = "${{ steps.ci_config_target.outputs.environment }}"
     expected_contracts_by_job = {
         ("nightly-guardrails.yml", "test_drift_detection"): (
             "test",
@@ -889,11 +887,7 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
         "PULUMI_ACCESS_TOKEN",
     }
     expected_config_role_by_environment = {
-        test_pr_environment: (
-            "${{ github.event_name == 'pull_request' && "
-            "vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN || "
-            "vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}"
-        ),
+        test_pr_environment: "${{ steps.ci_config_target.outputs.config-role-arn }}",
         "test": "${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}",
         "prod-preview": "${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}",
         "prod": "${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}",
@@ -925,6 +919,19 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
             for step in job.get("steps", [])
             if step.get("uses") == "./.github/actions/load-aws-ci-env"
         )
+        if expected_ci_environment == test_pr_environment:
+            ci_config_target_step = next(
+                step
+                for step in job.get("steps", [])
+                if step.get("name") == "Select test AWS CI configuration"
+            )
+            assert "AWS_TEST_PR_CI_CONFIG_ROLE_ARN" in (  # nosec B101
+                ci_config_target_step["run"]
+            )
+            assert "AWS_TEST_CI_CONFIG_ROLE_ARN" in (  # nosec B101
+                ci_config_target_step["run"]
+            )
+            assert "must be set" in ci_config_target_step["run"]  # nosec B101
         assert ci_config_step["id"] == "ci_config"  # nosec B101
         assert ci_config_step["with"]["environment"] == expected_ci_environment  # nosec B101
         assert (
@@ -933,6 +940,7 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
                 expected_config_role_by_environment[expected_ci_environment]
             )
         )
+        assert "||" not in ci_config_step["with"]["config-role-arn"]  # nosec B101
         assert (
             ci_config_step["with"]["aws-region"]
             == (  # nosec B101
