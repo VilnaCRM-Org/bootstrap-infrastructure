@@ -93,5 +93,6 @@ sentence from the cutover manual.
 
 If legacy operations-alert issues need reconciliation and no new queued alert
 exists to create a canonical issue, use **Operations Alert Canonical Backfill**
-with SRE-confirmed stable fields first. Then use **Operations Alert Legacy
-Reconcile** and provide the required `sre_confirmation_reference`.
+with an SRE-confirmed `stable_event_json` object first. Then use
+**Operations Alert Legacy Reconcile** and provide the required
+`sre_confirmation_reference`.

@@ -95,7 +95,10 @@ arrives, use the manual **Operations Alert Canonical Backfill** workflow to
 create or update the canonical fingerprinted issue from SRE-confirmed stable
 fields before running legacy reconciliation. The backfill workflow runs behind
 the same `operations-alert-reconcile` GitHub Environment, requires an HTTPS
-`sre_confirmation_reference`, and requires this exact confirmation sentence:
+`sre_confirmation_reference`, accepts one `stable_event_json` object containing
+the confirmed EventBridge `source`, `detailType`, `state`, `resourceArn`,
+optional AWS Backup stable fields, optional `detail`, and optional `resources`,
+and requires this exact confirmation sentence:
 
 ```text
 I confirm these stable fields represent the canonical operations alert stream

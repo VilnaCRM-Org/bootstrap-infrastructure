@@ -1043,6 +1043,8 @@ def test_operations_alert_backfill_requires_protected_manual_confirmation() -> N
     run = job["steps"][1]["run"]
 
     assert "workflow_dispatch" in triggers  # nosec B101
+    assert len(triggers["workflow_dispatch"]["inputs"]) <= 10  # nosec B101
+    assert "stable_event_json" in triggers["workflow_dispatch"]["inputs"]  # nosec B101
     assert job["environment"] == "operations-alert-reconcile"  # nosec B101
     assert workflow["permissions"] == {"contents": "read", "issues": "write"}  # nosec B101
     assert "id-token" not in workflow["permissions"]  # nosec B101
@@ -1054,6 +1056,7 @@ def test_operations_alert_backfill_requires_protected_manual_confirmation() -> N
         in run
     )
     assert "sre_confirmation_reference must be an HTTPS URL" in run  # nosec B101
+    assert "stable_event_json.source is required" in run  # nosec B101
     assert "python3 scripts/operations_alert_triage.py" in run  # nosec B101
     assert "operations-alert:fingerprint=${fingerprint} in:body" in run  # nosec B101
     assert "gh issue create" in run  # nosec B101

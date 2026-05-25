@@ -3,43 +3,11 @@ name: Operations Alert Canonical Backfill
 on:
   workflow_dispatch:
     inputs:
-      source:
-        description: EventBridge source, for example aws.backup
+      stable_event_json:
+        description: SRE-confirmed stable EventBridge JSON object
         required: true
-        type: string
-      detail_type:
-        description: EventBridge detail type
-        required: true
-        type: string
-      state:
-        description: Stable alert state
-        required: true
-        type: string
-      backup_vault_name:
-        description: Stable AWS Backup vault name, if applicable
-        required: false
-        type: string
-      backup_plan_id:
-        description: Stable AWS Backup plan ID, if applicable
-        required: false
-        type: string
-      backup_rule_id:
-        description: Stable AWS Backup rule ID, if applicable
-        required: false
-        type: string
-      resource_arn:
-        description: Stable protected resource ARN
-        required: true
-        type: string
-      stable_detail_json:
-        description: Additional stable EventBridge detail JSON object
-        required: true
-        default: '{}'
-        type: string
-      resources_json:
-        description: Stable EventBridge resources JSON array
-        required: true
-        default: '[]'
+        default: >-
+          {"source":"aws.backup","detailType":"Backup Job State Change","state":"","resourceArn":"","detail":{},"resources":[]}
         type: string
       message_count:
         description: Legacy alert message count represented by this backfill
@@ -87,15 +55,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      ALERT_SOURCE: ${{ inputs.source }}
-      ALERT_DETAIL_TYPE: ${{ inputs.detail_type }}
-      ALERT_STATE: ${{ inputs.state }}
-      BACKUP_VAULT_NAME: ${{ inputs.backup_vault_name }}
-      BACKUP_PLAN_ID: ${{ inputs.backup_plan_id }}
-      BACKUP_RULE_ID: ${{ inputs.backup_rule_id }}
-      RESOURCE_ARN: ${{ inputs.resource_arn }}
-      STABLE_DETAIL_JSON: ${{ inputs.stable_detail_json }}
-      RESOURCES_JSON: ${{ inputs.resources_json }}
+      STABLE_EVENT_JSON: ${{ inputs.stable_event_json }}
       MESSAGE_COUNT: ${{ inputs.message_count }}
       OPERATIONS_ALERT_QUEUE_NAME: ${{ inputs.queue_name }}
       AWS_ACCOUNT_ID: ${{ inputs.aws_account_id }}
@@ -131,31 +91,37 @@ jobs:
             exit 1
           fi
 
-          stable_detail_file="$(mktemp)"
-          resources_file="$(mktemp)"
+          stable_event_file="$(mktemp)"
           alerts_json="$(mktemp)"
           body_file="$(mktemp)"
           fingerprint_file="$(mktemp)"
           issue_body_file="$(mktemp)"
 
-          printf '%s\n' "${STABLE_DETAIL_JSON}" |
-            jq -e 'if type == "object" then . else error("stable_detail_json must be an object") end' \
-              > "${stable_detail_file}"
-          printf '%s\n' "${RESOURCES_JSON}" |
-            jq -e 'if type == "array" then . else error("resources_json must be an array") end' \
-              > "${resources_file}"
+          printf '%s\n' "${STABLE_EVENT_JSON}" |
+            jq -e '
+              def has_text($name):
+                (.[$name] // "") | type == "string" and length > 0;
+              if type != "object" then
+                error("stable_event_json must be an object")
+              elif (has_text("source") | not) then
+                error("stable_event_json.source is required")
+              elif ((.detailType // .detail_type // "") | type != "string" or length == 0) then
+                error("stable_event_json.detailType is required")
+              elif (has_text("state") | not) then
+                error("stable_event_json.state is required")
+              elif (((.resourceArn // .resource_arn // "") | type != "string") or ((.resourceArn // .resource_arn // "") | length == 0)) then
+                error("stable_event_json.resourceArn is required")
+              elif ((.detail // {}) | type != "object") then
+                error("stable_event_json.detail must be an object")
+              elif ((.resources // []) | type != "array") then
+                error("stable_event_json.resources must be an array")
+              else
+                .
+              end' > "${stable_event_file}"
 
           jq -n \
-            --arg source "${ALERT_SOURCE}" \
-            --arg detail_type "${ALERT_DETAIL_TYPE}" \
-            --arg state "${ALERT_STATE}" \
-            --arg backup_vault_name "${BACKUP_VAULT_NAME}" \
-            --arg backup_plan_id "${BACKUP_PLAN_ID}" \
-            --arg backup_rule_id "${BACKUP_RULE_ID}" \
-            --arg resource_arn "${RESOURCE_ARN}" \
             --arg reviewed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --slurpfile stable_detail "${stable_detail_file}" \
-            --slurpfile resources "${resources_file}" \
+            --slurpfile stable_event "${stable_event_file}" \
             '{
               Messages: [
                 {
@@ -164,18 +130,24 @@ jobs:
                   Body: ({
                     MessageId: "backfill-sre-confirmed",
                     Timestamp: $reviewed_at,
-                    Message: ({
-                      source: $source,
-                      "detail-type": $detail_type,
+                    Message: (($stable_event[0]) as $event | {
+                      source: $event.source,
+                      "detail-type": ($event.detailType // $event.detail_type),
                       time: $reviewed_at,
-                      resources: ($resources[0] // []),
+                      resources: ($event.resources // []),
                       detail: (
-                        ($stable_detail[0] // {}) + {
-                          state: $state,
-                          backupVaultName: $backup_vault_name,
-                          backupPlanId: $backup_plan_id,
-                          backupRuleId: $backup_rule_id,
-                          resourceArn: $resource_arn
+                        ($event.detail // {}) + {
+                          state: $event.state,
+                          backupVaultName: (
+                            $event.backupVaultName // $event.backup_vault_name // ""
+                          ),
+                          backupPlanId: (
+                            $event.backupPlanId // $event.backup_plan_id // ""
+                          ),
+                          backupRuleId: (
+                            $event.backupRuleId // $event.backup_rule_id // ""
+                          ),
+                          resourceArn: ($event.resourceArn // $event.resource_arn)
                         }
                         | with_entries(select(.value != ""))
                       )
