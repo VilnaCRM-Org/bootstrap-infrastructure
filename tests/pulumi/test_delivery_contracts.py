@@ -237,7 +237,6 @@ def test_docker_compose_keeps_workspace_and_credentials_contract() -> None:
 
     assert service["env_file"] == [{"path": ".env", "required": False}]
     assert service["environment"] == [
-        "PULUMI_ACCESS_TOKEN",
         "PULUMI_BACKEND_URL",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",

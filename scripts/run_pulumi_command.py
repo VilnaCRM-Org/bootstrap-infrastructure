@@ -428,17 +428,13 @@ def _run_with_observable_output(
     )
 
 
-def _plan_decrypt_fallback_enabled(context: CommandContext) -> bool:
-    return context.env.get("GITHUB_ACTIONS") == "true" and bool(
-        context.env.get("PULUMI_EXPECTED_SHA")
-    )
-
-
-def _saved_prod_plan_recovery_enabled(
+def _ci_saved_plan_recovery_enabled(
     context: CommandContext, combined_output: str, error_signature: str
 ) -> bool:
-    return error_signature in combined_output and _plan_decrypt_fallback_enabled(
-        context
+    return (
+        error_signature in combined_output
+        and context.env.get("GITHUB_ACTIONS") == "true"
+        and bool(context.env.get("PULUMI_EXPECTED_SHA"))
     )
 
 
@@ -449,7 +445,7 @@ def _recover_failed_saved_prod_plan(
     result: subprocess.CompletedProcess[str],
 ) -> int | None:
     combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if _saved_prod_plan_recovery_enabled(context, combined_output, PLAN_DECRYPT_ERROR):
+    if _ci_saved_plan_recovery_enabled(context, combined_output, PLAN_DECRYPT_ERROR):
         print(
             "error: saved Pulumi plan failed with the known KMS plan-decrypt "
             "error; refusing direct production apply because production must "
@@ -458,7 +454,7 @@ def _recover_failed_saved_prod_plan(
         )
         return result.returncode or 1
 
-    if _saved_prod_plan_recovery_enabled(context, combined_output, STACK_LOCK_ERROR):
+    if _ci_saved_plan_recovery_enabled(context, combined_output, STACK_LOCK_ERROR):
         print(
             "warning: Pulumi reported a stack lock while applying the saved "
             "production plan; running pulumi cancel for the selected stack "
@@ -512,12 +508,6 @@ def _pulumi_cancel_command(context: CommandContext, stack: str) -> list[str]:
 def _run_up_stack(
     context: CommandContext, stack: str, *, include_policy_pack: bool = True
 ) -> int | None:
-    if not _plan_decrypt_fallback_enabled(context):
-        _run_stack_command(
-            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
-        )
-        return None
-
     result = _run_with_observable_output(
         context,
         _pulumi_command(
@@ -525,19 +515,6 @@ def _run_up_stack(
         ),
     )
     if result.returncode == 0:
-        return None
-
-    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if STACK_LOCK_ERROR in combined_output:
-        print(
-            "warning: Pulumi reported a stack lock during guarded direct apply; "
-            "running pulumi cancel for the selected stack and retrying once.",
-            file=sys.stderr,
-        )
-        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
-        _run_stack_command(
-            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
-        )
         return None
 
     return result.returncode or 1

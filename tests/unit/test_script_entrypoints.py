@@ -8617,7 +8617,7 @@ def test_run_up_plan_stack_uses_saved_prod_plan_by_default_in_ci(
     )
 
 
-def test_run_up_plan_stack_recovers_from_plan_decrypt(
+def test_run_up_plan_stack_rejects_plan_decrypt_without_direct_apply(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Known saved-plan decrypt failures should not bypass the saved plan."""
@@ -8714,10 +8714,10 @@ def test_run_up_plan_stack_recovers_from_saved_plan_lock(
     )
 
 
-def test_run_up_stack_recovers_from_lock(
+def test_run_up_stack_does_not_retry_after_lock(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Guarded direct applies should cancel one stale stack lock and retry."""
+    """Direct applies should not auto-cancel stack locks and retry."""
     module = load_script_module(monkeypatch, "run_pulumi_command")
     context_dir = tmp_path / "repo"
     applied: list[list[str]] = []
@@ -8749,11 +8749,11 @@ def test_run_up_stack_recovers_from_lock(
         runner=fake_runner,
     )
 
-    assert module._run_up_stack(context, "test") is None
-    assert any(  # nosec B101
+    assert module._run_up_stack(context, "test") == 255
+    assert not any(  # nosec B101
         len(command) > 3 and command[3] == "cancel" for command in applied
     )
-    assert up_attempts == 2  # nosec B101
+    assert up_attempts == 1  # nosec B101
 
 
 def test_run_pulumi_command_observable_output_paths(

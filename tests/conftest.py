@@ -331,8 +331,6 @@ def pulumi_automation_environment(tmp_path_factory: pytest.TempPathFactory) -> N
     os.environ.setdefault("PULUMI_PYTHON_CMD", python_cmd)
     backend_url = os.environ.get("PULUMI_BACKEND_URL", "")
 
-    if os.environ.get("PULUMI_ACCESS_TOKEN"):
-        return
     if backend_url:
         return
 
@@ -341,9 +339,11 @@ def pulumi_automation_environment(tmp_path_factory: pytest.TempPathFactory) -> N
 
     env = os.environ.copy()
     env["PULUMI_HOME"] = str(backend_dir)
+    env.pop("PULUMI_ACCESS_TOKEN", None)
 
     subprocess.run(["pulumi", "login", backend_uri], check=True, env=env, timeout=30)
 
+    os.environ.pop("PULUMI_ACCESS_TOKEN", None)
     os.environ.setdefault("PULUMI_HOME", str(backend_dir))
     os.environ.setdefault("PULUMI_BACKEND_URL", backend_uri)
 
@@ -358,8 +358,6 @@ def ensure_pulumi_cli() -> None:
 @pytest.fixture(scope="session")
 def ensure_pulumi_secrets_provider() -> None:
     """Require an explicit non-passphrase secrets provider for automation tests."""
-    if os.environ.get("PULUMI_ACCESS_TOKEN"):
-        return
     if not os.environ.get("PULUMI_SECRETS_PROVIDER"):
         pytest.skip(
             "Set PULUMI_SECRETS_PROVIDER to run Pulumi automation tests without "
