@@ -634,6 +634,13 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
         if resource_type in {"aws:iam/policy:Policy", "aws:iam/rolePolicy:RolePolicy"}
     ]
     assert policy_documents  # nosec B101
+    read_stack_metadata = next(
+        statement
+        for policy_document in policy_documents
+        for statement in policy_document["Statement"]
+        if statement["Sid"] == "ReadStackMetadata"
+    )
+    assert "ce:ListCostAllocationTags" in read_stack_metadata["Action"]  # nosec B101
     assert any(  # nosec B101
         resource_type == "aws:iam/policy:Policy"
         and name.startswith("github-ci-bootstrap-test-apply-")

@@ -73,6 +73,7 @@ _READ_ONLY_ACTIONS = (
     "ce:GetAnomalySubscriptions",
     "ce:GetCostAndUsage",
     "ce:GetCostForecast",
+    "ce:ListCostAllocationTags",
     "ce:ListTagsForResource",
     "cloudtrail:DescribeTrails",
     "cloudtrail:Get*",
