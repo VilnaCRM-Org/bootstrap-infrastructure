@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any, cast
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 AWS_WELL_ARCHITECTED_TOC_URL = (
     "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json"
@@ -20,6 +20,13 @@ AWS_WELL_ARCHITECTED_TOC_URL = (
 AWS_WELL_ARCHITECTED_DOC_BASE = (
     "https://docs.aws.amazon.com/wellarchitected/latest/framework/"
 )
+AWS_DOCS_REQUEST_HEADERS = {
+    "Accept": "application/json,text/plain,*/*",
+    "User-Agent": (
+        "bootstrap-infrastructure-well-architected-verifier/1.0 "
+        "(+https://github.com/VilnaCRM-Org/bootstrap-infrastructure)"
+    ),
+}
 QUESTION_RE = re.compile(
     r"^(?P<prefix>OPS|SEC|REL|PERF|COST|SUS)\s+0*(?P<number>[1-9]\d?)"
     r"\.?\s+(?P<title>.+)$"
@@ -74,7 +81,8 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _fetch_toc(url: str) -> dict[str, Any]:
-    with urlopen(url, timeout=20) as response:  # nosec B310 - docs-only verifier.
+    request = Request(url, headers=AWS_DOCS_REQUEST_HEADERS)
+    with urlopen(request, timeout=20) as response:  # nosec B310 - docs-only verifier.
         payload = json.load(response)
     if not isinstance(payload, dict):
         raise ValueError("AWS Well-Architected TOC must be a JSON object")

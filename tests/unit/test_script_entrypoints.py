@@ -2508,10 +2508,16 @@ def test_verify_well_architected_questions_fetches_toc_and_reports_errors(
         def __exit__(self, *args: object) -> None:
             self.close()
 
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append(request)
+        return FakeResponse(json.dumps(_well_architected_question_toc()))
+
     monkeypatch.setattr(
         module,
         "urlopen",
-        lambda url, timeout: FakeResponse(json.dumps(_well_architected_question_toc())),
+        fake_urlopen,
     )
     assert (
         module.main(
@@ -2525,6 +2531,12 @@ def test_verify_well_architected_questions_fetches_toc_and_reports_errors(
         == 0
     )
     assert '"status": "passed"' in capsys.readouterr().out
+    assert requests[0].full_url == module.AWS_WELL_ARCHITECTED_TOC_URL  # nosec B101
+    assert requests[0].get_header("Accept") == "application/json,text/plain,*/*"  # nosec B101
+    assert (  # nosec B101
+        "bootstrap-infrastructure-well-architected-verifier"
+        in requests[0].get_header("User-agent")
+    )
 
     monkeypatch.setattr(module, "urlopen", lambda url, timeout: FakeResponse("[]"))
     assert (
