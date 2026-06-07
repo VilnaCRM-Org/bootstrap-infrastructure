@@ -2,11 +2,11 @@
   "accountEvidence": {
     "accountAccessKeysPresent": 0,
     "accountMfaEnabled": 1,
-    "activeUserAccessKeyCount": 0,
+    "activeUserAccessKeyCount": 1,
     "activeUserAccessKeyCreateDateUnknownCount": 0,
     "activeUserAccessKeyLastUsedOlderThan90DaysCount": 0,
     "activeUserAccessKeyLastUsedUnknownCount": 0,
-    "activeUserAccessKeyLastUsedWithin90DaysCount": 0,
+    "activeUserAccessKeyLastUsedWithin90DaysCount": 1,
     "activeUserAccessKeyNeverUsedCount": 0,
     "activeUserAccessKeyOlderThan90DaysCount": 0,
     "discoveredUserCount": 5,
@@ -17,20 +17,20 @@
     "summaryUserCount": 5,
     "unreadableAccessKeyLastUsedCount": 0,
     "unreadableAccessKeyUserCount": 0,
-    "usersWithActiveAccessKeys": 0
+    "usersWithActiveAccessKeys": 1
   },
-  "activeKeyDecision": "no_active_keys",
+  "activeKeyDecision": "approved_exception",
   "approval": "approved",
   "approvedBy": "Kravalg",
   "environment": "test",
   "evidence": [
-    "Security owner approved the current aggregate IAM posture for test account 891377212104 after the active IAM user access key was removed; IAM user count and MFA/SSO posture remain accepted for this bootstrap workload and must be reviewed before expiry."
+    "Security owner approved the current aggregate IAM posture for test account 891377212104, including one active IAM user access key observed in live metadata; IAM user count and MFA/SSO posture remain accepted for this bootstrap workload and must be reviewed before expiry or IAM scope expansion."
   ],
   "expiresAt": "2026-07-07T00:00:00Z",
   "humanAccessPosture": "approved",
   "owner": "Kravalg",
   "permissionsBoundaryDecision": "not_required",
-  "remediationPlan": "Security owner approved the current aggregate IAM posture for test account 891377212104 after the active IAM user access key was removed; IAM user count and MFA/SSO posture remain accepted for this bootstrap workload and must be reviewed before expiry.",
+  "remediationPlan": "Security owner approved the current aggregate IAM posture for test account 891377212104, including one active IAM user access key observed in live metadata; IAM user count and MFA/SSO posture remain accepted for this bootstrap workload and must be reviewed before expiry or IAM scope expansion.",
   "reviewedAt": "2026-06-07",
   "workload": "bootstrap-infrastructure"
 }

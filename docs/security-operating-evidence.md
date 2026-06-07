@@ -111,7 +111,7 @@ key IDs, secret values, or decrypted configuration:
 | Caller identity | Metadata-only collector identity matched account `891377212104`. | Re-run the collector after credential, role, or account changes. |
 | IAM account summary | `Users=5`, `MFADevices=1`, `MFADevicesInUse=1`, `AccountMFAEnabled=1`, and `AccountAccessKeysPresent=0`. | Security owner approved the current human-access posture through the June 7 attestation; refresh before 2026-07-07 or after IAM user changes. |
 | IAM user inventory | Five IAM users exist in the account. User names and private identity details are not retained in repository evidence. | Security owner remains responsible for user lifecycle review outside the repository. |
-| Access-key status by user | Active IAM user access-key count is `0`; inactive, unreadable, stale, and unknown active-key counters are also `0`. | Keep active user access keys removed, or record a new owner-approved exception before SEC2 can stay at 5/5. |
+| Access-key status by user | Active IAM user access-key count is `1` under an owner-approved exception; inactive, unreadable, stale, and unknown active-key counters are `0`, and one active key was last used within 90 days. | Rotate/remove the active user access key when feasible, or refresh the owner-approved exception before 2026-07-07 or any access-key count change. |
 
 `specs/issue-17-well-architected-5-of-5/security-account-attestation-2026-06-07-approved.json`
 records the current owner approval and expires on 2026-07-07. SEC1, SEC2, and
