@@ -473,22 +473,41 @@ def _recover_failed_saved_prod_plan(
     return result.returncode or 1
 
 
+def _recover_failed_saved_nonprod_plan(
+    context: CommandContext,
+    stack: str,
+    result: subprocess.CompletedProcess[str],
+) -> int | None:
+    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
+    if not _ci_saved_plan_recovery_enabled(
+        context, combined_output, PLAN_DECRYPT_ERROR
+    ):
+        return result.returncode or 1
+
+    print(
+        "warning: saved Pulumi plan failed with the known KMS plan-decrypt "
+        f"error; retrying guarded direct non-production apply for stack {stack}.",
+        file=sys.stderr,
+    )
+    retry = _run_with_observable_output(
+        context,
+        _pulumi_command(context, StackCommand("up", stack)),
+    )
+    return None if retry.returncode == 0 else retry.returncode or 1
+
+
 def _run_up_plan_stack(
     context: CommandContext, stack: str, plan_path: Path
 ) -> int | None:
-    if stack != "prod":
-        _run_stack_command(
-            context,
-            StackCommand("up-plan", stack, plan_path=plan_path),
-        )
-        return None
-
     result = _run_with_observable_output(
         context,
         _pulumi_command(context, StackCommand("up-plan", stack, plan_path=plan_path)),
     )
     if result.returncode == 0:
         return None
+
+    if stack != "prod":
+        return _recover_failed_saved_nonprod_plan(context, stack, result)
 
     return _recover_failed_saved_prod_plan(context, stack, plan_path, result)
 
