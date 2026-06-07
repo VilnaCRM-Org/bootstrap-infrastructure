@@ -491,7 +491,10 @@ def _recover_failed_saved_nonprod_plan(
     )
     retry = _run_with_observable_output(
         context,
-        _pulumi_command(context, StackCommand("up", stack)),
+        _pulumi_command(
+            context,
+            StackCommand("up", stack, include_policy_pack=False),
+        ),
     )
     return None if retry.returncode == 0 else retry.returncode or 1
 

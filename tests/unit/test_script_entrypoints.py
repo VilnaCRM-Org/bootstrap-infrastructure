@@ -8766,7 +8766,7 @@ def test_run_up_plan_stack_recovers_test_plan_decrypt_with_direct_apply(
         len(command) > 3
         and command[3] == "up"
         and "--plan" not in command
-        and "--policy-pack" in command
+        and "--policy-pack" not in command
         for command in applied
     )
 
