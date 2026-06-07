@@ -18,7 +18,13 @@ production_environments:
 
 allowlists:
   public_s3_buckets: []
-  wildcard_iam: []
+  wildcard_iam:
+    - GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies
+    - GitHubCiDrift-bootstrap-infrastructure-test-read-only
+    - GitHubCiPreview-bootstrap-infrastructure-test-read-only
+    - github-ci-bootstrap-apply-iam-managed-policies
+    - github-ci-bootstrap-drift-read-only
+    - github-ci-bootstrap-preview-read-only
 
 annotations:
   public_s3_tag: AllowPublicBucket

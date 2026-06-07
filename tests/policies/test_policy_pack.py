@@ -189,7 +189,16 @@ def test_repo_policy_config_declares_expected_defaults(
     assert config.production_environments == ("prod", "production", "live")
     assert config.annotations["public_s3_tag"] == "AllowPublicBucket"
     assert config.public_s3_bucket_allowlist == frozenset()
-    assert config.wildcard_iam_allowlist == frozenset()
+    assert config.wildcard_iam_allowlist == frozenset(
+        {
+            "GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies",
+            "GitHubCiDrift-bootstrap-infrastructure-test-read-only",
+            "GitHubCiPreview-bootstrap-infrastructure-test-read-only",
+            "github-ci-bootstrap-apply-iam-managed-policies",
+            "github-ci-bootstrap-drift-read-only",
+            "github-ci-bootstrap-preview-read-only",
+        }
+    )
 
 
 def test_load_policy_config_defaults_optional_sections(
