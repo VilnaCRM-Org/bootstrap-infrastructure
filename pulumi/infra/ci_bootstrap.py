@@ -333,10 +333,16 @@ def _deployment_assume_role_policy(
     )
 
 
-def _state_bucket_resources(settings: BootstrapSettings) -> tuple[str, str]:
+def _state_bucket_resources(settings: BootstrapSettings) -> tuple[str, tuple[str, str]]:
     """Return the Pulumi backend bucket and state-object ARN patterns."""
     bucket_name = settings.state_bucket_name()
-    return f"arn:aws:s3:::{bucket_name}", f"arn:aws:s3:::{bucket_name}/state/*"
+    return (
+        f"arn:aws:s3:::{bucket_name}",
+        (
+            f"arn:aws:s3:::{bucket_name}/state/*",
+            f"arn:aws:s3:::{bucket_name}/.pulumi/*",
+        ),
+    )
 
 
 def _pulumi_secrets_alias_conditions(settings: BootstrapSettings) -> list[str]:
@@ -354,7 +360,7 @@ def _pulumi_backend_policy_document(
     settings: BootstrapSettings,
 ) -> str:
     """Return S3 backend and KMS secrets-provider access for Pulumi CLI."""
-    bucket_arn, objects_arn = _state_bucket_resources(settings)
+    bucket_arn, object_arns = _state_bucket_resources(settings)
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -369,7 +375,7 @@ def _pulumi_backend_policy_document(
                     "Sid": "UsePulumiStateBucket",
                     "Effect": "Allow",
                     "Action": list(_PULUMI_BACKEND_S3_ACTIONS),
-                    "Resource": [bucket_arn, objects_arn],
+                    "Resource": [bucket_arn, *object_arns],
                 },
                 {
                     "Sid": "UsePulumiSecretsProviderKey",

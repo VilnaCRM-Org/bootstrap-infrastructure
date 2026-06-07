@@ -605,6 +605,22 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
     assert "pull_request" not in json.dumps(apply_condition)  # nosec B101
     assert "pulumi-pr-guardrails.yml" not in json.dumps(apply_condition)  # nosec B101
 
+    backend_policy = json.loads(
+        ci_bootstrap._pulumi_backend_policy_document(
+            "123456789012",
+            "aws",
+            settings,
+        )
+    )
+    backend_statements = {
+        statement["Sid"]: statement for statement in backend_policy["Statement"]
+    }
+    assert backend_statements["UsePulumiStateBucket"]["Resource"] == [  # nosec B101
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/state/*",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/*",
+    ]
+
     policy_documents = [
         json.loads(state["policy"])
         for resource_type, _name, state in new_resources

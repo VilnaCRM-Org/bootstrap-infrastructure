@@ -235,6 +235,6 @@ runs:
           echo "aws-apply-role-arn=${AWS_APPLY_ROLE_ARN:-}"
           echo "aws-drift-role-arn=${AWS_DRIFT_ROLE_ARN:-}"
           echo "aws-operations-alert-triage-role-arn=${AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN:-}"
-          echo "pulumi-backend-url=${PULUMI_BACKEND_URL}"
-          echo "pulumi-secrets-provider=${PULUMI_SECRETS_PROVIDER}"
+          echo "pulumi-backend-url=${PULUMI_BACKEND_URL:-}"
+          echo "pulumi-secrets-provider=${PULUMI_SECRETS_PROVIDER:-}"
         } >> "${GITHUB_OUTPUT}"
