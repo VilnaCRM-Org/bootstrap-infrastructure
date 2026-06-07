@@ -559,6 +559,7 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
         "OPERATIONS_CLOUDTRAIL_NAME",
         "OPERATIONS_TOPIC_ARN",
         "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
         "PULUMI_PREVIEW_STACKS",
         "PULUMI_SECRETS_PROVIDER",
     ]
@@ -575,6 +576,7 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
         "OPERATIONS_CLOUDTRAIL_NAME",
         "OPERATIONS_TOPIC_ARN",
         "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
         "PULUMI_DRIFT_STACKS",
         "PULUMI_PREVIEW_STACKS",
         "PULUMI_SECRETS_PROVIDER",
@@ -688,6 +690,7 @@ def test_github_ci_bootstrap_prod_stack_uses_protected_apply_subject(
         "AWS_APPLY_ROLE_ARN",
         "AWS_REGION",
         "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
         "PULUMI_PREVIEW_STACKS",
         "PULUMI_SECRETS_PROVIDER",
     ]
@@ -787,6 +790,7 @@ def test_github_ci_bootstrap_payload_helpers_cover_custom_env_and_secret_string(
         region="eu-central-1",
         settings=settings,
         provider_arn="arn:aws:iam::123456789012:oidc-provider/token",
+        pulumi_dir="pulumi",
         protect_resources=True,
     )
     payloads = ci_bootstrap._payloads(
@@ -795,6 +799,7 @@ def test_github_ci_bootstrap_payload_helpers_cover_custom_env_and_secret_string(
             role_arns=role_arns,
             operations_alert_triage_role_arn=None,
             pulumi_backend_url="s3://custom-state",
+            pulumi_dir="pulumi",
             pulumi_secrets_provider="awskms://alias/custom?region=eu-central-1",
         ),
     )
@@ -814,6 +819,7 @@ def test_github_ci_bootstrap_payload_helpers_cover_custom_env_and_secret_string(
         "AWS_PREVIEW_ROLE_ARN": role_arns["preview"],
         "AWS_REGION": "eu-central-1",
         "PULUMI_BACKEND_URL": "s3://custom-state",
+        "PULUMI_DIR": "pulumi",
         "PULUMI_DRIFT_STACKS": "stage",
         "PULUMI_PREVIEW_STACKS": "stage",
         "PULUMI_SECRETS_PROVIDER": "awskms://alias/custom?region=eu-central-1",
@@ -830,12 +836,14 @@ def test_github_ci_bootstrap_payload_helpers_cover_custom_env_and_secret_string(
                 region="eu-central-1",
                 settings=_ci_bootstrap_settings("test"),
                 provider_arn="arn:aws:iam::123456789012:oidc-provider/token",
+                pulumi_dir="pulumi",
                 protect_resources=True,
             ),
             ci_bootstrap._PayloadOverrides(
                 role_arns=role_arns,
                 operations_alert_triage_role_arn=None,
                 pulumi_backend_url=None,
+                pulumi_dir="pulumi",
                 pulumi_secrets_provider=None,
             ),
         )
@@ -881,6 +889,7 @@ def test_github_ci_bootstrap_custom_stack_can_skip_secret_values(
         "AWS_PREVIEW_ROLE_ARN",
         "AWS_REGION",
         "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
         "PULUMI_DRIFT_STACKS",
         "PULUMI_PREVIEW_STACKS",
         "PULUMI_SECRETS_PROVIDER",

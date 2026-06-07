@@ -28,6 +28,7 @@ bootstrap = GitHubCiBootstrap(
     args=GitHubCiBootstrapArgs(
         settings=settings,
         pulumi_backend_url=cfg.get("pulumiBackendUrl"),
+        pulumi_dir=cfg.get("pulumiDir") or "pulumi",
         pulumi_secrets_provider=cfg.get("pulumiSecretsProvider"),
         write_secret_values=managed_secret_values,
         protect_resources=protected_resources,

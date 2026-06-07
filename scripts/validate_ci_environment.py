@@ -52,6 +52,7 @@ def validate_environment(
         "AWS_DRIFT_ROLE_ARN": _validate_role_arn,
         "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN": _validate_role_arn,
         "PULUMI_BACKEND_URL": _validate_backend_url,
+        "PULUMI_DIR": _validate_pulumi_dir,
         "PULUMI_SECRETS_PROVIDER": _validate_secrets_provider,
         "PULUMI_PREVIEW_STACKS": _validate_stack_list,
         "PULUMI_DRIFT_STACKS": _validate_stack_list,
@@ -91,6 +92,12 @@ def _validate_backend_url(value: str) -> str | None:
     if value.startswith("s3://"):
         return None
     return "must use an s3:// Pulumi backend"
+
+
+def _validate_pulumi_dir(value: str) -> str | None:
+    if re.fullmatch(r"pulumi(?:/[A-Za-z0-9_.-]+)*", value):
+        return None
+    return "must be a safe Pulumi project path"
 
 
 def _validate_secrets_provider(value: str) -> str | None:

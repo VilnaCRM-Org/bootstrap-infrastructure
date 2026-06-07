@@ -150,6 +150,7 @@ class _BootstrapBuildContext:
     region: str
     settings: BootstrapSettings
     provider_arn: pulumi.Input[str]
+    pulumi_dir: str
     protect_resources: bool
 
 
@@ -160,6 +161,7 @@ class _PayloadOverrides:
     role_arns: Mapping[str, pulumi.Input[str]]
     operations_alert_triage_role_arn: pulumi.Input[str] | None
     pulumi_backend_url: str | None
+    pulumi_dir: str
     pulumi_secrets_provider: str | None
 
 
@@ -182,6 +184,7 @@ class GitHubCiBootstrapArgs:
 
     settings: BootstrapSettings | None = None
     pulumi_backend_url: str | None = None
+    pulumi_dir: str = "pulumi"
     pulumi_secrets_provider: str | None = None
     write_secret_values: bool = True
     protect_resources: bool = True
@@ -709,6 +712,7 @@ def _payloads(
         "AWS_ACCOUNT_ID": context.account_id,
         "AWS_REGION": context.region,
         "PULUMI_BACKEND_URL": backend_url,
+        "PULUMI_DIR": overrides.pulumi_dir,
         "PULUMI_SECRETS_PROVIDER": secrets_provider,
     }
     preview_common = {
@@ -799,7 +803,9 @@ def _create_secret_versions(
                     ci_configuration.secrets[suffix],
                     *ci_configuration.read_roles.values(),
                 ],
-                protect=context.protect_resources,
+                # Secret containers stay protected; versions must rotate when
+                # role ARNs or deployment metadata change.
+                protect=False,
             ),
         )
         for suffix in _ci_secret_suffixes(context.settings)
@@ -904,6 +910,7 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
             region=region,
             settings=configured_settings,
             provider_arn=oidc.provider.arn,
+            pulumi_dir=config.pulumi_dir,
             protect_resources=config.protect_resources,
         )
 
@@ -927,6 +934,7 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
                 role_arns=self.role_arns,
                 operations_alert_triage_role_arn=triage_resources.role_arn,
                 pulumi_backend_url=config.pulumi_backend_url,
+                pulumi_dir=config.pulumi_dir,
                 pulumi_secrets_provider=config.pulumi_secrets_provider,
             ),
         )

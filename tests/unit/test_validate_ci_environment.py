@@ -23,6 +23,7 @@ def _valid_environment() -> dict[str, str]:
             "arn:aws:iam::123456789012:role/OperationsAlertTriage"
         ),
         "PULUMI_BACKEND_URL": "s3://pulumi-bootstrap-infrastructure-test/state/test",
+        "PULUMI_DIR": "pulumi",
         "PULUMI_SECRETS_PROVIDER": (
             "awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1"
         ),
@@ -44,7 +45,8 @@ def test_parse_required_keys_strips_blank_items() -> None:
 def test_validate_environment_accepts_aws_secrets_manager_derived_values() -> None:
     keys = validator.parse_required_keys(
         "AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,"
-        "PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS"
+        "PULUMI_BACKEND_URL,PULUMI_DIR,PULUMI_SECRETS_PROVIDER,"
+        "PULUMI_PREVIEW_STACKS"
     )
 
     assert validator.validate_environment(keys, _valid_environment()) == []
@@ -67,12 +69,14 @@ def test_validate_environment_rejects_unsafe_shapes() -> None:
         "AWS_REGION": "central",
         "AWS_PREVIEW_ROLE_ARN": "arn:aws:iam::123456789012:user/not-role",
         "PULUMI_BACKEND_URL": "file:///tmp/backend",
+        "PULUMI_DIR": "../pulumi",
         "PULUMI_SECRETS_PROVIDER": "passphrase",
         "PULUMI_PREVIEW_STACKS": "test,$(secret)",
     }
     keys = validator.parse_required_keys(
         "AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,"
-        "PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS"
+        "PULUMI_BACKEND_URL,PULUMI_DIR,PULUMI_SECRETS_PROVIDER,"
+        "PULUMI_PREVIEW_STACKS"
     )
 
     issues = validator.validate_environment(keys, environment)
@@ -82,6 +86,7 @@ def test_validate_environment_rejects_unsafe_shapes() -> None:
         "AWS_REGION",
         "AWS_PREVIEW_ROLE_ARN",
         "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
         "PULUMI_SECRETS_PROVIDER",
         "PULUMI_PREVIEW_STACKS",
     }

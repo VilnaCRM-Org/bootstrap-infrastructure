@@ -750,6 +750,8 @@ def test_aws_ci_loader_reads_secrets_manager_without_pulumi_cloud() -> None:
     assert ".github/ci/pulumi-esc.json" not in action_text  # nosec B101
     assert "secretsmanager get-secret-value" in load_step["run"]  # nosec B101
     assert "--query SecretString" in load_step["run"]  # nosec B101
+    assert '"PULUMI_DIR"' in load_step["run"]  # nosec B101
+    assert "safe Pulumi project path" in load_step["run"]  # nosec B101
     assert "Secret ID:" in boundary_step["run"]  # nosec B101
     assert "Pulumi Cloud/ESC: not used" in boundary_step["run"]  # nosec B101
     assert action["runs"]["steps"].index(resolve_step) < action["runs"]["steps"].index(  # nosec B101
@@ -1220,7 +1222,6 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
         "issues": "read",
         "pull-requests": "read",
     }
-    assert runner["env"]["PULUMI_DIR"] == "pulumi/github-ci-bootstrap"  # nosec B101
     assert runner["jobs"]["preflight"]["permissions"] == {  # nosec B101
         "issues": "write",
         "pull-requests": "write",

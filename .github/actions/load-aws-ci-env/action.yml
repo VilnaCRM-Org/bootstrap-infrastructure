@@ -146,6 +146,7 @@ runs:
         python3 - "${secret_file}" <<'PY'
         import json
         import os
+        import re
         import sys
         from pathlib import Path
 
@@ -183,6 +184,22 @@ runs:
                 sys.exit(1)
             if "\n" in text or "\r" in text:
                 print(f"CI config value {key} must not contain newlines.", file=sys.stderr)
+                sys.exit(1)
+            exports[key] = text
+
+        for key in ("PULUMI_DIR",):
+            if key not in payload or str(payload[key]).strip() == "":
+                continue
+            value = payload[key]
+            if not isinstance(value, str):
+                print(f"CI config value {key} must be a string.", file=sys.stderr)
+                sys.exit(1)
+            text = value.strip()
+            if "\n" in text or "\r" in text:
+                print(f"CI config value {key} must not contain newlines.", file=sys.stderr)
+                sys.exit(1)
+            if not re.fullmatch(r"pulumi(?:/[A-Za-z0-9_.-]+)*", text):
+                print(f"CI config value {key} must be a safe Pulumi project path.", file=sys.stderr)
                 sys.exit(1)
             exports[key] = text
 
