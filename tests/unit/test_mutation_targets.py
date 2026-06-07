@@ -476,6 +476,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "kms:GenerateDataKey" not in actions  # nosec B101
     assert "backup:CreateBackupPlan" in actions  # nosec B101
     assert "ecr:CreateRepository" in actions  # nosec B101
+    assert "ecr:DescribeImages" in actions  # nosec B101
     assert "events:PutRule" in actions  # nosec B101
     assert "cloudtrail:CreateTrail" in actions  # nosec B101
     assert "sns:CreateTopic" in actions  # nosec B101

@@ -202,6 +202,7 @@ _AUTOMATION_ECR_ACTIONS = (
     "ecr:CreateRepository",
     "ecr:DeleteLifecyclePolicy",
     "ecr:DeleteRepository",
+    "ecr:DescribeImages",
     "ecr:DescribeRepositories",
     "ecr:GetLifecyclePolicy",
     "ecr:ListTagsForResource",

@@ -2052,6 +2052,7 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
         "bootstrap-infrastructure-test"
     ]
+    assert "ecr:DescribeImages" in statements["ManageBootstrapEcr"]["Action"]  # nosec B101
     assert (  # nosec B101
         "arn:aws:iam::123456789012:role/PulumiAutomation-"
         "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
