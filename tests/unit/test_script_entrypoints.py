@@ -5427,6 +5427,53 @@ def test_github_pr_checks_omits_current_in_progress_check(
     ]
 
 
+def test_github_pr_checks_accepts_unstable_self_check_merge_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GitHub may report UNSTABLE while the hosted evidence job is running."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    monkeypatch.setenv(
+        "WELL_ARCHITECTED_CURRENT_CHECK_NAME",
+        "Test Account Evidence",
+    )
+
+    def runner(command, **_kwargs):
+        assert command[:2] == ["gh", "pr"]  # nosec B101
+        if command[2] == "diff":
+            return subprocess.CompletedProcess(command, 0, "scripts/example.py\n", "")
+        if command[-1] == "statusCheckRollup":
+            payload = {
+                "statusCheckRollup": [
+                    {
+                        "__typename": "CheckRun",
+                        "name": "Unit",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                    },
+                    {
+                        "__typename": "CheckRun",
+                        "name": "Test Account Evidence",
+                        "status": "IN_PROGRESS",
+                        "conclusion": None,
+                    },
+                ]
+            }
+        else:
+            payload = {
+                "mergeStateStatus": "UNSTABLE",
+                "mergeable": "MERGEABLE",
+                "reviewDecision": "APPROVED",
+                "headRefOid": "abc123",
+            }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    check = module.github_pr_checks("org/repo", 1, runner=runner)
+
+    assert check["status"] == "passed"  # nosec B101
+    assert check["evidence"]["mergeStateStatus"] == "UNSTABLE"  # nosec B101
+    assert check["evidence"]["nonPassingCheckCount"] == 0  # nosec B101
+
+
 def test_github_pr_checks_does_not_omit_completed_current_check_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
