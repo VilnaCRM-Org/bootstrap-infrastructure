@@ -16,7 +16,18 @@ from .automation import (
     _operations_alert_triage_role_name,
 )
 from .bootstrap_settings import BootstrapSettings
-from .ci_config import CiConfiguration, CiConfigurationArgs, _ci_config_project
+from .ci_config import (
+    NIGHTLY_GUARDRAILS_WORKFLOW,
+    OPERATIONS_ALERT_TRIAGE_WORKFLOW,
+    PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+    PULUMI_PR_GUARDRAILS_WORKFLOW,
+    PULUMI_PROD_WORKFLOW,
+    PULUMI_TEST_DEPLOY_WORKFLOW,
+    WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
+    CiConfiguration,
+    CiConfigurationArgs,
+    _ci_config_project,
+)
 from .config import settings as default_settings
 from .iam import GitHubOidcRoles
 from .operations_monitoring import _queue_name, _topic_name, _trail_name
@@ -25,13 +36,6 @@ from .utils.tags import base_tags
 
 _MAX_IAM_ROLE_NAME_LENGTH = 64
 _CREATE_POLICY_ACTION = "iam:CreatePolicy"
-_NIGHTLY_GUARDRAILS_WORKFLOW = "Nightly Guardrails"
-_OPERATIONS_ALERT_TRIAGE_WORKFLOW = "Operations Alert Issue Triage"
-_PULUMI_PR_COMMAND_RUNNER_WORKFLOW = "Pulumi PR Command Runner"
-_PULUMI_PR_GUARDRAILS_WORKFLOW = "Pulumi PR Guardrails"
-_PULUMI_PROD_WORKFLOW = "Pulumi Production"
-_PULUMI_TEST_DEPLOY_WORKFLOW = "Pulumi Test Deploy"
-_WELL_ARCHITECTED_EVIDENCE_WORKFLOW = "Well-Architected Evidence"
 _CI_ROLE_PREFIX_BY_PURPOSE = {
     "preview": "GitHubCiPreview",
     "apply": "GitHubCiApply",
@@ -269,32 +273,32 @@ def _deployment_role_workflows(
     """Return trusted workflow names for one CI role purpose."""
     if settings.environment == "test" and purpose == "preview":
         workflows = (
-            _PULUMI_PR_GUARDRAILS_WORKFLOW,
-            _WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
-            _PULUMI_TEST_DEPLOY_WORKFLOW,
-            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+            PULUMI_PR_GUARDRAILS_WORKFLOW,
+            WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
+            PULUMI_TEST_DEPLOY_WORKFLOW,
+            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
     elif settings.environment == "test" and purpose == "apply":
         workflows = (
-            _PULUMI_TEST_DEPLOY_WORKFLOW,
-            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+            PULUMI_TEST_DEPLOY_WORKFLOW,
+            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
     elif settings.environment == "test":
         workflows = (
-            _PULUMI_TEST_DEPLOY_WORKFLOW,
-            _NIGHTLY_GUARDRAILS_WORKFLOW,
-            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+            PULUMI_TEST_DEPLOY_WORKFLOW,
+            NIGHTLY_GUARDRAILS_WORKFLOW,
+            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
     elif purpose == "drift":
         workflows = (
-            _PULUMI_PROD_WORKFLOW,
-            _NIGHTLY_GUARDRAILS_WORKFLOW,
-            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+            PULUMI_PROD_WORKFLOW,
+            NIGHTLY_GUARDRAILS_WORKFLOW,
+            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
     else:
         workflows = (
-            _PULUMI_PROD_WORKFLOW,
-            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+            PULUMI_PROD_WORKFLOW,
+            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
     return [_workflow_name(settings, workflow) for workflow in workflows]
 
@@ -658,7 +662,7 @@ def _create_operations_alert_triage(
                 [
                     _workflow_name(
                         context.settings,
-                        _OPERATIONS_ALERT_TRIAGE_WORKFLOW,
+                        OPERATIONS_ALERT_TRIAGE_WORKFLOW,
                     )
                 ],
             ),

@@ -12,6 +12,15 @@ import pulumi_aws as aws
 import pulumi
 
 from .bootstrap_settings import BootstrapSettings
+from .ci_config import (
+    NIGHTLY_GUARDRAILS_WORKFLOW,
+    OPERATIONS_ALERT_TRIAGE_WORKFLOW,
+    PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+    PULUMI_PR_GUARDRAILS_WORKFLOW,
+    PULUMI_PROD_WORKFLOW,
+    PULUMI_TEST_DEPLOY_WORKFLOW,
+    WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
+)
 from .config import settings as default_settings
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
@@ -675,12 +684,12 @@ def _automation_assume_role_policy(
                         },
                         "StringLike": {
                             "token.actions.githubusercontent.com:workflow": [
-                                "Pulumi PR Guardrails",
-                                "Pulumi Test Deploy",
-                                "Nightly Guardrails",
-                                "Pulumi Production",
-                                "Pulumi PR Command Runner",
-                                "Well-Architected Evidence",
+                                PULUMI_PR_GUARDRAILS_WORKFLOW,
+                                PULUMI_TEST_DEPLOY_WORKFLOW,
+                                NIGHTLY_GUARDRAILS_WORKFLOW,
+                                PULUMI_PROD_WORKFLOW,
+                                PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+                                WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
                             ]
                         },
                     },
@@ -738,7 +747,7 @@ def _operations_alert_triage_assume_role_policy(
                         },
                         "StringLike": {
                             "token.actions.githubusercontent.com:workflow": (
-                                "Operations Alert Issue Triage"
+                                OPERATIONS_ALERT_TRIAGE_WORKFLOW
                             ),
                         },
                     },
