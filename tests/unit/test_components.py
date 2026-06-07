@@ -2159,6 +2159,12 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
             "Action"
         ]
     )
+    assert (
+        "secretsmanager:GetResourcePolicy"
+        in statements["ManageBootstrapCiSecrets"][  # nosec B101
+            "Action"
+        ]
+    )
     assert statements["DenyBootstrapSqsConsumption"] == {  # nosec B101
         "Sid": "DenyBootstrapSqsConsumption",
         "Effect": "Deny",

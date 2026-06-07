@@ -284,6 +284,7 @@ _AUTOMATION_SECRETS_MANAGER_CREATE_ACTIONS = (
 _AUTOMATION_SECRETS_MANAGER_RESOURCE_ACTIONS = (
     "secretsmanager:DeleteSecret",
     "secretsmanager:DescribeSecret",
+    "secretsmanager:GetResourcePolicy",
     "secretsmanager:ListSecretVersionIds",
     "secretsmanager:RestoreSecret",
     "secretsmanager:TagResource",

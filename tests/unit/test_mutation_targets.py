@@ -557,6 +557,18 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
             "aws:ResourceTag/Purpose": "ci-configuration",
         }
     }
+    assert (
+        "secretsmanager:GetResourcePolicy"
+        in statements["ManageBootstrapCiSecrets"][  # nosec B101
+            "Action"
+        ]
+    )
+    assert (
+        "secretsmanager:GetSecretValue"
+        not in statements["ManageBootstrapCiSecrets"][  # nosec B101
+            "Action"
+        ]
+    )
     assert statements["DenyBootstrapSqsConsumption"] == {  # nosec B101
         "Sid": "DenyBootstrapSqsConsumption",
         "Effect": "Deny",
