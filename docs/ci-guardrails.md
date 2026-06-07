@@ -445,10 +445,10 @@ The accepted Dependabot exception shape is also non-secret:
 
 ### Example IAM trust policy
 
-Replace the account ID, organization, repository name, workflow file, and branch
+Replace the account ID, organization, repository name, workflow names, and branch
 with your own values. `<ACCOUNT_ID>` must be the target 12-digit AWS account ID
 using digits only. Non-approval preview, drift, evidence, and test apply roles
-trust fixed repository refs or pull requests plus fixed workflow refs:
+trust fixed repository refs or pull requests plus fixed workflow names:
 
 ```json
 {
@@ -469,13 +469,13 @@ trust fixed repository refs or pull requests plus fixed workflow refs:
           ]
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:job_workflow_ref": [
-            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-pr-guardrails.yml@refs/*",
-            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-test-deploy.yml@refs/heads/main",
-            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/nightly-guardrails.yml@refs/heads/main",
-            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-prod.yml@refs/heads/main",
-            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-pr-command-runner.yml@refs/heads/main",
-            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/well-architected-evidence.yml@refs/*"
+          "token.actions.githubusercontent.com:workflow": [
+            "Pulumi PR Guardrails",
+            "Pulumi Test Deploy",
+            "Nightly Guardrails",
+            "Pulumi Production",
+            "Pulumi PR Command Runner",
+            "Well-Architected Evidence"
           ]
         }
       }

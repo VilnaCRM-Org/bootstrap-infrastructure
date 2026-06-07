@@ -378,10 +378,10 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
         ],
     }
     assert test_pr_condition["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:job_workflow_ref"
+        "token.actions.githubusercontent.com:workflow"
     ] == [
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-pr-guardrails.yml@refs/*",
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/well-architected-evidence.yml@refs/*",
+        "Pulumi PR Guardrails",
+        "Well-Architected Evidence",
     ]
     assert test_condition["StringEquals"] == {  # nosec B101
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
@@ -700,7 +700,7 @@ def test_github_ci_bootstrap_prod_stack_uses_protected_apply_subject(
     ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"]
     assert "pull_request" not in json.dumps(apply_trust)  # nosec B101
     assert "environment:prod" not in json.dumps(preview_trust)  # nosec B101
-    assert "pulumi-prod.yml@refs/heads/main" in json.dumps(preview_trust)  # nosec B101
+    assert "Pulumi Production" in json.dumps(preview_trust)  # nosec B101
 
 
 def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):
@@ -714,8 +714,8 @@ def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):
     assert ci_bootstrap._ci_secret_suffixes(long_settings) == ("stage",)  # nosec B101
     with pytest.raises(ValueError, match="longer than 64 characters"):
         ci_bootstrap._ci_role_name(long_settings, "preview")
-    with pytest.raises(ValueError, match="workflow refs"):
-        ci_bootstrap._workflow_ref(missing_repo_settings, "pulumi-prod.yml", "refs/*")
+    with pytest.raises(ValueError, match="workflow names"):
+        ci_bootstrap._workflow_name(missing_repo_settings, "Pulumi Production")
     with pytest.raises(ValueError, match="OIDC subjects"):
         ci_bootstrap._repo_subject(missing_repo_settings, "pull_request")
     monkeypatch.setattr(
@@ -1967,13 +1967,10 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         not in triage_role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "pulumi-pr-guardrails.yml@refs/*" in role_state["assumeRolePolicy"]
+        "Pulumi PR Guardrails" in role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "operations-alert-triage.yml@refs/heads/main"
-        in triage_role_state["assumeRolePolicy"]
+        "Operations Alert Issue Triage" in triage_role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
         len(policy_states[0]["policy"].encode("utf-8"))

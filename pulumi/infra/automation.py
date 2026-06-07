@@ -650,7 +650,6 @@ def _automation_assume_role_policy(
     branch_name: str,
 ) -> str:
     """Build the GitHub OIDC trust policy for fixed workflow automation."""
-    workflow_prefix = f"{org}/{repo_name}/.github/workflows"
     if production_environment == "prod":
         subjects = [f"repo:{org}/{repo_name}:environment:{production_environment}"]
     else:
@@ -675,28 +674,13 @@ def _automation_assume_role_policy(
                             "token.actions.githubusercontent.com:sub": subjects,
                         },
                         "StringLike": {
-                            "token.actions.githubusercontent.com:job_workflow_ref": [
-                                (f"{workflow_prefix}/pulumi-pr-guardrails.yml@refs/*"),
-                                (
-                                    f"{workflow_prefix}/pulumi-test-deploy.yml"
-                                    f"@refs/heads/{branch_name}"
-                                ),
-                                (
-                                    f"{workflow_prefix}/nightly-guardrails.yml"
-                                    f"@refs/heads/{branch_name}"
-                                ),
-                                (
-                                    f"{workflow_prefix}/pulumi-prod.yml"
-                                    f"@refs/heads/{branch_name}"
-                                ),
-                                (
-                                    f"{workflow_prefix}/pulumi-pr-command-runner.yml"
-                                    f"@refs/heads/{branch_name}"
-                                ),
-                                (
-                                    f"{workflow_prefix}/well-architected-evidence.yml"
-                                    "@refs/*"
-                                ),
+                            "token.actions.githubusercontent.com:workflow": [
+                                "Pulumi PR Guardrails",
+                                "Pulumi Test Deploy",
+                                "Nightly Guardrails",
+                                "Pulumi Production",
+                                "Pulumi PR Command Runner",
+                                "Well-Architected Evidence",
                             ]
                         },
                     },
@@ -753,10 +737,8 @@ def _operations_alert_triage_assume_role_policy(
                             ),
                         },
                         "StringLike": {
-                            "token.actions.githubusercontent.com:job_workflow_ref": (
-                                f"{org}/{repo_name}/.github/workflows/"
-                                "operations-alert-triage.yml"
-                                f"@refs/heads/{branch_name}"
+                            "token.actions.githubusercontent.com:workflow": (
+                                "Operations Alert Issue Triage"
                             ),
                         },
                     },

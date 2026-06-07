@@ -25,13 +25,13 @@ from .utils.tags import base_tags
 
 _MAX_IAM_ROLE_NAME_LENGTH = 64
 _CREATE_POLICY_ACTION = "iam:CreatePolicy"
-_NIGHTLY_GUARDRAILS_WORKFLOW = "nightly-guardrails.yml"
-_OPERATIONS_ALERT_TRIAGE_WORKFLOW = "operations-alert-triage.yml"
-_PULUMI_PR_COMMAND_RUNNER_WORKFLOW = "pulumi-pr-command-runner.yml"
-_PULUMI_PR_GUARDRAILS_WORKFLOW = "pulumi-pr-guardrails.yml"
-_PULUMI_PROD_WORKFLOW = "pulumi-prod.yml"
-_PULUMI_TEST_DEPLOY_WORKFLOW = "pulumi-test-deploy.yml"
-_WELL_ARCHITECTED_EVIDENCE_WORKFLOW = "well-architected-evidence.yml"
+_NIGHTLY_GUARDRAILS_WORKFLOW = "Nightly Guardrails"
+_OPERATIONS_ALERT_TRIAGE_WORKFLOW = "Operations Alert Issue Triage"
+_PULUMI_PR_COMMAND_RUNNER_WORKFLOW = "Pulumi PR Command Runner"
+_PULUMI_PR_GUARDRAILS_WORKFLOW = "Pulumi PR Guardrails"
+_PULUMI_PROD_WORKFLOW = "Pulumi Production"
+_PULUMI_TEST_DEPLOY_WORKFLOW = "Pulumi Test Deploy"
+_WELL_ARCHITECTED_EVIDENCE_WORKFLOW = "Well-Architected Evidence"
 _CI_ROLE_PREFIX_BY_PURPOSE = {
     "preview": "GitHubCiPreview",
     "apply": "GitHubCiApply",
@@ -131,7 +131,7 @@ class _CiRoleSpec:
     purpose: str
     role_name: str
     subjects: Sequence[str]
-    workflow_refs: Sequence[str]
+    workflows: Sequence[str]
     policy_documents: Sequence[tuple[str, str]]
 
 
@@ -233,11 +233,11 @@ def _iam_role_exists(name: str) -> bool:
     return True
 
 
-def _workflow_ref(settings: BootstrapSettings, workflow: str, ref: str) -> str:
-    """Return a GitHub OIDC job_workflow_ref condition value."""
+def _workflow_name(settings: BootstrapSettings, workflow: str) -> str:
+    """Return a GitHub OIDC workflow-name condition value."""
     if not settings.repo:
-        raise ValueError("repoSlug config is required for GitHub workflow refs.")
-    return f"{settings.org}/{settings.repo}/.github/workflows/{workflow}@{ref}"
+        raise ValueError("repoSlug config is required for GitHub workflow names.")
+    return workflow
 
 
 def _branch_ref(settings: BootstrapSettings) -> str:
@@ -262,48 +262,47 @@ def _deployment_role_subjects(settings: BootstrapSettings, purpose: str) -> list
     return [branch_subject]
 
 
-def _deployment_role_workflow_refs(
+def _deployment_role_workflows(
     settings: BootstrapSettings,
     purpose: str,
 ) -> list[str]:
-    """Return trusted workflow refs for one CI role purpose."""
-    branch_ref = _branch_ref(settings)
+    """Return trusted workflow names for one CI role purpose."""
     if settings.environment == "test" and purpose == "preview":
-        workflow_specs = (
-            (_PULUMI_PR_GUARDRAILS_WORKFLOW, "refs/*"),
-            (_WELL_ARCHITECTED_EVIDENCE_WORKFLOW, "refs/*"),
-            (_PULUMI_TEST_DEPLOY_WORKFLOW, branch_ref),
-            (_PULUMI_PR_COMMAND_RUNNER_WORKFLOW, branch_ref),
+        workflows = (
+            _PULUMI_PR_GUARDRAILS_WORKFLOW,
+            _WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
+            _PULUMI_TEST_DEPLOY_WORKFLOW,
+            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
     elif settings.environment == "test" and purpose == "apply":
-        workflow_specs = (
-            (_PULUMI_TEST_DEPLOY_WORKFLOW, branch_ref),
-            (_PULUMI_PR_COMMAND_RUNNER_WORKFLOW, branch_ref),
+        workflows = (
+            _PULUMI_TEST_DEPLOY_WORKFLOW,
+            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
     elif settings.environment == "test":
-        workflow_specs = (
-            (_PULUMI_TEST_DEPLOY_WORKFLOW, branch_ref),
-            (_NIGHTLY_GUARDRAILS_WORKFLOW, branch_ref),
-            (_PULUMI_PR_COMMAND_RUNNER_WORKFLOW, branch_ref),
+        workflows = (
+            _PULUMI_TEST_DEPLOY_WORKFLOW,
+            _NIGHTLY_GUARDRAILS_WORKFLOW,
+            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
     elif purpose == "drift":
-        workflow_specs = (
-            (_PULUMI_PROD_WORKFLOW, branch_ref),
-            (_NIGHTLY_GUARDRAILS_WORKFLOW, branch_ref),
-            (_PULUMI_PR_COMMAND_RUNNER_WORKFLOW, branch_ref),
+        workflows = (
+            _PULUMI_PROD_WORKFLOW,
+            _NIGHTLY_GUARDRAILS_WORKFLOW,
+            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
     else:
-        workflow_specs = (
-            (_PULUMI_PROD_WORKFLOW, branch_ref),
-            (_PULUMI_PR_COMMAND_RUNNER_WORKFLOW, branch_ref),
+        workflows = (
+            _PULUMI_PROD_WORKFLOW,
+            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         )
-    return [_workflow_ref(settings, workflow, ref) for workflow, ref in workflow_specs]
+    return [_workflow_name(settings, workflow) for workflow in workflows]
 
 
 def _deployment_assume_role_policy(
     oidc_provider_arn: str,
     subjects: Sequence[str],
-    workflow_refs: Sequence[str],
+    workflows: Sequence[str],
 ) -> str:
     """Build the trust policy for one GitHub OIDC CI role."""
     return json.dumps(
@@ -322,8 +321,8 @@ def _deployment_assume_role_policy(
                             "token.actions.githubusercontent.com:sub": list(subjects),
                         },
                         "StringLike": {
-                            "token.actions.githubusercontent.com:job_workflow_ref": (
-                                list(workflow_refs)
+                            "token.actions.githubusercontent.com:workflow": (
+                                list(workflows)
                             )
                         },
                     },
@@ -495,7 +494,7 @@ def _role_specs(
             purpose=purpose,
             role_name=_ci_role_name(settings, purpose),
             subjects=_deployment_role_subjects(settings, purpose),
-            workflow_refs=_deployment_role_workflow_refs(settings, purpose),
+            workflows=_deployment_role_workflows(settings, purpose),
             policy_documents=_role_policy_documents(
                 account_id,
                 partition,
@@ -520,7 +519,7 @@ def _create_role(
             lambda arn: _deployment_assume_role_policy(
                 arn,
                 spec.subjects,
-                spec.workflow_refs,
+                spec.workflows,
             ),
         ),
         tags=base_tags(
@@ -624,10 +623,9 @@ def _create_operations_alert_triage(
                     )
                 ],
                 [
-                    _workflow_ref(
+                    _workflow_name(
                         context.settings,
                         _OPERATIONS_ALERT_TRIAGE_WORKFLOW,
-                        _branch_ref(context.settings),
                     )
                 ],
             ),

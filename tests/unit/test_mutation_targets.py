@@ -175,7 +175,7 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
     with pytest.raises(ValueError, match="repoSlug config is required"):
         ci_config._github_actions_subjects(no_repo_settings, "test")
     with pytest.raises(ValueError, match="repoSlug config is required"):
-        ci_config._github_actions_workflow_refs(no_repo_settings, "test")
+        ci_config._github_actions_workflows(no_repo_settings, "test")
     with pytest.raises(ValueError, match="longer than 64 characters"):
         ci_config._ci_config_read_role_name(long_role_settings, "test")
     assert ci_config._ci_config_read_role_name(settings, "test") == (  # nosec B101
@@ -184,15 +184,9 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
     assert ci_config._github_actions_subjects(settings, "test-pr") == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
     ]
-    assert ci_config._github_actions_workflow_refs(settings, "test-pr") == [  # nosec B101
-        (
-            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-            "pulumi-pr-guardrails.yml@refs/*"
-        ),
-        (
-            "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-            "well-architected-evidence.yml@refs/*"
-        ),
+    assert ci_config._github_actions_workflows(settings, "test-pr") == [  # nosec B101
+        "Pulumi PR Guardrails",
+        "Well-Architected Evidence",
     ]
     assert ci_config._github_actions_subjects(settings, "prod") == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"

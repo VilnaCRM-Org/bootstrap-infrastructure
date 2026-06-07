@@ -95,41 +95,39 @@ def _github_actions_subjects(settings: BootstrapSettings, suffix: str) -> list[s
     return [f"repo:{repo}:ref:refs/heads/{branch}"]
 
 
-def _github_actions_workflow_refs(
+def _github_actions_workflows(
     settings: BootstrapSettings,
     suffix: str,
 ) -> list[str]:
-    """Return allowed workflow refs for one CI config suffix."""
+    """Return allowed workflow names for one CI config suffix."""
     if not settings.repo:
-        raise ValueError("repoSlug config is required for GitHub workflow refs.")
-    branch = settings.github_branch or "main"
-    workflow_prefix = f"{settings.org}/{settings.repo}/.github/workflows"
-    workflow_refs_by_suffix = {
+        raise ValueError("repoSlug config is required for GitHub workflow names.")
+    workflows_by_suffix = {
         "test-pr": [
-            f"{workflow_prefix}/pulumi-pr-guardrails.yml@refs/*",
-            f"{workflow_prefix}/well-architected-evidence.yml@refs/*",
+            "Pulumi PR Guardrails",
+            "Well-Architected Evidence",
         ],
         "test": [
-            f"{workflow_prefix}/pulumi-pr-guardrails.yml@refs/*",
-            f"{workflow_prefix}/pulumi-test-deploy.yml@refs/heads/{branch}",
-            f"{workflow_prefix}/nightly-guardrails.yml@refs/heads/{branch}",
-            f"{workflow_prefix}/pulumi-pr-command-runner.yml@refs/heads/{branch}",
-            f"{workflow_prefix}/operations-alert-triage.yml@refs/heads/{branch}",
-            f"{workflow_prefix}/well-architected-evidence.yml@refs/heads/{branch}",
+            "Pulumi PR Guardrails",
+            "Pulumi Test Deploy",
+            "Nightly Guardrails",
+            "Pulumi PR Command Runner",
+            "Operations Alert Issue Triage",
+            "Well-Architected Evidence",
         ],
         "prod-preview": [
-            f"{workflow_prefix}/pulumi-prod.yml@refs/heads/{branch}",
-            f"{workflow_prefix}/nightly-guardrails.yml@refs/heads/{branch}",
-            f"{workflow_prefix}/pulumi-pr-command-runner.yml@refs/heads/{branch}",
+            "Pulumi Production",
+            "Nightly Guardrails",
+            "Pulumi PR Command Runner",
         ],
         "prod": [
-            f"{workflow_prefix}/pulumi-prod.yml@refs/heads/{branch}",
-            f"{workflow_prefix}/pulumi-pr-command-runner.yml@refs/heads/{branch}",
+            "Pulumi Production",
+            "Pulumi PR Command Runner",
         ],
     }
-    return workflow_refs_by_suffix.get(
+    return workflows_by_suffix.get(
         suffix,
-        [f"{workflow_prefix}/*.yml@refs/heads/{branch}"],
+        [settings.environment],
     )
 
 
@@ -157,8 +155,8 @@ def _ci_config_read_assume_role_policy(
                             ),
                         },
                         "StringLike": {
-                            "token.actions.githubusercontent.com:job_workflow_ref": (
-                                _github_actions_workflow_refs(settings, suffix)
+                            "token.actions.githubusercontent.com:workflow": (
+                                _github_actions_workflows(settings, suffix)
                             )
                         },
                     },
