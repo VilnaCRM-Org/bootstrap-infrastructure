@@ -19,6 +19,13 @@ CI_CONFIG_SECRET_SUFFIXES_BY_STACK = {
     "test": ("test-pr", "test"),
     "prod": ("prod-preview", "prod"),
 }
+_NIGHTLY_GUARDRAILS_WORKFLOW = "Nightly Guardrails"
+_OPERATIONS_ALERT_TRIAGE_WORKFLOW = "Operations Alert Issue Triage"
+_PULUMI_PR_COMMAND_RUNNER_WORKFLOW = "Pulumi PR Command Runner"
+_PULUMI_PR_GUARDRAILS_WORKFLOW = "Pulumi PR Guardrails"
+_PULUMI_PROD_WORKFLOW = "Pulumi Production"
+_PULUMI_TEST_DEPLOY_WORKFLOW = "Pulumi Test Deploy"
+_WELL_ARCHITECTED_EVIDENCE_WORKFLOW = "Well-Architected Evidence"
 
 
 @dataclass(frozen=True)
@@ -104,25 +111,25 @@ def _github_actions_workflows(
         raise ValueError("repoSlug config is required for GitHub workflow names.")
     workflows_by_suffix = {
         "test-pr": [
-            "Pulumi PR Guardrails",
-            "Well-Architected Evidence",
+            _PULUMI_PR_GUARDRAILS_WORKFLOW,
+            _WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
         ],
         "test": [
-            "Pulumi PR Guardrails",
-            "Pulumi Test Deploy",
-            "Nightly Guardrails",
-            "Pulumi PR Command Runner",
-            "Operations Alert Issue Triage",
-            "Well-Architected Evidence",
+            _PULUMI_PR_GUARDRAILS_WORKFLOW,
+            _PULUMI_TEST_DEPLOY_WORKFLOW,
+            _NIGHTLY_GUARDRAILS_WORKFLOW,
+            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+            _OPERATIONS_ALERT_TRIAGE_WORKFLOW,
+            _WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
         ],
         "prod-preview": [
-            "Pulumi Production",
-            "Nightly Guardrails",
-            "Pulumi PR Command Runner",
+            _PULUMI_PROD_WORKFLOW,
+            _NIGHTLY_GUARDRAILS_WORKFLOW,
+            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         ],
         "prod": [
-            "Pulumi Production",
-            "Pulumi PR Command Runner",
+            _PULUMI_PROD_WORKFLOW,
+            _PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
         ],
     }
     return workflows_by_suffix.get(

@@ -1267,7 +1267,7 @@ def _validate_automation_policy_documents(documents: list[tuple[str, str]]) -> N
     _validate_automation_inline_policy_document(
         inline_policy_name, inline_policy_document
     )
-    _validate_automation_managed_policy_documents(documents[1:])
+    _validate_automation_managed_policy_documents(documents)
 
 
 def _automation_policy_documents(
