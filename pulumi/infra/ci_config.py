@@ -209,8 +209,8 @@ def _is_missing_lookup_error(message: str, markers: tuple[str, ...]) -> bool:
     )
 
 
-def _secret_exists(name: str) -> bool:
-    """Return True when a Secrets Manager secret already exists."""
+def _secret_import_id(name: str) -> str | None:
+    """Return the Secrets Manager secret import ID when the secret exists."""
     try:
         secret = aws.secretsmanager.get_secret(name=name)
     except Exception as exc:
@@ -218,9 +218,10 @@ def _secret_exists(name: str) -> bool:
             str(exc),
             ("ResourceNotFoundException", "ResourceNotFound"),
         ):
-            return False
+            return None
         raise
-    return bool(getattr(secret, "arn", None))
+    arn = getattr(secret, "arn", None)
+    return str(arn) if arn else None
 
 
 def _iam_role_exists(name: str) -> bool:
@@ -290,7 +291,7 @@ class CiConfiguration(pulumi.ComponentResource):
                 ),
                 opts=pulumi.ResourceOptions(
                     parent=self,
-                    import_=secret_id if _secret_exists(secret_id) else None,
+                    import_=_secret_import_id(secret_id),
                     protect=config.protect_resources,
                 ),
             )

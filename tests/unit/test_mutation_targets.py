@@ -212,13 +212,15 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
         "get_secret",
         lambda *, name: SimpleNamespace(arn=f"arn:aws:secretsmanager:::secret:{name}"),
     )
-    assert ci_config._secret_exists("present") is True  # nosec B101
+    assert ci_config._secret_import_id("present") == (  # nosec B101
+        "arn:aws:secretsmanager:::secret:present"
+    )
     monkeypatch.setattr(
         ci_config.aws.secretsmanager,
         "get_secret",
         lambda *, name: SimpleNamespace(name=name),
     )
-    assert ci_config._secret_exists("without-arn") is False  # nosec B101
+    assert ci_config._secret_import_id("without-arn") is None  # nosec B101
 
     def missing_secret(*, name):  # noqa: ARG001
         raise RuntimeError("ResourceNotFoundException")
@@ -227,10 +229,10 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
         raise RuntimeError("secretsmanager throttled")
 
     monkeypatch.setattr(ci_config.aws.secretsmanager, "get_secret", missing_secret)
-    assert ci_config._secret_exists("missing") is False  # nosec B101
+    assert ci_config._secret_import_id("missing") is None  # nosec B101
     monkeypatch.setattr(ci_config.aws.secretsmanager, "get_secret", failing_secret)
     with pytest.raises(RuntimeError, match="secretsmanager throttled"):
-        ci_config._secret_exists("failing")
+        ci_config._secret_import_id("failing")
 
     monkeypatch.setattr(
         ci_config.aws.iam,

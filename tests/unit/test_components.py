@@ -289,7 +289,7 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
-    monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
     monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
     provider_arn = (
         "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
@@ -421,7 +421,7 @@ def test_ci_configuration_uses_github_oidc_provider_for_prod_suffixes(
     provider_arn = (
         "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
     )
-    monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
     monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
     settings = config.BootstrapSettings(
         org="VilnaCRM-Org",
@@ -482,7 +482,7 @@ def test_ci_configuration_requires_github_oidc_provider(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
-    monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
     monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
     settings = config.BootstrapSettings(
         org="VilnaCRM-Org",
@@ -511,7 +511,7 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
-    monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
     monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
     monkeypatch.setattr(ci_bootstrap, "_iam_role_exists", lambda _name: False)
     monkeypatch.setattr(
@@ -608,9 +608,14 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
     policy_documents = [
         json.loads(state["policy"])
         for resource_type, _name, state in new_resources
-        if resource_type == "aws:iam/rolePolicy:RolePolicy"
+        if resource_type in {"aws:iam/policy:Policy", "aws:iam/rolePolicy:RolePolicy"}
     ]
     assert policy_documents  # nosec B101
+    assert any(  # nosec B101
+        resource_type == "aws:iam/policy:Policy"
+        and name.startswith("github-ci-bootstrap-test-apply-")
+        for resource_type, name, _state in new_resources
+    )
     for policy_document in policy_documents:
         serialized = json.dumps(policy_document)
         assert "AdministratorAccess" not in serialized  # nosec B101
@@ -625,7 +630,7 @@ def test_github_ci_bootstrap_prod_stack_uses_protected_apply_subject(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
-    monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
     monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
     monkeypatch.setattr(ci_bootstrap, "_iam_role_exists", lambda _name: False)
     monkeypatch.setattr(
@@ -824,7 +829,7 @@ def test_github_ci_bootstrap_custom_stack_can_skip_secret_values(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
-    monkeypatch.setattr(ci_config, "_secret_exists", lambda _name: False)
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
     monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
     monkeypatch.setattr(ci_bootstrap, "_iam_role_exists", lambda _name: False)
     monkeypatch.setattr(

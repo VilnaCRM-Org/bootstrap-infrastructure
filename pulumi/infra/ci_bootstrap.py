@@ -536,16 +536,43 @@ def _create_role(
         ),
     )
     for policy_suffix, policy_document in spec.policy_documents:
-        aws.iam.RolePolicy(
-            f"{context.name}-{spec.purpose}-{policy_suffix}",
-            name=f"{spec.role_name}-{policy_suffix}",
-            role=role.id,
-            policy=policy_document,
-            opts=pulumi.ResourceOptions(
-                parent=context.parent,
-                protect=context.protect_resources,
-            ),
-        )
+        if spec.purpose == "apply":
+            policy = aws.iam.Policy(
+                f"{context.name}-{spec.purpose}-{policy_suffix}",
+                name=f"{spec.role_name}-{policy_suffix}",
+                policy=policy_document,
+                tags=base_tags(
+                    {
+                        "Purpose": f"github-ci-{spec.purpose}-policy",
+                        "Repository": _ci_config_project(context.settings),
+                    },
+                    settings=context.settings,
+                ),
+                opts=pulumi.ResourceOptions(
+                    parent=context.parent,
+                    protect=context.protect_resources,
+                ),
+            )
+            aws.iam.RolePolicyAttachment(
+                f"{context.name}-{spec.purpose}-{policy_suffix}-attachment",
+                role=role.name,
+                policy_arn=policy.arn,
+                opts=pulumi.ResourceOptions(
+                    parent=context.parent,
+                    protect=context.protect_resources,
+                ),
+            )
+        else:
+            aws.iam.RolePolicy(
+                f"{context.name}-{spec.purpose}-{policy_suffix}",
+                name=f"{spec.role_name}-{policy_suffix}",
+                role=role.id,
+                policy=policy_document,
+                opts=pulumi.ResourceOptions(
+                    parent=context.parent,
+                    protect=context.protect_resources,
+                ),
+            )
     return role
 
 

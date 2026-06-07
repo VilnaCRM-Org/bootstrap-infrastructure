@@ -219,6 +219,9 @@ WORKDIR /workspace
 RUN --mount=type=cache,target=/home/${USERNAME}/.cache/uv,uid=${UID},gid=${GID} \
     uv venv --seed "${UV_PROJECT_ENVIRONMENT}" \
     && uv sync --frozen --all-groups \
+    && pulumi version >/dev/null \
+    && aws --version >/dev/null \
+    && uv run --frozen python -c 'import pulumi, pulumi_aws' \
     && if [ "$(stat -c '%u:%g' "${UV_PROJECT_ENVIRONMENT}")" != "$(id -u "${USERNAME}"):$(id -g "${USERNAME}")" ]; then \
          chown -R "${USERNAME}:$(id -g "${USERNAME}")" "${UV_PROJECT_ENVIRONMENT}"; \
        fi
