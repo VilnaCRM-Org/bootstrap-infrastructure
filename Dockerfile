@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7-labs
-
 # Debian slim keeps the image small while remaining compatible with AWS CLI v2.
 ARG BASE_IMAGE=python:3.11.15-slim-bookworm@sha256:cd67330292a51e2963156f74ff340455d66b2172e9190e99f40dff9357471177
 FROM ${BASE_IMAGE} AS tooling
@@ -216,15 +214,14 @@ COPY --chown=${USERNAME}:${GID} pyproject.toml uv.lock /workspace/
 
 WORKDIR /workspace
 
-RUN --mount=type=cache,target=/home/${USERNAME}/.cache/uv,uid=${UID},gid=${GID} \
-    uv venv --seed "${UV_PROJECT_ENVIRONMENT}" \
+RUN uv venv --seed "${UV_PROJECT_ENVIRONMENT}" \
     && uv sync --frozen --all-groups \
     && pulumi version >/dev/null \
     && aws --version >/dev/null \
     && uv run --frozen python -c 'import pulumi, pulumi_aws' \
-    && if [ "$(stat -c '%u:%g' "${UV_PROJECT_ENVIRONMENT}")" != "$(id -u "${USERNAME}"):$(id -g "${USERNAME}")" ]; then \
-         chown -R "${USERNAME}:$(id -g "${USERNAME}")" "${UV_PROJECT_ENVIRONMENT}"; \
-       fi
+    && chown -R "${USERNAME}:$(id -g "${USERNAME}")" \
+        "${UV_PROJECT_ENVIRONMENT}" \
+        "${UV_CACHE_DIR}"
 
 USER "${USERNAME}"
 WORKDIR /workspace
