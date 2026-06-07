@@ -40,6 +40,9 @@ defaults:
   run:
     shell: bash
 
+env:
+  PULUMI_DIR: pulumi/github-ci-bootstrap
+
 permissions:
   contents: read
   issues: read

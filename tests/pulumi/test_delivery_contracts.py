@@ -1220,6 +1220,7 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
         "issues": "read",
         "pull-requests": "read",
     }
+    assert runner["env"]["PULUMI_DIR"] == "pulumi/github-ci-bootstrap"  # nosec B101
     assert runner["jobs"]["preflight"]["permissions"] == {  # nosec B101
         "issues": "write",
         "pull-requests": "write",
