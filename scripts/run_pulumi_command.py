@@ -496,7 +496,28 @@ def _recover_failed_saved_nonprod_plan(
             StackCommand("up", stack, include_policy_pack=False),
         ),
     )
-    return None if retry.returncode == 0 else retry.returncode or 1
+    if retry.returncode == 0:
+        return None
+
+    retry_output = f"{retry.stdout or ''}{retry.stderr or ''}"
+    if STACK_LOCK_ERROR not in retry_output:
+        return retry.returncode or 1
+
+    print(
+        "warning: Pulumi reported a stack lock during guarded direct "
+        "non-production apply; running pulumi cancel for the selected stack "
+        "and retrying the same guarded direct apply once.",
+        file=sys.stderr,
+    )
+    context.runner(_pulumi_cancel_command(context, stack), env=context.env)
+    second_retry = _run_with_observable_output(
+        context,
+        _pulumi_command(
+            context,
+            StackCommand("up", stack, include_policy_pack=False),
+        ),
+    )
+    return None if second_retry.returncode == 0 else second_retry.returncode or 1
 
 
 def _run_up_plan_stack(

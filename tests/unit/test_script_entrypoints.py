@@ -8771,6 +8771,66 @@ def test_run_up_plan_stack_recovers_test_plan_decrypt_with_direct_apply(
     )
 
 
+def test_run_up_plan_stack_recovers_test_plan_decrypt_with_stale_lock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Test CI may clear a stale lock during guarded decrypt recovery."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    context_dir = tmp_path / "repo"
+    applied: list[list[str]] = []
+    direct_attempts = 0
+
+    def fake_runner(command, **kwargs):
+        nonlocal direct_attempts
+        applied.append(command)
+        if len(command) > 3 and command[3] == "up" and "--plan" in command:
+            return subprocess.CompletedProcess(
+                command,
+                255,
+                stdout=module.PLAN_DECRYPT_ERROR,
+                stderr="",
+            )
+        if len(command) > 3 and command[3] == "up" and "--plan" not in command:
+            direct_attempts += 1
+            if direct_attempts == 1:
+                return subprocess.CompletedProcess(
+                    command,
+                    255,
+                    stdout="",
+                    stderr=module.STACK_LOCK_ERROR,
+                )
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    context = module.CommandContext(
+        root_dir=context_dir,
+        env={
+            "GITHUB_ACTIONS": "true",
+            "PULUMI_EXPECTED_SHA": "a" * 40,
+        },
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=fake_runner,
+    )
+
+    assert module._run_up_plan_stack(context, "test", tmp_path / "test.plan") is None
+    captured = capsys.readouterr()
+    assert "guarded direct non-production apply" in captured.err  # nosec B101
+    assert "stack lock during guarded direct" in captured.err  # nosec B101
+    assert any(  # nosec B101
+        len(command) > 3 and command[3] == "cancel" for command in applied
+    )
+    assert direct_attempts == 2  # nosec B101
+    assert all(  # nosec B101
+        "--policy-pack" not in command
+        for command in applied
+        if len(command) > 3 and command[3] == "up" and "--plan" not in command
+    )
+
+
 def test_run_up_plan_stack_recovers_from_saved_plan_lock(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
