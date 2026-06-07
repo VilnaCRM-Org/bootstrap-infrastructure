@@ -473,6 +473,38 @@ def _recover_failed_saved_prod_plan(
     return result.returncode or 1
 
 
+def _run_guarded_direct_nonprod_apply(
+    context: CommandContext, stack: str
+) -> subprocess.CompletedProcess[str]:
+    return _run_with_observable_output(
+        context,
+        _pulumi_command(
+            context,
+            StackCommand("up", stack, include_policy_pack=False),
+        ),
+    )
+
+
+def _recover_guarded_direct_nonprod_apply_lock(
+    context: CommandContext,
+    stack: str,
+    result: subprocess.CompletedProcess[str],
+) -> int | None:
+    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
+    if STACK_LOCK_ERROR not in combined_output:
+        return result.returncode or 1
+
+    print(
+        "warning: Pulumi reported a stack lock during guarded direct "
+        "non-production apply; running pulumi cancel for the selected stack "
+        "and retrying the same guarded direct apply once.",
+        file=sys.stderr,
+    )
+    context.runner(_pulumi_cancel_command(context, stack), env=context.env)
+    retry = _run_guarded_direct_nonprod_apply(context, stack)
+    return None if retry.returncode == 0 else retry.returncode or 1
+
+
 def _recover_failed_saved_nonprod_plan(
     context: CommandContext,
     stack: str,
@@ -489,35 +521,11 @@ def _recover_failed_saved_nonprod_plan(
         f"error; retrying guarded direct non-production apply for stack {stack}.",
         file=sys.stderr,
     )
-    retry = _run_with_observable_output(
-        context,
-        _pulumi_command(
-            context,
-            StackCommand("up", stack, include_policy_pack=False),
-        ),
-    )
+    retry = _run_guarded_direct_nonprod_apply(context, stack)
     if retry.returncode == 0:
         return None
 
-    retry_output = f"{retry.stdout or ''}{retry.stderr or ''}"
-    if STACK_LOCK_ERROR not in retry_output:
-        return retry.returncode or 1
-
-    print(
-        "warning: Pulumi reported a stack lock during guarded direct "
-        "non-production apply; running pulumi cancel for the selected stack "
-        "and retrying the same guarded direct apply once.",
-        file=sys.stderr,
-    )
-    context.runner(_pulumi_cancel_command(context, stack), env=context.env)
-    second_retry = _run_with_observable_output(
-        context,
-        _pulumi_command(
-            context,
-            StackCommand("up", stack, include_policy_pack=False),
-        ),
-    )
-    return None if second_retry.returncode == 0 else second_retry.returncode or 1
+    return _recover_guarded_direct_nonprod_apply_lock(context, stack, retry)
 
 
 def _run_up_plan_stack(

@@ -8722,6 +8722,54 @@ def test_run_up_plan_stack_rejects_plan_decrypt_without_direct_apply(
     )
 
 
+def test_run_up_plan_stack_returns_test_plan_failure_without_decrypt_recovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Test CI should only use direct recovery for the known decrypt failure."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    context_dir = tmp_path / "repo"
+    applied: list[list[str]] = []
+
+    def fake_runner(command, **kwargs):
+        applied.append(command)
+        if len(command) > 3 and command[3] == "up" and "--plan" in command:
+            return subprocess.CompletedProcess(
+                command,
+                42,
+                stdout="",
+                stderr="provider denied\n",
+            )
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    context = module.CommandContext(
+        root_dir=context_dir,
+        env={
+            "GITHUB_ACTIONS": "true",
+            "PULUMI_EXPECTED_SHA": "a" * 40,
+        },
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=fake_runner,
+    )
+
+    assert module._run_up_plan_stack(context, "test", tmp_path / "test.plan") == 42
+    captured = capsys.readouterr()
+    assert "provider denied" in captured.err  # nosec B101
+    assert "guarded direct non-production apply" not in captured.err  # nosec B101
+    assert any(  # nosec B101
+        len(command) > 3 and command[3] == "up" and "--plan" in command
+        for command in applied
+    )
+    assert not any(  # nosec B101
+        len(command) > 3 and command[3] == "up" and "--plan" not in command
+        for command in applied
+    )
+
+
 def test_run_up_plan_stack_recovers_test_plan_decrypt_with_direct_apply(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -8768,6 +8816,62 @@ def test_run_up_plan_stack_recovers_test_plan_decrypt_with_direct_apply(
         and "--plan" not in command
         and "--policy-pack" not in command
         for command in applied
+    )
+
+
+def test_run_up_plan_stack_returns_failed_direct_recovery_without_lock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Direct decrypt recovery should not cancel when Pulumi reports no lock."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    context_dir = tmp_path / "repo"
+    applied: list[list[str]] = []
+
+    def fake_runner(command, **kwargs):
+        applied.append(command)
+        if len(command) > 3 and command[3] == "up" and "--plan" in command:
+            return subprocess.CompletedProcess(
+                command,
+                255,
+                stdout=module.PLAN_DECRYPT_ERROR,
+                stderr="",
+            )
+        if len(command) > 3 and command[3] == "up" and "--plan" not in command:
+            return subprocess.CompletedProcess(
+                command,
+                17,
+                stdout="plugin failed\n",
+                stderr="",
+            )
+        return subprocess.CompletedProcess(command, 0, stdout="")
+
+    context = module.CommandContext(
+        root_dir=context_dir,
+        env={
+            "GITHUB_ACTIONS": "true",
+            "PULUMI_EXPECTED_SHA": "a" * 40,
+        },
+        pulumi_dir=context_dir / "pulumi",
+        policy_pack_dir=context_dir / "policy",
+        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+        runner=fake_runner,
+    )
+
+    assert module._run_up_plan_stack(context, "test", tmp_path / "test.plan") == 17
+    assert "guarded direct non-production apply" in capsys.readouterr().err  # nosec B101
+    assert not any(  # nosec B101
+        len(command) > 3 and command[3] == "cancel" for command in applied
+    )
+    assert (
+        sum(  # nosec B101
+            1
+            for command in applied
+            if len(command) > 3 and command[3] == "up" and "--plan" not in command
+        )
+        == 1
     )
 
 
