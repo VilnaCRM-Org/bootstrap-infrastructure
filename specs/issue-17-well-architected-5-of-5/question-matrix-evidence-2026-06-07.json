@@ -1,0 +1,591 @@
+{
+  "workload": "bootstrap-infrastructure",
+  "owner": "platform-maintainers",
+  "reviewedAt": "2026-06-07T16:54:43Z",
+  "questionCount": 57,
+  "unresolvedQuestionCount": 0,
+  "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
+  "operatingEvidenceLocation": "docs/well-architected-operating-evidence.md",
+  "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
+  "unresolvedQuestionIds": [],
+  "pillarUnresolvedQuestionCounts": {
+    "Operational Excellence": 0,
+    "Security": 0,
+    "Reliability": 0,
+    "Performance Efficiency": 0,
+    "Cost Optimization": 0,
+    "Sustainability": 0
+  },
+  "scoreScale": {
+    "1": "No meaningful repository or account evidence.",
+    "2": "Planning evidence exists, but implementation or operating evidence is missing.",
+    "3": "Partial repository controls exist, but owner, cadence, validation, or fallback evidence is incomplete.",
+    "4": "Strong repository or AWS metadata evidence exists, but at least one external, owner, freshness, or drill requirement blocks 5/5.",
+    "5": "All target evidence, ownership, freshness, validation, and fallback requirements are current."
+  },
+  "frameworkSourceVerification": {
+    "checkedAt": "2026-06-07T16:54:43Z",
+    "source": "AWS Well-Architected Framework latest public documentation",
+    "questionCounts": {
+      "Operational Excellence": 11,
+      "Security": 11,
+      "Reliability": 13,
+      "Performance Efficiency": 5,
+      "Cost Optimization": 11,
+      "Sustainability": 6
+    },
+    "sourceUrls": [
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-01.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/ops-11.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/sec-01.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/sec-11.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/rel-01.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/rel-13.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/perf-01.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/perf-05.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/cost-01.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/cost-11.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/w2aac19c17b7b5.html",
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/sus-06.html"
+    ]
+  },
+  "questionScoreAverages": {
+    "Operational Excellence": 5.0,
+    "Security": 5.0,
+    "Reliability": 5.0,
+    "Performance Efficiency": 5.0,
+    "Cost Optimization": 5.0,
+    "Sustainability": 5.0
+  },
+  "questionScores": [
+    {
+      "id": "OPS1",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/well-architected-operating-evidence.md and docs/operating-review-2026-05-09.md record P0/P1/P2 priorities, business outcomes, risks, SLO/RTO/RPO impact, tradeoffs, owners, cadence, no-go items, and refresh rules.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "OPS2",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/sre-operations.md and docs/well-architected-operating-evidence.md now record the RACI, escalation path, and external-control owner registry tying issue #17 and issues #26-#30 to assigned closeout owners Kravalg, pixelTM, and vilnacrm.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "OPS3",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records the current learning loop, improvement observations, actions taken in this PR, outcomes, follow-up owners, and future review expectations.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "OPS4",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/alert-routing-evidence.md records the no-runtime observability inventory, four enabled EventBridge rules, SNS targets, no runtime alarms/dashboards, SNS-to-SQS route-test evidence, non-secret SQS queue metadata, owners, runbooks, freshness, and fallback rules.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "OPS5",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Local and CI guardrail contracts are backed by the active main ruleset, which now requires all 24 documented status checks including Test Account Evidence; collector github_branch_protection passes with no missing required contexts.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "external-control:branch_protection",
+        "issue:#26",
+        "collector:github_branch_protection",
+        "script:scripts/configure_github_repository_controls.py",
+        "doc:docs/ci-guardrails.md"
+      ]
+    },
+    {
+      "id": "OPS6",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Preview/apply, destructive diff, IAM validation, SHA gates, rollback expectations, protected production environment approval, and production DR owner evidence are current; collector github_production_environment passes for prod with Kravalg as reviewer.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "external-control:production_approval",
+        "issue:#27",
+        "collector:github_production_environment",
+        "spec:specs/issue-17-well-architected-5-of-5/production-dr-owner-2026-05-17.json",
+        "workflow:.github/workflows/well-architected-evidence.yml"
+      ]
+    },
+    {
+      "id": "OPS7",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Operational readiness evidence has current branch protection, protected prod approval, live June 7 security-account attestation, alert-route observation, restore drill, and owner-action evidence; remaining accepted risks are time-limited and tracked in owner records.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "doc:docs/operating-review-2026-05-09.md",
+        "external-control:branch_protection",
+        "external-control:production_approval",
+        "external-control:security_account_controls",
+        "spec:specs/issue-17-well-architected-5-of-5/alert-route-observation-2026-05-17.json",
+        "spec:specs/issue-17-well-architected-5-of-5/security-account-attestation-2026-06-07-approved.json",
+        "spec:specs/issue-17-well-architected-5-of-5/production-dr-owner-2026-05-17.json"
+      ]
+    },
+    {
+      "id": "OPS8",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "The live SNS-to-SQS alert route is KMS encrypted with one confirmed SQS subscription, and alert-route-observation-2026-05-17 records an SRE-owned, time-limited downstream queue-observation decision plus remediation before expiry.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "issue:#30",
+        "doc:docs/alert-routing-evidence.md",
+        "collector:aws_sns_alert_route",
+        "spec:specs/issue-17-well-architected-5-of-5/alert-route-observation-2026-05-17.json",
+        "make:report-alert-route-observation",
+        "workflow:.github/workflows/well-architected-evidence.yml"
+      ]
+    },
+    {
+      "id": "OPS9",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md retains current KPI observations, decisions, owners, freshness, and follow-ups for local validation, PR state, backup, restore, alert route, catalog demand, quota, performance, and sustainability.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "OPS10",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/sre-operations.md records severity, escalation, runbook, and post-incident expectations; docs/alert-routing-evidence.md records the durable route; docs/incident-drill-evidence-2026-05-09.md records a current scenario drill for backup, state, replica, KMS, IAM/OIDC, logging, and workflow events.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "OPS11",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records the current continuous-improvement observations, action decisions, owners, outcomes, next actions, and quarterly review due date.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SEC1",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Security ownership, threat-model cadence, incident playbooks, live service posture, and collector IAM-account metadata are covered by the current June 7 security-account attestation record, which approves the current aggregate IAM posture and expires on 2026-07-07.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "external-control:security_account_controls",
+        "issue:#28",
+        "doc:docs/security-operating-evidence.md",
+        "collector:aws_iam_account_access",
+        "spec:specs/issue-17-well-architected-5-of-5/security-account-attestation-2026-06-07-approved.json",
+        "make:report-security-account-attestation"
+      ]
+    },
+    {
+      "id": "SEC2",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "GitHub OIDC trust, account checks, local credential boundaries, human-admin ownership, and the zero-active-static-key posture are covered by a current owner-approved security attestation that the collector validates against live IAM metadata.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "external-control:security_account_controls",
+        "issue:#28",
+        "doc:docs/security-operating-evidence.md",
+        "collector:aws_iam_account_access",
+        "spec:specs/issue-17-well-architected-5-of-5/security-account-attestation-2026-06-07-approved.json",
+        "script:scripts/record_security_account_attestation.py"
+      ]
+    },
+    {
+      "id": "SEC3",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Automation IAM scope, policy-pack tests, IAM Validation evidence, wildcard justifications, and the permissions-boundary not-required decision are covered by the current security-owner approval, with review due before the July 7 expiry or any IAM scope change.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "external-control:security_account_controls",
+        "issue:#28",
+        "doc:docs/security-operating-evidence.md",
+        "collector:aws_iam_account_access",
+        "spec:specs/issue-17-well-architected-5-of-5/security-account-attestation-2026-06-07-approved.json",
+        "make:report-security-account-attestation"
+      ]
+    },
+    {
+      "id": "SEC4",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "CloudTrail, EventBridge alerts, scans, drift checks, incident playbooks, and Pulumi-managed GuardDuty, Security Hub, and AWS Config controls are backed by live test-account metadata after the guarded apply and dated 2026-05-09 no-drift check.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SEC5",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/workload-applicability-evidence.md records no current VPC or public network plane, current managed-service paths, future VPC/public-ingress triggers, owners, validation sources, fallback behavior, and mandatory policy-pack controls for public S3 and open admin ports.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SEC6",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "The compute applicability statement records no always-on runtime compute, and docs/compute-runner-evidence.md records immutable scan-on-push ECR metadata, AES-256 repository encryption, deletion of the unused vulnerable image inventory, rebuild probes, empty current inventory, and a clean-scan or security-exception gate for any future runner image.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SEC7",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/data-classification-retention.md records the taxonomy, sensitivity, owner, retention, storage, and deletion rationale, and docs/finops-review-2026-05-09.md records active Cost Explorer tag keys for workload classification and ownership tags.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SEC8",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/data-protection-recovery-evidence.md records the at-rest protection matrix for state, logs, replicas, CloudTrail, AWS Config, Pulumi secrets, operations alerts, AWS Backup recovery points, and saved plans, plus S3 SSE-KMS rationale and owner-expiring Vault Lock/Object Lock exemptions.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SEC9",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/workload-applicability-evidence.md records current S3, GitHub Actions, AWS API, EventBridge/SNS/SQS, Backup, KMS, CloudTrail, and AWS Config transit paths, with TLS protections and future public-endpoint listener, certificate, monitoring, abuse-control, and rollback requirements.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SEC10",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/incident-drill-evidence-2026-05-09.md covers compromised OIDC, KMS deletion or disablement, state access, log delivery failure, backup failure, and workflow failure scenarios with detection, first checks, recovery decisions, and retained metadata.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SEC11",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Secure SDLC controls are backed by scans, policy tests, IAM validation paths, owner expectations, live security-account posture, docs/vulnerability-review-2026-05-09.md, patched GitPython and urllib3 lockfile evidence, and current collector evidence showing zero open high or critical default-branch Dependabot alerts for uv.lock.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL1",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "quota-headroom-evidence-2026-05-09.json records count-only AWS metadata, Service Quotas/default quota values, repository fanout projection, remaining headroom, owner, cadence, and no-go behavior for future expansion.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL2",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/workload-applicability-evidence.md records the no-VPC topology, current managed paths, future VPC trigger conditions, owners, validation sources, and fallback behavior; docs/performance-operating-evidence.md records region and network ADR criteria.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL3",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/workload-applicability-evidence.md records the service dependency inventory with roles, inputs, outputs, failure modes, owners, and evidence locations for GitHub, Pulumi state, KMS, logs, backup, alerting, IAM/OIDC, cost controls, and security account controls.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL4",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Saved preview/apply uses a manifest with stack, backend, commit SHA, preview hash, plan hash, stale-plan rejection, and apply-time verification before Pulumi can run `up --plan`.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL5",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/incident-drill-evidence-2026-05-09.md records enabled state/log replication rules, sampled replica parity, accepted absence of replication metrics for the current no-SLO workload, and degraded-mode decisions.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL6",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Nightly drift, CI guardrail workflows, enabled EventBridge-to-SNS alerts for Backup/KMS/IAM/S3 changes, SNS-to-SQS route test, and docs/incident-drill-evidence-2026-05-09.md scenario coverage are current for the no-runtime workload.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL7",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records the current catalog demand signal, stale asset review, cleanup decision, expected environment count, fanout evidence, quota headroom, and no-go rules for future expansion.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL8",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "PR guardrails, policy tests, deploy workflows, active main required checks, and protected prod approval evidence are current; collector github_branch_protection and github_production_environment both pass.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "external-control:branch_protection",
+        "external-control:production_approval",
+        "issues:#26,#27",
+        "collector:github_branch_protection",
+        "collector:github_production_environment"
+      ]
+    },
+    {
+      "id": "REL9",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/data-protection-recovery-evidence.md records AWS Backup coverage, restore runbook, monthly backup review, quarterly restore drill cadence, 90-day freshness rule, Vault Lock/Object Lock exemptions, fallback behavior, and the latest accepted workload-scoped restore drill evidence.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL10",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/fault-isolation-evidence.md records the isolation matrix and tests/unit/test_components.py includes test_github_oidc_roles_scope_state_and_kms_per_repository, which proves per-repository deploy roles are scoped to their own state bucket/object prefix, KMS key, and GitHub OIDC repo/branch subject.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL11",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/incident-drill-evidence-2026-05-09.md records end-to-end scenario drills for primary state bucket unavailable, replica lag, KMS pending deletion or disablement, log delivery failure, backup failure, and hosted workflow failure.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL12",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Unit, policy, project structure, workflow, guardrail, quota/fanout, restore, alert-route, and metadata drill evidence exist; docs/incident-drill-evidence-2026-05-09.md records current DR and degraded-mode scenario testing.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "REL13",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Replication, backups, restore evidence, RTO/RPO expectations, completed test restore drill, protected prod environment, and production-dr-owner-2026-05-17 provide current production-owner DR acceptance with a 2026-06-17 expiry.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "external-control:production_approval",
+        "issue:#27",
+        "spec:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-04-27.json",
+        "collector:restore_drill_evidence",
+        "collector:aws_restore_jobs",
+        "spec:specs/issue-17-well-architected-5-of-5/production-dr-owner-2026-05-17.json",
+        "make:report-production-dr-owner-evidence",
+        "env:PRODUCTION_DR_OWNER_EVIDENCE"
+      ]
+    },
+    {
+      "id": "PERF1",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/performance-operating-evidence.md records resource-selection ADRs, alternatives, fanout counts, service constraints, owners, cadence, validation sources, and no-go fallback rules for repository-owned resource choices.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "PERF2",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "No runtime compute is provisioned; CI control-plane SLOs, queue/run-time review rules, preview, IAM Validation, Destructive Diff Gate, Local Battery, security scans, quality gates, optional runner-image evidence, and future image-freshness requirements are current for the repository-owned compute-adjacent surfaces.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "PERF3",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/performance-operating-evidence.md records storage access patterns, growth assumptions, RPO and latency expectations, lifecycle and storage-class rationale, review triggers, owners, and fallback rules for current repository data paths.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "PERF4",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/performance-operating-evidence.md records the eu-central-1 primary and eu-west-1 replica region decision, no-VPC applicability, transfer-path assumptions, public/private endpoint triggers, validation, owners, and fallback rules.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "PERF5",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records current performance observations for local validation, hosted queue state, workflow redundancy, artifact retention, storage/fanout posture, targets, and follow-up actions.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST1",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/finops-review-2026-05-09.md records platform-maintainers as accountable FinOps owner for the test workload, active allocation tags, approved budget/anomaly thresholds, action thresholds, review cadence, and next review date.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST2",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Region allowlist, PR guardrails, OIDC account checks, catalog lifecycle metadata, static fanout thresholds, monthly budget, anomaly threshold, and transfer action thresholds are recorded for the test workload.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST3",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "AWS metadata confirms budget notifications to the operations topic, confirmed anomaly SNS routing, active allocation tags, and docs/finops-review-2026-05-09.md retains the month-to-date cost and transfer snapshot.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST4",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records current stale asset review, cleanup decisions, ignored local artifacts, catalog lifecycle status, and decommission rules for deprecated or archived repositories.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST5",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md, docs/performance-operating-evidence.md, docs/region-sustainability-evidence.md, and docs/finops-review-2026-05-09.md capture managed-service, lifecycle, backup, KMS, ECR, region-pair, anomaly, budget, and transfer tradeoffs.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST6",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Retention and ECR image count are bounded; naming, catalog fanout, quota headroom, preview cost proxy, monthly budget, anomaly threshold, and transfer thresholds define expansion no-go rules.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST7",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Primary logs transition to Standard-IA; backups and ECR retention are bounded; state and replica storage-class choices, region-pair tradeoffs, and monthly spend evidence are recorded in data protection, performance, region, and FinOps reviews.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST8",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Cross-region S3 replication is scoped to state/log data; docs/finops-review-2026-05-09.md records month-to-date transfer lines, near-zero transfer cost, and review thresholds for transfer cost and usage before expansion.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST9",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records current demand, cleanup decision, stale asset status, no-idle-compute rule, fanout/quota evidence, and expansion gates for supply changes.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST10",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records the current service review for S3, KMS, AWS Backup, EventBridge/SNS/SQS, Budgets, Cost Anomaly Detection, GuardDuty, Security Hub, AWS Config, and GitHub Actions, with decisions and follow-ups.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "COST11",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records cost-of-effort notes comparing managed services with custom workers, implementation effort, operating effort, expected toil reduction, and risk reduction for this PR.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SUS1",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/region-sustainability-evidence.md records the eu-central-1 primary and eu-west-1 replica decision with residency, service availability, latency, recovery, transfer impact, sustainability posture, owner, freshness, fallback, and exception gates.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SUS2",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records current demand inventory, owner, lifecycle state, expected environment count, stale asset review, cleanup decision, and expansion gates.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SUS3",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/operating-review-2026-05-09.md records managed-service and IaC sustainability tradeoffs, CI efficiency observations, no-new-CI-jobs decision, workflow redundancy review, artifact retention posture, and follow-up actions.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SUS4",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/data-classification-retention.md covers current state, logs, Config snapshots, backups, replicas, ECR, CI artifacts, saved plans, cost metadata, evidence, and local config with classification, owner, retention, storage, and deletion rules.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SUS5",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/workload-applicability-evidence.md records managed/serverless-first service selection, confirms no always-on runtime compute, and defines no-idle-compute exception evidence for utilization, scaling, ownership, patching, vulnerability response, and cross-pillar impact.",
+      "primaryBlocker": ""
+    },
+    {
+      "id": "SUS6",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "docs/well-architected-operating-evidence.md and docs/operating-review-2026-05-09.md record sustainability owner, KPIs, review cadence, exception process, current governance decisions, and next quarterly review due date.",
+      "primaryBlocker": ""
+    }
+  ]
+}

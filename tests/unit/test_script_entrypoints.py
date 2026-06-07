@@ -3296,7 +3296,7 @@ def test_required_status_check_contract_matches_collector_and_docs(
         PROJECT_ROOT
         / "specs"
         / "issue-17-well-architected-5-of-5"
-        / "external-control-evidence-2026-05-17.json"
+        / "external-control-evidence-2026-06-07.json"
     )
     external_control_evidence = json.loads(
         external_control_path.read_text(encoding="utf-8")
@@ -3384,7 +3384,7 @@ def test_well_architected_question_source_contract_matches_docs(
     toc_url = collector_module.AWS_WELL_ARCHITECTED_TOC_URL
     issue_dir = PROJECT_ROOT / "specs" / "issue-17-well-architected-5-of-5"
     question_evidence = json.loads(
-        (issue_dir / "question-matrix-evidence-2026-05-17.json").read_text(
+        (issue_dir / "question-matrix-evidence-2026-06-07.json").read_text(
             encoding="utf-8"
         )
     )

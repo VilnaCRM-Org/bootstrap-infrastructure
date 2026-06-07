@@ -57,8 +57,8 @@ jobs:
       vulnerability-alerts: read
     env:
       RESTORE_DRILL_EVIDENCE: specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-04-27.json
-      QUESTION_MATRIX_EVIDENCE: specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-05-17.json
-      EXTERNAL_CONTROL_EVIDENCE: specs/issue-17-well-architected-5-of-5/external-control-evidence-2026-05-17.json
+      QUESTION_MATRIX_EVIDENCE: specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-06-07.json
+      EXTERNAL_CONTROL_EVIDENCE: specs/issue-17-well-architected-5-of-5/external-control-evidence-2026-06-07.json
       DEPENDABOT_EXCEPTION_EVIDENCE: ${{ vars.DEPENDABOT_EXCEPTION_EVIDENCE }}
       ALERT_ROUTE_OBSERVATION_EVIDENCE: ${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE || 'specs/issue-17-well-architected-5-of-5/alert-route-observation-2026-05-17-approved.json' }}
       SECURITY_ACCOUNT_ATTESTATION_EVIDENCE: ${{ vars.SECURITY_ACCOUNT_ATTESTATION_EVIDENCE || 'specs/issue-17-well-architected-5-of-5/security-account-attestation-2026-06-07-approved.json' }}

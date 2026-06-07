@@ -1,13 +1,15 @@
 # Security Operating Evidence
 
 This register records repository-owned security evidence for the bootstrap
-infrastructure Well-Architected review on 2026-05-09. It is intentionally
+infrastructure Well-Architected review refreshed on 2026-06-07. It is intentionally
 non-secret: do not add IAM access keys, Pulumi stack exports, decrypted config,
 private incident details, or screenshots containing account-sensitive data.
 
-This file does not prove human MFA/SSO posture, organization permissions
-boundaries, static-key exception evidence, or external security-owner approval.
-Those remain external controls.
+This file records repository-owned controls and the current non-secret owner
+attestation coverage for human access, static access-key posture, and the
+permissions-boundary decision. Organization-wide identity policy remains an
+external system of record and must be refreshed through metadata or owner
+attestation before expiry or IAM scope changes.
 Current vulnerability-review evidence is retained in
 `docs/vulnerability-review-2026-05-09.md`.
 
@@ -65,9 +67,13 @@ Current compensating controls are:
 - branch protection and production environment approval once repository admins
   apply the documented GitHub settings
 
-Final 5/5 security evidence still requires either an administrator-owned
-permissions-boundary ARN and review cadence or a named security-owner exemption
-that explains why the scoped repository controls are sufficient.
+The current June 7 security-owner attestation records
+`permissionsBoundaryDecision=not_required` for this bootstrap workload because
+the repository uses scoped OIDC roles, deterministic resources, tag conditions,
+policy tests, and IAM Access Analyzer validation instead of self-managing an
+organization-wide boundary. Any expansion of IAM scope, account coverage, or
+human administration model must refresh this decision before retaining a 5/5
+Security claim.
 
 ## Threat Model And Secure SDLC
 
@@ -96,20 +102,21 @@ and post-apply drift on 2026-05-11 UTC.
 
 ## Human And Static-Credential Metadata
 
-A non-secret IAM metadata refresh on 2026-05-11 UTC confirmed that the
-security-account external control is still open:
+A non-secret IAM metadata refresh and owner approval on 2026-06-07 UTC recorded
+the current security-account posture without retaining IAM user names, access
+key IDs, secret values, or decrypted configuration:
 
 | Check | Result | Follow-up |
 | --- | --- | --- |
-| Caller identity | `arn:aws:iam::891377212104:user/codex_cli`. | Treat local static credentials as an owner-approved exception until remediated. |
-| IAM account summary | `Users=4`, `MFADevices=1`, `MFADevicesInUse=1`, `AccountMFAEnabled=1`, `AccountPasswordPresent=1`, and `AccountAccessKeysPresent=0`. | Security owner must attest human MFA/SSO posture without exposing private user data. |
-| IAM user inventory | Four IAM users exist in the account; password last-used values were not present in the metadata returned. | Security owner decides which users are required, retired, or covered by an exception. |
-| Access-key status by user | One IAM user has an active access key; the key was created more than 90 days ago and was used within the last 90 days. The other three users returned no access-key status rows. Access key IDs were not printed or retained. | Record static-key exception, rotation plan, or remediation before SEC2 can pass at 5/5. |
+| Caller identity | Metadata-only collector identity matched account `891377212104`. | Re-run the collector after credential, role, or account changes. |
+| IAM account summary | `Users=5`, `MFADevices=1`, `MFADevicesInUse=1`, `AccountMFAEnabled=1`, and `AccountAccessKeysPresent=0`. | Security owner approved the current human-access posture through the June 7 attestation; refresh before 2026-07-07 or after IAM user changes. |
+| IAM user inventory | Five IAM users exist in the account. User names and private identity details are not retained in repository evidence. | Security owner remains responsible for user lifecycle review outside the repository. |
+| Access-key status by user | Active IAM user access-key count is `0`; inactive, unreadable, stale, and unknown active-key counters are also `0`. | Keep active user access keys removed, or record a new owner-approved exception before SEC2 can stay at 5/5. |
 
-This metadata does not prove human MFA/SSO coverage, does not replace an
-administrator-owned permissions boundary, and does not constitute external
-security-owner approval. Keep SEC1, SEC2, and SEC3 capped until those
-attestations or remediations are recorded.
+`specs/issue-17-well-architected-5-of-5/security-account-attestation-2026-06-07-approved.json`
+records the current owner approval and expires on 2026-07-07. SEC1, SEC2, and
+SEC3 can remain at 5/5 only while that record is current and the live aggregate
+IAM fields still match the attested posture.
 
 ## Network And Transit Applicability
 
@@ -137,8 +144,8 @@ permissions-boundary or exemption, and approval decisions. The generated record
 includes aggregate active-key age and last-used counts from the collector, but
 must not include IAM user names, access key IDs, screenshots with private
 identities, credentials, tokens, or raw account exports. This record path helps
-close issue #28, but SEC1, SEC2, and SEC3 stay below 5/5 until a real security
-owner approves current evidence or records remediation.
+keep issue #28 evidence reproducible and keeps SEC1, SEC2, and SEC3 tied to a
+current security-owner approval instead of an unbounded manual exception.
 Set `SECURITY_ACCOUNT_ATTESTATION_JSON_OUTPUT` when rendering the owner record
 to also produce the machine-readable JSON form. A later collector run can take
 that file through `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE`; the collector only
@@ -153,7 +160,7 @@ existing Markdown or JSON attestation artifact.
 
 | Exception | Status | Owner | Expiry | Required follow-up |
 | --- | --- | --- | --- | --- |
-| Human MFA/SSO evidence | Open external control | Repository admin plus security reviewer | Before final 5/5 claim | Prove organization or repository human-access policy without exposing private user data. |
+| Human MFA/SSO evidence | Closed for current time-bound owner approval | Repository admin plus security reviewer | 2026-07-07 or IAM user change | Refresh aggregate IAM metadata and owner approval without exposing private user data. |
 | Live GuardDuty/Security Hub/AWS Config posture | Closed for current test stack | Security reviewer plus SRE | Monthly after apply | Metadata-only checks on 2026-05-09 UTC proved detector, hub, recorder, and delivery channel posture; refresh after security-account changes. |
 | Test stack secrets-provider migration | Closed for current local evidence | Maintainer plus security reviewer | Per stack backend or secrets-provider change | Guarded local plan/apply and drift used the configured AWS KMS provider; managed workflow run `25606158994` remains historical evidence of why KMS-provider validation is required. |
-| Permissions boundary or exemption attestation | Open external control | Security reviewer | Before final 5/5 claim | Record administrator-owned boundary ARN or approved exemption. |
+| Permissions boundary or exemption attestation | Closed for current `not_required` owner decision | Security reviewer | 2026-07-07 or IAM scope change | Refresh the decision before expanding automation permissions, account coverage, or human administration paths. |

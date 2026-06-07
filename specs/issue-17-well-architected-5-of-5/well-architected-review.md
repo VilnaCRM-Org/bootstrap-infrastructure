@@ -62,21 +62,21 @@ Documentation and evidence-contract score: `4.8/5`.
 
 ## Current Question-Level Review Evidence
 
-The 2026-05-17 evidence record at
-`question-matrix-evidence-2026-05-17.json` now includes a 1-5 score for each of
+The 2026-06-07 evidence record at
+`question-matrix-evidence-2026-06-07.json` now includes a 1-5 score for each of
 the 57 AWS Well-Architected Framework questions plus a source-verification
 record that includes the official AWS TOC URL. These scores are current
 evidence-backed 5/5 observations for this PR and the repository when paired
-with the May 17 owner evidence and live collector inputs.
+with the June 7 owner evidence and live collector inputs.
 
 Repository-owned operating evidence for owners, KPI cadence, priority/risk
 tradeoffs, runbooks, decision matrices, and sustainability governance is now
 recorded in `docs/well-architected-operating-evidence.md`. It improves the
 current question-level scores. External-control closure is recorded separately
-in the May 17 owner-attestation and live collector evidence.
+in the June 7 external-control evidence and current owner-attestation records.
 
 Final Well-Architected score claimed by this PR: `5.0/5.0` across all six
-pillars when the May 17 structured evidence and live collector inputs pass. The
+pillars when the June 7 structured evidence and live collector inputs pass. The
 question-level claim gate is satisfied.
 
 ## Score Claim Method
@@ -153,11 +153,11 @@ Future evidence must include:
 
 ## Highest-Priority Future Work
 
-1. Make same-repo privileged guardrails mandatory and evidence-backed.
-2. Remove unsafe replica-region fallback behavior or replace it with an allowlisted default.
-3. Narrow bootstrap automation IAM and document any unavoidable wildcards.
-4. Add operational alerting and restore proof before claiming reliability maturity.
-5. Operationalize cost controls before scaling the repository catalog.
+1. Refresh owner-attestation records before their expiry dates or when IAM, alert route, production DR, or repository-admin controls change.
+2. Keep same-repo privileged guardrails mandatory and evidence-backed as workflow names or required checks change.
+3. Preserve narrowed automation IAM and the documented wildcard justifications when adding AWS services.
+4. Refresh operational alerting, restore drills, FinOps review, and quota evidence before production approval, catalog growth, or new replicated data classes.
+5. Keep the June 7 structured evidence files current instead of relying on stale confirmations or manual score claims.
 
 ## Completion Criteria For Issue #17
 
@@ -168,10 +168,10 @@ Issue #17 can be closed only when:
 - Restore drills, alarms, cost controls, and quota controls are implemented,
   routed to named owners, reviewed on the documented cadence, and evidenced
   without secrets.
-- Remaining external blockers are closed: branch protection, production
-  approval rules, downstream human alert routing, human MFA/SSO evidence,
-  static-key exception evidence, permissions-boundary or exemption attestation,
-  and external security-owner approval.
+- Remaining external controls remain closed and current: branch protection,
+  production approval rules, downstream alert-route observation,
+  human-access approval, active-key posture, permissions-boundary decision, and
+  external security-owner approval.
 - A follow-up Well-Architected review scores every pillar 5/5.
 
 ## Planning Non-Goals

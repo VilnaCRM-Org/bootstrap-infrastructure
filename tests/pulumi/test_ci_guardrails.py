@@ -554,6 +554,14 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         jobs["test_account_evidence"]["env"]["DEPENDABOT_EXCEPTION_EVIDENCE"]
         == "${{ vars.DEPENDABOT_EXCEPTION_EVIDENCE }}"
     )
+    assert (  # nosec B101
+        jobs["test_account_evidence"]["env"]["QUESTION_MATRIX_EVIDENCE"]
+        == "specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-06-07.json"
+    )
+    assert (  # nosec B101
+        jobs["test_account_evidence"]["env"]["EXTERNAL_CONTROL_EVIDENCE"]
+        == "specs/issue-17-well-architected-5-of-5/external-control-evidence-2026-06-07.json"
+    )
     alert_route_evidence = (
         "${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE || "
         "'specs/issue-17-well-architected-5-of-5/"

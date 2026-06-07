@@ -1,4 +1,4 @@
-# Operating Review 2026-05-09
+# Operating Review 2026-06-07
 
 This is the current repository-owned operating review record for the bootstrap
 infrastructure Well-Architected evidence refresh. It is a public artifact and
@@ -10,19 +10,19 @@ actions.
 | Field | Value |
 | --- | --- |
 | Workload | `bootstrap-infrastructure` |
-| Review date | 2026-05-09 |
+| Review date | 2026-06-07 |
 | Review owner | `platform-maintainers` |
 | Participants by role | Maintainer, SRE, security reviewer, platform owner, FinOps owner placeholder |
 | Evidence scope | Repository docs, question matrix, local checks, AWS metadata collector, repository catalog, quota headroom, restore drill, and external-control records |
-| Fallback | Do not claim final 5/5 while external controls or unresolved question rows remain open. |
+| Fallback | Do not retain final 5/5 while external controls expire, unresolved question rows reopen, or live metadata contradicts structured evidence. |
 
-## Current No-Go Items
+## Current Control Items
 
 | Item | Owner | Current state | Required action |
 | --- | --- | --- | --- |
-| GitHub required checks | Repository admin | Active ruleset reports zero required status checks. | Apply documented branch ruleset with exact required check names. |
-| Production approval | Repository admin plus SRE | `prod` environment evidence is missing. | Create protected `prod` environment with required reviewers and branch restrictions. |
-| Security external attestations | Repository admin plus security reviewer | GuardDuty, Security Hub, and AWS Config are live in the test account after guarded apply and hosted post-apply drift validation. A current IAM metadata refresh still shows IAM users and one active access-key status row, so human MFA/SSO, static-key exception/remediation evidence, permissions-boundary or exemption attestation, and external security-owner approval remain required. Current `main` provides `make report-security-account-attestation` to record that owner decision without exposing private IAM user names or access key IDs. | Record the external security attestations without exposing private user data or keep SEC1/SEC2/SEC3 capped. |
+| GitHub required checks | Repository admin | Active ruleset evidence records the documented required checks for the current PR gate. | Re-run repository-control verification after required-check, ruleset, or workflow-name changes. |
+| Production approval | Repository admin plus SRE | `prod` environment evidence is current: protected branches only, prevent self-review, and required reviewer settings are recorded. | Re-run repository-control verification after production environment or reviewer changes. |
+| Security external attestations | Repository admin plus security reviewer | GuardDuty, Security Hub, AWS Config, and aggregate IAM posture are covered by current metadata and `security-account-attestation-2026-06-07-approved.json`; active IAM user access-key count is zero and the owner recorded `permissionsBoundaryDecision=not_required`. | Refresh the security-owner attestation before 2026-07-07 or after IAM/user/permission scope changes. |
 | Default-branch Dependabot alerts | Security reviewer plus maintainer | Current Dependabot metadata reports zero open high or critical default-branch alerts for `uv.lock`; the latest collector passes `github_dependabot_alerts`. | Keep hosted Dependabot evidence current and require closure or exact-alert owner exceptions for any future high or critical alerts. |
 
 ## KPI Observations
@@ -30,9 +30,9 @@ actions.
 | KPI | Observation | Decision | Follow-up |
 | --- | --- | --- | --- |
 | Local static validation | Focused tests, `make verify-well-architected-questions`, and full local `make ci-pr-unprivileged` passed on 2026-05-11 after the latest implementation changes. | Current local evidence is acceptable for the repository-owned code and evidence slice. | Re-run full local CI before merging any further code changes. |
-| PR and review state | Collector reports local and PR head match, and hosted checks completed successfully on the current implementation line. Live PR state remains open, unapproved, and `mergeStateStatus=BLOCKED` with reviewer requests outstanding. | Hosted checks are acceptable, but the PR control-plane state is not acceptable for final 5/5 until reviewers approve and admin controls are repaired. | Re-run collector after review approval and admin settings change. |
+| PR and review state | Collector reports local and PR head match, hosted checks completed successfully on the current implementation line, PR #60 is approved, and merge state is clean. | Hosted checks, review state, and control-plane metadata are acceptable for the current 5/5 evidence refresh. | Re-run collector after new commits, review-state changes, or admin settings changes. |
 | Backup and restore | Restore job `d7f25510-1dfd-4f11-8953-72ed1c971c2c` completed on 2026-04-27; cleanup was confirmed on 2026-05-09. | Restore evidence is current until the 90-day freshness window expires. | Schedule next restore drill before 2026-07-26. |
-| Alert route | `docs/alert-routing-evidence.md` records four enabled EventBridge rules, SNS targets, no runtime alarms/dashboards, a successful SNS-to-SQS probe, and collector-verified stable SNS/SQS route metadata. Queue-depth counts are retained only as observation metadata in generated collector/observation artifacts. | Repository-owned observability inventory and durable queue route are current; downstream human route or approved queue-owner consumption process remains external. | SRE records downstream route and monthly consumption evidence before OPS8 escalation claims can pass. |
+| Alert route | `docs/alert-routing-evidence.md` records four enabled EventBridge rules, SNS targets, no runtime alarms/dashboards, a successful SNS-to-SQS probe, collector-verified stable SNS/SQS route metadata, and a current SRE-approved durable queue observation. Queue-depth counts are retained only as observation metadata in generated collector/observation artifacts. | Repository-owned observability inventory and durable queue route evidence are current through the approved observation window. | Renew or replace the route observation before 2026-06-17 or when alert routing changes. |
 | Runner image vulnerability posture | `docs/compute-runner-evidence.md` records immutable ECR repository metadata, scan-on-push, the vulnerable stale-image scan, and 2026-05-09 deletion of the unused image inventory. | SEC6 is clear for the current no-runtime workload because ECR now has no deployable runner image. | Platform owner must require a clean scan or security-owner exception before any future runner image is used. |
 | FinOps readiness | `docs/finops-review-2026-05-09.md` records active cost allocation tags, `100 USD` monthly budget, 80% actual and 100% forecast alerts, `10 USD` anomaly threshold, SNS route, month-to-date service cost, and transfer thresholds. | Cost Optimization evidence is current for the single-repository test workload. | Refresh by 2026-06-09 or before production approval, catalog growth, region, retention, or replicated-data changes. |
 | Incident and DR drill | `docs/incident-drill-evidence-2026-05-09.md` records completed backup jobs, enabled state/log replication rules, replica parity samples, KMS/IAM/OIDC/logging/backup/workflow scenarios, and degraded-mode decisions. | Repository-owned incident and DR exercise evidence is current until the quarterly freshness window expires. | Schedule next incident/DR drill before 2026-08-07. |
@@ -56,7 +56,7 @@ actions.
 | Observation | Action taken | Outcome | Next action |
 | --- | --- | --- | --- |
 | Saved plans needed stronger apply integrity. | Added plan manifest hash, commit, stack, backend, preview hash, and stale-plan validation. | REL4 passed. | Preserve tests for future workflow changes. |
-| Account security services needed concrete implementation evidence. | Added GuardDuty, Security Hub, AWS Config recorder/delivery, guarded local apply evidence, live metadata checks, and no-drift validation. | SEC4 is supported for the test account; default-branch Dependabot alert closure is now verified; remaining Security blockers are human/admin attestations. | Refresh live posture monthly and close the remaining external security attestations. |
+| Account security services needed concrete implementation evidence. | Added GuardDuty, Security Hub, AWS Config recorder/delivery, guarded local apply evidence, live metadata checks, no-drift validation, and the June 7 owner-approved aggregate IAM attestation. | Security evidence is current for the test account while the owner records remain unexpired and live metadata continues to match. | Refresh live posture monthly and renew external security attestations before expiry or IAM scope change. |
 | Quota and catalog growth needed current headroom evidence. | Added metadata-only quota headroom report and no-go rules. | REL1 passed. | Refresh before catalog expansion. |
 | Data classes and retention were implicit. | Added data classification and retention matrix. | SUS4 passed and SEC7 improved. | Update before new data classes. |
 | Performance, applicability, and data-protection decisions were scattered. | Added performance, workload applicability, and data-protection evidence. | PERF1, PERF3, PERF4, SEC5, SEC8, SEC9, REL2, REL3, REL9, and SUS5 passed. | Keep these docs current per service change. |

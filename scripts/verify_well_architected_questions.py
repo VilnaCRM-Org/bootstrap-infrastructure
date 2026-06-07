@@ -707,7 +707,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path(
             "specs/issue-17-well-architected-5-of-5/"
-            "question-matrix-evidence-2026-05-17.json"
+            "question-matrix-evidence-2026-06-07.json"
         ),
     )
     parser.add_argument(
