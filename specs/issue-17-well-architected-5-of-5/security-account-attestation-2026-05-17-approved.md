@@ -1,4 +1,4 @@
-# Security Account Attestation 2026-05-17
+# Security Account Attestation 2026-06-07
 
 This attestation record is generated from metadata-only Well-Architected collector output and completed with security-owner review fields. Do not add IAM user names, access key IDs, secret values, screenshots containing private identities, credentials, tokens, or raw account exports.
 
@@ -8,15 +8,15 @@ This attestation record is generated from metadata-only Well-Architected collect
 | --- | --- |
 | Workload | bootstrap-infrastructure |
 | Environment | test |
-| Review date | 2026-05-17 |
+| Review date | 2026-06-07 |
 | Reviewer | Kravalg |
 | Security owner | Kravalg |
 | Human MFA/SSO posture | approved |
 | Active IAM user access-key decision | no_active_keys |
 | Permissions-boundary or exemption decision | not_required |
 | Approval decision | approved |
-| Evidence expiry | 2026-08-17T00:00:00Z |
-| Evidence source generated at | 2026-05-17T15:18:25.238127+00:00 |
+| Evidence expiry | 2026-07-07T00:00:00Z |
+| Evidence source generated at | 2026-06-07T16:06:16.163060+00:00 |
 
 ## Collector Account Evidence
 
@@ -26,8 +26,8 @@ This attestation record is generated from metadata-only Well-Architected collect
 | Collector check status | failed |
 | Root/account MFA enabled | 1 |
 | Root/account access keys present | 0 |
-| Discovered IAM users | 4 |
-| Summary IAM users | 4 |
+| Discovered IAM users | 5 |
+| Summary IAM users | 5 |
 | MFA devices in use | 1 |
 | Total MFA devices | 1 |
 | Active IAM user access keys | 0 |
@@ -43,8 +43,9 @@ This attestation record is generated from metadata-only Well-Architected collect
 
 ## Collector Blockers
 
+- Security account attestation accountEvidence does not match live IAM aggregate fields: summaryUserCount, discoveredUserCount.
 - IAM user count exceeds MFA devices in use; human MFA/SSO posture requires security-owner attestation.
 
 ## Follow-Up Actions
 
-- IAM user access keys were removed from the test account; IAM users have no console login profiles, GitHub Actions uses environment-scoped OIDC roles, and scoped automation policies plus policy-pack/IAM validation replace the prior permissions-boundary exemption for this no-runtime bootstrap workload.
+- Security owner approved the current aggregate IAM posture for test account 891377212104 after the active IAM user access key was removed; IAM user count and MFA/SSO posture remain accepted for this bootstrap workload and must be reviewed before expiry.
