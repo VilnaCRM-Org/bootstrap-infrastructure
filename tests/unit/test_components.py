@@ -386,7 +386,8 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
     assert test_condition["StringEquals"] == {  # nosec B101
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
         "token.actions.githubusercontent.com:sub": [
-            "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
         ],
     }
 
@@ -600,10 +601,14 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
     ] == [
         "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
         "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
     ]
     assert apply_condition["StringEquals"][  # nosec B101
         "token.actions.githubusercontent.com:sub"
-    ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"]
+    ] == [
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
+    ]
     assert "pull_request" not in json.dumps(apply_condition)  # nosec B101
     assert "pulumi-pr-guardrails.yml" not in json.dumps(apply_condition)  # nosec B101
 

@@ -95,7 +95,8 @@ def test_mutation_target_ci_config_secret_contract():
         "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
     ]
     assert ci_config._github_actions_subjects(settings, "test") == [  # nosec B101
-        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
     ]
 
     policy = json.loads(

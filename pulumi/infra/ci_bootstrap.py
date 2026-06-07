@@ -263,7 +263,13 @@ def _deployment_role_subjects(settings: BootstrapSettings, purpose: str) -> list
     """Return trusted GitHub OIDC subjects for a CI deployment role."""
     branch_subject = _repo_subject(settings, f"ref:{_branch_ref(settings)}")
     if purpose == "preview" and settings.environment == "test":
-        return [branch_subject, _repo_subject(settings, "pull_request")]
+        return [
+            branch_subject,
+            _repo_subject(settings, "pull_request"),
+            _repo_subject(settings, "environment:test"),
+        ]
+    if settings.environment == "test":
+        return [branch_subject, _repo_subject(settings, "environment:test")]
     if purpose == "apply" and settings.environment == "prod":
         return [_repo_subject(settings, "environment:prod")]
     return [branch_subject]

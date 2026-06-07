@@ -97,6 +97,11 @@ def _github_actions_subjects(settings: BootstrapSettings, suffix: str) -> list[s
     repo = f"{settings.org}/{settings.repo}"
     if suffix == "test-pr":
         return [f"repo:{repo}:pull_request"]
+    if suffix == "test":
+        return [
+            f"repo:{repo}:ref:refs/heads/{branch}",
+            f"repo:{repo}:environment:test",
+        ]
     if suffix == "prod":
         return [f"repo:{repo}:environment:prod"]
     return [f"repo:{repo}:ref:refs/heads/{branch}"]
