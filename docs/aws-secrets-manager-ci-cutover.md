@@ -114,7 +114,7 @@ administrator credentials for the owning AWS account. The stack creates:
 - `GitHubCiPreview-*`, `GitHubCiApply-*`, and `GitHubCiDrift-*` roles
 - the test-account `OperationsAlertTriage-*` role
 - least-privilege policies scoped to CI job purpose
-- GitHub OIDC trust limited by repo subject and workflow ref
+- GitHub OIDC trust limited by repo subject and workflow name
 - encrypted AWS Secrets Manager CI JSON payloads by default
 
 Use the detailed [GitHub CI AWS bootstrap stack manual](github-ci-bootstrap-stack.md)

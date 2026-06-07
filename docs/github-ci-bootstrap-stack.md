@@ -42,7 +42,7 @@ Per account, the stack creates or adopts:
 
 | Role | Scope |
 | --- | --- |
-| `GitHubCiConfigRead-*` | `secretsmanager:DescribeSecret` and `secretsmanager:GetSecretValue` on exactly one fixed CI secret ARN pattern. Trust is constrained by repository subject and workflow file. |
+| `GitHubCiConfigRead-*` | `secretsmanager:DescribeSecret` and `secretsmanager:GetSecretValue` on exactly one fixed CI secret ARN pattern. Trust is constrained by repository subject and workflow name. |
 | `GitHubCiPreview-*` | S3 Pulumi backend access, AWS KMS secrets-provider use, `access-analyzer:ValidatePolicy`, `sts:GetCallerIdentity`, and read/list/describe/get for the stack-managed AWS services. It explicitly denies Secrets Manager value reads. |
 | `GitHubCiDrift-*` | Same read surface as preview, because refresh-based drift detection reads live AWS state and uses Pulumi backend locks. |
 | `GitHubCiApply-*` | S3/KMS backend access plus the existing bootstrap mutation surface for S3, KMS, IAM/OIDC, CI secret containers, Backup, ECR, EventBridge, CloudTrail, SNS, SQS configuration, Budgets, Cost Explorer, GuardDuty, Security Hub, and AWS Config. |
