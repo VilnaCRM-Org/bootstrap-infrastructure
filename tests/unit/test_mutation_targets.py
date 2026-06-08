@@ -502,6 +502,29 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "arn:aws:s3:::bootstrap-*-test-cloudtrail",
         "arn:aws:s3:::bootstrap-*-test-aws-config",
     ]
+    assert statements["PassBootstrapRolesToS3Replication"] == {  # nosec B101
+        "Sid": "PassBootstrapRolesToS3Replication",
+        "Effect": "Allow",
+        "Action": ["iam:PassRole"],
+        "Resource": [
+            "arn:aws:iam::123456789012:role/PulumiStateRepl-*",
+            "arn:aws:iam::123456789012:role/central-logging-replication-role-*",
+        ],
+        "Condition": {"StringEquals": {"iam:PassedToService": "s3.amazonaws.com"}},
+    }
+    pass_role_statements = [
+        statement
+        for statement in statements.values()
+        if statement["Action"] == ["iam:PassRole"]
+    ]
+    assert {statement["Sid"] for statement in pass_role_statements} == {  # nosec B101
+        "PassBootstrapRolesToBackup",
+        "PassBootstrapRolesToConfig",
+        "PassBootstrapRolesToS3Replication",
+    }
+    assert all(  # nosec B101
+        statement["Resource"] != "*" for statement in pass_role_statements
+    )
     assert statements["ManageBootstrapEcr"]["Resource"] == [  # nosec B101
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
         "bootstrap-infrastructure-test"

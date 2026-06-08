@@ -160,8 +160,32 @@ def _artifact_path(context: CommandContext, path: Path) -> str:
     return str(path.relative_to(context.root_dir))
 
 
-def _manifest_path(context: CommandContext, value: str) -> Path:
-    return context.root_dir / value
+def _manifest_path(context: CommandContext, value: Any, field_name: str) -> Path | None:
+    if not isinstance(value, str) or not value:
+        print(
+            f"error: Pulumi plan manifest {field_name} must be a relative path.",
+            file=sys.stderr,
+        )
+        return None
+
+    relative_path = Path(value)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        print(
+            f"error: Pulumi plan manifest {field_name} must stay under the repository.",
+            file=sys.stderr,
+        )
+        return None
+
+    manifest_path = (context.root_dir / relative_path).resolve()
+    try:
+        manifest_path.relative_to(context.root_dir.resolve())
+    except ValueError:
+        print(
+            f"error: Pulumi plan manifest {field_name} must stay under the repository.",
+            file=sys.stderr,
+        )
+        return None
+    return manifest_path
 
 
 def _file_sha256(path: Path) -> str:
@@ -231,19 +255,71 @@ def _load_plan_manifest(context: CommandContext) -> dict[str, Any] | None:
             f"error: Pulumi plan manifest not found: {manifest_file}", file=sys.stderr
         )
         return None
-    return json.loads(manifest_file.read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        print("error: Pulumi plan manifest is not valid JSON.", file=sys.stderr)
+        return None
+    if not isinstance(manifest, dict):
+        print("error: Pulumi plan manifest must be a JSON object.", file=sys.stderr)
+        return None
+    return manifest
 
 
 def _manifest_stack_entry(
     manifest: dict[str, Any], stack: str
 ) -> dict[str, Any] | None:
-    for entry in manifest.get("stacks", []):
+    stacks = manifest.get("stacks")
+    if not isinstance(stacks, list):
+        print("error: Pulumi plan manifest stacks must be a list.", file=sys.stderr)
+        return None
+
+    for entry in stacks:
+        if not isinstance(entry, dict):
+            print(
+                "error: Pulumi plan manifest stack entries must be objects.",
+                file=sys.stderr,
+            )
+            return None
         if entry.get("stack") == stack:
             return entry
     print(
         f"error: Pulumi plan manifest has no entry for stack {stack}", file=sys.stderr
     )
     return None
+
+
+def _validate_plan_manifest_age(
+    context: CommandContext,
+    manifest: dict[str, Any],
+) -> int | None:
+    try:
+        plan_age = _plan_now_epoch(context) - int(manifest.get("createdAtEpoch", 0))
+        max_plan_age = _plan_max_age_seconds(context)
+    except (TypeError, ValueError):
+        print(
+            "error: Pulumi plan manifest timestamp or max age is invalid.",
+            file=sys.stderr,
+        )
+        return 1
+    if plan_age < 0:
+        print("error: Pulumi plan manifest was created in the future.", file=sys.stderr)
+        return 1
+    if plan_age > max_plan_age:
+        print("error: Pulumi plan manifest is stale.", file=sys.stderr)
+        return 1
+    return None
+
+
+def _manifest_plan_sha(entry: dict[str, Any]) -> str | None:
+    plan_sha = entry.get("planSha256")
+    if not isinstance(plan_sha, str) or not plan_sha:
+        print(
+            "error: Pulumi plan manifest planSha256 must be a non-empty string.",
+            file=sys.stderr,
+        )
+        return None
+    return plan_sha
 
 
 def _validate_plan_manifest(
@@ -256,10 +332,9 @@ def _validate_plan_manifest(
         print("error: unsupported Pulumi plan manifest schema.", file=sys.stderr)
         return 1
 
-    plan_age = _plan_now_epoch(context) - int(manifest.get("createdAtEpoch", 0))
-    if plan_age > _plan_max_age_seconds(context):
-        print("error: Pulumi plan manifest is stale.", file=sys.stderr)
-        return 1
+    age_status = _validate_plan_manifest_age(context, manifest)
+    if age_status is not None:
+        return age_status
 
     expected_sha = _commit_sha(context)
     manifest_sha = manifest.get("commitSha", "")
@@ -278,12 +353,17 @@ def _validate_plan_manifest(
     if entry is None:
         return 1
 
-    recorded_plan = _manifest_path(context, entry["planFile"])
+    recorded_plan = _manifest_path(context, entry.get("planFile"), "planFile")
+    if recorded_plan is None:
+        return 1
     if recorded_plan.resolve() != plan_file.resolve():
         print("error: Pulumi plan file does not match manifest entry.", file=sys.stderr)
         return 1
 
-    if _file_sha256(plan_file) != entry.get("planSha256"):
+    plan_sha = _manifest_plan_sha(entry)
+    if plan_sha is None:
+        return 1
+    if _file_sha256(plan_file) != plan_sha:
         print("error: Pulumi plan file hash does not match manifest.", file=sys.stderr)
         return 1
     return None

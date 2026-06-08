@@ -20,6 +20,7 @@ from .ci_config import (
     PULUMI_PROD_WORKFLOW,
     PULUMI_TEST_DEPLOY_WORKFLOW,
     WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
+    _github_actions_workflow_file_refs_for_repo,
 )
 from .config import settings as default_settings
 from .utils.outputs import apply_output
@@ -57,6 +58,7 @@ _AUTOMATION_MANAGED_POLICY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
                 "ManageBootstrapCiSecrets",
                 "PassBootstrapRolesToBackup",
                 "PassBootstrapRolesToConfig",
+                "PassBootstrapRolesToS3Replication",
                 "ManageBootstrapBackup",
                 "ManageBootstrapEcr",
             }
@@ -526,6 +528,14 @@ def _automation_iam_role_resources(
     ]
 
 
+def _automation_s3_replication_role_resources(account_id: str) -> list[str]:
+    """Scope PassRole to deterministic S3 replication role families."""
+    return [
+        f"arn:aws:iam::{account_id}:role/PulumiStateRepl-*",
+        f"arn:aws:iam::{account_id}:role/central-logging-replication-role-*",
+    ]
+
+
 def _automation_backup_resources(account_id: str) -> list[str]:
     """Scope Backup management to account-local AWS Backup resource families."""
     return [
@@ -668,6 +678,14 @@ def _automation_assume_role_policy(
             f"repo:{org}/{repo_name}:ref:refs/heads/{branch_name}",
             f"repo:{org}/{repo_name}:pull_request",
         ]
+    workflows = [
+        PULUMI_PR_GUARDRAILS_WORKFLOW,
+        PULUMI_TEST_DEPLOY_WORKFLOW,
+        NIGHTLY_GUARDRAILS_WORKFLOW,
+        PULUMI_PROD_WORKFLOW,
+        PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
+        WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
+    ]
 
     return json.dumps(
         {
@@ -685,14 +703,14 @@ def _automation_assume_role_policy(
                             "token.actions.githubusercontent.com:sub": subjects,
                         },
                         "StringLike": {
-                            "token.actions.githubusercontent.com:workflow": [
-                                PULUMI_PR_GUARDRAILS_WORKFLOW,
-                                PULUMI_TEST_DEPLOY_WORKFLOW,
-                                NIGHTLY_GUARDRAILS_WORKFLOW,
-                                PULUMI_PROD_WORKFLOW,
-                                PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
-                                WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
-                            ]
+                            "token.actions.githubusercontent.com:workflow": workflows,
+                            "token.actions.githubusercontent.com:workflow_ref": (
+                                _github_actions_workflow_file_refs_for_repo(
+                                    org,
+                                    repo_name,
+                                    workflows,
+                                )
+                            ),
                         },
                     },
                 }
@@ -730,6 +748,7 @@ def _operations_alert_triage_assume_role_policy(
     branch_name: str,
 ) -> str:
     """Build the OIDC trust policy for the alert triage workflow only."""
+    workflows = [OPERATIONS_ALERT_TRIAGE_WORKFLOW]
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -750,6 +769,13 @@ def _operations_alert_triage_assume_role_policy(
                         "StringLike": {
                             "token.actions.githubusercontent.com:workflow": (
                                 OPERATIONS_ALERT_TRIAGE_WORKFLOW
+                            ),
+                            "token.actions.githubusercontent.com:workflow_ref": (
+                                _github_actions_workflow_file_refs_for_repo(
+                                    org,
+                                    repo_name,
+                                    workflows,
+                                )
                             ),
                         },
                     },
@@ -982,6 +1008,15 @@ def _automation_policy(
                     ],
                     "Condition": {
                         "StringEquals": {"iam:PassedToService": "config.amazonaws.com"}
+                    },
+                },
+                {
+                    "Sid": "PassBootstrapRolesToS3Replication",
+                    "Effect": "Allow",
+                    "Action": ["iam:PassRole"],
+                    "Resource": _automation_s3_replication_role_resources(account_id),
+                    "Condition": {
+                        "StringEquals": {"iam:PassedToService": "s3.amazonaws.com"}
                     },
                 },
                 {

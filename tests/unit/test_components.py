@@ -275,6 +275,12 @@ def test_github_automation_trust_keeps_environment_subject_prod_only():
     prod_subjects = prod_policy["Statement"][0]["Condition"]["StringEquals"][
         "token.actions.githubusercontent.com:sub"
     ]
+    test_workflow_refs = test_policy["Statement"][0]["Condition"]["StringLike"][
+        "token.actions.githubusercontent.com:workflow_ref"
+    ]
+    prod_workflow_refs = prod_policy["Statement"][0]["Condition"]["StringLike"][
+        "token.actions.githubusercontent.com:workflow_ref"
+    ]
 
     assert test_subjects == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
@@ -283,6 +289,18 @@ def test_github_automation_trust_keeps_environment_subject_prod_only():
     assert prod_subjects == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"
     ]
+    assert (  # nosec B101
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-pr-command-runner.yml@*" in test_workflow_refs
+    )
+    assert (  # nosec B101
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "well-architected-evidence.yml@*" in test_workflow_refs
+    )
+    assert (  # nosec B101
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-prod.yml@*" in prod_workflow_refs
+    )
 
 
 def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
@@ -383,6 +401,14 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
         "Pulumi PR Guardrails",
         "Well-Architected Evidence",
     ]
+    assert test_pr_condition["StringLike"][  # nosec B101
+        "token.actions.githubusercontent.com:workflow_ref"
+    ] == [
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-pr-guardrails.yml@*",
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "well-architected-evidence.yml@*",
+    ]
     assert test_condition["StringEquals"] == {  # nosec B101
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
         "token.actions.githubusercontent.com:sub": [
@@ -477,6 +503,13 @@ def test_ci_configuration_uses_github_oidc_provider_for_prod_suffixes(
     assert prod_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
         "token.actions.githubusercontent.com:sub"
     ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"]
+    assert prod_policy["Statement"][0]["Condition"]["StringLike"][  # nosec B101
+        "token.actions.githubusercontent.com:workflow_ref"
+    ] == [
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-prod.yml@*",
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-pr-command-runner.yml@*",
+    ]
 
 
 def test_ci_configuration_requires_github_oidc_provider(
@@ -591,11 +624,17 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
         pulumi_mocks,
         "github-ci-bootstrap-test-apply-role",
     )
+    triage_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-ci-bootstrap-test-operations-alert-triage-role",
+    )
     preview_trust = json.loads(preview_state["assumeRolePolicy"])
     apply_trust = json.loads(apply_state["assumeRolePolicy"])
+    triage_trust = json.loads(triage_state["assumeRolePolicy"])
 
     preview_condition = preview_trust["Statement"][0]["Condition"]
     apply_condition = apply_trust["Statement"][0]["Condition"]
+    triage_condition = triage_trust["Statement"][0]["Condition"]
     assert preview_condition["StringEquals"][  # nosec B101
         "token.actions.githubusercontent.com:sub"
     ] == [
@@ -611,6 +650,27 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
     ]
     assert "pull_request" not in json.dumps(apply_condition)  # nosec B101
     assert "pulumi-pr-guardrails.yml" not in json.dumps(apply_condition)  # nosec B101
+    assert (  # nosec B101
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-pr-guardrails.yml@*"
+        in preview_condition["StringLike"][
+            "token.actions.githubusercontent.com:workflow_ref"
+        ]
+    )
+    assert apply_condition["StringLike"][  # nosec B101
+        "token.actions.githubusercontent.com:workflow_ref"
+    ] == [
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-test-deploy.yml@*",
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-pr-command-runner.yml@*",
+    ]
+    assert triage_condition["StringLike"][  # nosec B101
+        "token.actions.githubusercontent.com:workflow_ref"
+    ] == [
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "operations-alert-triage.yml@*"
+    ]
 
     backend_policy = json.loads(
         ci_bootstrap._pulumi_backend_policy_document(
@@ -728,8 +788,13 @@ def test_github_ci_bootstrap_prod_stack_uses_protected_apply_subject(
         pulumi_mocks,
         "github-ci-bootstrap-prod-preview-role",
     )
+    drift_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-ci-bootstrap-prod-drift-role",
+    )
     apply_trust = json.loads(apply_state["assumeRolePolicy"])
     preview_trust = json.loads(preview_state["assumeRolePolicy"])
+    drift_trust = json.loads(drift_state["assumeRolePolicy"])
 
     assert apply_trust["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
         "token.actions.githubusercontent.com:sub"
@@ -737,6 +802,20 @@ def test_github_ci_bootstrap_prod_stack_uses_protected_apply_subject(
     assert "pull_request" not in json.dumps(apply_trust)  # nosec B101
     assert "environment:prod" not in json.dumps(preview_trust)  # nosec B101
     assert "Pulumi Production" in json.dumps(preview_trust)  # nosec B101
+    assert apply_trust["Statement"][0]["Condition"]["StringLike"][  # nosec B101
+        "token.actions.githubusercontent.com:workflow_ref"
+    ] == [
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-prod.yml@*",
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-pr-command-runner.yml@*",
+    ]
+    assert (  # nosec B101
+        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
+        "nightly-guardrails.yml@*"
+        in drift_trust["Statement"][0]["Condition"]["StringLike"][
+            "token.actions.githubusercontent.com:workflow_ref"
+        ]
+    )
 
 
 def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):

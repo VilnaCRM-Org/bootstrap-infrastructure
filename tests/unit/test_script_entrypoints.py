@@ -8236,6 +8236,86 @@ def test_run_pulumi_command_validates_plan_manifest_error_paths(
     assert "hash does not match" in capsys.readouterr().err  # nosec B101
 
 
+def test_run_pulumi_command_rejects_malformed_plan_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Fail closed when a saved-plan artifact manifest is malformed."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    repo_dir = tmp_path / "repo"
+    pulumi_dir = repo_dir / "pulumi"
+    policy_dir = repo_dir / "policy"
+    plan_dir = repo_dir / ".artifacts" / "pulumi-plan"
+    preview_dir = repo_dir / ".artifacts" / "pulumi-preview"
+    pulumi_dir.mkdir(parents=True)
+    policy_dir.mkdir()
+    plan_dir.mkdir(parents=True)
+    preview_dir.mkdir(parents=True)
+    plan_file = plan_dir / "test.plan"
+    plan_file.write_text("plan", encoding="utf-8")
+    manifest_file = plan_dir / "manifest.json"
+    context = module.CommandContext(
+        root_dir=repo_dir,
+        env={"PULUMI_PLAN_NOW_EPOCH": "1000", "PULUMI_EXPECTED_SHA": "sha-a"},
+        pulumi_dir=pulumi_dir,
+        policy_pack_dir=policy_dir,
+        plan_dir=plan_dir,
+        preview_artifact_dir=preview_dir,
+        backend_url="file:///tmp/backend",
+        secrets_provider="awskms://alias/example?region=eu-central-1",
+    )
+    valid_entry = {
+        "stack": "test",
+        "planFile": ".artifacts/pulumi-plan/test.plan",
+        "planSha256": hashlib.sha256(b"plan").hexdigest(),
+    }
+    valid_manifest = {
+        "schemaVersion": 1,
+        "createdAtEpoch": 1000,
+        "commitSha": "sha-a",
+        "backendUrl": "file:///tmp/backend",
+        "stacks": [valid_entry],
+    }
+
+    manifest_file.write_text("{", encoding="utf-8")
+    assert module._load_plan_manifest(context) is None  # nosec B101
+    manifest_file.write_text("[]", encoding="utf-8")
+    assert module._load_plan_manifest(context) is None  # nosec B101
+
+    malformed_manifests = [
+        {**valid_manifest, "createdAtEpoch": "not-an-int"},
+        {**valid_manifest, "createdAtEpoch": 1001},
+        {**valid_manifest, "stacks": {"stack": "test"}},
+        {**valid_manifest, "stacks": ["test"]},
+        {**valid_manifest, "stacks": [{**valid_entry, "planFile": None}]},
+        {**valid_manifest, "stacks": [{**valid_entry, "planFile": 123}]},
+        {**valid_manifest, "stacks": [{**valid_entry, "planFile": ""}]},
+        {**valid_manifest, "stacks": [{**valid_entry, "planFile": str(plan_file)}]},
+        {
+            **valid_manifest,
+            "stacks": [
+                {
+                    **valid_entry,
+                    "planFile": "../repo/.artifacts/pulumi-plan/test.plan",
+                }
+            ],
+        },
+        {**valid_manifest, "stacks": [{**valid_entry, "planSha256": None}]},
+        {**valid_manifest, "stacks": [{**valid_entry, "planSha256": ""}]},
+    ]
+    for manifest in malformed_manifests:
+        assert (  # nosec B101
+            module._validate_plan_manifest(context, manifest, "test", plan_file) == 1
+        )
+
+    context.env["PULUMI_PLAN_MAX_AGE_SECONDS"] = "not-an-int"
+    assert (  # nosec B101
+        module._validate_plan_manifest(context, valid_manifest, "test", plan_file) == 1
+    )
+    assert "Pulumi plan manifest" in capsys.readouterr().err  # nosec B101
+
+
 def test_run_pulumi_command_requires_manifest_before_saved_plan_apply(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

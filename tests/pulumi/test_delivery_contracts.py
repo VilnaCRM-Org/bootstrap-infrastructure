@@ -1296,6 +1296,120 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     )
 
 
+def test_pr_command_runner_encodes_expected_plan_and_up_job_matrix() -> None:
+    """Keep test/prod PR command routing explicit and regression-resistant."""
+    runner = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-pr-command-runner.yml").read_text(encoding="utf-8")
+    )
+    jobs = runner["jobs"]
+
+    test_apply_condition = jobs["test_apply"]["if"]
+    test_drift_condition = jobs["test_post_apply_drift"]["if"]
+    prod_preview_condition = jobs["prod_preview"]["if"]
+    prod_apply_condition = jobs["prod_apply"]["if"]
+    prod_drift_condition = jobs["prod_post_apply_drift"]["if"]
+
+    assert "needs.preflight.outputs.target_environment == 'test'" in (  # nosec B101
+        test_apply_condition
+    )
+    assert "needs.preflight.outputs.command == 'up'" in test_apply_condition  # nosec B101
+    assert "needs.preflight.outputs.target_environment == 'prod'" in (  # nosec B101
+        test_apply_condition
+    )
+    assert jobs["test_post_apply_drift"]["needs"] == [  # nosec B101
+        "preflight",
+        "test_apply",
+    ]
+    assert test_drift_condition == test_apply_condition  # nosec B101
+    assert "needs.test_post_apply_drift.result == 'success'" in (  # nosec B101
+        prod_preview_condition
+    )
+    assert jobs["prod_preview"]["needs"] == [  # nosec B101
+        "preflight",
+        "test_post_apply_drift",
+    ]
+    assert "needs.preflight.outputs.command == 'up'" not in prod_preview_condition  # nosec B101
+    assert "needs.preflight.outputs.command == 'up'" in prod_apply_condition  # nosec B101
+    assert _environment_name(jobs["prod_apply"]) == "prod"  # nosec B101
+    assert jobs["prod_post_apply_drift"]["needs"] == [  # nosec B101
+        "preflight",
+        "prod_apply",
+    ]
+    assert "needs.preflight.outputs.command == 'up'" in prod_drift_condition  # nosec B101
+    assert jobs["comment_result"]["if"] == "always()"  # nosec B101
+    assert set(jobs["comment_result"]["needs"]) == {  # nosec B101
+        "preflight",
+        "test_preview",
+        "test_destructive_diff",
+        "test_iam_validation",
+        "test_apply",
+        "test_post_apply_drift",
+        "prod_preview",
+        "prod_destructive_diff",
+        "prod_iam_validation",
+        "prod_apply",
+        "prod_post_apply_drift",
+    }
+
+
+def test_pr_command_runner_privileged_jobs_checkout_preflight_sha() -> None:
+    """Apply and drift jobs must run against the SHA that preflight validated."""
+    runner = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-pr-command-runner.yml").read_text(encoding="utf-8")
+    )
+    jobs = runner["jobs"]
+    privileged_jobs = (
+        "test_preview",
+        "test_destructive_diff",
+        "test_iam_validation",
+        "test_apply",
+        "test_post_apply_drift",
+        "prod_preview",
+        "prod_destructive_diff",
+        "prod_iam_validation",
+        "prod_apply",
+        "prod_post_apply_drift",
+    )
+
+    for job_name in privileged_jobs:
+        checkout = _checkout_step(jobs[job_name]["steps"], workflow_name=job_name)
+        assert checkout["with"]["ref"] == (  # nosec B101
+            "${{ needs.preflight.outputs.head_sha }}"
+        )
+
+
+def test_pr_command_runner_dispatch_inputs_stay_narrow() -> None:
+    """Manual and repository dispatch must expose only supported PR commands."""
+    runner = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-pr-command-runner.yml").read_text(encoding="utf-8")
+    )
+    triggers = _triggers(runner)
+    inputs = triggers["workflow_dispatch"]["inputs"]
+
+    assert triggers["repository_dispatch"]["types"] == ["pulumi-pr-command"]  # nosec B101
+    assert set(inputs) == {  # nosec B101
+        "pull_request_number",
+        "head_sha",
+        "target_environment",
+        "command",
+    }
+    assert all(input_spec["required"] is True for input_spec in inputs.values())  # nosec B101
+    assert inputs["pull_request_number"]["type"] == "string"  # nosec B101
+    assert inputs["head_sha"]["type"] == "string"  # nosec B101
+    assert inputs["target_environment"] == {  # nosec B101
+        "description": "Target environment",
+        "required": True,
+        "type": "choice",
+        "options": ["test", "prod"],
+    }
+    assert inputs["command"] == {  # nosec B101
+        "description": "Pulumi command",
+        "required": True,
+        "type": "choice",
+        "options": ["plan", "up"],
+    }
+
+
 def test_multi_account_environment_docs_are_explicit() -> None:
     """Document AWS Secrets Manager-backed fixed CI configuration."""
     docs = "\n".join(
