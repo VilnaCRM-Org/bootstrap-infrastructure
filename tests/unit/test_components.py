@@ -827,8 +827,6 @@ def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):
     assert ci_bootstrap._ci_secret_suffixes(long_settings) == ("stage",)  # nosec B101
     with pytest.raises(ValueError, match="longer than 64 characters"):
         ci_bootstrap._ci_role_name(long_settings, "preview")
-    with pytest.raises(ValueError, match="workflow names"):
-        ci_bootstrap._workflow_name(missing_repo_settings, "Pulumi Production")
     with pytest.raises(ValueError, match="OIDC subjects"):
         ci_bootstrap._repo_subject(missing_repo_settings, "pull_request")
     monkeypatch.setattr(

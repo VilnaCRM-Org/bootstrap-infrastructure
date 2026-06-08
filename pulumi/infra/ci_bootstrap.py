@@ -16,17 +16,7 @@ from .automation import (
     _operations_alert_triage_role_name,
 )
 from .bootstrap_settings import BootstrapSettings
-from .ci_config import (
-    NIGHTLY_GUARDRAILS_WORKFLOW,
-    PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
-    PULUMI_PR_GUARDRAILS_WORKFLOW,
-    PULUMI_PROD_WORKFLOW,
-    PULUMI_TEST_DEPLOY_WORKFLOW,
-    WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
-    CiConfiguration,
-    CiConfigurationArgs,
-    _ci_config_project,
-)
+from .ci_config import CiConfiguration, CiConfigurationArgs, _ci_config_project
 from .config import settings as default_settings
 from .iam import GitHubOidcRoles
 from .operations_monitoring import _queue_name, _topic_name, _trail_name
@@ -239,13 +229,6 @@ def _iam_role_exists(name: str) -> bool:
     return True
 
 
-def _workflow_name(settings: BootstrapSettings, workflow: str) -> str:
-    """Return a GitHub OIDC workflow-name condition value."""
-    if not settings.repo:
-        raise ValueError("repoSlug config is required for GitHub workflow names.")
-    return workflow
-
-
 def _branch_ref(settings: BootstrapSettings) -> str:
     """Return the configured GitHub branch ref."""
     return f"refs/heads/{settings.github_branch or 'main'}"
@@ -272,43 +255,6 @@ def _deployment_role_subjects(settings: BootstrapSettings, purpose: str) -> list
     if purpose == "apply" and settings.environment == "prod":
         return [_repo_subject(settings, "environment:prod")]
     return [branch_subject]
-
-
-def _deployment_role_workflows(
-    settings: BootstrapSettings,
-    purpose: str,
-) -> list[str]:
-    """Return trusted workflow names for one CI role purpose."""
-    if settings.environment == "test" and purpose == "preview":
-        workflows = (
-            PULUMI_PR_GUARDRAILS_WORKFLOW,
-            WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
-            PULUMI_TEST_DEPLOY_WORKFLOW,
-            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
-        )
-    elif settings.environment == "test" and purpose == "apply":
-        workflows = (
-            PULUMI_TEST_DEPLOY_WORKFLOW,
-            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
-        )
-    elif settings.environment == "test":
-        workflows = (
-            PULUMI_TEST_DEPLOY_WORKFLOW,
-            NIGHTLY_GUARDRAILS_WORKFLOW,
-            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
-        )
-    elif purpose == "drift":
-        workflows = (
-            PULUMI_PROD_WORKFLOW,
-            NIGHTLY_GUARDRAILS_WORKFLOW,
-            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
-        )
-    else:
-        workflows = (
-            PULUMI_PROD_WORKFLOW,
-            PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
-        )
-    return [_workflow_name(settings, workflow) for workflow in workflows]
 
 
 def _deployment_assume_role_policy(
