@@ -833,6 +833,11 @@ def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):
         ci_bootstrap._workflow_name(missing_repo_settings, "Pulumi Production")
     with pytest.raises(ValueError, match="OIDC subjects"):
         ci_bootstrap._repo_subject(missing_repo_settings, "pull_request")
+    with pytest.raises(ValueError, match="workflow refs"):
+        ci_config._github_actions_workflow_file_refs(  # noqa: SLF001
+            missing_repo_settings,
+            ["Pulumi Production"],
+        )
     monkeypatch.setattr(
         ci_bootstrap,
         "_pulumi_backend_policy_document",

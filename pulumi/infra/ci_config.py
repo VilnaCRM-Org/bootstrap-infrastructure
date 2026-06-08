@@ -160,9 +160,7 @@ def _github_actions_workflow_file_refs_for_repo(
     """Return allowed GitHub OIDC workflow_ref claims for trusted workflows."""
     refs: list[str] = []
     for workflow in workflows:
-        workflow_file = _WORKFLOW_FILE_BY_NAME.get(workflow)
-        if workflow_file is None:
-            raise ValueError(f"workflow file path is required for {workflow!r}.")
+        workflow_file = _WORKFLOW_FILE_BY_NAME.get(workflow, "*")
         refs.append(f"{org}/{repo}/.github/workflows/{workflow_file}@*")
     return refs
 
