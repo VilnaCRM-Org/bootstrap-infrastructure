@@ -322,37 +322,43 @@ def _manifest_plan_sha(entry: dict[str, Any]) -> str | None:
     return plan_sha
 
 
-def _validate_plan_manifest(
-    context: CommandContext,
-    manifest: dict[str, Any],
-    stack: str,
-    plan_file: Path,
-) -> int | None:
+def _validate_plan_manifest_schema(manifest: dict[str, Any]) -> int | None:
     if manifest.get("schemaVersion") != PLAN_MANIFEST_SCHEMA_VERSION:
         print("error: unsupported Pulumi plan manifest schema.", file=sys.stderr)
         return 1
+    return None
 
-    age_status = _validate_plan_manifest_age(context, manifest)
-    if age_status is not None:
-        return age_status
 
+def _validate_plan_manifest_commit(
+    context: CommandContext,
+    manifest: dict[str, Any],
+) -> int | None:
     expected_sha = _commit_sha(context)
     manifest_sha = manifest.get("commitSha", "")
     if expected_sha and manifest_sha and expected_sha != manifest_sha:
         print("error: Pulumi plan commit SHA does not match checkout.", file=sys.stderr)
         return 1
+    return None
 
+
+def _validate_plan_manifest_backend(
+    context: CommandContext,
+    manifest: dict[str, Any],
+) -> int | None:
     if manifest.get("backendUrl") != context.backend_url:
         print(
             "error: Pulumi plan backend URL does not match apply backend.",
             file=sys.stderr,
         )
         return 1
+    return None
 
-    entry = _manifest_stack_entry(manifest, stack)
-    if entry is None:
-        return 1
 
+def _validate_plan_manifest_entry(
+    context: CommandContext,
+    entry: dict[str, Any],
+    plan_file: Path,
+) -> int | None:
     recorded_plan = _manifest_path(context, entry.get("planFile"), "planFile")
     if recorded_plan is None:
         return 1
@@ -367,6 +373,28 @@ def _validate_plan_manifest(
         print("error: Pulumi plan file hash does not match manifest.", file=sys.stderr)
         return 1
     return None
+
+
+def _validate_plan_manifest(
+    context: CommandContext,
+    manifest: dict[str, Any],
+    stack: str,
+    plan_file: Path,
+) -> int | None:
+    for validator in (
+        lambda: _validate_plan_manifest_schema(manifest),
+        lambda: _validate_plan_manifest_age(context, manifest),
+        lambda: _validate_plan_manifest_commit(context, manifest),
+        lambda: _validate_plan_manifest_backend(context, manifest),
+    ):
+        status = validator()
+        if status is not None:
+            return status
+
+    entry = _manifest_stack_entry(manifest, stack)
+    if entry is None:
+        return 1
+    return _validate_plan_manifest_entry(context, entry, plan_file)
 
 
 def _context_from_environment() -> CommandContext:

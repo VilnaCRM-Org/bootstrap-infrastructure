@@ -8254,6 +8254,9 @@ def test_run_pulumi_command_rejects_malformed_plan_manifest(
     preview_dir.mkdir(parents=True)
     plan_file = plan_dir / "test.plan"
     plan_file.write_text("plan", encoding="utf-8")
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    (repo_dir / "outside-link").symlink_to(outside_dir, target_is_directory=True)
     manifest_file = plan_dir / "manifest.json"
     context = module.CommandContext(
         root_dir=repo_dir,
@@ -8301,6 +8304,7 @@ def test_run_pulumi_command_rejects_malformed_plan_manifest(
                 }
             ],
         },
+        {**valid_manifest, "stacks": [{**valid_entry, "planFile": "outside-link/x"}]},
         {**valid_manifest, "stacks": [{**valid_entry, "planSha256": None}]},
         {**valid_manifest, "stacks": [{**valid_entry, "planSha256": ""}]},
     ]
