@@ -2165,6 +2165,7 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
         "arn:aws:s3:::pulumi-*-test-state-*-replication",
+        "arn:aws:s3:::pulumi-*-*-replication",
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-*-replication",
         "arn:aws:s3:::bootstrap-*-test-cloudtrail",

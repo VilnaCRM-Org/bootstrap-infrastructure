@@ -470,6 +470,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "securityhub:*" not in actions  # nosec B101
     assert "config:*" not in actions  # nosec B101
     assert "s3:CreateBucket" in actions  # nosec B101
+    assert "s3:GetAccelerateConfiguration" in actions  # nosec B101
     assert "kms:CreateKey" in actions  # nosec B101
     assert "kms:Decrypt" not in actions  # nosec B101
     assert "kms:Encrypt" not in actions  # nosec B101
@@ -497,6 +498,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-*-test-state",
         "arn:aws:s3:::pulumi-*-test-state-*-replication",
+        "arn:aws:s3:::pulumi-*-*-replication",
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-*-replication",
         "arn:aws:s3:::bootstrap-*-test-cloudtrail",
