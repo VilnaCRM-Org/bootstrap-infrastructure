@@ -20,7 +20,6 @@ from .ci_config import (
     PULUMI_PROD_WORKFLOW,
     PULUMI_TEST_DEPLOY_WORKFLOW,
     WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
-    _github_actions_workflow_file_refs_for_repo,
 )
 from .config import settings as default_settings
 from .utils.outputs import apply_output
@@ -704,13 +703,6 @@ def _automation_assume_role_policy(
                         },
                         "StringLike": {
                             "token.actions.githubusercontent.com:workflow": workflows,
-                            "token.actions.githubusercontent.com:workflow_ref": (
-                                _github_actions_workflow_file_refs_for_repo(
-                                    org,
-                                    repo_name,
-                                    workflows,
-                                )
-                            ),
                         },
                     },
                 }
@@ -748,7 +740,6 @@ def _operations_alert_triage_assume_role_policy(
     branch_name: str,
 ) -> str:
     """Build the OIDC trust policy for the alert triage workflow only."""
-    workflows = [OPERATIONS_ALERT_TRIAGE_WORKFLOW]
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -769,13 +760,6 @@ def _operations_alert_triage_assume_role_policy(
                         "StringLike": {
                             "token.actions.githubusercontent.com:workflow": (
                                 OPERATIONS_ALERT_TRIAGE_WORKFLOW
-                            ),
-                            "token.actions.githubusercontent.com:workflow_ref": (
-                                _github_actions_workflow_file_refs_for_repo(
-                                    org,
-                                    repo_name,
-                                    workflows,
-                                )
                             ),
                         },
                     },

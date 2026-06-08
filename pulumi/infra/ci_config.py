@@ -26,15 +26,6 @@ PULUMI_PR_GUARDRAILS_WORKFLOW = "Pulumi PR Guardrails"
 PULUMI_PROD_WORKFLOW = "Pulumi Production"
 PULUMI_TEST_DEPLOY_WORKFLOW = "Pulumi Test Deploy"
 WELL_ARCHITECTED_EVIDENCE_WORKFLOW = "Well-Architected Evidence"
-_WORKFLOW_FILE_BY_NAME = {
-    NIGHTLY_GUARDRAILS_WORKFLOW: "nightly-guardrails.yml",
-    OPERATIONS_ALERT_TRIAGE_WORKFLOW: "operations-alert-triage.yml",
-    PULUMI_PR_COMMAND_RUNNER_WORKFLOW: "pulumi-pr-command-runner.yml",
-    PULUMI_PR_GUARDRAILS_WORKFLOW: "pulumi-pr-guardrails.yml",
-    PULUMI_PROD_WORKFLOW: "pulumi-prod.yml",
-    PULUMI_TEST_DEPLOY_WORKFLOW: "pulumi-test-deploy.yml",
-    WELL_ARCHITECTED_EVIDENCE_WORKFLOW: "well-architected-evidence.yml",
-}
 
 
 @dataclass(frozen=True)
@@ -152,33 +143,6 @@ def _github_actions_workflows(
     )
 
 
-def _github_actions_workflow_file_refs_for_repo(
-    org: str,
-    repo: str,
-    workflows: Sequence[str],
-) -> list[str]:
-    """Return allowed GitHub OIDC workflow_ref claims for trusted workflows."""
-    refs: list[str] = []
-    for workflow in workflows:
-        workflow_file = _WORKFLOW_FILE_BY_NAME.get(workflow, "*")
-        refs.append(f"{org}/{repo}/.github/workflows/{workflow_file}@*")
-    return refs
-
-
-def _github_actions_workflow_file_refs(
-    settings: BootstrapSettings,
-    workflows: Sequence[str],
-) -> list[str]:
-    """Return allowed GitHub OIDC workflow_ref claims for this repository."""
-    if not settings.repo:
-        raise ValueError("repoSlug config is required for GitHub workflow refs.")
-    return _github_actions_workflow_file_refs_for_repo(
-        settings.org,
-        settings.repo,
-        workflows,
-    )
-
-
 def _ci_config_read_assume_role_policy(
     provider_arn: str,
     settings: BootstrapSettings,
@@ -205,12 +169,6 @@ def _ci_config_read_assume_role_policy(
                         },
                         "StringLike": {
                             "token.actions.githubusercontent.com:workflow": (workflows),
-                            "token.actions.githubusercontent.com:workflow_ref": (
-                                _github_actions_workflow_file_refs(
-                                    settings,
-                                    workflows,
-                                )
-                            ),
                         },
                     },
                 }

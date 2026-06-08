@@ -27,7 +27,6 @@ from .ci_config import (
     CiConfiguration,
     CiConfigurationArgs,
     _ci_config_project,
-    _github_actions_workflow_file_refs,
 )
 from .config import settings as default_settings
 from .iam import GitHubOidcRoles
@@ -138,7 +137,6 @@ class _CiRoleSpec:
     role_name: str
     subjects: Sequence[str]
     workflows: Sequence[str]
-    workflow_refs: Sequence[str]
     policy_documents: Sequence[tuple[str, str]]
 
 
@@ -319,7 +317,6 @@ def _deployment_assume_role_policy(
     oidc_provider_arn: str,
     subjects: Sequence[str],
     workflows: Sequence[str],
-    workflow_refs: Sequence[str],
 ) -> str:
     """Build the trust policy for one GitHub OIDC CI role."""
     return json.dumps(
@@ -340,9 +337,6 @@ def _deployment_assume_role_policy(
                         "StringLike": {
                             "token.actions.githubusercontent.com:workflow": (
                                 list(workflows)
-                            ),
-                            "token.actions.githubusercontent.com:workflow_ref": (
-                                list(workflow_refs)
                             ),
                         },
                     },
@@ -521,10 +515,6 @@ def _role_specs(
             role_name=_ci_role_name(settings, purpose),
             subjects=_deployment_role_subjects(settings, purpose),
             workflows=_deployment_role_workflows(settings, purpose),
-            workflow_refs=_github_actions_workflow_file_refs(
-                settings,
-                _deployment_role_workflows(settings, purpose),
-            ),
             policy_documents=_role_policy_documents(
                 account_id,
                 partition,
@@ -550,7 +540,6 @@ def _create_role(
                 arn,
                 spec.subjects,
                 spec.workflows,
-                spec.workflow_refs,
             ),
         ),
         tags=base_tags(
@@ -686,15 +675,6 @@ def _create_operations_alert_triage(
                         OPERATIONS_ALERT_TRIAGE_WORKFLOW,
                     )
                 ],
-                _github_actions_workflow_file_refs(
-                    context.settings,
-                    [
-                        _workflow_name(
-                            context.settings,
-                            OPERATIONS_ALERT_TRIAGE_WORKFLOW,
-                        )
-                    ],
-                ),
             ),
         ),
         tags=base_tags(

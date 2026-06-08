@@ -275,11 +275,11 @@ def test_github_automation_trust_keeps_environment_subject_prod_only():
     prod_subjects = prod_policy["Statement"][0]["Condition"]["StringEquals"][
         "token.actions.githubusercontent.com:sub"
     ]
-    test_workflow_refs = test_policy["Statement"][0]["Condition"]["StringLike"][
-        "token.actions.githubusercontent.com:workflow_ref"
+    test_workflows = test_policy["Statement"][0]["Condition"]["StringLike"][
+        "token.actions.githubusercontent.com:workflow"
     ]
-    prod_workflow_refs = prod_policy["Statement"][0]["Condition"]["StringLike"][
-        "token.actions.githubusercontent.com:workflow_ref"
+    prod_workflows = prod_policy["Statement"][0]["Condition"]["StringLike"][
+        "token.actions.githubusercontent.com:workflow"
     ]
 
     assert test_subjects == [  # nosec B101
@@ -289,18 +289,9 @@ def test_github_automation_trust_keeps_environment_subject_prod_only():
     assert prod_subjects == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"
     ]
-    assert (  # nosec B101
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "pulumi-pr-command-runner.yml@*" in test_workflow_refs
-    )
-    assert (  # nosec B101
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "well-architected-evidence.yml@*" in test_workflow_refs
-    )
-    assert (  # nosec B101
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "pulumi-prod.yml@*" in prod_workflow_refs
-    )
+    assert "Pulumi PR Command Runner" in test_workflows  # nosec B101
+    assert "Well-Architected Evidence" in test_workflows  # nosec B101
+    assert "Pulumi Production" in prod_workflows  # nosec B101
 
 
 def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
@@ -401,14 +392,6 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
         "Pulumi PR Guardrails",
         "Well-Architected Evidence",
     ]
-    assert test_pr_condition["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow_ref"
-    ] == [
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "pulumi-pr-guardrails.yml@*",
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "well-architected-evidence.yml@*",
-    ]
     assert test_condition["StringEquals"] == {  # nosec B101
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
         "token.actions.githubusercontent.com:sub": [
@@ -504,12 +487,8 @@ def test_ci_configuration_uses_github_oidc_provider_for_prod_suffixes(
         "token.actions.githubusercontent.com:sub"
     ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"]
     assert prod_policy["Statement"][0]["Condition"]["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow_ref"
-    ] == [
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-prod.yml@*",
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "pulumi-pr-command-runner.yml@*",
-    ]
+        "token.actions.githubusercontent.com:workflow"
+    ] == ["Pulumi Production", "Pulumi PR Command Runner"]
 
 
 def test_ci_configuration_requires_github_oidc_provider(
@@ -650,27 +629,21 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
     ]
     assert "pull_request" not in json.dumps(apply_condition)  # nosec B101
     assert "pulumi-pr-guardrails.yml" not in json.dumps(apply_condition)  # nosec B101
-    assert (  # nosec B101
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "pulumi-pr-guardrails.yml@*"
-        in preview_condition["StringLike"][
-            "token.actions.githubusercontent.com:workflow_ref"
+    assert (
+        "Pulumi PR Guardrails"
+        in preview_condition["StringLike"][  # nosec B101
+            "token.actions.githubusercontent.com:workflow"
         ]
     )
     assert apply_condition["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow_ref"
+        "token.actions.githubusercontent.com:workflow"
     ] == [
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "pulumi-test-deploy.yml@*",
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "pulumi-pr-command-runner.yml@*",
+        "Pulumi Test Deploy",
+        "Pulumi PR Command Runner",
     ]
     assert triage_condition["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow_ref"
-    ] == [
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "operations-alert-triage.yml@*"
-    ]
+        "token.actions.githubusercontent.com:workflow"
+    ] == ["Operations Alert Issue Triage"]
 
     backend_policy = json.loads(
         ci_bootstrap._pulumi_backend_policy_document(
@@ -803,17 +776,12 @@ def test_github_ci_bootstrap_prod_stack_uses_protected_apply_subject(
     assert "environment:prod" not in json.dumps(preview_trust)  # nosec B101
     assert "Pulumi Production" in json.dumps(preview_trust)  # nosec B101
     assert apply_trust["Statement"][0]["Condition"]["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow_ref"
-    ] == [
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/pulumi-prod.yml@*",
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "pulumi-pr-command-runner.yml@*",
-    ]
+        "token.actions.githubusercontent.com:workflow"
+    ] == ["Pulumi Production", "Pulumi PR Command Runner"]
     assert (  # nosec B101
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "nightly-guardrails.yml@*"
+        "Nightly Guardrails"
         in drift_trust["Statement"][0]["Condition"]["StringLike"][
-            "token.actions.githubusercontent.com:workflow_ref"
+            "token.actions.githubusercontent.com:workflow"
         ]
     )
 
@@ -833,11 +801,6 @@ def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):
         ci_bootstrap._workflow_name(missing_repo_settings, "Pulumi Production")
     with pytest.raises(ValueError, match="OIDC subjects"):
         ci_bootstrap._repo_subject(missing_repo_settings, "pull_request")
-    with pytest.raises(ValueError, match="workflow refs"):
-        ci_config._github_actions_workflow_file_refs(  # noqa: SLF001
-            missing_repo_settings,
-            ["Pulumi Production"],
-        )
     monkeypatch.setattr(
         ci_bootstrap,
         "_pulumi_backend_policy_document",
