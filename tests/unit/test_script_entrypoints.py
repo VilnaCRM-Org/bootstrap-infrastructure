@@ -8899,6 +8899,7 @@ def test_run_up_plan_stack_recovers_test_plan_decrypt_with_direct_apply(
         and command[3] == "up"
         and "--plan" not in command
         and "--policy-pack" not in command
+        and "--refresh" in command
         for command in applied
     )
 
@@ -8957,6 +8958,11 @@ def test_run_up_plan_stack_returns_failed_direct_recovery_without_lock(
         )
         == 1
     )
+    assert all(  # nosec B101
+        "--refresh" in command
+        for command in applied
+        if len(command) > 3 and command[3] == "up" and "--plan" not in command
+    )
 
 
 def test_run_up_plan_stack_recovers_test_plan_decrypt_with_stale_lock(
@@ -9014,6 +9020,11 @@ def test_run_up_plan_stack_recovers_test_plan_decrypt_with_stale_lock(
     assert direct_attempts == 2  # nosec B101
     assert all(  # nosec B101
         "--policy-pack" not in command
+        for command in applied
+        if len(command) > 3 and command[3] == "up" and "--plan" not in command
+    )
+    assert all(  # nosec B101
+        "--refresh" in command
         for command in applied
         if len(command) > 3 and command[3] == "up" and "--plan" not in command
     )

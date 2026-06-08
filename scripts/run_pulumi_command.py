@@ -584,12 +584,14 @@ def _recover_failed_saved_prod_plan(
 def _run_guarded_direct_nonprod_apply(
     context: CommandContext, stack: str
 ) -> subprocess.CompletedProcess[str]:
+    command = _pulumi_command(
+        context,
+        StackCommand("up", stack, include_policy_pack=False),
+    )
+    command.append("--refresh")
     return _run_with_observable_output(
         context,
-        _pulumi_command(
-            context,
-            StackCommand("up", stack, include_policy_pack=False),
-        ),
+        command,
     )
 
 
