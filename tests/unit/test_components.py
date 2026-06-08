@@ -269,17 +269,13 @@ def test_github_automation_trust_keeps_environment_subject_prod_only():
         )
     )
 
-    test_subjects = test_policy["Statement"][0]["Condition"]["StringEquals"][
+    test_condition = test_policy["Statement"][0]["Condition"]
+    prod_condition = prod_policy["Statement"][0]["Condition"]
+    test_subjects = test_condition["StringEquals"][
         "token.actions.githubusercontent.com:sub"
     ]
-    prod_subjects = prod_policy["Statement"][0]["Condition"]["StringEquals"][
+    prod_subjects = prod_condition["StringEquals"][
         "token.actions.githubusercontent.com:sub"
-    ]
-    test_workflows = test_policy["Statement"][0]["Condition"]["StringLike"][
-        "token.actions.githubusercontent.com:workflow"
-    ]
-    prod_workflows = prod_policy["Statement"][0]["Condition"]["StringLike"][
-        "token.actions.githubusercontent.com:workflow"
     ]
 
     assert test_subjects == [  # nosec B101
@@ -289,9 +285,20 @@ def test_github_automation_trust_keeps_environment_subject_prod_only():
     assert prod_subjects == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"
     ]
-    assert "Pulumi PR Command Runner" in test_workflows  # nosec B101
-    assert "Well-Architected Evidence" in test_workflows  # nosec B101
-    assert "Pulumi Production" in prod_workflows  # nosec B101
+    assert (
+        test_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert (
+        prod_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert "StringLike" not in test_condition  # nosec B101
+    assert "StringLike" not in prod_condition  # nosec B101
 
 
 def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
@@ -382,23 +389,25 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
     test_condition = test_policy["Statement"][0]["Condition"]
     assert test_pr_condition["StringEquals"] == {  # nosec B101
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:repository": (
+            "VilnaCRM-Org/bootstrap-infrastructure"
+        ),
         "token.actions.githubusercontent.com:sub": [
             "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
         ],
     }
-    assert test_pr_condition["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow"
-    ] == [
-        "Pulumi PR Guardrails",
-        "Well-Architected Evidence",
-    ]
+    assert "StringLike" not in test_pr_condition  # nosec B101
     assert test_condition["StringEquals"] == {  # nosec B101
         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:repository": (
+            "VilnaCRM-Org/bootstrap-infrastructure"
+        ),
         "token.actions.githubusercontent.com:sub": [
             "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
             "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
         ],
     }
+    assert "StringLike" not in test_condition  # nosec B101
 
     test_pr_policy_state = _resource_state_by_name(
         pulumi_mocks,
@@ -486,9 +495,13 @@ def test_ci_configuration_uses_github_oidc_provider_for_prod_suffixes(
     assert prod_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
         "token.actions.githubusercontent.com:sub"
     ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"]
-    assert prod_policy["Statement"][0]["Condition"]["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow"
-    ] == ["Pulumi Production", "Pulumi PR Command Runner"]
+    assert (
+        prod_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert "StringLike" not in prod_policy["Statement"][0]["Condition"]  # nosec B101
 
 
 def test_ci_configuration_requires_github_oidc_provider(
@@ -630,20 +643,26 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
     assert "pull_request" not in json.dumps(apply_condition)  # nosec B101
     assert "pulumi-pr-guardrails.yml" not in json.dumps(apply_condition)  # nosec B101
     assert (
-        "Pulumi PR Guardrails"
-        in preview_condition["StringLike"][  # nosec B101
-            "token.actions.githubusercontent.com:workflow"
+        preview_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
         ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
     )
-    assert apply_condition["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow"
-    ] == [
-        "Pulumi Test Deploy",
-        "Pulumi PR Command Runner",
-    ]
-    assert triage_condition["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow"
-    ] == ["Operations Alert Issue Triage"]
+    assert (
+        apply_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert (
+        triage_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert "StringLike" not in preview_condition  # nosec B101
+    assert "StringLike" not in apply_condition  # nosec B101
+    assert "StringLike" not in triage_condition  # nosec B101
 
     backend_policy = json.loads(
         ci_bootstrap._pulumi_backend_policy_document(
@@ -774,16 +793,27 @@ def test_github_ci_bootstrap_prod_stack_uses_protected_apply_subject(
     ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"]
     assert "pull_request" not in json.dumps(apply_trust)  # nosec B101
     assert "environment:prod" not in json.dumps(preview_trust)  # nosec B101
-    assert "Pulumi Production" in json.dumps(preview_trust)  # nosec B101
-    assert apply_trust["Statement"][0]["Condition"]["StringLike"][  # nosec B101
-        "token.actions.githubusercontent.com:workflow"
-    ] == ["Pulumi Production", "Pulumi PR Command Runner"]
-    assert (  # nosec B101
-        "Nightly Guardrails"
-        in drift_trust["Statement"][0]["Condition"]["StringLike"][
-            "token.actions.githubusercontent.com:workflow"
+    assert (
+        preview_trust["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
         ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
     )
+    assert (
+        apply_trust["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert (
+        drift_trust["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert "StringLike" not in preview_trust["Statement"][0]["Condition"]  # nosec B101
+    assert "StringLike" not in apply_trust["Statement"][0]["Condition"]  # nosec B101
+    assert "StringLike" not in drift_trust["Statement"][0]["Condition"]  # nosec B101
 
 
 def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):
@@ -2056,10 +2086,16 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         not in triage_role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
-        "Pulumi PR Guardrails" in role_state["assumeRolePolicy"]
+        '"token.actions.githubusercontent.com:repository"'
+        in role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
-        "Operations Alert Issue Triage" in triage_role_state["assumeRolePolicy"]
+        '"token.actions.githubusercontent.com:repository"'
+        in triage_role_state["assumeRolePolicy"]
+    )
+    assert "Pulumi PR Guardrails" not in role_state["assumeRolePolicy"]  # nosec B101
+    assert (  # nosec B101
+        "Operations Alert Issue Triage" not in triage_role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
         len(policy_states[0]["policy"].encode("utf-8"))

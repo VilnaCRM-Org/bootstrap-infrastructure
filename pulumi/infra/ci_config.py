@@ -149,7 +149,6 @@ def _ci_config_read_assume_role_policy(
     suffix: str,
 ) -> str:
     """Return trust policy for the GitHub AWS CI config read role."""
-    workflows = _github_actions_workflows(settings, suffix)
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -166,9 +165,9 @@ def _ci_config_read_assume_role_policy(
                             "token.actions.githubusercontent.com:sub": (
                                 _github_actions_subjects(settings, suffix)
                             ),
-                        },
-                        "StringLike": {
-                            "token.actions.githubusercontent.com:workflow": (workflows),
+                            "token.actions.githubusercontent.com:repository": (
+                                f"{settings.org}/{settings.repo}"
+                            ),
                         },
                     },
                 }

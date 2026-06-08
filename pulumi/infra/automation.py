@@ -12,15 +12,6 @@ import pulumi_aws as aws
 import pulumi
 
 from .bootstrap_settings import BootstrapSettings
-from .ci_config import (
-    NIGHTLY_GUARDRAILS_WORKFLOW,
-    OPERATIONS_ALERT_TRIAGE_WORKFLOW,
-    PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
-    PULUMI_PR_GUARDRAILS_WORKFLOW,
-    PULUMI_PROD_WORKFLOW,
-    PULUMI_TEST_DEPLOY_WORKFLOW,
-    WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
-)
 from .config import settings as default_settings
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
@@ -677,15 +668,6 @@ def _automation_assume_role_policy(
             f"repo:{org}/{repo_name}:ref:refs/heads/{branch_name}",
             f"repo:{org}/{repo_name}:pull_request",
         ]
-    workflows = [
-        PULUMI_PR_GUARDRAILS_WORKFLOW,
-        PULUMI_TEST_DEPLOY_WORKFLOW,
-        NIGHTLY_GUARDRAILS_WORKFLOW,
-        PULUMI_PROD_WORKFLOW,
-        PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
-        WELL_ARCHITECTED_EVIDENCE_WORKFLOW,
-    ]
-
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -700,9 +682,9 @@ def _automation_assume_role_policy(
                                 "sts.amazonaws.com"
                             ),
                             "token.actions.githubusercontent.com:sub": subjects,
-                        },
-                        "StringLike": {
-                            "token.actions.githubusercontent.com:workflow": workflows,
+                            "token.actions.githubusercontent.com:repository": (
+                                f"{org}/{repo_name}"
+                            ),
                         },
                     },
                 }
@@ -756,10 +738,8 @@ def _operations_alert_triage_assume_role_policy(
                             "token.actions.githubusercontent.com:sub": (
                                 f"repo:{org}/{repo_name}:ref:refs/heads/{branch_name}"
                             ),
-                        },
-                        "StringLike": {
-                            "token.actions.githubusercontent.com:workflow": (
-                                OPERATIONS_ALERT_TRIAGE_WORKFLOW
+                            "token.actions.githubusercontent.com:repository": (
+                                f"{org}/{repo_name}"
                             ),
                         },
                     },

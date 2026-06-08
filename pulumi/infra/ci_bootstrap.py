@@ -18,7 +18,6 @@ from .automation import (
 from .bootstrap_settings import BootstrapSettings
 from .ci_config import (
     NIGHTLY_GUARDRAILS_WORKFLOW,
-    OPERATIONS_ALERT_TRIAGE_WORKFLOW,
     PULUMI_PR_COMMAND_RUNNER_WORKFLOW,
     PULUMI_PR_GUARDRAILS_WORKFLOW,
     PULUMI_PROD_WORKFLOW,
@@ -136,7 +135,6 @@ class _CiRoleSpec:
     purpose: str
     role_name: str
     subjects: Sequence[str]
-    workflows: Sequence[str]
     policy_documents: Sequence[tuple[str, str]]
 
 
@@ -315,8 +313,8 @@ def _deployment_role_workflows(
 
 def _deployment_assume_role_policy(
     oidc_provider_arn: str,
+    repository: str,
     subjects: Sequence[str],
-    workflows: Sequence[str],
 ) -> str:
     """Build the trust policy for one GitHub OIDC CI role."""
     return json.dumps(
@@ -333,10 +331,8 @@ def _deployment_assume_role_policy(
                                 "sts.amazonaws.com"
                             ),
                             "token.actions.githubusercontent.com:sub": list(subjects),
-                        },
-                        "StringLike": {
-                            "token.actions.githubusercontent.com:workflow": (
-                                list(workflows)
+                            "token.actions.githubusercontent.com:repository": (
+                                repository
                             ),
                         },
                     },
@@ -514,7 +510,6 @@ def _role_specs(
             purpose=purpose,
             role_name=_ci_role_name(settings, purpose),
             subjects=_deployment_role_subjects(settings, purpose),
-            workflows=_deployment_role_workflows(settings, purpose),
             policy_documents=_role_policy_documents(
                 account_id,
                 partition,
@@ -538,8 +533,8 @@ def _create_role(
             pulumi.Output.from_input(context.provider_arn),
             lambda arn: _deployment_assume_role_policy(
                 arn,
+                f"{context.settings.org}/{context.settings.repo}",
                 spec.subjects,
-                spec.workflows,
             ),
         ),
         tags=base_tags(
@@ -663,16 +658,11 @@ def _create_operations_alert_triage(
             pulumi.Output.from_input(context.provider_arn),
             lambda arn: _deployment_assume_role_policy(
                 arn,
+                f"{context.settings.org}/{context.settings.repo}",
                 [
                     _repo_subject(
                         context.settings,
                         f"ref:{_branch_ref(context.settings)}",
-                    )
-                ],
-                [
-                    _workflow_name(
-                        context.settings,
-                        OPERATIONS_ALERT_TRIAGE_WORKFLOW,
                     )
                 ],
             ),
