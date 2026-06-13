@@ -30,18 +30,56 @@ WELL_ARCHITECTED_EVIDENCE_WORKFLOW = "Well-Architected Evidence"
 
 @dataclass(frozen=True)
 class CiConfigurationArgs:
-    """Configuration for AWS-side GitHub CI config resources."""
+    """Configuration for AWS-side GitHub CI config resources.
+
+    ``repo`` selects the governed ``*-infrastructure`` repository whose CI
+    secrets/roles are rendered. When ``None`` (the default), the single-repo
+    bootstrap behaviour is preserved byte-for-byte (NFR6): the project, secret
+    IDs and trust subjects all derive from ``settings.repo``. The governance
+    loop passes an explicit ``repo`` per catalog entry so secret IDs and trust
+    subjects become repo-scoped (``/{repo-project}/ci/{suffix}``).
+    """
 
     settings: BootstrapSettings | None = None
     oidc_provider_arn: pulumi.Input[str] | None = None
     protect_resources: bool = False
+    repo: str | None = None
 
 
-def _ci_config_project(settings: BootstrapSettings) -> str:
-    """Return the repository project name used in CI secret IDs."""
-    if not settings.repo:
+# Secret-leaking reads denied on the config-read role (§5.3, FR22, D4). The
+# config-read role legitimately needs ``secretsmanager:GetSecretValue`` on its
+# OWN CI secret ARN (the Allow), so ``secretsmanager:GetSecretValue`` is
+# deliberately EXCLUDED from this Deny — Deny wins and would otherwise void the
+# role's own purpose. ``kms:Decrypt`` IS denied here (config-read never decrypts
+# a Pulumi secrets key).
+_CONFIG_READ_DENY_ACTIONS = (
+    "kms:Decrypt",
+    "ssm:GetParameter*",
+    "lambda:GetFunction",
+    "ec2:GetPasswordData",
+    "ecr:GetAuthorizationToken",
+    "sts:GetSessionToken",
+    "cognito-identity:Get*",
+)
+
+
+def _resolved_ci_repo(settings: BootstrapSettings, repo: str | None) -> str:
+    """Return the governed repository slug, defaulting to ``settings.repo``."""
+    resolved = repo if repo is not None else settings.repo
+    if not resolved:
         raise ValueError("repoSlug config is required for AWS CI configuration.")
-    return settings.sanitize_bucket_component(settings.repo, "repoSlug").replace(
+    return resolved
+
+
+def _ci_config_project(settings: BootstrapSettings, repo: str | None = None) -> str:
+    """Return the repository project name used in CI secret IDs.
+
+    With ``repo=None`` this is the single-repo behaviour (``settings.repo``).
+    An explicit ``repo`` produces the full sanitized slug for that repository
+    (AWS-SRE-4), keeping the governance loop's naming canonical.
+    """
+    resolved = _resolved_ci_repo(settings, repo)
+    return settings.sanitize_bucket_component(resolved, "repoSlug").replace(
         ".",
         "-",
     )
@@ -52,9 +90,13 @@ def _ci_secret_suffixes(environment: str) -> tuple[str, ...]:
     return CI_CONFIG_SECRET_SUFFIXES_BY_STACK.get(environment, (environment,))
 
 
-def _ci_secret_id(settings: BootstrapSettings, suffix: str) -> str:
+def _ci_secret_id(
+    settings: BootstrapSettings,
+    suffix: str,
+    repo: str | None = None,
+) -> str:
     """Return the AWS Secrets Manager secret ID used by one CI configuration."""
-    project = _ci_config_project(settings)
+    project = _ci_config_project(settings, repo)
     return f"/{project}/ci/{suffix}"
 
 
@@ -64,18 +106,23 @@ def _ci_secret_arn_patterns(
     partition: str,
     settings: BootstrapSettings,
     suffixes: Sequence[str],
+    repo: str | None = None,
 ) -> list[str]:
     """Return ARN patterns for Secrets Manager secrets with random suffixes."""
     return [
         f"arn:{partition}:secretsmanager:*:{account_id}:secret:"
-        f"{_ci_secret_id(settings, suffix)}-*"
+        f"{_ci_secret_id(settings, suffix, repo)}-*"
         for suffix in suffixes
     ]
 
 
-def _ci_config_read_role_name(settings: BootstrapSettings, suffix: str) -> str:
+def _ci_config_read_role_name(
+    settings: BootstrapSettings,
+    suffix: str,
+    repo: str | None = None,
+) -> str:
     """Return the GitHub OIDC role name allowed to read one CI secret."""
-    project = _ci_config_project(settings)
+    project = _ci_config_project(settings, repo)
     safe_suffix = settings.sanitize_bucket_component(suffix, "ciConfigSuffix").replace(
         ".",
         "-",
@@ -89,22 +136,27 @@ def _ci_config_read_role_name(settings: BootstrapSettings, suffix: str) -> str:
     return name
 
 
-def _github_actions_subjects(settings: BootstrapSettings, suffix: str) -> list[str]:
+def _github_actions_subjects(
+    settings: BootstrapSettings,
+    suffix: str,
+    repo: str | None = None,
+) -> list[str]:
     """Return allowed GitHub OIDC subject claims for one CI config suffix."""
-    if not settings.repo:
+    resolved_repo = repo if repo is not None else settings.repo
+    if not resolved_repo:
         raise ValueError("repoSlug config is required for GitHub OIDC subjects.")
     branch = settings.github_branch or "main"
-    repo = f"{settings.org}/{settings.repo}"
+    repo_slug = f"{settings.org}/{resolved_repo}"
     if suffix == "test-pr":
-        return [f"repo:{repo}:pull_request"]
+        return [f"repo:{repo_slug}:pull_request"]
     if suffix == "test":
         return [
-            f"repo:{repo}:ref:refs/heads/{branch}",
-            f"repo:{repo}:environment:test",
+            f"repo:{repo_slug}:ref:refs/heads/{branch}",
+            f"repo:{repo_slug}:environment:test",
         ]
     if suffix == "prod":
-        return [f"repo:{repo}:environment:prod"]
-    return [f"repo:{repo}:ref:refs/heads/{branch}"]
+        return [f"repo:{repo_slug}:environment:prod"]
+    return [f"repo:{repo_slug}:ref:refs/heads/{branch}"]
 
 
 def _github_actions_workflows(
@@ -147,8 +199,10 @@ def _ci_config_read_assume_role_policy(
     provider_arn: str,
     settings: BootstrapSettings,
     suffix: str,
+    repo: str | None = None,
 ) -> str:
     """Return trust policy for the GitHub AWS CI config read role."""
+    resolved_repo = _resolved_ci_repo(settings, repo)
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -163,10 +217,10 @@ def _ci_config_read_assume_role_policy(
                                 "sts.amazonaws.com"
                             ),
                             "token.actions.githubusercontent.com:sub": (
-                                _github_actions_subjects(settings, suffix)
+                                _github_actions_subjects(settings, suffix, repo)
                             ),
                             "token.actions.githubusercontent.com:repository": (
-                                f"{settings.org}/{settings.repo}"
+                                f"{settings.org}/{resolved_repo}"
                             ),
                         },
                     },
@@ -183,8 +237,16 @@ def _ci_config_read_policy(
     partition: str,
     settings: BootstrapSettings,
     suffixes: Sequence[str],
+    repo: str | None = None,
 ) -> str:
-    """Return least-privilege policy for GitHub to read CI secret payloads."""
+    """Return least-privilege policy for GitHub to read CI secret payloads.
+
+    The ``Allow`` is scoped to ONLY this repo's CI secret ARN pattern (FR4
+    cross-repo isolation). A second ``Deny`` statement (``DenySecretLeakingReads``,
+    §5.3/§5.4, FR22) blocks the other secret-leaking reads; it deliberately omits
+    ``secretsmanager:GetSecretValue`` so the role retains its own Allow (Deny
+    wins). The Deny is CrossGuard-exempt (``Effect == "Deny"``).
+    """
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -201,8 +263,15 @@ def _ci_config_read_policy(
                         partition=partition,
                         settings=settings,
                         suffixes=suffixes,
+                        repo=repo,
                     ),
-                }
+                },
+                {
+                    "Sid": "DenySecretLeakingReads",
+                    "Effect": "Deny",
+                    "Action": list(_CONFIG_READ_DENY_ACTIONS),
+                    "Resource": "*",
+                },
             ],
         },
         sort_keys=True,
@@ -262,6 +331,7 @@ class CiConfiguration(pulumi.ComponentResource):
 
         config = args or CiConfigurationArgs()
         self._settings = config.settings or default_settings
+        repo = config.repo
         provider_arn = (
             config.oidc_provider_arn or self._settings.github_oidc_provider_arn
         )
@@ -282,20 +352,20 @@ class CiConfiguration(pulumi.ComponentResource):
         self.read_policies: dict[str, aws.iam.RolePolicy] = {}
 
         for suffix in suffixes:
-            secret_id = _ci_secret_id(self._settings, suffix)
+            secret_id = _ci_secret_id(self._settings, suffix, repo)
             secret = aws.secretsmanager.Secret(
                 f"{name}-secret-{suffix}",
                 name=secret_id,
                 description=(
                     "AWS Secrets Manager source-of-truth JSON for "
-                    f"{_ci_config_project(self._settings)}/{suffix} CI."
+                    f"{_ci_config_project(self._settings, repo)}/{suffix} CI."
                 ),
                 recovery_window_in_days=30,
                 tags=base_tags(
                     {
                         "Purpose": "ci-configuration",
                         "CiConfigSuffix": suffix,
-                        "Repository": _ci_config_project(self._settings),
+                        "Repository": _ci_config_project(self._settings, repo),
                     },
                     settings=self._settings,
                 ),
@@ -309,7 +379,7 @@ class CiConfiguration(pulumi.ComponentResource):
             self.secrets[suffix] = secret
             self.secret_arns[suffix] = secret.arn
 
-            role_name = _ci_config_read_role_name(self._settings, suffix)
+            role_name = _ci_config_read_role_name(self._settings, suffix, repo)
             role = aws.iam.Role(
                 f"{name}-github-ci-config-read-role-{suffix}",
                 name=role_name,
@@ -319,6 +389,7 @@ class CiConfiguration(pulumi.ComponentResource):
                         arn,
                         self._settings,
                         ci_suffix,
+                        repo,
                     ),
                 ),
                 tags=base_tags(
@@ -345,6 +416,7 @@ class CiConfiguration(pulumi.ComponentResource):
                     partition=partition,
                     settings=self._settings,
                     suffixes=(suffix,),
+                    repo=repo,
                 ),
                 opts=pulumi.ResourceOptions(
                     parent=self,

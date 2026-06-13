@@ -102,6 +102,48 @@ _READ_ONLY_ACTIONS = (
     "sqs:List*",
     "sts:GetCallerIdentity",
 )
+# Full secret-leaking-read Deny attached to the read-only policy (preview/drift)
+# only (§5.3, FR22, D4). The read-only policy carries NO Allow for any of these,
+# so the Deny closes the leak surface — including ``secretsmanager:GetSecretValue``
+# and ``kms:Decrypt`` (preview/drift never decrypt a Pulumi secrets key). Deny is
+# CrossGuard-exempt (``Effect == "Deny"``). The cognito/ssm actions are expanded
+# to explicit names (Access Analyzer prefers explicit over the ``Get*`` wildcard).
+_READ_ONLY_SECRET_DENY_ACTIONS = (
+    "secretsmanager:GetSecretValue",
+    "kms:Decrypt",
+    "ssm:GetParameter",
+    "ssm:GetParameters",
+    "ssm:GetParametersByPath",
+    "lambda:GetFunction",
+    "ec2:GetPasswordData",
+    "ecr:GetAuthorizationToken",
+    "sts:GetSessionToken",
+    "cognito-identity:GetCredentialsForIdentity",
+    "cognito-identity:GetId",
+    "cognito-identity:GetOpenIdToken",
+    "cognito-identity:GetOpenIdTokenForDeveloperIdentity",
+)
+# Surgical secret-leaking-read Deny attached to the APPLY role only (§5.2a,
+# SECURITY-5). ``kms:Decrypt`` is deliberately EXCLUDED — the apply role
+# legitimately decrypts its own Pulumi secrets key, bounded by the §5.2 alias
+# condition. ``secretsmanager:GetSecretValue`` IS denied but with a ``NotResource``
+# carve-out for the apply role's own ``/{project}/ci/*`` secrets, so the apply
+# role can still read its own CI bootstrap secret but no other repo's or any
+# application secret. NOT attached to the pulumi-backend policy.
+_APPLY_SECRET_DENY_ACTIONS = (
+    "secretsmanager:GetSecretValue",
+    "ssm:GetParameter",
+    "ssm:GetParameters",
+    "ssm:GetParametersByPath",
+    "ec2:GetPasswordData",
+    "lambda:GetFunction",
+    "ecr:GetAuthorizationToken",
+    "sts:GetSessionToken",
+    "cognito-identity:GetCredentialsForIdentity",
+    "cognito-identity:GetId",
+    "cognito-identity:GetOpenIdToken",
+    "cognito-identity:GetOpenIdTokenForDeveloperIdentity",
+)
 _IAM_POLICY_MANAGEMENT_ACTIONS = (
     _CREATE_POLICY_ACTION,
     "iam:CreatePolicyVersion",
@@ -428,9 +470,9 @@ def _read_only_policy_document(
                     "Resource": "*",
                 },
                 {
-                    "Sid": "DenySecretValueReads",
+                    "Sid": "DenySecretLeakingReads",
                     "Effect": "Deny",
-                    "Action": ["secretsmanager:GetSecretValue"],
+                    "Action": list(_READ_ONLY_SECRET_DENY_ACTIONS),
                     "Resource": "*",
                 },
             ],
@@ -481,12 +523,46 @@ def _apply_extra_policy_document(account_id: str, partition: str) -> str:
     )
 
 
+def _apply_secret_deny_document(
+    account_id: str,
+    partition: str,
+    region: str,
+    project: str,
+) -> str:
+    """Return the surgical secret-leaking-read Deny for the apply role (§5.2a).
+
+    Denies the leak surface on the highest-privilege role except its own
+    ``/{project}/ci/*`` CI-config secrets (``NotResource``), so a malicious but
+    review-passing governance PR cannot exfiltrate another repo's or any
+    application secret. ``kms:Decrypt`` is deliberately omitted (SECURITY-5).
+    """
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "DenySecretLeakingReadsApply",
+                    "Effect": "Deny",
+                    "Action": list(_APPLY_SECRET_DENY_ACTIONS),
+                    "NotResource": [
+                        f"arn:{partition}:secretsmanager:{region}:{account_id}"
+                        f":secret:/{project}/ci/*"
+                    ],
+                }
+            ],
+        },
+        sort_keys=True,
+    )
+
+
 def _role_policy_documents(
     account_id: str,
     partition: str,
     settings: BootstrapSettings,
     purpose: str,
     repo: str | None = None,
+    region: str = "eu-central-1",
+    project: str | None = None,
 ) -> list[tuple[str, str]]:
     """Return policy documents for one GitHub CI role purpose."""
     resolved_repo = repo if repo is not None else settings.repo
@@ -500,10 +576,19 @@ def _role_policy_documents(
         ]
     if not resolved_repo:
         raise ValueError("repoSlug config is required for GitHub CI apply policy.")
+    resolved_project = (
+        project if project is not None else _ci_config_project(settings, resolved_repo)
+    )
     return [
         ("pulumi-backend", backend_policy),
         *_automation_policy_documents(account_id, settings, resolved_repo),
         ("iam-managed-policies", _apply_extra_policy_document(account_id, partition)),
+        (
+            "secret-read-deny",
+            _apply_secret_deny_document(
+                account_id, partition, region, resolved_project
+            ),
+        ),
     ]
 
 
@@ -512,6 +597,7 @@ def _role_specs(
     account_id: str,
     partition: str,
     settings: BootstrapSettings,
+    region: str = "eu-central-1",
     repo: str | None = None,
     project: str | None = None,
 ) -> list[_CiRoleSpec]:
@@ -529,6 +615,8 @@ def _role_specs(
                 settings,
                 purpose,
                 resolved_repo,
+                region,
+                resolved_project,
             ),
         )
         for purpose in ("preview", "apply", "drift")
@@ -933,6 +1021,7 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
                 account_id=account_id,
                 partition=partition,
                 settings=configured_settings,
+                region=region,
                 repo=context.repo,
                 project=context.project,
             ),
