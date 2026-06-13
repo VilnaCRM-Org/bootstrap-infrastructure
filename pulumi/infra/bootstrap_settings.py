@@ -239,17 +239,21 @@ class BootstrapSettings:
             )
         return self.state_bucket_name_for_repo(self.repo)
 
-    def pulumi_secrets_alias_name_for_repo(self, repo_name: str) -> str:
-        """Compute the KMS alias used for Pulumi secrets for a repository."""
+    def secrets_alias_for_repo(self, repo_name: str, environment: str) -> str:
+        """Compute the Pulumi secrets KMS alias for a repo and explicit env."""
         repo_part = self.sanitize_bucket_component(repo_name, "repoSlug").replace(
             ".",
             "-",
         )
         env_part = self.sanitize_bucket_component(
-            self.environment,
+            environment,
             "environment",
         ).replace(".", "-")
         return f"alias/pulumi-{repo_part}-{env_part}-secrets"
+
+    def pulumi_secrets_alias_name_for_repo(self, repo_name: str) -> str:
+        """Compute the KMS alias used for Pulumi secrets for a repository."""
+        return self.secrets_alias_for_repo(repo_name, self.environment)
 
     def pulumi_secrets_provider_for_repo(self, repo_name: str, region: str) -> str:
         """Build the Pulumi AWS KMS secrets provider URI for a repository."""

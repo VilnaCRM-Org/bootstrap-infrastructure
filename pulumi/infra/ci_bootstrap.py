@@ -301,13 +301,27 @@ def _state_bucket_resources(settings: BootstrapSettings) -> tuple[str, tuple[str
     )
 
 
-def _pulumi_secrets_alias_conditions(settings: BootstrapSettings) -> list[str]:
-    """Return accepted Pulumi KMS secrets-provider aliases."""
-    environment = _environment_part(settings)
-    return [
-        f"alias/pulumi-*-{environment}-secrets",
-        f"alias/pulumi-platform-bootstrap-{environment}",
-    ]
+def _pulumi_secrets_alias_conditions(
+    settings: BootstrapSettings,
+    repo: str,
+    env: str,
+    *,
+    include_platform_bootstrap: bool,
+) -> list[str]:
+    """Return accepted Pulumi KMS secrets-provider aliases for one repo.
+
+    The service-repo governance path (``include_platform_bootstrap=False``)
+    returns only ``[alias/pulumi-{repo}-{env}-secrets]`` so a managed repo can
+    never decrypt the platform master key (AWS-SRE-1, FR3). The single-repo
+    bootstrap entrypoint passes ``include_platform_bootstrap=True`` to keep its
+    own backend access to ``alias/pulumi-platform-bootstrap-{env}``. The
+    pre-refactor ``alias/pulumi-*-{env}-secrets`` wildcard is replaced by the
+    repo-scoped alias either way.
+    """
+    conditions = [settings.secrets_alias_for_repo(repo, env)]
+    if include_platform_bootstrap:
+        conditions.append(f"alias/pulumi-platform-bootstrap-{env}")
+    return conditions
 
 
 def _pulumi_backend_policy_document(
@@ -317,6 +331,13 @@ def _pulumi_backend_policy_document(
 ) -> str:
     """Return S3 backend and KMS secrets-provider access for Pulumi CLI."""
     bucket_arn, object_arns = _state_bucket_resources(settings)
+    repo = _require_repo(settings).repo or ""
+    alias_conditions = _pulumi_secrets_alias_conditions(
+        settings,
+        repo,
+        _environment_part(settings),
+        include_platform_bootstrap=True,
+    )
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -340,9 +361,7 @@ def _pulumi_backend_policy_document(
                     "Resource": f"arn:{partition}:kms:*:{account_id}:key/*",
                     "Condition": {
                         "ForAnyValue:StringLike": {
-                            "kms:ResourceAliases": _pulumi_secrets_alias_conditions(
-                                settings
-                            )
+                            "kms:ResourceAliases": alias_conditions
                         }
                     },
                 },

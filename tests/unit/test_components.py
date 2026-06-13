@@ -861,6 +861,130 @@ def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):
         ci_bootstrap._iam_role_exists("broken")
 
 
+def test_secrets_alias_for_repo_is_repo_and_env_scoped():
+    """The convenience alias helper is repo/env scoped without the wildcard."""
+    settings = _ci_bootstrap_settings("test")
+
+    assert (  # nosec B101
+        settings.pulumi_secrets_alias_name_for_repo("user-service-infrastructure")
+        == "alias/pulumi-user-service-infrastructure-test-secrets"
+    )
+    assert (  # nosec B101
+        settings.secrets_alias_for_repo("user-service-infrastructure", "test")
+        == "alias/pulumi-user-service-infrastructure-test-secrets"
+    )
+    # secrets_alias_for_repo honours an explicit env distinct from settings.environment.
+    assert (  # nosec B101
+        settings.secrets_alias_for_repo("user-service-infrastructure", "prod")
+        == "alias/pulumi-user-service-infrastructure-prod-secrets"
+    )
+    # Dotted repo/env segments collapse to hyphens (KMS alias rules).
+    assert (  # nosec B101
+        settings.secrets_alias_for_repo("repo.with.dots", "stage.1")
+        == "alias/pulumi-repo-with-dots-stage-1-secrets"
+    )
+
+
+def test_secrets_alias_for_repo_rejects_blank_repo():
+    """Blank repo names cannot be sanitized into an alias and must raise."""
+    settings = _ci_bootstrap_settings("test")
+
+    with pytest.raises(ValueError, match="cannot be fully sanitized"):
+        settings.secrets_alias_for_repo("   ", "test")
+
+
+def test_pulumi_secrets_alias_conditions_service_repo_excludes_platform_bootstrap():
+    """Governance service-repo path (AWS-SRE-1, FR3) drops platform-bootstrap."""
+    settings = _ci_bootstrap_settings("test")
+
+    conditions = ci_bootstrap._pulumi_secrets_alias_conditions(
+        settings,
+        "user-service-infrastructure",
+        "test",
+        include_platform_bootstrap=False,
+    )
+
+    assert conditions == [  # nosec B101
+        "alias/pulumi-user-service-infrastructure-test-secrets",
+    ]
+    # No platform-bootstrap master-key alias for a managed service repo.
+    assert "pulumi-platform-bootstrap" not in json.dumps(conditions)  # nosec B101
+    # No wildcard alias survives the refactor.
+    assert "pulumi-*" not in json.dumps(conditions)  # nosec B101
+
+
+def test_pulumi_secrets_alias_conditions_single_repo_keeps_platform_bootstrap():
+    """Single-repo bootstrap back-compat keeps the two-alias repo-scoped list."""
+    settings = _ci_bootstrap_settings("test")
+
+    conditions = ci_bootstrap._pulumi_secrets_alias_conditions(
+        settings,
+        "bootstrap-infrastructure",
+        "test",
+        include_platform_bootstrap=True,
+    )
+
+    assert conditions == [  # nosec B101
+        "alias/pulumi-bootstrap-infrastructure-test-secrets",
+        "alias/pulumi-platform-bootstrap-test",
+    ]
+    # The wildcard alias is replaced by the repo-scoped alias either way.
+    assert "pulumi-*" not in json.dumps(conditions)  # nosec B101
+
+
+def test_pulumi_secrets_alias_conditions_isolate_repos():
+    """Repo A's alias-condition list never references repo B's alias (FR3)."""
+    settings = _ci_bootstrap_settings("test")
+
+    repo_a = ci_bootstrap._pulumi_secrets_alias_conditions(
+        settings,
+        "repo-a-infrastructure",
+        "test",
+        include_platform_bootstrap=False,
+    )
+
+    assert "repo-b-infrastructure" not in json.dumps(repo_a)  # nosec B101
+
+
+def test_pulumi_secrets_alias_conditions_rejects_blank_repo():
+    """Blank repo names raise, matching the _require_repo guard intent (edge)."""
+    settings = _ci_bootstrap_settings("test")
+
+    with pytest.raises(ValueError, match="cannot be fully sanitized"):
+        ci_bootstrap._pulumi_secrets_alias_conditions(
+            settings,
+            "   ",
+            "test",
+            include_platform_bootstrap=False,
+        )
+
+
+def test_pulumi_backend_policy_document_uses_repo_scoped_alias_condition():
+    """The single-repo backend policy renders the repo-scoped two-alias list."""
+    settings = _ci_bootstrap_settings("test")
+
+    backend_policy = json.loads(
+        ci_bootstrap._pulumi_backend_policy_document(
+            "123456789012",
+            "aws",
+            settings,
+        )
+    )
+    secrets_statement = next(
+        statement
+        for statement in backend_policy["Statement"]
+        if statement["Sid"] == "UsePulumiSecretsProviderKey"
+    )
+    aliases = secrets_statement["Condition"]["ForAnyValue:StringLike"][
+        "kms:ResourceAliases"
+    ]
+    assert aliases == [  # nosec B101
+        "alias/pulumi-bootstrap-infrastructure-test-secrets",
+        "alias/pulumi-platform-bootstrap-test",
+    ]
+    assert "pulumi-*" not in json.dumps(aliases)  # nosec B101
+
+
 def test_github_ci_bootstrap_payload_helpers_cover_custom_env_and_secret_string():
     settings = _ci_bootstrap_settings("stage")
     role_arns = {
