@@ -33,6 +33,7 @@ REQUIRED_STATUS_CHECKS = (
 )
 
 OPERATIONS_ALERT_RECONCILE_ENVIRONMENT = "operations-alert-reconcile"
+GOVERNANCE_ENVIRONMENT = "governance"
 
 
 def required_status_checks_rule() -> dict[str, object]:
@@ -54,9 +55,9 @@ def default_pull_request_rule() -> dict[str, object]:
         "type": "pull_request",
         "parameters": {
             "allowed_merge_methods": ["squash"],
-            "dismiss_stale_reviews_on_push": False,
+            "dismiss_stale_reviews_on_push": True,
             "require_code_owner_review": True,
-            "require_last_push_approval": False,
+            "require_last_push_approval": True,
             "required_approving_review_count": 1,
             "required_review_thread_resolution": True,
             "required_reviewers": [],
@@ -113,6 +114,11 @@ def operations_alert_reconcile_environment_payload(
     reviewer_id: int,
 ) -> dict[str, Any]:
     """Build the protected operations-alert reconcile environment payload."""
+    return protected_reviewer_environment_payload(reviewer_id)
+
+
+def governance_environment_payload(reviewer_id: int) -> dict[str, Any]:
+    """Build the protected governance GitHub environment payload."""
     return protected_reviewer_environment_payload(reviewer_id)
 
 
@@ -307,4 +313,15 @@ def operations_alert_reconcile_environment_verification_blockers(
         environment,
         reviewer_id,
         label="Operations alert reconcile environment",
+    )
+
+
+def governance_environment_verification_blockers(
+    environment: Mapping[str, Any] | None, reviewer_id: int
+) -> list[str]:
+    """Return blockers when the governance environment does not match expectations."""
+    return protected_environment_verification_blockers(
+        environment,
+        reviewer_id,
+        label="Governance environment",
     )

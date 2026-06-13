@@ -16,9 +16,11 @@ REQUIRED_STATUS_CHECKS = _repository_controls.REQUIRED_STATUS_CHECKS
 OPERATIONS_ALERT_RECONCILE_ENVIRONMENT = (
     _repository_controls.OPERATIONS_ALERT_RECONCILE_ENVIRONMENT
 )
+GOVERNANCE_ENVIRONMENT = _repository_controls.GOVERNANCE_ENVIRONMENT
 operations_alert_reconcile_environment_payload = (
     _repository_controls.operations_alert_reconcile_environment_payload
 )
+governance_environment_payload = _repository_controls.governance_environment_payload
 protected_reviewer_environment_payload = (
     _repository_controls.protected_reviewer_environment_payload
 )
@@ -27,6 +29,9 @@ ruleset_payload = _repository_controls.ruleset_payload
 _environment_reviewer_ids = _repository_controls.environment_reviewer_ids
 _operations_alert_reconcile_environment_verification_blockers = (
     _repository_controls.operations_alert_reconcile_environment_verification_blockers
+)
+_governance_environment_verification_blockers = (
+    _repository_controls.governance_environment_verification_blockers
 )
 _protected_environment_verification_blockers = (
     _repository_controls.protected_environment_verification_blockers
@@ -46,14 +51,17 @@ _status_check_context = _repository_controls.status_check_context
 __all__ = (
     "REQUIRED_STATUS_CHECKS",
     "OPERATIONS_ALERT_RECONCILE_ENVIRONMENT",
+    "GOVERNANCE_ENVIRONMENT",
     "build_parser",
     "configure",
     "main",
+    "governance_environment_payload",
     "operations_alert_reconcile_environment_payload",
     "prod_environment_payload",
     "protected_reviewer_environment_payload",
     "ruleset_payload",
     "_environment_reviewer_ids",
+    "_governance_environment_verification_blockers",
     "_operations_alert_reconcile_environment_verification_blockers",
     "_protected_environment_verification_blockers",
     "_prod_environment_verification_blockers",
@@ -163,10 +171,17 @@ def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
         reviewer_id=reviewer_id,
         blocker_fn=_operations_alert_reconcile_environment_verification_blockers,
     )
+    governance_environment_blockers = _environment_verification_blockers(
+        repo,
+        environment_name=GOVERNANCE_ENVIRONMENT,
+        reviewer_id=reviewer_id,
+        blocker_fn=_governance_environment_verification_blockers,
+    )
     blockers = [
         *_ruleset_verification_blockers(ruleset),
         *prod_environment_blockers,
         *reconcile_environment_blockers,
+        *governance_environment_blockers,
     ]
     if blockers:
         raise RuntimeError(" ".join(blockers))
@@ -176,6 +191,8 @@ def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
         "prodEnvironment": "prod",
         "operationsAlertReconcileReviewerId": reviewer_id,
         "operationsAlertReconcileEnvironment": OPERATIONS_ALERT_RECONCILE_ENVIRONMENT,
+        "governanceReviewerId": reviewer_id,
+        "governanceEnvironment": GOVERNANCE_ENVIRONMENT,
     }
 
 
@@ -211,6 +228,7 @@ def configure(
         payloads["operationsAlertReconcileEnvironment"] = (
             operations_alert_reconcile_environment_payload(reviewer_id)
         )
+        payloads["governanceEnvironment"] = governance_environment_payload(reviewer_id)
         if existing and isinstance(existing.get("id"), int):
             _run_gh_api(
                 [f"repos/{repo}/rulesets/{existing['id']}", "--method", "PUT"],
@@ -233,14 +251,24 @@ def configure(
             ],
             input_payload=payloads["operationsAlertReconcileEnvironment"],
         )
+        _run_gh_api(
+            [
+                f"repos/{repo}/environments/{GOVERNANCE_ENVIRONMENT}",
+                "--method",
+                "PUT",
+            ],
+            input_payload=payloads["governanceEnvironment"],
+        )
         payloads["verification"] = _verify_applied_controls(repo, reviewer_id)
     else:
         payloads["prodEnvironment"] = prod_environment_payload(reviewer_id)
         payloads["operationsAlertReconcileEnvironment"] = (
             operations_alert_reconcile_environment_payload(reviewer_id)
         )
+        payloads["governanceEnvironment"] = governance_environment_payload(reviewer_id)
         payloads["prodEnvironmentReviewerLogin"] = reviewer
         payloads["operationsAlertReconcileEnvironmentReviewerLogin"] = reviewer
+        payloads["governanceEnvironmentReviewerLogin"] = reviewer
 
     print(json.dumps(payloads, indent=2, sort_keys=True))
 

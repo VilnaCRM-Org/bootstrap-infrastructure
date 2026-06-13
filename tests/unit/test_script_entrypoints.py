@@ -3187,6 +3187,8 @@ def test_configure_github_repository_controls_verification_helpers(
         "prodEnvironment": "prod",
         "operationsAlertReconcileReviewerId": 9444106,
         "operationsAlertReconcileEnvironment": "operations-alert-reconcile",
+        "governanceReviewerId": 9444106,
+        "governanceEnvironment": "governance",
     }
 
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: bad_ruleset)
