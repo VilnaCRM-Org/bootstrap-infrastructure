@@ -4000,6 +4000,213 @@ def test_validate_repository_catalogs_handles_empty_and_invalid_inputs(
     assert "invalid repository catalog schema" in error_output  # nosec B101
 
 
+def _write_governance_catalog(
+    pulumi_dir: Path,
+    repositories: list[dict[str, object]],
+) -> Path:
+    """Write a governance-kind catalog and its schema into ``pulumi_dir``."""
+    pulumi_dir.mkdir(parents=True, exist_ok=True)
+    schema_path = pulumi_dir / "repositories.schema.json"
+    schema_path.write_text(
+        (PROJECT_ROOT / "pulumi" / "repositories.schema.json").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
+    catalog_path = pulumi_dir / "repositories.governance.json"
+    catalog_path.write_text(
+        json.dumps(
+            {"$schema": "./repositories.schema.json", "repositories": repositories}
+        ),
+        encoding="utf-8",
+    )
+    return catalog_path
+
+
+def test_validate_repository_catalogs_governance_fanout_within_thresholds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Governance catalogs use governance-specific fanout, not the central one."""
+    module = load_script_module(monkeypatch, "validate_repository_catalogs")
+    pulumi_dir = tmp_path / "repo" / "pulumi"
+    catalog_path = _write_governance_catalog(
+        pulumi_dir,
+        [
+            {
+                "name": "user-service-infrastructure",
+                "project": "user-service-infrastructure",
+                "expectedEnvironments": 2,
+            }
+        ],
+    )
+    schema_path = pulumi_dir / "repositories.schema.json"
+
+    assert module._catalog_kind(catalog_path) == "governance"  # nosec B101
+    assert (
+        module._catalog_kind(  # nosec B101
+            pulumi_dir / "repositories.bootstrap.json"
+        )
+        == "deployment"
+    )
+
+    report = module.catalog_fanout_report(catalog_path, schema_path)
+    # No central-stack resources leak into the governance fanout.
+    assert "budgets" not in report  # nosec B101
+    assert "guardDutyDetectors" not in report  # nosec B101
+    assert "oidcProviders" not in report  # nosec B101
+    assert report["repositories"] == 1  # nosec B101
+    # iamRoles = 3 (trio) + 4 (config-read suffixes) + 1 (replication) per repo.
+    assert report["iamRoles"] == 8  # nosec B101
+    assert report["managedPolicies"] == 7  # nosec B101
+    assert report["secrets"] == 4  # nosec B101
+
+    quota = module._governance_quota_report(report)
+    assert quota["iamRoles"]["limit"] == 1000  # nosec B101
+    assert quota["managedPolicies"]["limit"] == 1500  # nosec B101
+    assert quota["managedPoliciesPerRole"]["current"] == 7  # nosec B101
+    assert quota["managedPoliciesPerRole"]["limit"] == 10  # nosec B101
+    assert quota["managedPoliciesPerRole"]["status"] == "flagged"  # nosec B101
+
+    assert module.main(["--fanout-report", str(catalog_path)]) == 0  # nosec B101
+    output = capsys.readouterr().out
+    assert "governance fanout estimate" in output  # nosec B101
+    assert "governance quota headroom" in output  # nosec B101
+    assert '"managedPoliciesPerRole"' in output  # nosec B101
+
+
+def test_validate_repository_catalogs_governance_single_repo_scales_linearly(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A one-repo governance catalog still validates and scales linearly."""
+    module = load_script_module(monkeypatch, "validate_repository_catalogs")
+    pulumi_dir = tmp_path / "repo" / "pulumi"
+    one = _write_governance_catalog(
+        pulumi_dir,
+        [{"name": "alpha-infrastructure", "project": "alpha-infrastructure"}],
+    )
+    schema_path = pulumi_dir / "repositories.schema.json"
+    one_report = module.catalog_fanout_report(one, schema_path)
+    assert one_report["iamRoles"] == 8  # nosec B101
+    assert one_report["managedPolicies"] == 7  # nosec B101
+    assert one_report["secrets"] == 4  # nosec B101
+
+    two = _write_governance_catalog(
+        pulumi_dir,
+        [
+            {"name": "alpha-infrastructure", "project": "alpha-infrastructure"},
+            {"name": "beta-infrastructure", "project": "beta-infrastructure"},
+        ],
+    )
+    two_report = module.catalog_fanout_report(two, schema_path)
+    assert two_report["iamRoles"] == 16  # nosec B101
+    assert two_report["managedPolicies"] == 14  # nosec B101
+    assert two_report["secrets"] == 8  # nosec B101
+
+
+def test_validate_repository_catalogs_rejects_duplicate_project(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Two repos sharing one ``project`` value must fail validation."""
+    module = load_script_module(monkeypatch, "validate_repository_catalogs")
+    pulumi_dir = tmp_path / "repo" / "pulumi"
+    catalog_path = _write_governance_catalog(
+        pulumi_dir,
+        [
+            {"name": "alpha-infrastructure", "project": "shared"},
+            {"name": "beta-infrastructure", "project": "shared"},
+        ],
+    )
+    schema_path = pulumi_dir / "repositories.schema.json"
+    with pytest.raises(ValueError, match="project values must be unique"):
+        module.validate_catalog(catalog_path, schema_path)
+
+
+def test_validate_repository_catalogs_rejects_overlong_prod_preview_role(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A repo whose prod-preview role exceeds 64 chars fails at validation time."""
+    module = load_script_module(monkeypatch, "validate_repository_catalogs")
+    pulumi_dir = tmp_path / "repo" / "pulumi"
+    # 53 chars + "-prod-preview" (13) = 66 > 64.
+    overlong = "a" * 53
+    catalog_path = _write_governance_catalog(
+        pulumi_dir,
+        [{"name": overlong, "project": overlong}],
+    )
+    schema_path = pulumi_dir / "repositories.schema.json"
+    with pytest.raises(ValueError, match="prod-preview"):
+        module.validate_catalog(catalog_path, schema_path)
+
+    # The boundary repo (51 chars + "-prod-preview" = 64) is exactly at the
+    # limit and passes.
+    edge = "b" * 51
+    ok_catalog = _write_governance_catalog(
+        pulumi_dir,
+        [{"name": edge, "project": edge}],
+    )
+    module.validate_catalog(ok_catalog, schema_path)
+
+
+def test_validate_repository_catalogs_governance_role_name_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sanitize + role-name-length helpers mirror the component derivation."""
+    module = load_script_module(monkeypatch, "validate_repository_catalogs")
+    assert (  # nosec B101
+        module._sanitize_project_component("User.Service-Infra") == "user-service-infra"
+    )
+    assert module._prod_preview_role_token("repo") == "repo-prod-preview"  # nosec B101
+    # Exactly 64 chars is allowed; 65 is rejected.
+    assert module._prod_preview_role_within_limit("c" * 51) is True  # nosec B101
+    assert module._prod_preview_role_within_limit("c" * 52) is False  # nosec B101
+
+
+def test_validate_repository_catalogs_deployment_fanout_unchanged(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The governance addition must not loosen the deployment-catalog guard."""
+    module = load_script_module(monkeypatch, "validate_repository_catalogs")
+    pulumi_dir = tmp_path / "repo" / "pulumi"
+    pulumi_dir.mkdir(parents=True)
+    schema_path = pulumi_dir / "repositories.schema.json"
+    schema_path.write_text(
+        (PROJECT_ROOT / "pulumi" / "repositories.schema.json").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+    )
+    catalog_path = pulumi_dir / "repositories.bootstrap.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "$schema": "./repositories.schema.json",
+                "repositories": [
+                    {
+                        "name": "bootstrap-infrastructure",
+                        "project": "platform-bootstrap",
+                        "expectedEnvironments": 2,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    report = module.catalog_fanout_report(catalog_path, schema_path)
+    # Central-stack fanout is unchanged: iamRoles = 3 + 2*2, kmsKeys 1 + 1*2.
+    assert report["iamRoles"] == 7  # nosec B101
+    assert report["kmsKeys"] == 3  # nosec B101
+    assert report["budgets"] == 1  # nosec B101
+    assert "managedPolicies" not in report  # nosec B101
+    assert "secrets" not in report  # nosec B101
+    # Default per-environment fanout constant is untouched.
+    assert module.PER_ENVIRONMENT_FANOUT == {  # nosec B101
+        "s3Buckets": 2,
+        "kmsKeys": 1,
+        "iamRoles": 2,
+        "backupSelections": 1,
+    }
+
+
 def test_publish_pulumi_preview_summary_main_handles_backend_and_summary_paths(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
