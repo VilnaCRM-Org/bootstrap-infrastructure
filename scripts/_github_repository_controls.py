@@ -30,13 +30,6 @@ REQUIRED_STATUS_CHECKS = (
     "CodeQL (python)",
     "CodeQL (actions)",
     "Test Account Evidence",
-    # Posted by the dedicated governance runner (pulumi-governance.yml) to the
-    # approved head SHA via `gh api .../statuses/{head_sha}`. The runner fires on
-    # repository_dispatch and cannot natively report a check, so a required check
-    # with no reporter would make governance PRs permanently unmergeable
-    # (FEASIBILITY-1, architecture §7.5). The context string here is byte-for-byte
-    # identical to the runner's status-post.
-    "Governance Apply",
 )
 
 OPERATIONS_ALERT_RECONCILE_ENVIRONMENT = "operations-alert-reconcile"

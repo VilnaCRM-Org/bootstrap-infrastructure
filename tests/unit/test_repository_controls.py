@@ -14,8 +14,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 GOVERNANCE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pulumi-governance.yml"
 GOVERNANCE_STATUS_CONTEXT = "Governance Apply"
-# Status contexts present BEFORE the governance apply gate was registered; these
-# must never regress when the new context is appended (test/prod check list).
+# The complete global required-status-check set enforced by the live `main`
+# ruleset. "Governance Apply" is intentionally NOT here: it is an informational
+# commit status posted by the governance runner, and the governance merge gate
+# is CODEOWNERS + the protected `governance` environment, not a global check.
 LEGACY_REQUIRED_STATUS_CHECKS = (
     "Ruff",
     "Ty",
@@ -312,63 +314,34 @@ def _governance_status_run_text() -> str:
     return "\n".join(step.get("run", "") for step in status_job.get("steps", []))
 
 
-def test_governance_apply_context_registered_in_required_status_checks(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """FR15/FEASIBILITY-1: the governance apply context is a required PR check."""
-    controls = load_script_module(monkeypatch, "_github_repository_controls")
-
-    assert (  # nosec B101
-        GOVERNANCE_STATUS_CONTEXT in controls.REQUIRED_STATUS_CHECKS
-    )
-
-
 def test_required_status_checks_keep_existing_contexts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """No regression: every legacy required check survives the new addition."""
+    """No regression: every legacy required check survives in the required set."""
     controls = load_script_module(monkeypatch, "_github_repository_controls")
 
     for context in LEGACY_REQUIRED_STATUS_CHECKS:
         assert context in controls.REQUIRED_STATUS_CHECKS  # nosec B101
-    # The governance gate is appended, not substituted, so the legacy set is a
-    # strict subset of the registered required checks.
-    assert set(LEGACY_REQUIRED_STATUS_CHECKS).issubset(  # nosec B101
-        set(controls.REQUIRED_STATUS_CHECKS)
+    # The required set is exactly the legacy contexts: the informational
+    # "Governance Apply" status is NOT a global required check (its merge gate is
+    # CODEOWNERS + the protected `governance` environment, not the ruleset).
+    assert set(controls.REQUIRED_STATUS_CHECKS) == set(  # nosec B101
+        LEGACY_REQUIRED_STATUS_CHECKS
     )
 
 
-def test_governance_runner_posts_required_check_context(
+def test_governance_runner_posts_governance_apply_status_context(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The runner posts the BYTE-IDENTICAL required context to the head SHA.
+    """The runner posts the `Governance Apply` commit status to the head SHA.
 
-    FEASIBILITY-1: the governance runner fires on `repository_dispatch`, so the
-    required check resolves only because this workflow explicitly posts that
-    exact context to the verified head SHA. A context-string mismatch between
-    the tuple and the runner's status-post would make the PR unmergeable, so the
-    two are asserted to agree here (architecture §7.5).
+    This is an INFORMATIONAL status (it surfaces the gated apply result), not a
+    global required check: the governance runner fires on `repository_dispatch`
+    and posts that exact context to the verified head SHA (architecture §7.5).
     """
-    controls = load_script_module(monkeypatch, "_github_repository_controls")
     run_text = _governance_status_run_text()
 
     # The runner posts a commit status to the verified head SHA.
     assert "statuses/${HEAD_SHA}" in run_text  # nosec B101
-    # The posted context is byte-identical to the registered required check.
+    # The runner still posts the informational `Governance Apply` context.
     assert f'context="{GOVERNANCE_STATUS_CONTEXT}"' in run_text  # nosec B101
-    assert GOVERNANCE_STATUS_CONTEXT in controls.REQUIRED_STATUS_CHECKS  # nosec B101
-
-
-def test_governance_required_check_string_matches_runner_post(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Negative guard: a context-string mismatch fails the binding assertion."""
-    controls = load_script_module(monkeypatch, "_github_repository_controls")
-    run_text = _governance_status_run_text()
-
-    posted_context = next(
-        context
-        for context in controls.REQUIRED_STATUS_CHECKS
-        if f'context="{context}"' in run_text
-    )
-    assert posted_context == GOVERNANCE_STATUS_CONTEXT  # nosec B101
