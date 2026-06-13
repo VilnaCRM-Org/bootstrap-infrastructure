@@ -1,0 +1,14 @@
+{
+  "$schema": "./repositories.schema.json",
+  "repositories": [
+    {
+      "name": "user-service-infrastructure",
+      "defaultBranch": "main",
+      "project": "user-service-infrastructure",
+      "owner": "team-user-service",
+      "lifecycleState": "active",
+      "lastReviewed": "2026-06-13",
+      "expectedEnvironments": 2
+    }
+  ]
+}
