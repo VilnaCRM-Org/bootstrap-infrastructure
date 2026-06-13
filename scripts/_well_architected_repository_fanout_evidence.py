@@ -13,6 +13,13 @@ from validate_repository_catalogs import (
 )
 
 EXAMPLE_CATALOG_NAMES = frozenset({"repositories.example.json"})
+# The governance catalog (repositories.governance.json) is validated by
+# scripts/validate_repository_catalogs.py with a governance-specific fanout
+# (preview/apply/drift trio + config-read + replication roles per repo). The
+# Well-Architected deployment-fanout evidence below applies the deployment
+# thresholds, which the governance catalog intentionally exceeds, so it is
+# excluded here and asserted by its own per-kind validator instead.
+NON_DEPLOYMENT_CATALOG_NAMES = frozenset({"repositories.governance.json"})
 
 
 def repository_fanout_evidence(
@@ -63,4 +70,5 @@ def _evidence_repository_catalog_paths(root_dir: Path) -> list[Path]:
         path
         for path in repository_catalog_paths(root_dir)
         if path.name not in EXAMPLE_CATALOG_NAMES
+        and path.name not in NON_DEPLOYMENT_CATALOG_NAMES
     ]
