@@ -152,7 +152,11 @@ def _rendered_governance_role_names(name: str) -> list[str]:
 
 def _longest_governance_role_name(name: str) -> str:
     """Return the longest rendered governance role name for one repo."""
-    return max(_rendered_governance_role_names(name), key=len)
+    longest = ""
+    for role_name in _rendered_governance_role_names(name):
+        if len(role_name) > len(longest):
+            longest = role_name
+    return longest
 
 
 def repository_catalog_paths(root_dir: Path) -> list[Path]:
