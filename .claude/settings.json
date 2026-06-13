@@ -18,7 +18,6 @@
       "Bash(aws * get-*:*)",
       "Bash(aws logs filter-log-events:*)",
       "Bash(aws logs get-log-events:*)",
-      "Bash(aws logs start-query:*)",
       "Bash(pulumi stack:*)",
       "Bash(pulumi preview:*)",
       "Bash(pulumi about:*)"

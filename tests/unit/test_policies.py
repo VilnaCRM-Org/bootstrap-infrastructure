@@ -2,7 +2,11 @@ import json
 
 from infra.automation import _automation_assume_role_policy, _automation_policy
 from infra.iam.github_oidc import _assume_role_policy, _deploy_policy
-from infra.iam.readonly import _readonly_assume_role_policy, _readonly_deny_policy
+from infra.iam.readonly import (
+    _DENIED_SENSITIVE_ACTIONS,
+    _readonly_assume_role_policy,
+    _readonly_deny_policy,
+)
 from infra.logging_bucket import _log_bucket_policy
 from infra.pulumi_state import _bucket_policy
 
@@ -116,18 +120,28 @@ def test_readonly_deny_policy_blocks_secret_and_credential_reads():
     assert statement["Sid"] == "DenySecretAndCredentialReads"  # nosec B101
     assert statement["Effect"] == "Deny"  # nosec B101
     assert statement["Resource"] == "*"  # nosec B101
-    actions = statement["Action"]
+    # The policy must deny every action in the curated list, in full.
+    assert statement["Action"] == _DENIED_SENSITIVE_ACTIONS  # nosec B101
     for blocked in (
         "secretsmanager:GetSecretValue",
+        "secretsmanager:BatchGetSecretValue",
         "kms:Decrypt",
         "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
         "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
         "ec2:GetPasswordData",
+        "ec2:GetConsoleOutput",
+        "ec2:GetConsoleScreenshot",
         "ecr:GetAuthorizationToken",
+        "ecr-public:GetAuthorizationToken",
+        "codeartifact:GetAuthorizationToken",
         "sts:GetSessionToken",
         "cognito-identity:GetCredentialsForIdentity",
+        "cognito-identity:GetOpenIdToken",
     ):
-        assert blocked in actions  # nosec B101
+        assert blocked in _DENIED_SENSITIVE_ACTIONS  # nosec B101
 
 
 def test_log_bucket_policy_contains_required_statements():
