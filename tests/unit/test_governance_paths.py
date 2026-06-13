@@ -30,10 +30,14 @@ def test_governance_path_globs_cover_expanded_credential_surface() -> None:
         "/policy/",
         "/scripts/governance_paths.py",
         "/scripts/run_pulumi_command.py",
+        "/scripts/_pulumi_command_support.py",
+        "/scripts/_script_support.py",
+        "/scripts/prepare_policy_pack.py",
         "/scripts/pulumi_pr_comment.py",
         "/scripts/_github_repository_controls.py",
         "/scripts/configure_github_repository_controls.py",
         "/.github/CODEOWNERS",
+        "/.github/workflows/governance-apply-status.yml",
         "/.github/workflows/pulumi-governance.yml",
         "/.github/workflows/pulumi-pr-command-runner.yml",
         "/.github/workflows/pulumi-pr-commands.yml",
@@ -68,6 +72,54 @@ def test_paths_touch_governance_positive_directory_and_file() -> None:
     # positive: the catalog file itself.
     assert (
         governance_paths.paths_touch_governance(["pulumi/repositories.governance.json"])
+        is True
+    )
+
+
+def test_paths_touch_governance_closes_apply_context_support_holes() -> None:
+    # Red-team hole closure: the support modules + policy-pack builder that run
+    # inside the gated governance apply with AWS creds are now in scope, so a
+    # non-@Kravalg approval can no longer slip past CODEOWNERS / governance_touched.
+    assert (
+        governance_paths.paths_touch_governance(["scripts/_pulumi_command_support.py"])
+        is True
+    )
+    assert (
+        governance_paths.paths_touch_governance(["scripts/_script_support.py"]) is True
+    )
+    assert (
+        governance_paths.paths_touch_governance(["scripts/prepare_policy_pack.py"])
+        is True
+    )
+
+
+def test_paths_touch_governance_status_workflow_in_scope() -> None:
+    # The merge-gate status workflow controls the required-check semantics and
+    # must itself be Kravalg-gated.
+    assert (
+        governance_paths.paths_touch_governance(
+            [".github/workflows/governance-apply-status.yml"]
+        )
+        is True
+    )
+
+
+def test_paths_touch_governance_normalizes_dotdot_traversal() -> None:
+    # Defensive (FIX C): a ".."-containing path resolves to its true target
+    # before fnmatch. "pulumi/governance/../infra/x.py" is really
+    # "pulumi/infra/x.py" (NOT a governance path) and must NOT spuriously match
+    # the "pulumi/governance/*" glob it traverses through.
+    assert (
+        governance_paths.paths_touch_governance(
+            ["pulumi/governance/../infra/managed_repository.py"]
+        )
+        is False
+    )
+    # And a traversal that genuinely lands on a governance file still matches.
+    assert (
+        governance_paths.paths_touch_governance(
+            ["pulumi/infra/../governance/__main__.py"]
+        )
         is True
     )
 

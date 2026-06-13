@@ -13,6 +13,7 @@ story asserts this tuple is byte-equal to the ``@Kravalg`` lines in
 from __future__ import annotations
 
 import argparse
+import posixpath
 import sys
 from fnmatch import fnmatch
 
@@ -34,10 +35,14 @@ GOVERNANCE_PATH_GLOBS: tuple[str, ...] = (
     "/policy/",
     "/scripts/governance_paths.py",
     "/scripts/run_pulumi_command.py",
+    "/scripts/_pulumi_command_support.py",
+    "/scripts/_script_support.py",
+    "/scripts/prepare_policy_pack.py",
     "/scripts/pulumi_pr_comment.py",
     "/scripts/_github_repository_controls.py",
     "/scripts/configure_github_repository_controls.py",
     "/.github/CODEOWNERS",
+    "/.github/workflows/governance-apply-status.yml",
     "/.github/workflows/pulumi-governance.yml",
     "/.github/workflows/pulumi-pr-command-runner.yml",
     "/.github/workflows/pulumi-pr-commands.yml",
@@ -61,8 +66,16 @@ _FNMATCH_PATTERNS: tuple[str, ...] = tuple(
 
 def _path_touches_governance(path: str) -> bool:
     """Return whether one changed-file path falls under a governance glob."""
-    normalized = path.strip().lstrip("/")
-    if not normalized:
+    stripped = path.strip().lstrip("/")
+    if not stripped:
+        return False
+    # Collapse "." / ".." segments before matching so a traversal-style path
+    # (e.g. "pulumi/governance/../infra/x.py") resolves to its true target
+    # ("pulumi/infra/x.py") and matches the correct glob instead of spuriously
+    # matching the prefix it traverses through. normpath re-strips the leading
+    # "/" it may reintroduce for absolute-looking inputs.
+    normalized = posixpath.normpath(stripped).lstrip("/")
+    if not normalized or normalized == ".":
         return False
     return any(fnmatch(normalized, pattern) for pattern in _FNMATCH_PATTERNS)
 

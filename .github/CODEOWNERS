@@ -19,10 +19,14 @@
 /policy/                                         @Kravalg
 /scripts/governance_paths.py                     @Kravalg
 /scripts/run_pulumi_command.py                   @Kravalg
+/scripts/_pulumi_command_support.py              @Kravalg
+/scripts/_script_support.py                      @Kravalg
+/scripts/prepare_policy_pack.py                  @Kravalg
 /scripts/pulumi_pr_comment.py                    @Kravalg
 /scripts/_github_repository_controls.py          @Kravalg
 /scripts/configure_github_repository_controls.py @Kravalg
 /.github/CODEOWNERS                              @Kravalg
+/.github/workflows/governance-apply-status.yml   @Kravalg
 /.github/workflows/pulumi-governance.yml         @Kravalg
 /.github/workflows/pulumi-pr-command-runner.yml  @Kravalg
 /.github/workflows/pulumi-pr-commands.yml        @Kravalg
