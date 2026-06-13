@@ -3960,6 +3960,29 @@ def test_validate_repository_catalogs_semantic_helpers_reject_bad_inputs(
         == 2
     )
 
+    # _validate_unique_projects skips non-Mapping items and items whose
+    # ``project`` is missing/blank/non-str without raising (defensive branches
+    # that normally sit behind schema validation).
+    module._validate_unique_projects(
+        [
+            "not-a-mapping",
+            {"name": "no-project"},
+            {"name": "blank-project", "project": "   "},
+            {"name": "non-str-project", "project": 123},
+            {"name": "ok", "project": "ok"},
+        ]
+    )
+
+    # estimate_governance_fanout rejects a non-list ``repositories`` payload.
+    with pytest.raises(ValueError, match="must be a list"):
+        module.estimate_governance_fanout({"repositories": "repo"})
+
+    # The public governance_quota_report alias delegates to the private impl.
+    sample_report = {"iamRoles": 8, "managedPolicies": 7, "managedPoliciesPerRole": 7}
+    assert module.governance_quota_report(sample_report) == (  # nosec B101
+        module._governance_quota_report(sample_report)
+    )
+
     monkeypatch.setattr(module, "validate_catalog", lambda *_args: None)
     monkeypatch.setattr(module, "_load_json", lambda _path: [])
     with pytest.raises(ValueError, match="must be an object"):

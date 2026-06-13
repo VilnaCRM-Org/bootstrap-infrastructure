@@ -124,6 +124,15 @@ def test_paths_touch_governance_normalizes_dotdot_traversal() -> None:
     )
 
 
+def test_paths_touch_governance_normpath_collapses_to_dot_is_false() -> None:
+    # Defensive: a path that survives the strip but whose normpath collapses to
+    # "" or "." (a pure "." or a traversal that cancels itself out, e.g.
+    # "a/..") resolves to the current directory and never matches a glob.
+    assert governance_paths.paths_touch_governance(["."]) is False
+    assert governance_paths.paths_touch_governance(["a/.."]) is False
+    assert governance_paths.paths_touch_governance(["./."]) is False
+
+
 def test_paths_touch_governance_negative_docs_and_tests() -> None:
     # negative: docs and tests never trip the gate.
     assert (

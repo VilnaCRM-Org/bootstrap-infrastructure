@@ -245,6 +245,80 @@ def test_governance_payloads_uses_repo_scoped_backend_and_secrets_provider():
     assert payloads["test"]["PULUMI_DRIFT_STACKS"] == "test"  # nosec B101
 
 
+def test_governance_backend_url_returns_explicit_override():
+    """An explicit backend-URL override is returned verbatim (override path)."""
+    settings = _governance_settings("test")
+    repo = _synthetic_repo("user-service-infrastructure")
+
+    url = governance._governance_backend_url(
+        settings, repo, "s3://pulumi-custom-override-state"
+    )
+
+    assert url == "s3://pulumi-custom-override-state"  # nosec B101
+
+
+def test_governance_secrets_provider_returns_explicit_override():
+    """An explicit secrets-provider override is returned verbatim (override path)."""
+    settings = _governance_settings("test")
+    repo = _synthetic_repo("user-service-infrastructure")
+
+    provider = governance._governance_secrets_provider(
+        settings,
+        repo,
+        "eu-central-1",
+        "awskms://alias/custom-override?region=eu-central-1",
+    )
+
+    assert provider == (  # nosec B101
+        "awskms://alias/custom-override?region=eu-central-1"
+    )
+
+
+def test_governance_payloads_generic_environment_single_env_fallback():
+    """A non-test/prod environment yields one combined preview+drift+apply env."""
+    settings = _governance_settings("staging")
+    repo = _synthetic_repo()
+    payloads = _governance_payloads(
+        settings=settings,
+        repo=repo,
+        account_id="123456789012",
+        region="eu-central-1",
+        pulumi_dir="pulumi",
+        role_arns={
+            "preview": "arn:preview",
+            "apply": "arn:apply",
+            "drift": "arn:drift",
+        },
+    )
+
+    assert set(payloads) == {"staging"}  # nosec B101
+    staging = payloads["staging"]
+    assert staging["AWS_APPLY_ROLE_ARN"] == "arn:apply"  # nosec B101
+    assert staging["AWS_PREVIEW_ROLE_ARN"] == "arn:preview"  # nosec B101
+    assert staging["AWS_DRIFT_ROLE_ARN"] == "arn:drift"  # nosec B101
+    assert staging["PULUMI_PREVIEW_STACKS"] == "staging"  # nosec B101
+    assert staging["PULUMI_DRIFT_STACKS"] == "staging"  # nosec B101
+
+
+def test_governance_repo_settings_rescopes_when_repo_differs():
+    """``_repo_settings`` re-pins ``repo`` when settings and repo names diverge."""
+    settings = _governance_settings("test")  # repo == "bootstrap-infrastructure"
+    repo = _synthetic_repo("user-service-infrastructure")
+
+    rescoped = RepoGovernance._repo_settings(settings, repo)
+
+    assert rescoped is not settings  # nosec B101
+    assert rescoped.repo == "user-service-infrastructure"  # nosec B101
+
+
+def test_governance_repo_settings_passthrough_when_repo_matches():
+    """``_repo_settings`` returns settings unchanged when the repo already matches."""
+    settings = _governance_settings("test")
+    repo = _synthetic_repo("bootstrap-infrastructure")
+
+    assert RepoGovernance._repo_settings(settings, repo) is settings  # nosec B101
+
+
 def test_governance_payloads_prod_stack_shape():
     """Governance prod payload splits preview/drift from the gated apply env."""
     settings = _governance_settings("prod")
