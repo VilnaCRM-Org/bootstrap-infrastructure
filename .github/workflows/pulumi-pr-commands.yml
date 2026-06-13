@@ -39,15 +39,35 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Detect governance-touching changes
+        id: scope
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          # Single source of truth for the governance path predicate
+          # (scripts/governance_paths.py prints governance_touched=true|false).
+          # This intake flag is defense-in-depth; the governance runner
+          # re-resolves the author and recomputes scope server-side.
+          files="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            --paginate \
+            --jq '.[].filename')"
+          python ./scripts/governance_paths.py --files-stdin <<< "${files}" \
+            >> "${GITHUB_OUTPUT}"
+
       - name: Parse Pulumi command
         id: parse
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
+          COMMENT_LOGIN: ${{ github.event.comment.user.login }}
+          GOVERNANCE_TOUCHED: ${{ steps.scope.outputs.governance_touched }}
         run: |
           python ./scripts/pulumi_pr_comment.py \
             "${COMMENT_BODY}" \
-            --author-association "${COMMENT_ASSOCIATION}"
+            --author-association "${COMMENT_ASSOCIATION}" \
+            --author-login "${COMMENT_LOGIN}" \
+            --governance-touched "${GOVERNANCE_TOUCHED}"
 
       - name: Ignore non-Pulumi comments
         if: steps.parse.outputs.skip == 'true'
@@ -115,13 +135,45 @@ jobs:
               "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
               --input -
 
+      # Governance-touching PRs route to the dedicated, env-gated governance
+      # runner via its own event type (architecture §7.2). The governance
+      # runner re-resolves the author from client_payload.comment_id and
+      # recomputes scope server-side, so the intake flag here is advisory.
+      - name: Dispatch governance runner
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
+          steps.pr.outputs.head_repo == github.repository &&
+          steps.scope.outputs.governance_touched == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          TARGET_ENVIRONMENT: ${{ steps.parse.outputs.target_environment }}
+          PULUMI_COMMAND: ${{ steps.parse.outputs.command }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/dispatches" \
+            -f event_type='pulumi-governance-command' \
+            -f "client_payload[pull_request_number]=${PR_NUMBER}" \
+            -f "client_payload[head_sha]=${HEAD_SHA}" \
+            -f "client_payload[target_environment]=${TARGET_ENVIRONMENT}" \
+            -f "client_payload[command]=${PULUMI_COMMAND}" \
+            -f "client_payload[comment_id]=${COMMENT_ID}"
+
+      # Non-governance PRs keep the existing monolithic runner unchanged.
       - name: Dispatch trusted runner
         if: >-
           steps.parse.outputs.skip != 'true' &&
           steps.parse.outputs.authorized == 'true' &&
           steps.pr.outputs.state == 'open' &&
           steps.pr.outputs.merged == 'false' &&
-          steps.pr.outputs.head_repo == github.repository
+          steps.pr.outputs.head_repo == github.repository &&
+          steps.scope.outputs.governance_touched != 'true'
         env:
           PR_NUMBER: ${{ github.event.issue.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
