@@ -110,31 +110,59 @@ Apply the `test` stack first (account `891377212104`), then the `prod` stack
 export AWS_REGION=eu-central-1
 
 # --- test stack (account 891377212104) ---
+# `stack init --secrets-provider` PERSISTS the provider into the stack config, so
+# the subsequent preview/up need no PULUMI_SECRETS_PROVIDER env var.
 pulumi -C pulumi/governance stack init test \
   --secrets-provider awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1
-AWS_PROFILE=<test-admin-profile> \
-PULUMI_SECRETS_PROVIDER='awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1' \
-pulumi -C pulumi/governance preview --stack test
-AWS_PROFILE=<test-admin-profile> \
-PULUMI_SECRETS_PROVIDER='awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1' \
-pulumi -C pulumi/governance up --stack test --yes
+AWS_PROFILE=<test-admin-profile> pulumi -C pulumi/governance preview --stack test
+AWS_PROFILE=<test-admin-profile> pulumi -C pulumi/governance up --stack test --yes
 
 # --- prod stack (account 933245420672) ---
 pulumi -C pulumi/governance stack init prod \
   --secrets-provider awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1
-AWS_PROFILE=<prod-admin-profile> \
-PULUMI_SECRETS_PROVIDER='awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1' \
-pulumi -C pulumi/governance preview --stack prod
-AWS_PROFILE=<prod-admin-profile> \
-PULUMI_SECRETS_PROVIDER='awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1' \
-pulumi -C pulumi/governance up --stack prod --yes
+AWS_PROFILE=<prod-admin-profile> pulumi -C pulumi/governance preview --stack prod
+AWS_PROFILE=<prod-admin-profile> pulumi -C pulumi/governance up --stack prod --yes
 ```
 
-Run `pulumi -C pulumi/governance stack init <stack> --secrets-provider
-"$PULUMI_SECRETS_PROVIDER"` only once per stack; if a stack already exists, skip
-`stack init` and run `stack select` instead. The governance stack stores its own
-state in a dedicated S3 backend encrypted by `alias/pulumi-platform-bootstrap-{env}`;
-that platform-bootstrap key is never granted to any managed service repo.
+Run `pulumi -C pulumi/governance stack init <stack> --secrets-provider <url>`
+only once per stack; the `--secrets-provider` flag persists the provider into the
+stack config, so the subsequent `preview`/`up` need no `PULUMI_SECRETS_PROVIDER`
+env var. If a stack already exists, skip `stack init` and run `stack select`
+instead (its persisted secrets provider is reused). The governance stack stores
+its own state in a dedicated S3 backend encrypted by
+`alias/pulumi-platform-bootstrap-{env}`; that platform-bootstrap key is never
+granted to any managed service repo.
+
+#### Step 1b — Create the per-account governance automation role [OPERATOR]
+
+The gated PR-comment apply (Step 7) runs its apply jobs under the protected
+`environment: governance`, so the runner's OIDC token carries
+`sub == repo:VilnaCRM-Org/bootstrap-infrastructure:environment:governance`. The
+bootstrap repo's own `GitHubCiConfigRead-*` / `GitHubCiApply-*` roles trust
+`environment:test`/`environment:prod`/branch-ref — **NOT** `environment:governance`
+— so they cannot be assumed from an apply job. The runner therefore assumes a
+**dedicated, per-account governance automation role** that the operator creates
+here, one in each account:
+
+- **Trust:** the account's GitHub OIDC provider with the condition
+  `token.actions.githubusercontent.com:sub ==
+  repo:VilnaCRM-Org/bootstrap-infrastructure:environment:governance`
+  (and the matching `:aud == sts.amazonaws.com`). No branch-ref, no
+  `environment:test`/`environment:prod` subject — the token is mintable only after
+  @Kravalg approves the protected `governance` environment.
+- **Permissions (least privilege, no `Action:*` / unscoped `Resource:*`):** enough
+  to apply the `pulumi/governance` program in that account — create/update the
+  per-repo IAM deploy + config-read roles, the per-repo S3 state buckets +
+  replicas, the per-repo KMS keys + aliases, and the per-repo CI-config secrets —
+  plus `s3`/`kms` access to the governance program's own state backend
+  (`alias/pulumi-platform-bootstrap-{env}`).
+
+This is the single most privileged automation role in each account; create it from
+the same hardware-MFA admin session as Step 1, log it, and diff the resulting role
+against intent before enabling Step 7. (If/when this role is folded into the
+privileged `github-ci-bootstrap` stack it stays operator-applied; the bootstrap
+stack is the only place that legitimately runs with admin.) Capture each role's
+ARN — they feed the `AWS_GOVERNANCE_*_APPLY_ROLE_ARN` repo variables in Step 5.
 
 ### Step 2 — Pin the per-account OIDC provider ARN before first apply [OPERATOR]
 
@@ -215,6 +243,37 @@ gh variable set AWS_TEST_CI_CONFIG_ROLE_ARN \
 gh variable set AWS_PROD_CI_CONFIG_ROLE_ARN \
   --body '<perRepo[...].configReadRoleArns.prod>' --repo <repo>
 # ...and the rest of the per-env githubVariables (test-pr, prod-preview).
+```
+
+Then set the **governance-runner** repo variables on `bootstrap-infrastructure`
+itself (consumed by `.github/workflows/pulumi-governance.yml`). These point the
+env-gated apply jobs at the Step 1b per-account governance automation roles and at
+the governance program's own backend + secrets provider (the apply job cannot read
+them from a CI-config secret, because it runs under `environment: governance`):
+
+```bash
+GOV_REPO=VilnaCRM-Org/bootstrap-infrastructure
+
+# Per-account governance automation role ARNs from Step 1b.
+gh variable set AWS_GOVERNANCE_TEST_APPLY_ROLE_ARN --repo "$GOV_REPO" \
+  --body 'arn:aws:iam::891377212104:role/<governance-automation-role>'
+gh variable set AWS_GOVERNANCE_PROD_APPLY_ROLE_ARN --repo "$GOV_REPO" \
+  --body 'arn:aws:iam::933245420672:role/<governance-automation-role>'
+
+# Per-account account IDs (allowed-account-ids guard on the OIDC assume).
+gh variable set AWS_GOVERNANCE_TEST_ACCOUNT_ID --repo "$GOV_REPO" --body '891377212104'
+gh variable set AWS_GOVERNANCE_PROD_ACCOUNT_ID --repo "$GOV_REPO" --body '933245420672'
+
+# The governance program's OWN backend + secrets provider (platform bootstrap),
+# matching the Step 1 stack config.
+gh variable set AWS_GOVERNANCE_TEST_BACKEND_URL --repo "$GOV_REPO" \
+  --body 's3://<governance-test-state-bucket>'
+gh variable set AWS_GOVERNANCE_PROD_BACKEND_URL --repo "$GOV_REPO" \
+  --body 's3://<governance-prod-state-bucket>'
+gh variable set AWS_GOVERNANCE_TEST_SECRETS_PROVIDER --repo "$GOV_REPO" \
+  --body 'awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1'
+gh variable set AWS_GOVERNANCE_PROD_SECRETS_PROVIDER --repo "$GOV_REPO" \
+  --body 'awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1'
 ```
 
 ### Step 6 — Create user-service-infrastructure + push the scaffold [OPERATOR]
