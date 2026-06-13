@@ -46,6 +46,7 @@ from .ci_bootstrap import (
     _create_roles,
     _default_backend_url,
     _environment_part,
+    _github_variables,
     _iam_role_exists,  # re-exported so tests can stub role existence here
     _pulumi_secrets_alias_conditions,
     _role_specs,
@@ -53,12 +54,15 @@ from .ci_bootstrap import (
     _state_bucket_resources,
 )
 from .ci_config import CiConfiguration, CiConfigurationArgs, _ci_config_project
+from .iam.github_oidc import _repo_suffix
 from .managed_repository import ManagedRepository
 from .pulumi_secrets import PulumiSecretsKeys
 from .pulumi_state import PulumiStateBuckets
 from .repository_catalog import ManagedRepositoryCatalog
+from .utils.outputs import apply_output
 
 __all__ = [
+    "GovernanceStack",
     "GovernanceStackArgs",
     "RepoGovernance",
     "_governance_apply_subjects",
@@ -493,6 +497,7 @@ class RepoGovernance(pulumi.ComponentResource):
     ) -> None:
         """Expose per-repo outputs and register the stable component mapping."""
         repo_name = self._repo.name
+        self.ci_configuration = ci_configuration
         self.state_bucket_name = state_buckets.state_buckets[repo_name]
         self.state_bucket_arn = state_buckets.bucket_arns[repo_name]
         self.secrets_alias_name = secrets_keys.alias_names[repo_name]
@@ -513,3 +518,186 @@ class RepoGovernance(pulumi.ComponentResource):
                 "secret_payload_keys": self.secret_payload_keys,
             }
         )
+
+
+def _resolve_oidc_provider_arn(args: GovernanceStackArgs) -> str:
+    """Return the pinned per-account OIDC provider ARN or raise (AWS-SRE-2, FR7).
+
+    The governance stack NEVER creates/adopts the provider: each account already
+    owns exactly one (`token.actions.githubusercontent.com`) via its bootstrap
+    stack, so the ARN is config-pinned (`governance:githubOidcProviderArn`) and
+    consumed by ``.get()``. An unset ARN is a hard error — there is no
+    create fallback that could race or mutate the other stack's state.
+    """
+    if not args.oidc_provider_arn:
+        raise ValueError(
+            "governance stack requires a pinned oidc_provider_arn "
+            "(set governance:githubOidcProviderArn from the bootstrap stack's "
+            "oidcProviderArn output); it never creates the OIDC provider."
+        )
+    return args.oidc_provider_arn
+
+
+def _assert_governance_account(
+    account_id: str, expected_account_id: str | None
+) -> None:
+    """Assert the live account matches the per-stack expectation (D1).
+
+    ``expected_account_id`` is the injectable ``governance:awsAccountId`` (test
+    stack → ``891377212104``, prod stack → ``933245420672``); the literal lives
+    in stack config, never here. When unset the assertion is skipped (e.g. early
+    scaffolding). The injectable seam lets tests drive BOTH branches under the
+    mocks (match → proceeds; mismatch → raises) without a hardcoded literal.
+    """
+    if expected_account_id is not None and account_id != expected_account_id:
+        raise ValueError(
+            "governance stack must run in account "
+            f"{expected_account_id!r}, but the live account is {account_id!r}."
+        )
+
+
+def _governance_github_variables(
+    settings: BootstrapSettings,
+    *,
+    region: str,
+    ci_configuration: CiConfiguration,
+) -> dict[str, pulumi.Input[str]]:
+    """Return per-env GitHub variables for a governed repo (reuse §3.4).
+
+    Reuses the bootstrap ``_github_variables`` builder so the variable shape
+    stays identical to the single-repo path, with the injectable governance
+    region threaded through (never a hardcoded ``eu-central-1``).
+    """
+    return _github_variables(settings, region=region, ci_configuration=ci_configuration)
+
+
+def _repo_outputs(
+    *,
+    settings: BootstrapSettings,
+    repo: ManagedRepository,
+    region: str,
+    component: RepoGovernance,
+) -> dict[str, pulumi.Input[object]]:
+    """Return the §3.4 per-repo output entry for one governed repo."""
+    repo_settings = (
+        settings
+        if settings.repo == repo.name
+        else dataclasses.replace(settings, repo=repo.name)
+    )
+    return {
+        "stateBucketName": component.state_bucket_name,
+        "stateBackendUrl": apply_output(
+            component.state_bucket_name, lambda bucket: f"s3://{bucket}"
+        ),
+        "secretsAlias": component.secrets_alias_name,
+        "secretsProvider": component.secrets_provider_url,
+        "deploymentRoleArns": dict(component.deployment_role_arns),
+        "configReadRoleArns": dict(component.config_read_role_arns),
+        "ciConfigSecretIds": dict(component.ci_config_secret_ids),
+        "githubVariables": _governance_github_variables(
+            repo_settings,
+            region=region,
+            ci_configuration=component.ci_configuration,
+        ),
+    }
+
+
+class GovernanceStack(pulumi.ComponentResource):
+    """Account OIDC provider (consumed by ARN) + ``RepoGovernance`` per repo.
+
+    Consumes its account's GitHub OIDC provider **by pinned ARN via ``.get()``**
+    (zero create branch — AWS-SRE-2, FR7), asserts the live account against the
+    injectable, per-stack ``expected_account_id`` (D1), then instantiates one
+    ``RepoGovernance`` per catalog repo and registers the stable §3.4 outputs
+    map. ``region`` is injectable (AWS-SRE-5) so tests render under the mock
+    region and never assert a hardcoded ``eu-central-1`` literal.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        args: GovernanceStackArgs | None = None,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
+        super().__init__("bootstrap:governance:GovernanceStack", name, None, opts)
+
+        resolved = args or GovernanceStackArgs()
+        settings = resolved.settings or BootstrapSettings.from_pulumi_config()
+        catalog = resolved.repository_catalog or ManagedRepositoryCatalog.from_settings(
+            settings
+        )
+        provider_arn = _resolve_oidc_provider_arn(resolved)
+
+        account_id = aws.get_caller_identity().account_id
+        _assert_governance_account(account_id, resolved.expected_account_id)
+        partition = aws.get_partition().partition
+        region = resolved.region
+
+        provider = aws.iam.OpenIdConnectProvider.get(
+            f"{name}-oidc",
+            provider_arn,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+        self.oidc_provider_arn = provider.arn
+
+        self.repo_components = self._build_repo_components(
+            name,
+            settings=settings,
+            catalog=catalog,
+            provider_arn=provider.arn,
+            account_id=account_id,
+            partition=partition,
+            region=region,
+            args=resolved,
+        )
+        self.managed_repositories = sorted(self.repo_components)
+        self.per_repo = {
+            repo.name: _repo_outputs(
+                settings=settings,
+                repo=repo,
+                region=region,
+                component=self.repo_components[repo.name],
+            )
+            for repo in catalog.repositories
+        }
+        self.register_outputs(
+            {
+                "oidcProviderArn": self.oidc_provider_arn,
+                "managedRepositories": self.managed_repositories,
+                "perRepo": self.per_repo,
+            }
+        )
+
+    def _build_repo_components(
+        self,
+        name: str,
+        *,
+        settings: BootstrapSettings,
+        catalog: ManagedRepositoryCatalog,
+        provider_arn: pulumi.Input[str],
+        account_id: str,
+        partition: str,
+        region: str,
+        args: GovernanceStackArgs,
+    ) -> dict[str, RepoGovernance]:
+        """Instantiate one ``RepoGovernance`` per catalog repo, keyed by name."""
+        components: dict[str, RepoGovernance] = {}
+        for repo in catalog.repositories:
+            suffix = _repo_suffix(repo.name, settings)
+            components[repo.name] = RepoGovernance(
+                f"{name}-{suffix}",
+                repo=repo,
+                settings=settings,
+                provider_arn=provider_arn,
+                account_id=account_id,
+                partition=partition,
+                region=region,
+                pulumi_dir=args.pulumi_dir,
+                pulumi_backend_url=args.pulumi_backend_url,
+                pulumi_secrets_provider=args.pulumi_secrets_provider,
+                write_secret_values=args.write_secret_values,
+                protect_resources=args.protect_resources,
+                opts=pulumi.ResourceOptions(parent=self),
+            )
+        return components
