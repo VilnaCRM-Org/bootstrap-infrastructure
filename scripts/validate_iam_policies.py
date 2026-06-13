@@ -24,6 +24,7 @@ os.environ.setdefault("PULUMI_ALLOW_TEST_DEFAULTS", "1")
 
 from infra.automation import _automation_policy
 from infra.iam.github_oidc import _deploy_policy
+from infra.iam.readonly import _readonly_deny_policy
 from infra.logging_bucket import (
     _log_bucket_policy,
 )
@@ -68,6 +69,11 @@ def build_policy_documents(account_id: str) -> list[PolicyDocumentSpec]:
         PolicyDocumentSpec(
             name="github-automation-bootstrap-policy",
             policy_document=_automation_policy(account_id),
+            policy_type="IDENTITY_POLICY",
+        ),
+        PolicyDocumentSpec(
+            name="claude-readonly-deny-policy",
+            policy_document=_readonly_deny_policy(),
             policy_type="IDENTITY_POLICY",
         ),
         PolicyDocumentSpec(

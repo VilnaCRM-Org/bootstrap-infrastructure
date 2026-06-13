@@ -2,6 +2,7 @@ import json
 
 from infra.automation import _automation_assume_role_policy, _automation_policy
 from infra.iam.github_oidc import _assume_role_policy, _deploy_policy
+from infra.iam.readonly import _readonly_assume_role_policy, _readonly_deny_policy
 from infra.logging_bucket import _log_bucket_policy
 from infra.pulumi_state import _bucket_policy
 
@@ -89,6 +90,44 @@ def test_automation_policy_scopes_to_bootstrap_services():
     }
     assert statements["ManageBootstrapBackup"]["Action"] == ["backup:*"]  # nosec B101
     assert statements["ManageBootstrapEcr"]["Action"] == ["ecr:*"]  # nosec B101
+
+
+def test_readonly_assume_role_policy_requires_mfa_for_principals():
+    policy = json.loads(
+        _readonly_assume_role_policy(
+            ["arn:aws:iam::123456789012:user/dev", "arn:aws:iam::123456789012:role/ci"]
+        )
+    )
+    statement = policy["Statement"][0]
+    assert policy["Version"] == "2012-10-17"  # nosec B101
+    assert statement["Effect"] == "Allow"  # nosec B101
+    assert statement["Principal"]["AWS"] == [  # nosec B101
+        "arn:aws:iam::123456789012:user/dev",
+        "arn:aws:iam::123456789012:role/ci",
+    ]
+    assert statement["Action"] == "sts:AssumeRole"  # nosec B101
+    assert statement["Condition"]["Bool"]["aws:MultiFactorAuthPresent"] == "true"  # nosec B101
+
+
+def test_readonly_deny_policy_blocks_secret_and_credential_reads():
+    policy = json.loads(_readonly_deny_policy())
+    statement = policy["Statement"][0]
+    assert policy["Version"] == "2012-10-17"  # nosec B101
+    assert statement["Sid"] == "DenySecretAndCredentialReads"  # nosec B101
+    assert statement["Effect"] == "Deny"  # nosec B101
+    assert statement["Resource"] == "*"  # nosec B101
+    actions = statement["Action"]
+    for blocked in (
+        "secretsmanager:GetSecretValue",
+        "kms:Decrypt",
+        "ssm:GetParameter",
+        "lambda:GetFunction",
+        "ec2:GetPasswordData",
+        "ecr:GetAuthorizationToken",
+        "sts:GetSessionToken",
+        "cognito-identity:GetCredentialsForIdentity",
+    ):
+        assert blocked in actions  # nosec B101
 
 
 def test_log_bucket_policy_contains_required_statements():

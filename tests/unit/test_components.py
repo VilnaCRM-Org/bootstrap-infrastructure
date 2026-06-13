@@ -16,7 +16,7 @@ from infra import (
     pulumi_secrets,
     pulumi_state,
 )
-from infra.iam import GitHubOidcRoles, github_oidc
+from infra.iam import ClaudeReadOnlyRole, GitHubOidcRoles, github_oidc
 from infra.utils.outputs import future_output
 
 
@@ -324,6 +324,73 @@ def test_task_roles_module_has_no_exports():
     from infra.iam import task_roles
 
     assert task_roles.__all__ == []  # nosec B101
+
+
+def test_claude_readonly_role_emits_role_and_guardrail_policies(
+    pulumi_mocks, monkeypatch
+):  # noqa: ARG001
+    monkeypatch.setattr(config.settings, "repo", "bootstrap-infrastructure")
+    monkeypatch.setattr(config.settings, "environment", "test")
+
+    readonly = ClaudeReadOnlyRole(
+        "claude-readonly",
+        principal_arns=["arn:aws:iam::123456789012:user/dev"],
+    )
+
+    # Assert on each resource's own resolved outputs (not the shared mock list,
+    # whose async child-resource ordering is not deterministic across the suite).
+    role_arn = _sync_await(future_output(readonly.role.arn))
+    role_name = _sync_await(future_output(readonly.role.name))
+    assume_role_policy = _sync_await(future_output(readonly.role.assume_role_policy))
+    max_session_duration = _sync_await(
+        future_output(readonly.role.max_session_duration)
+    )
+    tags = _sync_await(future_output(readonly.role.tags))
+    attachment_policy_arn = _sync_await(
+        future_output(readonly.readonly_attachment.policy_arn)
+    )
+    deny_policy = _sync_await(future_output(readonly.secret_deny_policy.policy))
+
+    assert role_name == "ClaudeReadOnly-bootstrap-infrastructure-test"  # nosec B101
+    assert role_arn.endswith(  # nosec B101
+        ":role/ClaudeReadOnly-bootstrap-infrastructure-test"
+    )
+    assert max_session_duration == 3600  # nosec B101
+    assert "aws:MultiFactorAuthPresent" in assume_role_policy  # nosec B101
+    assert tags["Purpose"] == "claude-readonly"  # nosec B101
+    assert attachment_policy_arn == "arn:aws:iam::aws:policy/ReadOnlyAccess"  # nosec B101
+    assert "DenySecretAndCredentialReads" in deny_policy  # nosec B101
+    assert '"Effect": "Deny"' in deny_policy  # nosec B101
+
+
+def test_claude_readonly_role_requires_principals(monkeypatch):
+    monkeypatch.setattr(config.settings, "repo", "bootstrap-infrastructure")
+    monkeypatch.setattr(config.settings, "environment", "test")
+    with pytest.raises(ValueError, match="at least one principal"):
+        ClaudeReadOnlyRole("claude-readonly-empty", principal_arns=[])
+
+
+def test_stack_main_creates_readonly_role_when_configured(monkeypatch):
+    config.managed_repositories.cache_clear()
+    try:
+        monkeypatch.setattr(config.settings, "repo", "repo")
+        monkeypatch.setattr(config.settings, "environment", "test")
+        monkeypatch.setattr(config.settings, "replication_region", "us-west-2")
+        monkeypatch.setattr(
+            config.settings,
+            "github_oidc_provider_arn",
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+        )
+        monkeypatch.setattr(config.settings, "managed_repo_overrides", None)
+        monkeypatch.setattr(
+            config.settings,
+            "claude_readonly_principal_arns",
+            ["arn:aws:iam::123456789012:user/dev"],
+        )
+        stack_path = Path(__file__).resolve().parents[2] / "pulumi" / "__main__.py"
+        runpy.run_path(str(stack_path))
+    finally:
+        config.managed_repositories.cache_clear()
 
 
 def test_stack_main_executes(monkeypatch):

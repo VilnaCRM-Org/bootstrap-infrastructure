@@ -14,13 +14,21 @@ from infra import (
     PulumiStateBuckets,
     S3BackupPlan,
 )
-from infra.iam import GitHubOidcRoles
+from infra.config import claude_readonly_principal_arns
+from infra.iam import ClaudeReadOnlyRole, GitHubOidcRoles
 
 logging = CentralLoggingBuckets("central-logging")
 state = PulumiStateBuckets("pulumi-state")
 secrets = PulumiSecretsKeys("pulumi-secrets")
 oidc = GitHubOidcRoles("github-oidc", secrets_key_arns=secrets.key_arns)
 automation = GitHubAutomation("github-automation")
+
+readonly_principal_arns = claude_readonly_principal_arns()
+if readonly_principal_arns:
+    claude_readonly = ClaudeReadOnlyRole(
+        "claude-readonly", principal_arns=readonly_principal_arns
+    )
+    pulumi.export("claudeReadonlyRoleArn", claude_readonly.role.arn)
 
 backup_targets = [logging.bucket.arn, *state.bucket_arns.values()]
 S3BackupPlan("s3-backup", backup_target_arns=backup_targets)
