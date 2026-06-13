@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "AWS_PROFILE": "bootstrap-ro-test",
+    "AWS_REGION": "eu-central-1",
+    "AWS_PAGER": ""
+  },
+  "permissions": {
+    "defaultMode": "plan",
+    "allow": [
+      "Bash(aws sts get-caller-identity:*)",
+      "Bash(aws s3 ls:*)",
+      "Bash(aws s3api list-*:*)",
+      "Bash(aws s3api get-bucket-*:*)",
+      "Bash(aws s3api head-*:*)",
+      "Bash(aws * describe-*:*)",
+      "Bash(aws * list-*:*)",
+      "Bash(aws * get-*:*)",
+      "Bash(aws logs filter-log-events:*)",
+      "Bash(aws logs get-log-events:*)",
+      "Bash(pulumi stack:*)",
+      "Bash(pulumi preview:*)",
+      "Bash(pulumi about:*)"
+    ],
+    "deny": [
+      "Bash(aws * create-*:*)",
+      "Bash(aws * delete-*:*)",
+      "Bash(aws * put-*:*)",
+      "Bash(aws * update-*:*)",
+      "Bash(aws * modify-*:*)",
+      "Bash(aws * remove-*:*)",
+      "Bash(aws * attach-*:*)",
+      "Bash(aws * detach-*:*)",
+      "Bash(aws * associate-*:*)",
+      "Bash(aws * run-instances:*)",
+      "Bash(aws * terminate-*:*)",
+      "Bash(aws * start-*:*)",
+      "Bash(aws * stop-*:*)",
+      "Bash(aws * reboot-*:*)",
+      "Bash(aws iam *)",
+      "Bash(aws s3 rm:*)",
+      "Bash(aws s3 cp:*)",
+      "Bash(aws s3 mv:*)",
+      "Bash(aws s3 sync:*)",
+      "Bash(aws secretsmanager get-secret-value:*)",
+      "Bash(aws kms decrypt:*)",
+      "Bash(aws ssm get-parameter*:*)",
+      "Bash(aws cloudformation deploy:*)",
+      "Bash(aws cloudformation create-*:*)",
+      "Bash(aws cloudformation update-*:*)",
+      "Bash(aws cloudformation delete-*:*)",
+      "Bash(aws cloudformation execute-*:*)",
+      "Bash(aws * --profile *prod*)",
+      "Bash(AWS_PROFILE=*prod* *)",
+      "Bash(pulumi up:*)",
+      "Bash(pulumi destroy:*)",
+      "Bash(pulumi cancel:*)",
+      "Bash(pulumi state delete:*)",
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/aws-readonly-guard.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

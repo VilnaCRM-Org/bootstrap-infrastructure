@@ -17,6 +17,8 @@ from infra.config import (
     _sanitize_bucket_component,
     automation_role_name,
     central_logging_bucket_name,
+    claude_readonly_principal_arns,
+    claude_readonly_role_name,
     pulumi_secrets_alias_name_for_repo,
     pulumi_secrets_provider_for_repo,
     runner_ecr_repository_name,
@@ -243,3 +245,47 @@ def test_central_logging_bucket_length_guard(monkeypatch):
     monkeypatch.setattr(settings, "environment", "e" * 40)
     with pytest.raises(ValueError):
         central_logging_bucket_name("regionname")
+
+
+def test_claude_readonly_role_name(monkeypatch):
+    """Claude read-only role name is sanitized and environment-scoped."""
+    monkeypatch.setattr(settings, "environment", "test")
+    assert claude_readonly_role_name("My.Repo") == "ClaudeReadOnly-my-repo-test"  # nosec B101
+
+
+def test_claude_readonly_role_name_length_guard(monkeypatch):
+    """Claude read-only role name should not exceed the IAM 64-char limit."""
+    monkeypatch.setattr(settings, "environment", "e" * 40)
+    with pytest.raises(ValueError):
+        claude_readonly_role_name("r" * 40)
+
+
+def test_load_claude_readonly_principal_arns_validation():
+    """claudeReadonlyPrincipalArns input validation enforces structure."""
+    assert config._load_claude_readonly_principal_arns(None) is None  # nosec B101
+    with pytest.raises(ValueError):
+        config._load_claude_readonly_principal_arns("not-a-list")
+    with pytest.raises(ValueError):
+        config._load_claude_readonly_principal_arns([])
+    with pytest.raises(ValueError):
+        config._load_claude_readonly_principal_arns([123])
+    with pytest.raises(ValueError):
+        config._load_claude_readonly_principal_arns([" "])
+
+
+def test_load_claude_readonly_principal_arns_success():
+    """Valid claudeReadonlyPrincipalArns values are trimmed and returned."""
+    arns = config._load_claude_readonly_principal_arns(
+        [" arn:aws:iam::123456789012:user/dev "]
+    )
+    assert arns == ["arn:aws:iam::123456789012:user/dev"]  # nosec B101
+
+
+def test_claude_readonly_principal_arns_getter(monkeypatch):
+    """The getter returns a copy of configured ARNs, or an empty list."""
+    monkeypatch.setattr(
+        settings, "claude_readonly_principal_arns", ["arn:aws:iam::1:user/a"]
+    )
+    assert claude_readonly_principal_arns() == ["arn:aws:iam::1:user/a"]  # nosec B101
+    monkeypatch.setattr(settings, "claude_readonly_principal_arns", None)
+    assert claude_readonly_principal_arns() == []  # nosec B101

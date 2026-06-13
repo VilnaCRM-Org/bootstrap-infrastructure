@@ -24,6 +24,7 @@ class RepoSettings:
     github_token: str | None
     github_oidc_provider_arn: str | None
     managed_repo_overrides: list["ManagedRepository"] | None = field(default=None)
+    claude_readonly_principal_arns: list[str] | None = field(default=None)
 
 
 @dataclass
@@ -117,6 +118,36 @@ settings.managed_repo_overrides = _load_managed_repo_overrides(
 )
 
 
+def _load_claude_readonly_principal_arns(raw: Any) -> list[str] | None:
+    """Normalize claudeReadonlyPrincipalArns config into a list of IAM ARNs."""
+    if raw is None:
+        return None
+    if not isinstance(raw, list):
+        raise ValueError(
+            "claudeReadonlyPrincipalArns config must be a list of IAM principal ARNs."
+        )
+    arns: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(
+                "Each claudeReadonlyPrincipalArns entry must be a non-empty ARN string."
+            )
+        arns.append(item.strip())
+    if not arns:
+        raise ValueError("claudeReadonlyPrincipalArns config cannot be empty.")
+    return arns
+
+
+settings.claude_readonly_principal_arns = _load_claude_readonly_principal_arns(
+    cfg.get_object("claudeReadonlyPrincipalArns")
+)
+
+
+def claude_readonly_principal_arns() -> list[str]:
+    """Return the IAM principal ARNs allowed to assume the Claude read-only role."""
+    return list(settings.claude_readonly_principal_arns or [])
+
+
 def _sanitize_bucket_component(value: str, label: str) -> str:
     """Return a DNS-safe S3 bucket component derived from user input."""
     normalized = value.strip().lower()
@@ -208,6 +239,19 @@ def automation_role_name(repo_name: str) -> str:
     if len(name) > 64:
         raise ValueError(
             "Combined repo/environment produce automation role name "
+            f"'{name}' longer than 64 characters."
+        )
+    return name
+
+
+def claude_readonly_role_name(repo_name: str) -> str:
+    """Compute the Claude read-only role name for this repository/environment."""
+    repo_part = _sanitize_bucket_component(repo_name, "repoSlug").replace(".", "-")
+    env_part = _sanitize_bucket_component(settings.environment, "environment")
+    name = f"ClaudeReadOnly-{repo_part}-{env_part}"
+    if len(name) > 64:
+        raise ValueError(
+            "Combined repo/environment produce Claude read-only role name "
             f"'{name}' longer than 64 characters."
         )
     return name
