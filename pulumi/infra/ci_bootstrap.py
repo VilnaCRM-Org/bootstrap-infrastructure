@@ -130,7 +130,16 @@ class _CiRoleSpec:
 
 @dataclass(frozen=True)
 class _BootstrapBuildContext:
-    """Shared resource inputs for the CI bootstrap component."""
+    """Shared resource inputs for the CI bootstrap component.
+
+    ``repo`` is the specific ``*-infrastructure`` repository being governed and
+    ``project`` is its canonical naming root (``sanitize_bucket_component(repo)``,
+    the full slug — AWS-SRE-4, NOT ``project_name``). Both default to the values
+    derived from ``settings.repo`` so the single-repo bootstrap entrypoint and its
+    existing callers keep byte-identical output (NFR6); the governance loop builds
+    one context per catalog repo. This is the single source of truth threaded
+    through the role/policy helpers — there is no parallel ``_RepoCiContext``.
+    """
 
     parent: pulumi.Resource
     name: str
@@ -141,6 +150,15 @@ class _BootstrapBuildContext:
     provider_arn: pulumi.Input[str]
     pulumi_dir: str
     protect_resources: bool
+    repo: str | None = None
+    project: str | None = None
+
+    def __post_init__(self) -> None:
+        """Derive ``repo``/``project`` from settings when not supplied."""
+        if self.repo is None:
+            object.__setattr__(self, "repo", _require_repo(self.settings).repo)
+        if self.project is None:
+            object.__setattr__(self, "project", _ci_config_project(self.settings))
 
 
 @dataclass(frozen=True)
@@ -205,10 +223,15 @@ def _ci_secret_suffixes(settings: BootstrapSettings) -> tuple[str, ...]:
     )
 
 
-def _ci_role_name(settings: BootstrapSettings, purpose: str) -> str:
+def _ci_role_name(
+    settings: BootstrapSettings,
+    purpose: str,
+    project: str | None = None,
+) -> str:
     """Return a deterministic GitHub CI role name for one purpose."""
     prefix = _CI_ROLE_PREFIX_BY_PURPOSE[purpose]
-    name = f"{prefix}-{_ci_config_project(settings)}-{_environment_part(settings)}"
+    resolved_project = project if project is not None else _ci_config_project(settings)
+    name = f"{prefix}-{resolved_project}-{_environment_part(settings)}"
     if len(name) > _MAX_IAM_ROLE_NAME_LENGTH:
         raise ValueError(
             "Combined repo/environment produce GitHub CI role name "
@@ -234,26 +257,35 @@ def _branch_ref(settings: BootstrapSettings) -> str:
     return f"refs/heads/{settings.github_branch or 'main'}"
 
 
-def _repo_subject(settings: BootstrapSettings, suffix: str) -> str:
+def _repo_subject(
+    settings: BootstrapSettings,
+    suffix: str,
+    repo: str | None = None,
+) -> str:
     """Return a GitHub OIDC subject for this repository."""
-    if not settings.repo:
+    resolved_repo = repo if repo is not None else settings.repo
+    if not resolved_repo:
         raise ValueError("repoSlug config is required for GitHub OIDC subjects.")
-    return f"repo:{settings.org}/{settings.repo}:{suffix}"
+    return f"repo:{settings.org}/{resolved_repo}:{suffix}"
 
 
-def _deployment_role_subjects(settings: BootstrapSettings, purpose: str) -> list[str]:
+def _deployment_role_subjects(
+    settings: BootstrapSettings,
+    purpose: str,
+    repo: str | None = None,
+) -> list[str]:
     """Return trusted GitHub OIDC subjects for a CI deployment role."""
-    branch_subject = _repo_subject(settings, f"ref:{_branch_ref(settings)}")
+    branch_subject = _repo_subject(settings, f"ref:{_branch_ref(settings)}", repo)
     if purpose == "preview" and settings.environment == "test":
         return [
             branch_subject,
-            _repo_subject(settings, "pull_request"),
-            _repo_subject(settings, "environment:test"),
+            _repo_subject(settings, "pull_request", repo),
+            _repo_subject(settings, "environment:test", repo),
         ]
     if settings.environment == "test":
-        return [branch_subject, _repo_subject(settings, "environment:test")]
+        return [branch_subject, _repo_subject(settings, "environment:test", repo)]
     if purpose == "apply" and settings.environment == "prod":
-        return [_repo_subject(settings, "environment:prod")]
+        return [_repo_subject(settings, "environment:prod", repo)]
     return [branch_subject]
 
 
@@ -289,9 +321,16 @@ def _deployment_assume_role_policy(
     )
 
 
-def _state_bucket_resources(settings: BootstrapSettings) -> tuple[str, tuple[str, str]]:
+def _state_bucket_resources(
+    settings: BootstrapSettings,
+    repo: str | None = None,
+) -> tuple[str, tuple[str, str]]:
     """Return the Pulumi backend bucket and state-object ARN patterns."""
-    bucket_name = settings.state_bucket_name()
+    bucket_name = (
+        settings.state_bucket_name_for_repo(repo)
+        if repo is not None
+        else settings.state_bucket_name()
+    )
     return (
         f"arn:aws:s3:::{bucket_name}",
         (
@@ -328,13 +367,14 @@ def _pulumi_backend_policy_document(
     account_id: str,
     partition: str,
     settings: BootstrapSettings,
+    repo: str | None = None,
 ) -> str:
     """Return S3 backend and KMS secrets-provider access for Pulumi CLI."""
-    bucket_arn, object_arns = _state_bucket_resources(settings)
-    repo = _require_repo(settings).repo or ""
+    resolved_repo = repo if repo is not None else (_require_repo(settings).repo or "")
+    bucket_arn, object_arns = _state_bucket_resources(settings, resolved_repo)
     alias_conditions = _pulumi_secrets_alias_conditions(
         settings,
-        repo,
+        resolved_repo,
         _environment_part(settings),
         include_platform_bootstrap=True,
     )
@@ -446,19 +486,23 @@ def _role_policy_documents(
     partition: str,
     settings: BootstrapSettings,
     purpose: str,
+    repo: str | None = None,
 ) -> list[tuple[str, str]]:
     """Return policy documents for one GitHub CI role purpose."""
-    backend_policy = _pulumi_backend_policy_document(account_id, partition, settings)
+    resolved_repo = repo if repo is not None else settings.repo
+    backend_policy = _pulumi_backend_policy_document(
+        account_id, partition, settings, resolved_repo
+    )
     if purpose in {"preview", "drift"}:
         return [
             ("pulumi-backend", backend_policy),
             ("read-only", _read_only_policy_document(account_id, partition, settings)),
         ]
-    if not settings.repo:
+    if not resolved_repo:
         raise ValueError("repoSlug config is required for GitHub CI apply policy.")
     return [
         ("pulumi-backend", backend_policy),
-        *_automation_policy_documents(account_id, settings, settings.repo),
+        *_automation_policy_documents(account_id, settings, resolved_repo),
         ("iam-managed-policies", _apply_extra_policy_document(account_id, partition)),
     ]
 
@@ -468,18 +512,23 @@ def _role_specs(
     account_id: str,
     partition: str,
     settings: BootstrapSettings,
+    repo: str | None = None,
+    project: str | None = None,
 ) -> list[_CiRoleSpec]:
     """Return deterministic role specs for the three deployment role purposes."""
+    resolved_repo = repo if repo is not None else settings.repo
+    resolved_project = project if project is not None else _ci_config_project(settings)
     return [
         _CiRoleSpec(
             purpose=purpose,
-            role_name=_ci_role_name(settings, purpose),
-            subjects=_deployment_role_subjects(settings, purpose),
+            role_name=_ci_role_name(settings, purpose, resolved_project),
+            subjects=_deployment_role_subjects(settings, purpose, resolved_repo),
             policy_documents=_role_policy_documents(
                 account_id,
                 partition,
                 settings,
                 purpose,
+                resolved_repo,
             ),
         )
         for purpose in ("preview", "apply", "drift")
@@ -491,6 +540,8 @@ def _create_role(
     spec: _CiRoleSpec,
 ) -> aws.iam.Role:
     """Create or import one GitHub OIDC CI role and its inline policies."""
+    repository = f"{context.settings.org}/{context.repo}"
+    repository_tag = context.project or _ci_config_project(context.settings)
     role = aws.iam.Role(
         f"{context.name}-{spec.purpose}-role",
         name=spec.role_name,
@@ -498,14 +549,14 @@ def _create_role(
             pulumi.Output.from_input(context.provider_arn),
             lambda arn: _deployment_assume_role_policy(
                 arn,
-                f"{context.settings.org}/{context.settings.repo}",
+                repository,
                 spec.subjects,
             ),
         ),
         tags=base_tags(
             {
                 "Purpose": f"github-ci-{spec.purpose}",
-                "Repository": _ci_config_project(context.settings),
+                "Repository": repository_tag,
             },
             settings=context.settings,
         ),
@@ -524,7 +575,7 @@ def _create_role(
                 tags=base_tags(
                     {
                         "Purpose": f"github-ci-{spec.purpose}-policy",
-                        "Repository": _ci_config_project(context.settings),
+                        "Repository": repository_tag,
                     },
                     settings=context.settings,
                 ),
@@ -882,6 +933,8 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
                 account_id=account_id,
                 partition=partition,
                 settings=configured_settings,
+                repo=context.repo,
+                project=context.project,
             ),
         )
         self.role_arns = {purpose: role.arn for purpose, role in self.roles.items()}

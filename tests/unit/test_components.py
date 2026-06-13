@@ -832,7 +832,7 @@ def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):
     monkeypatch.setattr(
         ci_bootstrap,
         "_pulumi_backend_policy_document",
-        lambda _account_id, _partition, _settings: "{}",
+        lambda _account_id, _partition, _settings, _repo=None: "{}",
     )
     with pytest.raises(ValueError, match="apply policy"):
         ci_bootstrap._role_policy_documents(
