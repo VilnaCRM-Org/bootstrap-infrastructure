@@ -4146,25 +4146,32 @@ def test_validate_repository_catalogs_rejects_duplicate_project(
         module.validate_catalog(catalog_path, schema_path)
 
 
-def test_validate_repository_catalogs_rejects_overlong_prod_preview_role(
+def test_validate_repository_catalogs_rejects_overlong_config_read_role(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A repo whose prod-preview role exceeds 64 chars fails at validation time."""
+    """A repo whose LONGEST rendered role exceeds 64 chars fails validation (F4).
+
+    The longest rendered role is the config-read role
+    ``GitHubCiConfigRead-{project}-prod-preview`` = 19 (prefix) + len(project) +
+    13 (``-prod-preview``) = 32 + len(project). The 64-char limit therefore caps
+    ``project`` at 32, not the 51 the old ``{project}-prod-preview`` guard allowed.
+    """
     module = load_script_module(monkeypatch, "validate_repository_catalogs")
     pulumi_dir = tmp_path / "repo" / "pulumi"
-    # 53 chars + "-prod-preview" (13) = 66 > 64.
-    overlong = "a" * 53
+    schema_path = pulumi_dir / "repositories.schema.json"
+
+    # 33 chars -> config-read role 32 + 33 = 65 > 64 -> rejected.
+    overlong = "a" * 33
     catalog_path = _write_governance_catalog(
         pulumi_dir,
         [{"name": overlong, "project": overlong}],
     )
-    schema_path = pulumi_dir / "repositories.schema.json"
-    with pytest.raises(ValueError, match="prod-preview"):
+    with pytest.raises(ValueError, match="GitHubCiConfigRead"):
         module.validate_catalog(catalog_path, schema_path)
 
-    # The boundary repo (51 chars + "-prod-preview" = 64) is exactly at the
-    # limit and passes.
-    edge = "b" * 51
+    # The boundary repo (32 chars -> 32 + 32 = 64) is exactly at the limit and
+    # passes.
+    edge = "b" * 32
     ok_catalog = _write_governance_catalog(
         pulumi_dir,
         [{"name": edge, "project": edge}],
@@ -4172,18 +4179,58 @@ def test_validate_repository_catalogs_rejects_overlong_prod_preview_role(
     module.validate_catalog(ok_catalog, schema_path)
 
 
+def test_validate_repository_catalogs_rejects_name_old_guard_missed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A name the OLD ``{project}-prod-preview`` guard accepted is now rejected (F4).
+
+    A 40-char name passed the old guard (40 + 13 = 53 <= 64) yet produces the
+    config-read role ``GitHubCiConfigRead-<40>-prod-preview`` = 72 chars, which
+    fails at apply. The corrected guard rejects it at catalog time.
+    """
+    module = load_script_module(monkeypatch, "validate_repository_catalogs")
+    pulumi_dir = tmp_path / "repo" / "pulumi"
+    schema_path = pulumi_dir / "repositories.schema.json"
+
+    name = "a" * 40
+    # The old guard would have accepted this name (project-prod-preview <= 64).
+    assert len(f"{name}-prod-preview") <= 64  # nosec B101
+    # But the actual config-read role overshoots.
+    longest = module._longest_governance_role_name(name)
+    assert longest == f"GitHubCiConfigRead-{name}-prod-preview"  # nosec B101
+    assert len(longest) == 72  # nosec B101
+
+    catalog_path = _write_governance_catalog(
+        pulumi_dir,
+        [{"name": name, "project": name}],
+    )
+    with pytest.raises(ValueError, match="GitHubCiConfigRead"):
+        module.validate_catalog(catalog_path, schema_path)
+
+
 def test_validate_repository_catalogs_governance_role_name_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The sanitize + role-name-length helpers mirror the component derivation."""
+    """The sanitize + role-name helpers mirror the component derivation."""
     module = load_script_module(monkeypatch, "validate_repository_catalogs")
     assert (  # nosec B101
         module._sanitize_project_component("User.Service-Infra") == "user-service-infra"
     )
-    assert module._prod_preview_role_token("repo") == "repo-prod-preview"  # nosec B101
-    # Exactly 64 chars is allowed; 65 is rejected.
-    assert module._prod_preview_role_within_limit("c" * 51) is True  # nosec B101
-    assert module._prod_preview_role_within_limit("c" * 52) is False  # nosec B101
+    # The rendered role names cover the deploy trio per stack and every
+    # config-read suffix; the longest is the config-read prod-preview role.
+    rendered = module._rendered_governance_role_names("repo")
+    assert "GitHubCiPreview-repo-test" in rendered  # nosec B101
+    assert "GitHubCiApply-repo-prod" in rendered  # nosec B101
+    assert "GitHubCiDrift-repo-test" in rendered  # nosec B101
+    assert "GitHubCiConfigRead-repo-test-pr" in rendered  # nosec B101
+    assert "GitHubCiConfigRead-repo-prod-preview" in rendered  # nosec B101
+    assert (  # nosec B101
+        module._longest_governance_role_name("repo")
+        == "GitHubCiConfigRead-repo-prod-preview"
+    )
+    # Config-read prod-preview = 19 + len(project) + 13 -> project capped at 32.
+    assert len(module._longest_governance_role_name("c" * 32)) == 64  # nosec B101
+    assert len(module._longest_governance_role_name("c" * 33)) == 65  # nosec B101
 
 
 def test_validate_repository_catalogs_deployment_fanout_unchanged(

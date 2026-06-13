@@ -74,7 +74,13 @@ _IAM_ACCOUNT_QUOTAS = {
 _GOVERNANCE_APPLY_MANAGED_POLICIES = 7
 _GOVERNANCE_CATALOG_NAME = "repositories.governance.json"
 _MAX_IAM_ROLE_NAME_LENGTH = 64
-_PROD_PREVIEW_ROLE_SUFFIX = "-prod-preview"
+# Deploy-role name prefixes, mirroring ``ci_bootstrap._CI_ROLE_PREFIX_BY_PURPOSE``.
+_CI_DEPLOY_ROLE_PREFIXES = ("GitHubCiPreview", "GitHubCiApply", "GitHubCiDrift")
+# Deployment-role environment tokens, mirroring ``_environment_part(settings)``
+# for the two governance stacks (``test`` / ``prod``).
+_GOVERNANCE_ENVIRONMENT_PARTS = ("test", "prod")
+# Config-read role prefix, mirroring ``ci_config._ci_config_read_role_name``.
+_CI_CONFIG_READ_ROLE_PREFIX = "GitHubCiConfigRead"
 # DNS-safe sanitization mirroring ``BootstrapSettings.sanitize_bucket_component``
 # so the validator rejects over-long role names at catalog time, exactly as the
 # component would raise at apply time (FEASIBILITY-4).
@@ -111,14 +117,42 @@ def _sanitize_project_component(value: str) -> str:
     return candidate.replace(".", "-")
 
 
-def _prod_preview_role_token(name: str) -> str:
-    """Return ``sanitize_bucket_component(name) + '-prod-preview'`` (FEASIBILITY-4)."""
-    return f"{_sanitize_project_component(name)}{_PROD_PREVIEW_ROLE_SUFFIX}"
+def _sanitize_ci_suffix(suffix: str) -> str:
+    """Return the sanitized CI-config suffix token used in config-read role names.
+
+    Mirrors ``ci_config._ci_config_read_role_name`` which applies
+    ``sanitize_bucket_component(suffix).replace(".", "-")``.
+    """
+    return _sanitize_project_component(suffix)
 
 
-def _prod_preview_role_within_limit(name: str) -> bool:
-    """Return whether the prod-preview role token fits the 64-char IAM limit."""
-    return len(_prod_preview_role_token(name)) <= _MAX_IAM_ROLE_NAME_LENGTH
+def _rendered_governance_role_names(name: str) -> list[str]:
+    """Return every IAM role name the governance stack renders for one repo.
+
+    These are the names the Pulumi component would build (and length-guard) at
+    apply time (FEASIBILITY-4): the preview/apply/drift deploy trio per stack and
+    the per-suffix config-read roles. The longest is the config-read role
+    ``GitHubCiConfigRead-{project}-prod-preview`` — the previous guard only checked
+    ``{project}-prod-preview`` and so under-counted the prefix, letting an
+    over-long config-read role validate yet fail at apply.
+    """
+    project = _sanitize_project_component(name)
+    names: list[str] = []
+    # Deploy trio: GitHubCi{Preview,Apply,Drift}-{project}-{env}.
+    for prefix in _CI_DEPLOY_ROLE_PREFIXES:
+        for env in _GOVERNANCE_ENVIRONMENT_PARTS:
+            names.append(f"{prefix}-{project}-{env}")
+    # Config-read roles: GitHubCiConfigRead-{project}-{suffix}.
+    for suffix in _GOVERNANCE_CI_SECRET_SUFFIXES:
+        names.append(
+            f"{_CI_CONFIG_READ_ROLE_PREFIX}-{project}-{_sanitize_ci_suffix(suffix)}"
+        )
+    return names
+
+
+def _longest_governance_role_name(name: str) -> str:
+    """Return the longest rendered governance role name for one repo."""
+    return max(_rendered_governance_role_names(name), key=len)
 
 
 def repository_catalog_paths(root_dir: Path) -> list[Path]:
@@ -324,14 +358,20 @@ def _validate_unique_projects(repositories: Sequence[object]) -> None:
 
 
 def _validate_governance_role_name_lengths(repositories: Sequence[object]) -> None:
-    """Reject repos whose prod-preview role would exceed the 64-char IAM limit."""
+    """Reject repos whose longest rendered IAM role would exceed the 64-char limit.
+
+    The guard is computed against the ACTUAL rendered role names — the
+    preview/apply/drift deploy trio per stack and the per-suffix config-read roles
+    (``GitHubCiConfigRead-{project}-prod-preview`` is the longest) — so a catalog
+    cannot validate yet produce a >64-char role that fails at apply (FEASIBILITY-4).
+    """
     for item in repositories:
         name = _repository_name(item)
-        if not _prod_preview_role_within_limit(name):
-            token = _prod_preview_role_token(name)
+        longest = _longest_governance_role_name(name)
+        if len(longest) > _MAX_IAM_ROLE_NAME_LENGTH:
             raise ValueError(
                 "Governance repository "
-                f"'{name}' produces a prod-preview role token '{token}' "
+                f"'{name}' produces an IAM role name '{longest}' "
                 f"longer than {_MAX_IAM_ROLE_NAME_LENGTH} characters; "
                 "rename the repository so it fits."
             )
