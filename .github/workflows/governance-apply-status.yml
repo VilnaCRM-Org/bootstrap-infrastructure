@@ -1,0 +1,93 @@
+name: Governance Apply Status
+
+# Always-reportable "Governance Apply" required check (architecture §7.5,
+# FEASIBILITY-1). "Governance Apply" is a GLOBAL required status check, but the
+# governance runner (pulumi-governance.yml) only fires on governance-touching
+# PRs via repository_dispatch. Without this workflow, NON-governance PRs would
+# never receive a "Governance Apply" status and would be permanently
+# unmergeable. This workflow posts a terminal/placeholder status to EVERY PR
+# head SHA so the required check is always reportable.
+#
+# CRITICAL SAFETY: this workflow uses pull_request_target (so GITHUB_TOKEN keeps
+# statuses: write even for fork PRs) but MUST NOT check out or execute any
+# PR-head code. It only (a) checks out the BASE repo's own
+# scripts/governance_paths.py (actions/checkout on pull_request_target defaults
+# its ref to the base branch — we deliberately do NOT set ref to the PR head),
+# and (b) reads the PR's changed-file LIST as DATA via the GitHub API. No PR
+# code runs, and this workflow has NO id-token / NO AWS.
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+# One run per PR head SHA so re-runs are coherent (the latest status wins).
+concurrency:
+  group: governance-apply-status-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  governance_apply_status:
+    name: Governance Apply Status
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      # Checks out the BASE repo (no `ref:` => pull_request_target defaults to
+      # the base branch). This brings in the trusted scripts/governance_paths.py
+      # from the base, NEVER the PR head. Do not add `ref:` pointing at the PR
+      # head — that would execute untrusted code with statuses: write.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Recompute governance scope from changed-file list
+        id: scope
+        run: |
+          # The PR's changed-file list is fetched as DATA (filenames only) and
+          # piped into the single source of truth governance predicate. No PR
+          # code is checked out or executed here.
+          files="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
+            --paginate \
+            --jq '.[].filename')"
+          python ./scripts/governance_paths.py --files-stdin <<< "${files}" \
+            >> "${GITHUB_OUTPUT}"
+
+      - name: Post terminal Governance Apply status (non-governance PR)
+        if: steps.scope.outputs.governance_touched != 'true'
+        run: |
+          # No governance changes: the @Kravalg-gated governance apply is not
+          # required, so the global required check is satisfied immediately.
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state=success \
+            -f context="Governance Apply" \
+            -f description="No governance changes; gate not required."
+
+      - name: Post placeholder Governance Apply status (governance PR)
+        if: steps.scope.outputs.governance_touched == 'true'
+        run: |
+          # Governance changes detected: hold the required check pending until
+          # the governance runner posts success after the gated test+prod apply.
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state=pending \
+            -f context="Governance Apply" \
+            -f description="Governance apply required: @Kravalg must run /pulumi <env> up; the governance runner posts success after the gated test+prod apply."
