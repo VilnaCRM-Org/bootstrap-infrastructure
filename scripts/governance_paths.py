@@ -42,7 +42,6 @@ GOVERNANCE_PATH_GLOBS: tuple[str, ...] = (
     "/scripts/_github_repository_controls.py",
     "/scripts/configure_github_repository_controls.py",
     "/.github/CODEOWNERS",
-    "/.github/workflows/governance-apply-status.yml",
     "/.github/workflows/pulumi-governance.yml",
     "/.github/workflows/pulumi-pr-command-runner.yml",
     "/.github/workflows/pulumi-pr-commands.yml",

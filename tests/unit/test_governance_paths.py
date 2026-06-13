@@ -37,7 +37,6 @@ def test_governance_path_globs_cover_expanded_credential_surface() -> None:
         "/scripts/_github_repository_controls.py",
         "/scripts/configure_github_repository_controls.py",
         "/.github/CODEOWNERS",
-        "/.github/workflows/governance-apply-status.yml",
         "/.github/workflows/pulumi-governance.yml",
         "/.github/workflows/pulumi-pr-command-runner.yml",
         "/.github/workflows/pulumi-pr-commands.yml",
@@ -89,17 +88,6 @@ def test_paths_touch_governance_closes_apply_context_support_holes() -> None:
     )
     assert (
         governance_paths.paths_touch_governance(["scripts/prepare_policy_pack.py"])
-        is True
-    )
-
-
-def test_paths_touch_governance_status_workflow_in_scope() -> None:
-    # The merge-gate status workflow controls the required-check semantics and
-    # must itself be Kravalg-gated.
-    assert (
-        governance_paths.paths_touch_governance(
-            [".github/workflows/governance-apply-status.yml"]
-        )
         is True
     )
 

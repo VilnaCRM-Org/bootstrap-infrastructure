@@ -26,7 +26,6 @@
 /scripts/_github_repository_controls.py          @Kravalg
 /scripts/configure_github_repository_controls.py @Kravalg
 /.github/CODEOWNERS                              @Kravalg
-/.github/workflows/governance-apply-status.yml   @Kravalg
 /.github/workflows/pulumi-governance.yml         @Kravalg
 /.github/workflows/pulumi-pr-command-runner.yml  @Kravalg
 /.github/workflows/pulumi-pr-commands.yml        @Kravalg
