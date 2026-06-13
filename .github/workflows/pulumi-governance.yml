@@ -1,0 +1,487 @@
+name: Pulumi Governance Runner
+
+# Dedicated, trusted governance apply path (architecture §7.2, §7.5, §5.1a).
+# Keyed to its OWN repository_dispatch event type so the intake never asks a
+# runner to do impossible cross-workflow routing. There is intentionally NO
+# workflow_dispatch: a manual prod/up entry would bypass the @Kravalg gate
+# (SECURITY-1). Every client_payload field is treated as untrusted and
+# re-derived from the verified PR head SHA before any id-token job runs.
+on:
+  repository_dispatch:
+    types:
+      - pulumi-governance-command
+
+concurrency:
+  group: >-
+    pulumi-governance-${{ github.event.client_payload.pull_request_number }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  preflight:
+    name: Preflight (server-side re-auth)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # No id-token here: trust is re-derived BEFORE any credential-minting job.
+    permissions:
+      contents: read
+      issues: write
+      # Rejection feedback is posted to the PR conversation; GitHub rejects this
+      # with only issues: write on the Actions token.
+      pull-requests: write
+    outputs:
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # All inputs arrive via client_payload only (no trusted workflow_dispatch).
+      REQUEST_PR_NUMBER: ${{ github.event.client_payload.pull_request_number }}
+      REQUEST_HEAD_SHA: ${{ github.event.client_payload.head_sha }}
+      REQUEST_COMMENT_ID: ${{ github.event.client_payload.comment_id }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Re-derive trust and verify governance request
+        id: resolve
+        run: |
+          post_pr_comment() {
+            local pr_number="$1"
+            local body="$2"
+            jq -n --arg body "${body}" '{body: $body}' \
+              | gh api \
+                --method POST \
+                "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
+                --input -
+          }
+
+          if [[ ! "${REQUEST_PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "error: pull_request_number must be numeric." >&2
+            exit 1
+          fi
+          if [[ ! "${REQUEST_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "error: head_sha must be a full lowercase 40-character commit SHA." >&2
+            exit 1
+          fi
+          if [[ ! "${REQUEST_COMMENT_ID}" =~ ^[0-9]+$ ]]; then
+            echo "error: comment_id must be numeric." >&2
+            exit 1
+          fi
+
+          # Re-validate PR number / head SHA / open-not-merged / same-repo head.
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}")"
+          actual_head_sha="$(jq -r '.head.sha' <<< "${pr_json}")"
+          actual_head_repo="$(jq -r '.head.repo.full_name' <<< "${pr_json}")"
+          actual_pr_state="$(jq -r '.state' <<< "${pr_json}")"
+          actual_pr_merged="$(jq -r '.merged' <<< "${pr_json}")"
+          if [[ "${actual_pr_state}" != "open" || "${actual_pr_merged}" == "true" ]]; then
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Governance runner rejected this request because the pull request is closed or merged."
+            exit 1
+          fi
+          if [[ "${actual_head_repo}" != "${GITHUB_REPOSITORY}" ]]; then
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Governance runner rejected this request because the pull request head is not in the base repository."
+            exit 1
+          fi
+          if [[ "${actual_head_sha}" != "${REQUEST_HEAD_SHA}" ]]; then
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Governance runner rejected this request because the pull request head moved after the command was queued. Comment again on the latest commit."
+            exit 1
+          fi
+
+          # Resolve the untrusted comment_id back to its author and require the
+          # sole approver @Kravalg (case-insensitive). The author decision lives
+          # in this trusted runner; the intake gate is defense-in-depth only.
+          comment_json="$(gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${REQUEST_COMMENT_ID}")"
+          comment_author="$(jq -r '.user.login' <<< "${comment_json}")"
+          if [[ "${comment_author,,}" != "kravalg" ]]; then
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Governance runner rejected this request because the governance apply is restricted to the sole approver @Kravalg."
+            exit 1
+          fi
+
+          # Recompute governance scope server-side from the verified head SHA's
+          # changed files. The client_payload governance flag is never trusted.
+          changed_files="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}/files" --jq '.[].filename')"
+          governance_touched="$(printf '%s\n' "${changed_files}" | python ./scripts/governance_paths.py --files-stdin)"
+          if [[ "${governance_touched}" != "governance_touched=true" ]]; then
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Governance runner rejected this request because the recomputed scope is not governance; only governance changes may mint governance credentials."
+            exit 1
+          fi
+
+          {
+            echo "head_sha=${REQUEST_HEAD_SHA}"
+            echo "pull_request_number=${REQUEST_PR_NUMBER}"
+          } >> "${GITHUB_OUTPUT}"
+
+  governance_test_plan:
+    name: Governance Test Plan
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_DIR: pulumi/governance
+      PULUMI_STACK: test
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: Governance test plan
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
+      - name: Configure AWS preview credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
+          role-session-name: gha-gov-test-plan-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Save governance test update plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_COMMIT_SHA: ${{ needs.preflight.outputs.head_sha }}
+        run: make pulumi-plan
+
+      - name: Upload governance test plan artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-plan
+          path: .artifacts/pulumi-plan
+          retention-days: 7
+
+  governance_test_apply:
+    name: Governance Test Apply
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - governance_test_plan
+    timeout-minutes: 30
+    # Static env gate: the @Kravalg reviewer (FR11) fires before the TEST apply
+    # mutates AWS (SECURITY-2: the test apply is gated, not just prod).
+    environment: governance
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_DIR: pulumi/governance
+      PULUMI_STACK: test
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: Governance test apply
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
+      - name: Configure AWS apply credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
+          role-session-name: gha-gov-test-apply-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Download governance test plan artifact
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-plan
+          path: .artifacts/pulumi-plan
+
+      - name: Apply saved governance test plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+        run: make pulumi-up-plan
+
+  governance_test_post_apply_drift:
+    name: Governance Test Post-Apply Drift
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - governance_test_apply
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_DIR: pulumi/governance
+      PULUMI_STACK: test
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: Governance test drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
+
+      - name: Configure AWS drift credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
+          role-session-name: gha-gov-test-drift-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run governance test post-apply drift detection
+        env:
+          PULUMI_DRIFT_STACKS: test
+        run: make test-drift
+
+  governance_prod_plan:
+    name: Governance Prod Plan
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - governance_test_apply
+      - governance_test_post_apply_drift
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_DIR: pulumi/governance
+      PULUMI_STACK: prod
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Load prod preview AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: prod-preview
+          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          purpose: Governance prod plan
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
+      - name: Configure AWS preview credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
+          role-session-name: gha-gov-prod-plan-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Save governance prod update plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_COMMIT_SHA: ${{ needs.preflight.outputs.head_sha }}
+        run: make pulumi-plan
+
+      - name: Upload governance prod plan artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-plan
+          path: .artifacts/pulumi-plan
+          retention-days: 7
+
+  governance_prod_apply:
+    name: Governance Prod Apply
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - governance_test_apply
+      - governance_test_post_apply_drift
+      - governance_prod_plan
+    timeout-minutes: 30
+    # Static env gate: the @Kravalg reviewer (FR11) fires before the PROD apply
+    # mutates AWS. test_* -> prod_* ordering mirrors the existing runner (FR15).
+    environment: governance
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_DIR: pulumi/governance
+      PULUMI_STACK: prod
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Verify approved commit SHA
+        run: |
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [[ "${checked_out_sha}" != "${{ needs.preflight.outputs.head_sha }}" ]]; then
+            echo "error: approved workflow SHA does not match checked-out governance SHA" >&2
+            exit 1
+          fi
+          echo "Approved governance SHA: ${checked_out_sha}"
+
+      - name: Load prod AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: prod
+          config-role-arn: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          purpose: Governance prod apply
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
+      - name: Configure AWS apply credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
+          role-session-name: gha-gov-prod-apply-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Download governance prod plan artifact
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-plan
+          path: .artifacts/pulumi-plan
+
+      - name: Apply saved governance prod plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+        run: make pulumi-up-plan
+
+  governance_status:
+    name: Governance Apply Status
+    if: always()
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - governance_test_plan
+      - governance_test_apply
+      - governance_test_post_apply_drift
+      - governance_prod_plan
+      - governance_prod_apply
+    timeout-minutes: 10
+    permissions:
+      # statuses: write lets the runner post the success-before-merge commit
+      # status; the repository_dispatch trigger cannot natively report a check.
+      statuses: write
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ needs.preflight.outputs.head_sha }}
+      PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+      PROD_APPLY_RESULT: ${{ needs.governance_prod_apply.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Post Governance Apply commit status
+        if: needs.preflight.outputs.head_sha != ''
+        run: |
+          # The required check "Governance Apply" resolves only because this
+          # runner explicitly posts that exact context to the approved head SHA
+          # (FR15, FEASIBILITY-1). State follows the prod apply outcome.
+          case "${PROD_APPLY_RESULT}" in
+            success) status_state="success" ;;
+            skipped|cancelled|"") status_state="pending" ;;
+            *) status_state="failure" ;;
+          esac
+          gh api \
+            --method POST \
+            "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
+            -f state="${status_state}" \
+            -f context="Governance Apply" \
+            -f "target_url=${RUN_URL}" \
+            -f description="Governance apply ${PROD_APPLY_RESULT}"
+
+      - name: Post governance result comment
+        if: needs.preflight.outputs.pull_request_number != ''
+        run: |
+          body_file="$(mktemp)"
+          {
+            echo "## Governance apply result"
+            echo
+            echo "- Commit: \`${HEAD_SHA}\`"
+            echo "- Workflow run: ${RUN_URL}"
+            echo
+            echo "| Stage | Result |"
+            echo "| --- | --- |"
+            echo "| Preflight | \`${{ needs.preflight.result }}\` |"
+            echo "| Test plan | \`${{ needs.governance_test_plan.result }}\` |"
+            echo "| Test apply | \`${{ needs.governance_test_apply.result }}\` |"
+            echo "| Test post-apply drift | \`${{ needs.governance_test_post_apply_drift.result }}\` |"
+            echo "| Prod plan | \`${{ needs.governance_prod_plan.result }}\` |"
+            echo "| Prod apply | \`${{ needs.governance_prod_apply.result }}\` |"
+            echo
+            echo "The \`Governance Apply\` commit status is posted to the approved head SHA as the success-before-merge gate."
+          } > "${body_file}"
+          jq -Rs '{body: .}' < "${body_file}" \
+            | gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --input -
