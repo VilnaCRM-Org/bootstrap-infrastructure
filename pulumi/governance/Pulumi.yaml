@@ -1,0 +1,4 @@
+name: governance
+runtime:
+  name: python
+description: Kravalg-gated multi-repo IAM/OIDC governance stack for *-infrastructure repos.
