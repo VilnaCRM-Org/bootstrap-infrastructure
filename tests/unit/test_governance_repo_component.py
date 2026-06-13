@@ -144,24 +144,26 @@ def _state_by_name(pulumi_mocks, name: str, *, start: int = 0) -> dict:
 
 def test_governance_apply_subjects_is_environment_governance_only_for_test():
     """Test-stack governance apply trusts ONLY ``environment:governance``."""
-    settings = _governance_settings("test")
-    subjects = governance._governance_apply_subjects(settings, "org/repo")
+    subjects = governance._governance_apply_subjects("org/repo")
 
     assert subjects == ["repo:org/repo:environment:governance"]  # nosec B101
 
 
 def test_governance_apply_subjects_is_environment_governance_only_for_prod():
-    """Prod-stack governance apply trusts ONLY ``environment:governance``."""
-    settings = _governance_settings("prod")
-    subjects = governance._governance_apply_subjects(settings, "org/repo")
+    """Prod-stack governance apply trusts ONLY ``environment:governance``.
+
+    The subject is independent of the stack/environment — it is fully
+    determined by the repository and the fixed governance environment, so the
+    same call shape covers both stacks.
+    """
+    subjects = governance._governance_apply_subjects("org/repo")
 
     assert subjects == ["repo:org/repo:environment:governance"]  # nosec B101
 
 
 def test_governance_apply_subjects_excludes_branch_ref_and_environment_test():
     """No bare branch-ref or ``environment:test`` subject leaks into apply trust."""
-    settings = _governance_settings("test")
-    serialized = json.dumps(governance._governance_apply_subjects(settings, "org/repo"))
+    serialized = json.dumps(governance._governance_apply_subjects("org/repo"))
 
     assert "ref:refs/heads/main" not in serialized  # nosec B101
     assert "environment:test" not in serialized  # nosec B101
@@ -339,6 +341,18 @@ def test_governance_payloads_prod_stack_shape():
     assert set(payloads) == {"prod-preview", "prod"}  # nosec B101
     assert "AWS_APPLY_ROLE_ARN" not in payloads["prod-preview"]  # nosec B101
     assert payloads["prod"]["AWS_APPLY_ROLE_ARN"] == "arn:apply"  # nosec B101
+    # Parity with ci_bootstrap._payloads: the prod apply env carries
+    # PULUMI_PREVIEW_STACKS (F6 regression fix).
+    assert payloads["prod"]["PULUMI_PREVIEW_STACKS"] == "prod"  # nosec B101
+    assert sorted(payloads["prod"]) == [  # nosec B101
+        "AWS_ACCOUNT_ID",
+        "AWS_APPLY_ROLE_ARN",
+        "AWS_REGION",
+        "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
+        "PULUMI_PREVIEW_STACKS",
+        "PULUMI_SECRETS_PROVIDER",
+    ]
 
 
 # --- RepoGovernance component (positive) ----------------------------------------
@@ -701,6 +715,31 @@ def test_governance_stack_args_defaults_region_to_eu_central_1():
     assert args.region == "eu-central-1"  # nosec B101
     assert args.oidc_provider_arn is None  # nosec B101
     assert args.write_secret_values is True  # nosec B101
+    # F5: the default pulumi_dir is the managed repo's project root (``pulumi``),
+    # never ``pulumi/governance`` (which exists only inside the bootstrap repo).
+    assert args.pulumi_dir == "pulumi"  # nosec B101
+
+
+def test_governance_payload_pulumi_dir_is_managed_repo_project_root():
+    """Generated CI payload PULUMI_DIR points downstream repos at ``pulumi`` (F5)."""
+    settings = _governance_settings("test")
+    repo = _synthetic_repo("user-service-infrastructure")
+    payloads = _governance_payloads(
+        settings=settings,
+        repo=repo,
+        account_id="123456789012",
+        region="eu-central-1",
+        pulumi_dir="pulumi",
+        role_arns={
+            "preview": "arn:preview",
+            "apply": "arn:apply",
+            "drift": "arn:drift",
+        },
+    )
+
+    for entry in payloads.values():
+        assert entry["PULUMI_DIR"] == "pulumi"  # nosec B101
+        assert entry["PULUMI_DIR"] != "pulumi/governance"  # nosec B101
 
 
 def test_governance_stack_args_accepts_injected_region_and_provider():

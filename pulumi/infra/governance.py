@@ -98,9 +98,7 @@ class GovernanceStackArgs:
     protect_resources: bool = True
 
 
-def _governance_apply_subjects(
-    settings: BootstrapSettings, repository: str
-) -> list[str]:
+def _governance_apply_subjects(repository: str) -> list[str]:
     """Return the governance apply-role trust subjects (§5.1a, SECURITY-2).
 
     The governance ``apply`` role does NOT reuse ``_deployment_role_subjects``:
@@ -110,6 +108,9 @@ def _governance_apply_subjects(
     prod-stack governance applies therefore trust ONLY
     ``repo:{org}/{repo}:environment:governance`` — satisfiable only through the
     env-gated apply job, never a push or a raw ``repository_dispatch``.
+
+    The subject is fully determined by ``repository`` and the fixed governance
+    environment, so no ``settings`` argument is required.
     """
     return [f"repo:{repository}:environment:{_GOVERNANCE_ENVIRONMENT}"]
 
@@ -207,7 +208,7 @@ def _governance_role_specs(
         repo=repo,
         project=project,
     )
-    governance_subjects = _governance_apply_subjects(settings, repository)
+    governance_subjects = _governance_apply_subjects(repository)
     backend_policy = _governance_backend_policy_document(
         account_id, partition, settings, repo, region
     )
@@ -303,7 +304,14 @@ def _governance_payloads(
     if environment == "prod":
         return {
             "prod-preview": {**preview_common, **drift_common},
-            "prod": {**common, "AWS_APPLY_ROLE_ARN": role_arns["apply"]},
+            "prod": {
+                **common,
+                "AWS_APPLY_ROLE_ARN": role_arns["apply"],
+                # Parity with ci_bootstrap._payloads: the prod apply env also
+                # carries PULUMI_PREVIEW_STACKS so the saved-plan apply targets
+                # the same stack set the preview produced.
+                "PULUMI_PREVIEW_STACKS": environment,
+            },
         }
     return {
         environment: {
@@ -412,7 +420,8 @@ class RepoGovernance(pulumi.ComponentResource):
         """Return settings pinned to this repo so derived helpers stay scoped."""
         if settings.repo == repo.name:
             return settings
-        return dataclasses.replace(settings, repo=repo.name)
+        rescoped: BootstrapSettings = dataclasses.replace(settings, repo=repo.name)
+        return rescoped
 
     def _create_state_and_secrets(
         self,
