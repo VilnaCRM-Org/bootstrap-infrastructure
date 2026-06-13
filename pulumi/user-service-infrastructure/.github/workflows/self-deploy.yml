@@ -1,0 +1,648 @@
+# Self-deploy workflow TEMPLATE for the managed repo user-service-infrastructure.
+#
+# This is an in-repo template asset (the operator copies/pushes it into the real
+# user-service-infrastructure GitHub repo). It mirrors the bootstrap PR-comment
+# deploy pattern: preflight -> test plan -> test apply (saved-plan) -> prod.
+#
+# AWS credentials come ONLY from GitHub OIDC role assumption — there are no static
+# AWS keys and no admin-managed-policy grant anywhere here. The non-secret
+# config-read role ARN is read from the GitHub repo variable the operator sets from
+# the governance githubVariables output; the deploy role ARN is read from the
+# AWS Secrets Manager CI-config secret through ./.github/actions/load-aws-ci-env.
+#
+# The governance stack (in bootstrap-infrastructure, pulumi/infra/governance.py)
+# OWNS and renders these roles for this repo; the names below are byte-equal to the
+# rendered names (single source of truth, asserted by the E5.S2 name-parity test):
+#   - config-read (test): GitHubCiConfigRead-user-service-infrastructure-test
+#     (= vars.AWS_TEST_CI_CONFIG_ROLE_ARN)
+#   - config-read (prod): GitHubCiConfigRead-user-service-infrastructure-prod
+#   - preview role:       GitHubCiPreview-user-service-infrastructure-test
+#   - apply role (test):  GitHubCiApply-user-service-infrastructure-test
+#   - apply role (prod):  GitHubCiApply-user-service-infrastructure-prod
+#   - drift role:         GitHubCiDrift-user-service-infrastructure-test
+# This repo NEVER creates IAM roles or OIDC trust for itself; it only assumes the
+# governance-provided roles.
+#
+# Applies go exclusively through the saved-plan IaC-only path (make pulumi-up-plan);
+# direct apply (make pulumi-up) is never invoked.
+name: Self-Deploy
+
+on:
+  repository_dispatch:
+    types:
+      - pulumi-pr-command
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Pull request number to operate on
+        required: true
+        type: string
+      head_sha:
+        description: Full PR head SHA to verify before running
+        required: true
+        type: string
+      target_environment:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+      command:
+        description: Pulumi command
+        required: true
+        type: choice
+        options:
+          - plan
+          - up
+
+concurrency:
+  group: >-
+    self-deploy-${{ github.event.client_payload.pull_request_number ||
+    inputs.pull_request_number }}-${{ github.event.client_payload.target_environment ||
+    inputs.target_environment }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      pull-requests: write
+    outputs:
+      command: ${{ steps.resolve.outputs.command }}
+      display_command: ${{ steps.resolve.outputs.display_command }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
+      target_environment: ${{ steps.resolve.outputs.target_environment }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REQUEST_COMMAND: ${{ github.event.client_payload.command || inputs.command }}
+      REQUEST_HEAD_SHA: ${{ github.event.client_payload.head_sha || inputs.head_sha }}
+      REQUEST_PR_NUMBER: >-
+        ${{ github.event.client_payload.pull_request_number ||
+        inputs.pull_request_number }}
+      REQUEST_TARGET_ENVIRONMENT: >-
+        ${{ github.event.client_payload.target_environment ||
+        inputs.target_environment }}
+    steps:
+      - name: Resolve and verify pull request command
+        id: resolve
+        run: |
+          post_pr_comment() {
+            local pr_number="$1"
+            local body="$2"
+            jq -n --arg body "${body}" '{body: $body}' \
+              | gh api \
+                --method POST \
+                "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
+                --input -
+          }
+
+          if [[ ! "${REQUEST_PR_NUMBER}" =~ ^[0-9]+$ ]]; then
+            echo "error: pull_request_number must be numeric." >&2
+            exit 1
+          fi
+          if [[ ! "${REQUEST_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "error: head_sha must be a full lowercase 40-character commit SHA." >&2
+            exit 1
+          fi
+          if [[ "${REQUEST_TARGET_ENVIRONMENT}" != "test" && "${REQUEST_TARGET_ENVIRONMENT}" != "prod" ]]; then
+            echo "error: target_environment must be test or prod." >&2
+            exit 1
+          fi
+          if [[ "${REQUEST_COMMAND}" != "plan" && "${REQUEST_COMMAND}" != "up" ]]; then
+            echo "error: command must be plan or up." >&2
+            exit 1
+          fi
+
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}")"
+          actual_head_sha="$(jq -r '.head.sha' <<< "${pr_json}")"
+          actual_head_repo="$(jq -r '.head.repo.full_name' <<< "${pr_json}")"
+          actual_pr_state="$(jq -r '.state' <<< "${pr_json}")"
+          actual_pr_merged="$(jq -r '.merged' <<< "${pr_json}")"
+          if [[ "${actual_pr_state}" != "open" || "${actual_pr_merged}" == "true" ]]; then
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Self-deploy rejected this request because the pull request is closed or merged."
+            exit 1
+          fi
+          if [[ "${actual_head_repo}" != "${GITHUB_REPOSITORY}" ]]; then
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Self-deploy rejected this request because the pull request head is not in the base repository."
+            exit 1
+          fi
+          if [[ "${actual_head_sha}" != "${REQUEST_HEAD_SHA}" ]]; then
+            post_pr_comment "${REQUEST_PR_NUMBER}" "Self-deploy rejected this request because the pull request head moved after the command was queued. Comment again on the latest commit."
+            exit 1
+          fi
+
+          {
+            echo "command=${REQUEST_COMMAND}"
+            echo "display_command=/pulumi ${REQUEST_TARGET_ENVIRONMENT} ${REQUEST_COMMAND}"
+            echo "head_sha=${REQUEST_HEAD_SHA}"
+            echo "pull_request_number=${REQUEST_PR_NUMBER}"
+            echo "target_environment=${REQUEST_TARGET_ENVIRONMENT}"
+          } >> "${GITHUB_OUTPUT}"
+
+  test_preview:
+    name: Test Preview
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      # Loads the test CI config from AWS Secrets Manager by first assuming the
+      # governance config-read role GitHubCiConfigRead-user-service-infrastructure-test
+      # (the non-secret ARN comes from the operator-set repo variable). The deploy
+      # role ARNs (preview/apply/drift) are returned from the secret payload.
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: Self-deploy test preview
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
+      - name: Validate test preview prerequisites
+        run: |
+          missing=()
+          for name in \
+            AWS_ACCOUNT_ID \
+            AWS_PREVIEW_ROLE_ARN \
+            PULUMI_BACKEND_URL \
+            PULUMI_SECRETS_PROVIDER \
+            PULUMI_PREVIEW_STACKS; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            printf 'error: self-deploy test preview is missing %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
+            echo "error: AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
+            exit 1
+          fi
+          if [[ "${PULUMI_BACKEND_URL}" != s3://* ]]; then
+            echo "error: PULUMI_BACKEND_URL must use an s3:// backend." >&2
+            exit 1
+          fi
+          if [[ "${PULUMI_SECRETS_PROVIDER}" != awskms://* ]]; then
+            echo "error: PULUMI_SECRETS_PROVIDER must use an awskms:// URI." >&2
+            exit 1
+          fi
+
+      # OIDC role assumption ONLY — assumes the governance preview role
+      # GitHubCiPreview-user-service-infrastructure-test by ARN. No static keys.
+      - name: Configure AWS preview credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
+          role-session-name: self-deploy-test-preview-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Emit test preview evidence
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
+          echo "Backend type: s3"
+          echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
+          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
+          echo "Role purpose: preview"
+          echo "PR command: ${{ needs.preflight.outputs.display_command }}"
+
+      - name: Start development environment
+        run: make start
+
+      - name: Save test update plan and preview artifact
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_COMMIT_SHA: ${{ needs.preflight.outputs.head_sha }}
+        run: make pulumi-plan
+
+      - name: Upload test preview artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            self-deploy-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-preview
+          path: .artifacts/pulumi-preview
+          retention-days: 7
+
+      - name: Upload test plan artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            self-deploy-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-plan
+          path: .artifacts/pulumi-plan
+          retention-days: 7
+
+  test_apply:
+    name: Test Apply
+    if: >-
+      needs.preflight.outputs.target_environment == 'prod' ||
+      (needs.preflight.outputs.target_environment == 'test' &&
+      needs.preflight.outputs.command == 'up')
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - test_preview
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      # Reuses the test config-read role GitHubCiConfigRead-user-service-infrastructure-test
+      # to load the apply role ARN GitHubCiApply-user-service-infrastructure-test.
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: Self-deploy test apply
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
+      # OIDC role assumption ONLY — assumes the governance apply role
+      # GitHubCiApply-user-service-infrastructure-test by ARN. No static keys and
+      # no admin-managed-policy grant (the apply role is least-privilege, repo-scoped).
+      - name: Configure AWS apply credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
+          role-session-name: self-deploy-test-apply-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Emit test apply evidence
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
+          echo "Backend type: s3"
+          echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
+          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
+          echo "Role purpose: apply"
+          echo "PR command: ${{ needs.preflight.outputs.display_command }}"
+
+      - name: Start development environment
+        run: make start
+
+      - name: Download test plan artifact
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            self-deploy-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-plan
+          path: .artifacts/pulumi-plan
+
+      # Saved-plan IaC-only apply (FR16/FR20). Direct apply (make pulumi-up) is
+      # rejected under GITHUB_ACTIONS=true; only the saved plan is applied here.
+      - name: Apply saved test plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+        run: make pulumi-up-plan
+
+  test_post_apply_drift:
+    name: Test Post-Apply Drift
+    if: >-
+      needs.preflight.outputs.target_environment == 'prod' ||
+      (needs.preflight.outputs.target_environment == 'test' &&
+      needs.preflight.outputs.command == 'up')
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - test_apply
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      # Assumes the governance drift role GitHubCiDrift-user-service-infrastructure-test
+      # via OIDC to verify the apply left no drift.
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: Self-deploy test drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
+
+      - name: Configure AWS drift credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
+          role-session-name: self-deploy-test-drift-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run test post-apply drift detection
+        run: make test-drift
+
+  prod_preview:
+    name: Prod Preview
+    if: >-
+      needs.preflight.outputs.target_environment == 'prod' &&
+      needs.test_post_apply_drift.result == 'success'
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - test_apply
+      - test_post_apply_drift
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      # Loads the prod-preview CI config via the prod config-read role
+      # GitHubCiConfigRead-user-service-infrastructure-prod-preview.
+      - name: Load prod preview AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: prod-preview
+          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          purpose: Self-deploy prod preview
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,
+            PULUMI_PREVIEW_STACKS,PULUMI_DRIFT_STACKS
+
+      - name: Validate production preview prerequisites
+        run: |
+          missing=()
+          for name in \
+            AWS_ACCOUNT_ID \
+            AWS_PREVIEW_ROLE_ARN \
+            AWS_DRIFT_ROLE_ARN \
+            PULUMI_BACKEND_URL \
+            PULUMI_SECRETS_PROVIDER \
+            PULUMI_PREVIEW_STACKS \
+            PULUMI_DRIFT_STACKS; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            printf 'error: self-deploy production preview is missing %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
+            echo "error: AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
+            exit 1
+          fi
+          if [[ "${PULUMI_BACKEND_URL}" != s3://* ]]; then
+            echo "error: PULUMI_BACKEND_URL must use an s3:// backend." >&2
+            exit 1
+          fi
+          if [[ "${PULUMI_SECRETS_PROVIDER}" != awskms://* ]]; then
+            echo "error: PULUMI_SECRETS_PROVIDER must use an awskms:// URI." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS preview credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
+          role-session-name: self-deploy-prod-preview-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Emit production preview evidence
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
+          echo "Backend type: s3"
+          echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
+          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
+          echo "Role purpose: preview"
+          echo "PR command: ${{ needs.preflight.outputs.display_command }}"
+
+      - name: Start development environment
+        run: make start
+
+      - name: Save production update plan and preview artifact
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_COMMIT_SHA: ${{ needs.preflight.outputs.head_sha }}
+        run: make pulumi-plan
+
+      - name: Upload production preview artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            self-deploy-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-preview
+          path: .artifacts/pulumi-preview
+          retention-days: 7
+
+      - name: Upload production plan artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            self-deploy-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-plan
+          path: .artifacts/pulumi-plan
+          retention-days: 7
+
+  prod_apply:
+    name: Prod Apply
+    if: >-
+      needs.preflight.outputs.target_environment == 'prod' &&
+      needs.preflight.outputs.command == 'up'
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - test_apply
+      - prod_preview
+    timeout-minutes: 30
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Verify approved commit SHA
+        run: |
+          checked_out_sha="$(git rev-parse HEAD)"
+          if [[ "${checked_out_sha}" != "${{ needs.preflight.outputs.head_sha }}" ]]; then
+            echo "error: approved workflow SHA does not match checked-out production SHA" >&2
+            exit 1
+          fi
+          echo "Approved production SHA: ${checked_out_sha}"
+
+      # Assumes the prod apply role GitHubCiApply-user-service-infrastructure-prod
+      # via OIDC, gated by the protected prod GitHub environment above. No static
+      # keys and no admin-managed-policy grant.
+      - name: Load prod AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: prod
+          config-role-arn: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          purpose: Self-deploy prod apply
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
+      - name: Configure AWS apply credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
+          role-session-name: self-deploy-prod-apply-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Emit production apply evidence
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "GitHub environment: prod"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
+          echo "Backend type: s3"
+          echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
+          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
+          echo "Role purpose: apply"
+          echo "PR command: ${{ needs.preflight.outputs.display_command }}"
+
+      - name: Start development environment
+        run: make start
+
+      - name: Download production plan artifact
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            self-deploy-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-plan
+          path: .artifacts/pulumi-plan
+
+      # Saved-plan IaC-only apply (FR16/FR20) — never direct make pulumi-up.
+      - name: Apply saved production plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+        run: make pulumi-up-plan
+
+  comment_result:
+    name: Comment Result
+    if: always()
+    runs-on: ubuntu-latest
+    needs:
+      - preflight
+      - test_preview
+      - test_apply
+      - test_post_apply_drift
+      - prod_preview
+      - prod_apply
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Post self-deploy result
+        run: |
+          body_file="$(mktemp)"
+          {
+            echo "## Self-deploy result"
+            echo
+            echo "- Command: \`${{ needs.preflight.outputs.display_command || 'preflight' }}\`"
+            echo "- Commit: \`${{ needs.preflight.outputs.head_sha || 'unknown' }}\`"
+            echo "- Workflow run: ${RUN_URL}"
+            echo
+            echo "| Stage | Result |"
+            echo "| --- | --- |"
+            echo "| Preflight | \`${{ needs.preflight.result }}\` |"
+            echo "| Test preview | \`${{ needs.test_preview.result }}\` |"
+            echo "| Test apply | \`${{ needs.test_apply.result }}\` |"
+            echo "| Test post-apply drift | \`${{ needs.test_post_apply_drift.result }}\` |"
+            echo "| Production preview | \`${{ needs.prod_preview.result }}\` |"
+            echo "| Production apply | \`${{ needs.prod_apply.result }}\` |"
+            echo
+            echo "Production stages are gated behind a successful test apply and test post-apply drift check for the same PR head SHA."
+          } > "${body_file}"
+
+          pr_number="${{ needs.preflight.outputs.pull_request_number }}"
+          if [[ -n "${pr_number}" ]]; then
+            jq -Rs '{body: .}' < "${body_file}" \
+              | gh api \
+                --method POST \
+                "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
+                --input -
+          else
+            cat "${body_file}"
+          fi
