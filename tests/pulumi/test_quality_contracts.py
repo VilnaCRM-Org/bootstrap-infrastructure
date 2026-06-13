@@ -92,10 +92,11 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
     assert deptry["package_module_name_map"]["pyyaml"] == ["yaml"]
     assert deptry["package_module_name_map"]["pulumi-policy"] == ["pulumi_policy"]
     assert deptry["per_rule_ignores"]["DEP002"] == ["pulumi-aws"]
-    assert importlinter["root_packages"] == ["app", "policy"]
+    assert importlinter["root_packages"] == ["app", "policy", "infra"]
     assert importlinter["include_external_packages"] is True
     contracts = {contract["name"]: contract for contract in importlinter["contracts"]}
     assert set(contracts) == {
+        "Governance component stays isolated from the policy pack and Pulumi app layer",
         "Pulumi runtime does not depend on the policy pack",
         "Policy pack stays isolated from Pulumi runtime modules",
         "Runtime guardrails stay behind the environment component",
