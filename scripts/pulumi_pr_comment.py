@@ -10,6 +10,11 @@ AUTHORIZED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
 PULUMI_ACTIONS = frozenset({"plan", "up"})
 PULUMI_ENVIRONMENTS = frozenset({"test", "prod"})
 
+# Sole approver of governance applies (FR13, D6). Login compare is
+# case-insensitive. This intake gate is defense-in-depth; the governance
+# runner's server-side re-auth (E1.S8) is the hard control.
+KRAVALG_LOGIN = "Kravalg"
+
 
 @dataclass(frozen=True)
 class PulumiPrCommand:
@@ -40,16 +45,32 @@ def parse_command(body: str) -> PulumiPrCommand | None:
     return None
 
 
-def author_is_authorized(author_association: str) -> bool:
+def author_is_authorized(
+    author_association: str,
+    *,
+    author_login: str = "",
+    governance_touched: bool = False,
+    action: str = "",
+) -> bool:
+    if governance_touched and action == "up":
+        return author_login.strip().lower() == KRAVALG_LOGIN.lower()
     return author_association.strip().upper() in AUTHORIZED_ASSOCIATIONS
 
 
 def build_outputs(
-    command: PulumiPrCommand | None, author_association: str
+    command: PulumiPrCommand | None,
+    author_association: str,
+    *,
+    author_login: str = "",
+    governance_touched: bool = False,
 ) -> dict[str, str]:
-    outputs = {
-        "authorized": "true" if author_is_authorized(author_association) else "false"
-    }
+    authorized = author_is_authorized(
+        author_association,
+        author_login=author_login,
+        governance_touched=governance_touched,
+        action=command.action if command is not None else "",
+    )
+    outputs = {"authorized": "true" if authorized else "false"}
     if command is None:
         return {**outputs, "skip": "true"}
 
@@ -80,12 +101,23 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("body")
     parser.add_argument("--author-association", required=True)
+    parser.add_argument("--author-login", default="")
+    parser.add_argument(
+        "--governance-touched",
+        choices=("true", "false"),
+        default="false",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    outputs = build_outputs(parse_command(args.body), args.author_association)
+    outputs = build_outputs(
+        parse_command(args.body),
+        args.author_association,
+        author_login=args.author_login,
+        governance_touched=args.governance_touched == "true",
+    )
     write_outputs(outputs, os.environ.get("GITHUB_OUTPUT"))
     return 0
 
