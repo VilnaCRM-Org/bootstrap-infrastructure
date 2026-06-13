@@ -104,13 +104,21 @@ _READ_ONLY_ACTIONS = (
 )
 # Full secret-leaking-read Deny attached to the read-only policy (preview/drift)
 # only (§5.3, FR22, D4). The read-only policy carries NO Allow for any of these,
-# so the Deny closes the leak surface — including ``secretsmanager:GetSecretValue``
-# and ``kms:Decrypt`` (preview/drift never decrypt a Pulumi secrets key). Deny is
-# CrossGuard-exempt (``Effect == "Deny"``). The cognito/ssm actions are expanded
-# to explicit names (Access Analyzer prefers explicit over the ``Get*`` wildcard).
+# so the Deny closes the leak surface — including ``secretsmanager:GetSecretValue``.
+# Deny is CrossGuard-exempt (``Effect == "Deny"``). The cognito/ssm actions are
+# expanded to explicit names (Access Analyzer prefers explicit over the ``Get*``
+# wildcard).
+#
+# ``kms:Decrypt`` is deliberately EXCLUDED. The preview/drift roles also carry the
+# pulumi-backend policy, whose alias-scoped ``UsePulumiSecretsProviderKey`` Allow
+# grants ``kms:Decrypt`` on the repo's OWN ``alias/pulumi-{repo}-{env}-secrets``
+# key so ``pulumi preview``/drift can decrypt the stack's encrypted config. An
+# explicit Deny on ``kms:Decrypt`` (Resource ``*``) wins over that Allow and would
+# break preview/drift on any encrypted-secret stack. The alias-scoped Allow is the
+# decryption boundary; a broad ``kms:Decrypt`` Deny here was both redundant (the
+# read-only policy carries no broad ``kms:Decrypt`` Allow) and harmful.
 _READ_ONLY_SECRET_DENY_ACTIONS = (
     "secretsmanager:GetSecretValue",
-    "kms:Decrypt",
     "ssm:GetParameter",
     "ssm:GetParameters",
     "ssm:GetParametersByPath",

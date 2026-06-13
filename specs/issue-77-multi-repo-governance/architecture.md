@@ -19,7 +19,7 @@ does not redesign from scratch. All `file:line` anchors trace to current code on
 | D1 | Account model (R1) | **Two accounts, region `eu-central-1`: the `test` stack asserts/deploys account `891377212104`, the `prod` stack asserts/deploys account `933245420672`.** `awsAccountId` is per-stack config; the component asserts `aws.get_caller_identity().account_id == configured awsAccountId` (no hardcoded literal in component code). Cross test↔prod blast radius is isolated by separate accounts (AWS best practice). The per-env KMS alias suffix (`-test`/`-prod`) and per-stack secrets providers are retained. |
 | D2 | Project shape (FR9) | **New separate Pulumi project `pulumi/governance/`**, parity with `pulumi/github-ci-bootstrap/`. The existing bootstrap project is left intact for backward compat (NFR6). The new project hosts a multi-repo loop built from the **same generalized component code** in `pulumi/infra/`. |
 | D3 | Trust unification (R2) | **Do NOT migrate the weak `PulumiDeploy-*` roles.** The governance project emits the *strong* trio (`GitHubCiPreview/Apply/Drift-*`) per repo using the bootstrap trust shape (`StringEquals` + `repository` pin + per-suffix subjects). `PulumiDeploy-*` is untouched (avoids import/replace churn). |
-| D4 | Deny scoping (R3) | The full secret-read **Deny** attaches **only** to `read-only` (preview/drift) and `config-read` policy documents. The apply role and the pulumi-backend policy keep `kms:Decrypt` (Deny would break applies). |
+| D4 | Deny scoping (R3) | The secret-read **Deny** attaches **only** to `read-only` (preview/drift) and `config-read` policy documents. `kms:Decrypt` is **excluded from the `read-only` Deny** because preview/drift roles also carry the pulumi-backend policy's alias-scoped `kms:Decrypt` Allow (needed to decrypt the stack's encrypted config during `pulumi preview`/drift); a broad `kms:Decrypt` Deny would override that Allow and break preview/drift on encrypted-secret stacks. The apply role and the pulumi-backend policy likewise keep `kms:Decrypt`. The `config-read` Deny keeps `kms:Decrypt` (config-read never decrypts a Pulumi key, so the Deny is harmless there). |
 | D5 | CODEOWNERS precision (R4) | Exact globs in §7.1 scope **only** governance/IAM/policy paths to `@Kravalg`; no catch-all `*` line, so unrelated paths stay unowned. |
 | D6 | Author-gate mechanism (FR13/FR14) | **Both layers, defense-in-depth:** (a) path-aware + login-aware gate in `scripts/pulumi_pr_comment.py` rejects `up` on governance PRs unless author is `@Kravalg`; (b) governance apply jobs declare `environment: governance` so the protected-environment reviewer gate is the hard backstop. |
 | D7 | import-linter (R8) | **Add one new contract** binding the governance component family. Because `infra` is not currently a `root_package`, we add `pulumi/infra` packages to import-linter via a new forbidden contract keeping `infra.governance` free of `policy`/`app` and free of `scripts` (§9.4). Low-risk, additive. |
@@ -633,7 +633,6 @@ exempt from CrossGuard wildcard checks (`guardrails.py:711-715` returns False un
 {"Sid": "DenySecretLeakingReads", "Effect": "Deny",
  "Action": [
    "secretsmanager:GetSecretValue",
-   "kms:Decrypt",
    "ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath",
    "lambda:GetFunction",
    "ec2:GetPasswordData",
@@ -647,6 +646,15 @@ exempt from CrossGuard wildcard checks (`guardrails.py:711-715` returns False un
  "Resource": "*"}
 ```
 Notes:
+- **`kms:Decrypt` is deliberately EXCLUDED from the `read-only` Deny.** The preview/drift roles
+  also carry the §5.2 pulumi-backend policy, whose alias-scoped `UsePulumiSecretsProviderKey` Allow
+  grants `kms:Decrypt` on the repo's own `alias/pulumi-{repo}-{env}-secrets` key so `pulumi preview`
+  and the drift check can decrypt the stack's encrypted config. An explicit `kms:Decrypt` Deny here
+  (Resource `*`) wins over that Allow and would break preview/drift on any encrypted-secret stack.
+  The alias-scoped Allow is the decryption boundary; the broad Deny was both redundant (the
+  read-only policy carries no broad `kms:Decrypt` Allow) and harmful. (The `config-read` Deny in
+  §5.4 keeps `kms:Decrypt` because the config-read role never decrypts a Pulumi key — the Deny is
+  harmless there.)
 - `ssm:GetParameter*` and `cognito-identity:Get*` are expanded to explicit action names
   (IAM Deny supports the `*` wildcard inside an action, but Access Analyzer prefers explicit;
   we keep `ssm:GetParameter*` / `cognito-identity:Get*` forms acceptable — implementer may use
@@ -808,6 +816,36 @@ workflow" primitive** — the earlier framing is dropped. Instead the governance
    **only after** the protected-environment reviewer (@Kravalg) approves. This binds the IAM trust
    to the GitHub gate: an OIDC token cannot assume the governance apply role without passing the
    reviewer. See §5.1a for the governance-apply subject set.
+
+   **Which role the runner actually assumes (resolves the F2 credential-path gap).** A subtle but
+   load-bearing consequence: because the apply jobs run under `environment: governance`, the runner
+   token's `sub` is `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:governance`. The
+   **bootstrap repo's own** `GitHubCiConfigRead-*` config-read roles and `GitHubCiApply-*` deploy
+   roles trust `environment:test`/`environment:prod`/branch-ref — **NOT** `environment:governance` —
+   so the runner cannot assume them, and cannot even load the bootstrap CI-config secret from an
+   apply job. (The §5.1a `environment:governance` apply roles are the per-managed-repo roles the
+   governance program *creates* for downstream service repos; they are not the role that applies the
+   governance program itself.) The governance apply therefore assumes a **dedicated, per-account
+   governance automation role**:
+   - It is created by the **one-time operator bootstrap** (the privileged admin session, §10.2) — it
+     is the most privileged automation role in the account and is NOT minted by a non-privileged
+     agent. It is appropriate to add it to the privileged `github-ci-bootstrap` stack (which already
+     runs with admin and owns the OIDC provider) as a follow-up; until then it is operator-created.
+   - Its trust accepts **only** `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:governance`
+     for `token.actions.githubusercontent.com` (the same env-bound shape as §5.1a, but for the
+     bootstrap repo applying the governance program).
+   - Its permissions are scoped to apply the `pulumi/governance` program in that account: create/
+     update the per-repo IAM deploy + config-read roles, the per-repo S3 state buckets + replicas,
+     the per-repo KMS keys + aliases, and the per-repo CI-config secrets. Least privilege is kept:
+     no `Action:*`/unscoped `Resource:*` Allow.
+   - The runner references it via per-account repo variables: `AWS_GOVERNANCE_TEST_APPLY_ROLE_ARN`
+     (account `891377212104`) and `AWS_GOVERNANCE_PROD_APPLY_ROLE_ARN` (account `933245420672`). The
+     governance program's own backend + secrets provider are likewise supplied as repo variables
+     (`AWS_GOVERNANCE_{TEST,PROD}_BACKEND_URL`, `AWS_GOVERNANCE_{TEST,PROD}_SECRETS_PROVIDER`,
+     `AWS_GOVERNANCE_{TEST,PROD}_ACCOUNT_ID`) because the apply job cannot read them from a CI-config
+     secret. The plan/drift jobs do NOT run under `environment: governance` (their token carries the
+     branch-ref claim), so they keep using `load-aws-ci-env` + the existing config-read/preview/drift
+     roles unchanged.
 5. **Non-governance PRs are unchanged.** They still dispatch `pulumi-pr-command` to the existing
    `pulumi-pr-command-runner.yml`; that runner is untouched except for the SECURITY-3 stale-review
    hardening (§7.6) which is a controls change, not a runner change.

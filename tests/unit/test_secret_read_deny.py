@@ -5,8 +5,11 @@ These tests pin the three Deny guardrails introduced in Story 1.3:
 * the **config-read** policy gains a ``DenySecretLeakingReads`` statement that
   EXCLUDES ``secretsmanager:GetSecretValue`` (so the role keeps its own Allow)
   while keeping its repo-scoped ``GetSecretValue`` Allow (§5.4);
-* the **read-only** policy (preview/drift) gains the FULL Deny block INCLUDING
-  ``secretsmanager:GetSecretValue`` and ``kms:Decrypt`` (§5.3);
+* the **read-only** policy (preview/drift) gains the Deny block INCLUDING
+  ``secretsmanager:GetSecretValue`` but EXCLUDING ``kms:Decrypt`` (§5.3): the
+  preview/drift roles also carry the alias-scoped ``kms:Decrypt`` Allow from the
+  pulumi-backend policy so ``pulumi preview``/drift can decrypt the stack's
+  encrypted config, and an explicit ``kms:Decrypt`` Deny would override that Allow;
 * the **apply** role gains a surgical ``DenySecretLeakingReadsApply`` with a
   ``NotResource`` carve-out for its own ``/{project}/ci/*`` secrets and WITHOUT
   ``kms:Decrypt`` (§5.2a, SECURITY-5); the pulumi-backend policy carries no Deny
@@ -200,8 +203,8 @@ def test_config_read_trust_subjects_follow_repo_override() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_read_only_deny_includes_get_secret_value_and_kms_decrypt() -> None:
-    """read-only Deny carries the FULL block including GetSecretValue + kms:Decrypt."""
+def test_read_only_deny_includes_get_secret_value_but_excludes_kms_decrypt() -> None:
+    """read-only Deny has GetSecretValue but NOT kms:Decrypt (preview/drift decrypt)."""
     settings = _settings()
     statements = _statements(
         ci_bootstrap._read_only_policy_document(_ACCOUNT_ID, _PARTITION, settings)
@@ -211,7 +214,6 @@ def test_read_only_deny_includes_get_secret_value_and_kms_decrypt() -> None:
     assert deny["Resource"] == "*"  # nosec B101
     for action in (
         "secretsmanager:GetSecretValue",
-        "kms:Decrypt",
         "ssm:GetParameter",
         "ssm:GetParameters",
         "ssm:GetParametersByPath",
@@ -225,6 +227,10 @@ def test_read_only_deny_includes_get_secret_value_and_kms_decrypt() -> None:
         "cognito-identity:GetOpenIdTokenForDeveloperIdentity",
     ):
         assert action in deny["Action"]  # nosec B101
+    # kms:Decrypt is NOT denied: the pulumi-backend policy on preview/drift roles
+    # grants alias-scoped kms:Decrypt so `pulumi preview`/drift can decrypt the
+    # stack's encrypted config; a broad Deny here would override that Allow.
+    assert "kms:Decrypt" not in deny["Action"]  # nosec B101
     # The single-action legacy Deny Sid is gone.
     assert "DenySecretValueReads" not in statements  # nosec B101
 
