@@ -201,6 +201,70 @@ def test_status_post_state_derives_from_prod_apply_outcome() -> None:
     assert "needs.governance_prod_apply.result" in dumped  # nosec B101
 
 
+def test_preflight_emits_outputs_before_auth_and_scope_checks() -> None:
+    """Preflight writes head_sha/pull_request_number BEFORE the auth/scope/head
+    rejections so a rejected governance PR still leaves the status job able to
+    post a terminal failure (FEASIBILITY-1)."""
+    preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
+    run_text = _step_run_text(preflight)
+
+    emit_index = run_text.index('echo "head_sha=${REQUEST_HEAD_SHA}"')
+
+    # Each authorization / scope / head-moved rejection must come AFTER the
+    # outputs have already been emitted.
+    for rejection_marker in (
+        ".head.repo.full_name",  # same-repo head re-check
+        "the pull request head moved",  # head-moved rejection
+        "restricted to the sole approver",  # @Kravalg author rejection
+        "the recomputed scope is not governance",  # server-side scope rejection
+    ):
+        assert emit_index < run_text.index(rejection_marker), (  # nosec B101
+            f"head_sha output must be emitted before the {rejection_marker!r} "
+            "rejection so the status job can post a terminal failure"
+        )
+
+    # The format-validation gates (which legitimately exit before any status
+    # can be posted to a bad SHA) must precede the emission.
+    assert run_text.index("^[0-9a-f]{40}$") < emit_index  # nosec B101
+
+
+def test_status_post_is_always_terminal_never_pending() -> None:
+    """The runner status job is if:always() and maps EVERY non-success result to
+    failure — no 'pending' for skipped/cancelled/empty (CRITICAL+HIGH)."""
+    status_job = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["governance_status"]
+
+    assert status_job["if"] == "always()"  # nosec B101
+
+    run_text = _step_run_text(status_job)
+    # Terminal mapping only: success -> success, everything else -> failure.
+    assert 'success) status_state="success" ;;' in run_text  # nosec B101
+    assert '*) status_state="failure" ;;' in run_text  # nosec B101
+    # No pending state is ever assigned or posted from the runner status job.
+    assert 'status_state="pending"' not in run_text  # nosec B101
+    assert "state=pending" not in run_text  # nosec B101
+    assert 'state="pending"' not in run_text  # nosec B101
+    # The skipped/cancelled-only pending branch is gone.
+    assert "skipped|cancelled" not in run_text  # nosec B101
+
+
+def test_status_post_guard_is_only_empty_head_sha() -> None:
+    """The terminal status post is skipped ONLY when head_sha is genuinely empty
+    (a malformed request that never emitted a postable SHA)."""
+    status_job = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["governance_status"]
+    post_step = next(
+        step
+        for step in _job_steps(status_job)
+        if "statuses/${HEAD_SHA}" in step.get("run", "")
+    )
+
+    assert post_step["if"] == "needs.preflight.outputs.head_sha != ''"  # nosec B101
+    # The rejected/did-not-complete failure description is posted on the
+    # non-success path.
+    assert (  # nosec B101
+        "Governance apply rejected or did not complete." in post_step["run"]
+    )
+
+
 def test_governance_runner_pins_actions_to_full_shas() -> None:
     """Avoid mutable action tags in the governance runner."""
     workflow = _workflow(GOVERNANCE_WORKFLOW)

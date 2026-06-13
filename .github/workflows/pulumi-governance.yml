@@ -77,6 +77,17 @@ jobs:
             exit 1
           fi
 
+          # Emit the resolved head SHA / PR number as soon as the FORMAT is known
+          # to be valid (numeric PR, 40-char lowercase SHA), and BEFORE any
+          # auth/scope/head-moved rejection that exits 1. A rejected governance
+          # PR must still leave these outputs populated so the always() status
+          # job can post a TERMINAL "Governance Apply" failure to the head SHA
+          # instead of stranding the required check pending (FEASIBILITY-1).
+          {
+            echo "head_sha=${REQUEST_HEAD_SHA}"
+            echo "pull_request_number=${REQUEST_PR_NUMBER}"
+          } >> "${GITHUB_OUTPUT}"
+
           # Re-validate PR number / head SHA / open-not-merged / same-repo head.
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}")"
           actual_head_sha="$(jq -r '.head.sha' <<< "${pr_json}")"
@@ -115,10 +126,9 @@ jobs:
             exit 1
           fi
 
-          {
-            echo "head_sha=${REQUEST_HEAD_SHA}"
-            echo "pull_request_number=${REQUEST_PR_NUMBER}"
-          } >> "${GITHUB_OUTPUT}"
+          # head_sha / pull_request_number were already emitted above, right
+          # after format validation, so auth/scope/head-moved rejections still
+          # leave the status job able to post a terminal failure.
 
   governance_test_plan:
     name: Governance Test Plan
@@ -441,23 +451,35 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Post Governance Apply commit status
+        # Guard ONLY on a genuinely empty head_sha: a malformed request that
+        # failed format validation never emitted an output and a status cannot
+        # be posted to a missing SHA. Every other outcome (including a preflight
+        # auth/scope/head-moved rejection) DID emit head_sha and must post a
+        # TERMINAL status so the required check never strands pending.
         if: needs.preflight.outputs.head_sha != ''
         run: |
           # The required check "Governance Apply" resolves only because this
           # runner explicitly posts that exact context to the approved head SHA
-          # (FR15, FEASIBILITY-1). State follows the prod apply outcome.
+          # (FR15, FEASIBILITY-1). The state is ALWAYS terminal: success only
+          # when the prod apply succeeded, failure for every other result
+          # (failure / skipped / cancelled / empty — e.g. a preflight rejection
+          # short-circuits the apply jobs to skipped). Never pending.
           case "${PROD_APPLY_RESULT}" in
             success) status_state="success" ;;
-            skipped|cancelled|"") status_state="pending" ;;
             *) status_state="failure" ;;
           esac
+          if [[ "${status_state}" == "success" ]]; then
+            status_description="Governance apply succeeded."
+          else
+            status_description="Governance apply rejected or did not complete."
+          fi
           gh api \
             --method POST \
             "repos/${GITHUB_REPOSITORY}/statuses/${HEAD_SHA}" \
             -f state="${status_state}" \
             -f context="Governance Apply" \
             -f "target_url=${RUN_URL}" \
-            -f description="Governance apply ${PROD_APPLY_RESULT}"
+            -f description="${status_description}"
 
       - name: Post governance result comment
         if: needs.preflight.outputs.pull_request_number != ''
