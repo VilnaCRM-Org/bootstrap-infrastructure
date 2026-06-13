@@ -35,6 +35,68 @@ This repository is a Pulumi-based infrastructure template. Agents should keep ch
 6. Do not commit generated BMAD/BMALPH/Ralph framework or state files such as `_bmad/`, `_bmad-output/`, `bmalph/`, `.ralph/`, or `.agents/skills/bmad-*`.
 7. Do not commit alternate planning roots such as `docs/planning/`, top-level `planning/`, `.bmad/`, or `.bmad-core/`.
 
+## Multi-repo governance onboarding flow
+
+This repository hosts the Kravalg-gated multi-repo IAM/OIDC governance stack in
+`pulumi/governance/`. It provisions per-repo state buckets, KMS keys, and
+`GitHubCiPreview/Apply/Drift` + `GitHubCiConfigRead` roles for every
+`*-infrastructure` service repo listed in `pulumi/repositories.governance.json`.
+Two separate AWS accounts give test/prod isolation: the `test` stack deploys
+account `891377212104` and the `prod` stack deploys account `933245420672`, both
+in `eu-central-1`. `@Kravalg` is the sole approver (CODEOWNERS + the protected
+`governance` GitHub Environment); `@dmytrocraft` opens PRs and may always run
+`plan`. Applies are IaC-only and saved-plan based — there is no human `pulumi up`
+in CI; the governance runner only replays a `make pulumi-up-plan` saved plan.
+
+Each step below is tagged **CODE** (a committable change a non-privileged agent
+makes, applied through the gated PR-comment flow) or **OPERATOR** (an action
+requiring live AWS/GitHub-admin credentials, performed by the operator per the
+runbook in `docs/governance-stack.md`). Onboarding a new service `X` that needs
+its `X-infrastructure` repo is config-only on the governance side: add the repo
+to `pulumi/repositories.governance.json` and run the multi-PR flow below. Never
+add `bootstrap-infrastructure` to `pulumi/repositories.governance.json` — it
+self-manages via the `github-ci-bootstrap` project, and listing it would
+double-manage the same IAM roles and CI secret.
+
+1. **PR A — Grant deploy roles (governance) [CODE]:** add `X-infrastructure` to
+   `pulumi/repositories.governance.json` (config-only; `project` is the full repo
+   slug). `@Kravalg` reviews via CODEOWNERS, then comments `/pulumi test up`
+   followed by `/pulumi prod up` on the PR **[OPERATOR]**. Those `up` commands are
+   gated: the author must be `@Kravalg` and the apply jobs run under the protected
+   `environment: governance`. The governance stack provisions X's per-repo state
+   bucket, KMS key + alias, the preview/apply/drift trio, the config-read role,
+   and the repo-scoped OIDC trust. `@Kravalg` verifies the rendered roles, then
+   merges.
+2. **PR B — Bootstrap generic infra for `X-infrastructure` [CODE, gated apply]:**
+   stand up the generic baseline infrastructure for the repo using the deploy
+   roles created by PR A. It is applied through the same gated flow
+   (`/pulumi test up` then `/pulumi prod up`, `@Kravalg`-only, saved-plan).
+3. **Create `X-infrastructure` repo + push scaffold [OPERATOR]:** create
+   `VilnaCRM-Org/X-infrastructure` and push the scaffold modelled on
+   `pulumi/user-service-infrastructure/` (its `pulumi/` project plus
+   `.github/workflows/self-deploy.yml`). This is an org-admin action, not a
+   committable change in this repo.
+4. **PR C — Grant OIDC apply permissions [CODE, @Kravalg-gated]:** grant the
+   OIDC apply permissions that let `X-infrastructure`'s own GitHub Actions assume
+   its governance-provided apply role. Reviewed and merged by `@Kravalg` (gated
+   exactly like PR A/PR B).
+
+After PR C merges, **X self-deploys** through its own
+`.github/workflows/self-deploy.yml`: maintainers comment `/pulumi test up` then
+`/pulumi prod up` on `X-infrastructure`'s PRs, and the workflow assumes only the
+governance-provided preview/apply/drift roles (no static or admin AWS keys) and
+applies via the saved-plan path. The roles, trust, buckets, and keys all live in
+`bootstrap-infrastructure`'s governance stack.
+
+The governance apply runner triggers on `repository_dispatch`, so it cannot post
+a native check. The `Governance Apply` required status check is therefore posted
+explicitly to the PR head SHA: `success` for non-governance PRs, `pending` for
+governance-touching PRs, then `success` once `@Kravalg`'s gated test+prod apply
+completes. See `docs/governance-stack.md` for the full operator runbook
+(one-time bootstrap apply, protected-environment + branch-protection setup, repo
+variables, per-account OIDC-ARN pinning, repo create + push, gated real applies,
+and break-glass).
+
 ## Secret handling
 
 These rules are mandatory for AI coding agents in this repository.
