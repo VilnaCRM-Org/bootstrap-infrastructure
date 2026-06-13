@@ -1,0 +1,20 @@
+# Initialize with (operator, after governance apply sets up the backend + key):
+#   pulumi -C pulumi stack init prod --secrets-provider "$PULUMI_SECRETS_PROVIDER"
+# The state bucket, KMS key/alias, and deploy roles below are CONSUMED — they are
+# created by the governance stack for this repo, never by this scaffold.
+config:
+  aws:region: eu-central-1
+  user-service-infrastructure:awsAccountId: "933245420672"
+  user-service-infrastructure:costCenter: core
+  user-service-infrastructure:criticality: high
+  user-service-infrastructure:dataClassification: internal
+  user-service-infrastructure:environment: prod
+  user-service-infrastructure:githubBranch: main
+  user-service-infrastructure:githubOrg: VilnaCRM-Org
+  user-service-infrastructure:loggingPrefix: company
+  user-service-infrastructure:owner: team-user-service
+  user-service-infrastructure:pulumiBackendUrl: s3://pulumi-user-service-infrastructure-prod-state
+  user-service-infrastructure:pulumiSecretsProvider: awskms://alias/pulumi-user-service-infrastructure-prod-secrets?region=eu-central-1
+  user-service-infrastructure:repoSlug: user-service-infrastructure
+  user-service-infrastructure:retentionClass: standard
+secretsprovider: awskms://alias/pulumi-user-service-infrastructure-prod-secrets?region=eu-central-1
