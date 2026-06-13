@@ -147,6 +147,21 @@ def test_entrypoint_builds_governance_stack_and_exports_outputs() -> None:
         assert f'pulumi.export("{export_name}"' in entrypoint  # nosec B101
 
 
+def test_entrypoint_pulumi_dir_default_targets_managed_repo_project_root() -> None:
+    """The pulumiDir default is the repo-root ``pulumi`` for downstream repos (F5).
+
+    ``pulumi_dir`` flows into each managed repo's generated CI-config payload, and
+    the managed *-infrastructure repo hosts its Pulumi project at the repo-root
+    ``pulumi/`` directory (architecture §8.1) — never at ``pulumi/governance``
+    (that path exists only inside THIS bootstrap repo). A wrong default would point
+    the downstream self-deploy at a non-existent ``pulumi/governance`` directory.
+    """
+    entrypoint = (PROJECT_DIR / "__main__.py").read_text()
+
+    assert 'pulumi_dir=cfg.get("pulumiDir") or "pulumi"' in entrypoint  # nosec B101
+    assert 'or "pulumi/governance"' not in entrypoint  # nosec B101
+
+
 def test_requirements_mirror_bootstrap_project() -> None:
     """The governance requirements pin pulumi-aws like github-ci-bootstrap."""
     requirements = (PROJECT_DIR / "requirements.txt").read_text()

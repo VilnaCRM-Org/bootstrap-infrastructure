@@ -33,7 +33,15 @@ governance = GovernanceStack(
         expected_account_id=cfg.get("awsAccountId"),
         oidc_provider_arn=cfg.get("githubOidcProviderArn"),
         region=cfg.get("region") or "eu-central-1",
-        pulumi_dir=cfg.get("pulumiDir") or "pulumi/governance",
+        # PULUMI_DIR flows into each managed repo's generated CI-config payload
+        # (governance.py -> _governance_payloads -> the per-repo CI secret), and
+        # the managed repo's self-deploy resolves its own Pulumi project from
+        # this value. A managed *-infrastructure repo hosts its Pulumi project at
+        # the repo-root ``pulumi/`` directory (architecture §8.1), NOT at
+        # ``pulumi/governance`` (that path only exists in THIS bootstrap repo).
+        # The default must therefore be ``pulumi`` so downstream repos point at
+        # their own project root.
+        pulumi_dir=cfg.get("pulumiDir") or "pulumi",
         pulumi_backend_url=cfg.get("pulumiBackendUrl"),
         pulumi_secrets_provider=cfg.get("pulumiSecretsProvider"),
         write_secret_values=managed_secret_values,
