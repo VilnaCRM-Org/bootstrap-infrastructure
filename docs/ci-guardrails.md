@@ -38,7 +38,6 @@ These checks are intended to be marked as required in branch protection:
 | `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
 | `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |
 | `Test Account Evidence` | `make report-well-architected-evidence` | Fails trusted PR and main evidence runs when final Well-Architected readiness is below 5/5 |
-| `Governance Apply` | `.github/workflows/pulumi-governance.yml` | Commit status the governance runner posts to the approved head SHA after a `@Kravalg`-approved governance apply (success-before-merge gate) |
 
 `make test-security` aggregates Gitleaks, dependency audit, and Bandit.
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
@@ -404,7 +403,7 @@ The accepted shape is intentionally non-secret:
   "id": "branch_protection",
   "status": "passed",
   "evidence": [
-    "GitHub ruleset 13906584 requires Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), CodeQL (actions), Test Account Evidence, and Governance Apply."
+    "GitHub ruleset 13906584 requires Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), CodeQL (actions), and Test Account Evidence."
   ]
 }
 ```

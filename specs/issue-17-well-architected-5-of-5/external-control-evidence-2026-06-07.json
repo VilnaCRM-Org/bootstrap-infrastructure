@@ -12,8 +12,8 @@
       "id": "branch_protection",
       "status": "passed",
       "evidence": [
-        "The active main branch ruleset now requires all 25 documented status checks: Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), CodeQL (actions), Test Account Evidence, and Governance Apply.",
-        "collect_well_architected_evidence github_branch_protection passed on 2026-06-07 with requiredStatusCheckCount=25 and missingRequiredStatusChecks empty.",
+        "The active main branch ruleset now requires all 24 documented status checks: Ruff, Ty, Maintainability, Architecture, Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), CodeQL (actions), and Test Account Evidence.",
+        "collect_well_architected_evidence github_branch_protection passed on 2026-06-07 with requiredStatusCheckCount=24 and missingRequiredStatusChecks empty.",
         "scripts/configure_github_repository_controls.py --verify-only passes after the repository-admin apply, including required pull-request reviews and required review-thread resolution.",
         "Issue #26 was closed as complete after live verification."
       ]

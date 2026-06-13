@@ -88,7 +88,7 @@ claim is blocked until all of the following are current and non-secret:
   Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit,
   Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview,
   Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), CodeQL
-  (actions), Test Account Evidence, and Governance Apply.
+  (actions), and Test Account Evidence.
 - Repository-admin proof that the protected `prod` environment exists, requires
   reviewer approval, prevents self-review, and limits deployments to protected
   branches.

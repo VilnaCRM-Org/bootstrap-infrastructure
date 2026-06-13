@@ -57,12 +57,14 @@ trigger is gated to `@Kravalg`.
 Steady-state applies are **IaC-only**: there is no human `pulumi up` in CI. The
 governance runner (`pulumi-governance.yml`) only replays a `make pulumi-up-plan`
 saved plan against the protected `governance` environment after `@Kravalg`'s
-approval. The required `Governance Apply` status check is posted explicitly to
-the PR head SHA: `success` for non-governance PRs, `pending` for
-governance-touching PRs, then `success` once the gated test+prod apply
-completes. The only permitted direct `pulumi up` is the operator's one-time
-local bootstrap of the governance stack (no `GITHUB_ACTIONS`), documented in the
-runbook below.
+approval. The merge gate is CODEOWNERS (`@Kravalg` review of every
+governance/IAM/policy path) plus the protected `governance` environment
+(`@Kravalg` approves the apply); `@Kravalg` merges after the gated test+prod
+apply succeeds. The runner posts a `Governance Apply` commit status to the PR
+head SHA as an informational signal showing that gated-apply result — it is not
+a global required check. The only permitted direct `pulumi up` is the operator's
+one-time local bootstrap of the governance stack (no `GITHUB_ACTIONS`),
+documented in the runbook below.
 
 ### Onboarding is config-only
 

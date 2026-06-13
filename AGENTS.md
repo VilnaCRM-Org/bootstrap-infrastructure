@@ -88,11 +88,13 @@ governance-provided preview/apply/drift roles (no static or admin AWS keys) and
 applies via the saved-plan path. The roles, trust, buckets, and keys all live in
 `bootstrap-infrastructure`'s governance stack.
 
-The governance apply runner triggers on `repository_dispatch`, so it cannot post
-a native check. The `Governance Apply` required status check is therefore posted
-explicitly to the PR head SHA: `success` for non-governance PRs, `pending` for
-governance-touching PRs, then `success` once `@Kravalg`'s gated test+prod apply
-completes. See `docs/governance-stack.md` for the full operator runbook
+The governance merge gate is CODEOWNERS (`@Kravalg` review of every
+governance/IAM/policy path) plus the protected `governance` environment
+(`@Kravalg` approves the apply); `@Kravalg` merges after the gated test+prod
+apply succeeds. The governance apply runner triggers on `repository_dispatch`
+and posts a `Governance Apply` commit status to the PR head SHA as an
+informational signal of that gated-apply result — it is not a global required
+check. See `docs/governance-stack.md` for the full operator runbook
 (one-time bootstrap apply, protected-environment + branch-protection setup, repo
 variables, per-account OIDC-ARN pinning, repo create + push, gated real applies,
 and break-glass).
