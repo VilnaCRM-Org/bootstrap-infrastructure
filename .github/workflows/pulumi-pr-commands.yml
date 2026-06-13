@@ -46,8 +46,15 @@ jobs:
         run: |
           # Single source of truth for the governance path predicate
           # (scripts/governance_paths.py prints governance_touched=true|false).
-          # This intake flag is defense-in-depth; the governance runner
-          # re-resolves the author and recomputes scope server-side.
+          # This intake flag is DEFENSE-IN-DEPTH ONLY and is never the security
+          # boundary: the issue_comment trigger runs against the base ref, but a
+          # comment author still cannot be trusted to have authored the diff.
+          # The AUTHORITATIVE control is the governance runner's server-side
+          # recompute (pulumi-governance.yml preflight), which re-resolves the
+          # comment author to the sole approver @Kravalg and recomputes this same
+          # predicate from the verified head SHA's changed files before any
+          # credential-minting job runs. If this advisory intake flag and the
+          # runner's recompute ever disagree, the runner's recompute wins.
           files="$(gh api \
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
             --paginate \
