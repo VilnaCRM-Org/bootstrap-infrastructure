@@ -259,10 +259,12 @@ def test_status_post_guard_is_only_empty_head_sha() -> None:
 
     assert post_step["if"] == "needs.preflight.outputs.head_sha != ''"  # nosec B101
     # The rejected/did-not-complete failure description is posted on the
-    # non-success path.
+    # non-success path (the command verb is interpolated, defaulting to "apply"
+    # when the request was malformed and emitted no command).
     assert (  # nosec B101
-        "Governance apply rejected or did not complete." in post_step["run"]
+        "rejected or did not complete." in post_step["run"]
     )
+    assert "${REQUEST_COMMAND:-apply}" in post_step["run"]  # nosec B101
 
 
 def test_governance_runner_pins_actions_to_full_shas() -> None:
@@ -277,3 +279,317 @@ def test_governance_runner_pins_actions_to_full_shas() -> None:
             assert ACTION_SHA_REF.match(uses), (  # nosec B101
                 f"governance runner must pin `{uses}` to a full commit SHA"
             )
+
+
+# --- F1: command/target threading + apply-job gating ----------------------------
+
+# The test-apply / test-drift gate: an apply request only (test up OR any prod).
+_TEST_APPLY_GUARD = (
+    "needs.preflight.outputs.target_environment == 'prod' || "
+    "(needs.preflight.outputs.target_environment == 'test' && "
+    "needs.preflight.outputs.command == 'up')"
+)
+
+
+def _normalize_if(expr: str) -> str:
+    """Collapse YAML multi-line `if:` whitespace to single spaces for matching."""
+    return " ".join(expr.split())
+
+
+def test_preflight_validates_command_and_target_server_side() -> None:
+    """Preflight re-derives command (plan|up) + target (test|prod) from an allowlist."""
+    preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
+    run_text = _step_run_text(preflight)
+    dumped = yaml.safe_dump(preflight)
+
+    # Both inputs arrive via client_payload (untrusted) and are re-validated.
+    assert "client_payload.command" in dumped  # nosec B101
+    assert "client_payload.target_environment" in dumped  # nosec B101
+    assert "command must be plan or up" in run_text  # nosec B101
+    assert "target_environment must be test or prod" in run_text  # nosec B101
+    # The validated values are emitted as preflight outputs that gate the jobs.
+    assert "command=${REQUEST_COMMAND}" in run_text  # nosec B101
+    assert (  # nosec B101
+        "target_environment=${REQUEST_TARGET_ENVIRONMENT}" in run_text
+    )
+
+
+def test_preflight_exposes_command_and_target_outputs() -> None:
+    """The preflight job exports command + target_environment outputs."""
+    preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
+    outputs = preflight["outputs"]
+
+    assert outputs["command"] == "${{ steps.resolve.outputs.command }}"  # nosec B101
+    assert (  # nosec B101
+        outputs["target_environment"]
+        == "${{ steps.resolve.outputs.target_environment }}"
+    )
+
+
+def test_command_target_validated_before_outputs_emitted() -> None:
+    """command/target allowlist checks precede the output emission (terminal status)."""
+    preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
+    run_text = _step_run_text(preflight)
+
+    emit_index = run_text.index("command=${REQUEST_COMMAND}")
+    assert run_text.index("command must be plan or up") < emit_index  # nosec B101
+    assert (  # nosec B101
+        run_text.index("target_environment must be test or prod") < emit_index
+    )
+
+
+def test_test_plan_job_is_unconditional() -> None:
+    """The test plan job runs for every request (it is the minimal stage)."""
+    test_plan = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["governance_test_plan"]
+
+    # No `if:` guard -> always runs (plan is the read-only floor).
+    assert "if" not in test_plan  # nosec B101
+
+
+def test_test_apply_and_drift_gated_to_up_requests_only() -> None:
+    """Test apply + drift run only for `test up` or any `prod` request — never plan."""
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+
+    for job_id in ("governance_test_apply", "governance_test_post_apply_drift"):
+        guard = _normalize_if(jobs[job_id]["if"])
+        assert guard == _TEST_APPLY_GUARD, job_id  # nosec B101
+        # A bare `test plan` must NOT satisfy this guard.
+        assert "command == 'up'" in guard  # nosec B101
+
+
+def test_prod_jobs_gated_to_prod_target_only() -> None:
+    """Prod plan/apply run only for a `prod` request, never for any `test` request."""
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+
+    prod_plan_guard = _normalize_if(jobs["governance_prod_plan"]["if"])
+    assert "target_environment == 'prod'" in prod_plan_guard  # nosec B101
+    assert (  # nosec B101
+        "governance_test_post_apply_drift.result == 'success'" in prod_plan_guard
+    )
+
+    prod_apply_guard = _normalize_if(jobs["governance_prod_apply"]["if"])
+    # Prod is mutated ONLY by `prod up`.
+    assert "target_environment == 'prod'" in prod_apply_guard  # nosec B101
+    assert "command == 'up'" in prod_apply_guard  # nosec B101
+
+
+def _guard_holds(guard: str, *, target: str, command: str) -> bool:
+    """Evaluate a governance job `if:` guard for a given (target, command) pair.
+
+    This is a SAFE, hand-rolled evaluator for the exact, closed grammar these
+    guards use — boolean ``&&``/``||`` over ``==`` comparisons of the two known
+    preflight outputs plus the drift-success precondition. It deliberately does
+    NOT use ``eval``: it substitutes the concrete values, treats the drift clause
+    as satisfied (irrelevant to the plan/up decision), and reduces the AND/OR of
+    literal ``True``/``False`` terms. Any unexpected token raises, so the test
+    fails loudly rather than silently mis-evaluating.
+    """
+    expr = _normalize_if(guard)
+    substitutions = {
+        f"needs.preflight.outputs.target_environment == '{target}'": "True",
+        "needs.preflight.outputs.target_environment == 'prod'": str(target == "prod"),
+        "needs.preflight.outputs.target_environment == 'test'": str(target == "test"),
+        "needs.preflight.outputs.command == 'up'": str(command == "up"),
+        "needs.preflight.outputs.command == 'plan'": str(command == "plan"),
+        "needs.governance_test_post_apply_drift.result == 'success'": "True",
+    }
+    for needle, value in substitutions.items():
+        expr = expr.replace(needle, value)
+    # After substitution only True/False literals, &&, ||, and parens remain.
+    expr = expr.replace("&&", "and").replace("||", "or")
+    allowed = {"True", "False", "and", "or", "(", ")"}
+    tokens = expr.replace("(", " ( ").replace(")", " ) ").split()
+    leftover = set(tokens) - allowed
+    assert not leftover, f"unexpected guard tokens {leftover} in {expr!r}"  # nosec B101
+    # Reduce the boolean literal expression with ast.literal_eval-free logic.
+    return _reduce_bool_expr(tokens)
+
+
+def _reduce_bool_expr(tokens: list[str]) -> bool:
+    """Reduce a token list of True/False/and/or/parens to a single bool."""
+    # Recursive-descent over the tiny grammar: expr := term (or term)*;
+    # term := factor (and factor)*; factor := 'True' | 'False' | '(' expr ')'.
+    pos = 0
+
+    def parse_expr() -> bool:
+        nonlocal pos
+        value = parse_term()
+        while pos < len(tokens) and tokens[pos] == "or":
+            pos += 1
+            value = parse_term() or value
+        return value
+
+    def parse_term() -> bool:
+        nonlocal pos
+        value = parse_factor()
+        while pos < len(tokens) and tokens[pos] == "and":
+            pos += 1
+            value = parse_factor() and value
+        return value
+
+    def parse_factor() -> bool:
+        nonlocal pos
+        token = tokens[pos]
+        pos += 1
+        if token == "(":
+            value = parse_expr()
+            assert tokens[pos] == ")"  # nosec B101
+            pos += 1
+            return value
+        return token == "True"
+
+    return parse_expr()
+
+
+def test_plan_request_never_reaches_an_apply_job() -> None:
+    """For a `plan` request the test/prod apply guards are unsatisfiable.
+
+    `test plan`  -> command != 'up' and target != 'prod' -> both apply guards false.
+    `prod plan`  -> prod apply guard requires command == 'up' -> false.
+    """
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+    test_apply_guard = jobs["governance_test_apply"]["if"]
+    prod_apply_guard = jobs["governance_prod_apply"]["if"]
+
+    # test plan: no apply anywhere.
+    assert not _guard_holds(test_apply_guard, target="test", command="plan")  # nosec B101
+    assert not _guard_holds(prod_apply_guard, target="test", command="plan")  # nosec B101
+    # prod plan: prod apply must NOT run (test apply does, by test-then-prod design).
+    assert not _guard_holds(prod_apply_guard, target="prod", command="plan")  # nosec B101
+    # test up: prod apply must NOT run.
+    assert not _guard_holds(prod_apply_guard, target="test", command="up")  # nosec B101
+    # prod up: prod apply runs.
+    assert _guard_holds(prod_apply_guard, target="prod", command="up")  # nosec B101
+
+
+def test_test_up_runs_test_apply_but_not_prod_apply() -> None:
+    """`test up` applies the test stack but never the prod stack."""
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+
+    assert _guard_holds(  # nosec B101
+        jobs["governance_test_apply"]["if"], target="test", command="up"
+    )
+    assert not _guard_holds(  # nosec B101
+        jobs["governance_prod_apply"]["if"], target="test", command="up"
+    )
+
+
+def test_test_up_request_does_not_run_prod_jobs() -> None:
+    """A `test up` request never satisfies any prod-job guard."""
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+
+    for job_id in ("governance_prod_plan", "governance_prod_apply"):
+        guard = _normalize_if(jobs[job_id]["if"])
+        # Prod jobs require target == 'prod'; a `test up` request cannot match.
+        assert "target_environment == 'prod'" in guard  # nosec B101
+
+
+def test_prod_up_runs_test_then_prod() -> None:
+    """`prod up` runs the test apply first, then the prod apply (test-then-prod)."""
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+
+    # Test apply runs for a prod request (target == 'prod' branch of the guard).
+    test_apply_guard = _normalize_if(jobs["governance_test_apply"]["if"])
+    assert "target_environment == 'prod'" in test_apply_guard  # nosec B101
+
+    # Prod apply depends on the test apply + drift completing first.
+    prod_apply_needs = jobs["governance_prod_apply"]["needs"]
+    assert "governance_test_apply" in prod_apply_needs  # nosec B101
+    assert "governance_test_post_apply_drift" in prod_apply_needs  # nosec B101
+    assert "governance_prod_plan" in prod_apply_needs  # nosec B101
+
+
+# --- F2: governance apply jobs assume a governance-env-trusted role -------------
+
+
+def _aws_credentials_step(job: dict) -> dict:
+    """Return the configure-aws-credentials step in a job (or raise)."""
+    for step in _job_steps(job):
+        uses = step.get("uses", "")
+        if uses.startswith("aws-actions/configure-aws-credentials@"):
+            return step
+    raise AssertionError("job has no configure-aws-credentials step")
+
+
+def test_apply_jobs_assume_governance_env_trusted_role_not_test_role() -> None:
+    """Both apply jobs assume the dedicated governance automation role (F2).
+
+    The apply jobs run under `environment: governance`, so the OIDC token carries
+    `environment:governance`. The bootstrap test/prod CI-config + deploy roles
+    trust `environment:test`/`environment:prod`/branch-ref and CANNOT be assumed.
+    The runner must therefore assume the per-account governance automation role
+    pinned in a dedicated repo variable — never the loaded CI-config apply role.
+    """
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+    expected_role_var = {
+        "governance_test_apply": "${{ vars.AWS_GOVERNANCE_TEST_APPLY_ROLE_ARN }}",
+        "governance_prod_apply": "${{ vars.AWS_GOVERNANCE_PROD_APPLY_ROLE_ARN }}",
+    }
+    for job_id, role_var in expected_role_var.items():
+        creds = _aws_credentials_step(jobs[job_id])
+        role_to_assume = creds["with"]["role-to-assume"]
+        assert role_to_assume == role_var, job_id  # nosec B101
+        # It must NOT reuse the loaded CI-config apply role (test/prod-trusted).
+        assert (  # nosec B101
+            role_to_assume != "${{ steps.ci_config.outputs.aws-apply-role-arn }}"
+        )
+
+
+def test_apply_jobs_do_not_load_test_or_prod_ci_config() -> None:
+    """Apply jobs no longer assume an environment:test/prod-trusted config role (F2).
+
+    Loading the bootstrap CI-config secret requires assuming a config-read role
+    that trusts `environment:test`/`environment:prod`/branch-ref — impossible from
+    an `environment:governance` token. The governance backend + secrets provider
+    come from repo variables instead.
+    """
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+    for job_id in APPLY_JOBS:
+        job = jobs[job_id]
+        for step in _job_steps(job):
+            assert step.get("uses") != "./.github/actions/load-aws-ci-env", (  # nosec B101
+                f"{job_id} must not load the bootstrap CI-config secret"
+            )
+        # The governance program's backend + secrets provider are sourced from
+        # governance-specific repo variables, not a CI-config secret payload.
+        job_env = job.get("env", {})
+        assert "PULUMI_BACKEND_URL" in job_env  # nosec B101
+        assert "PULUMI_SECRETS_PROVIDER" in job_env  # nosec B101
+        assert "AWS_GOVERNANCE_" in str(job_env["PULUMI_BACKEND_URL"])  # nosec B101
+
+
+def test_plan_and_drift_jobs_still_use_ci_config_under_branch_ref() -> None:
+    """Plan/drift jobs (no environment) keep the CI-config path (branch-ref token).
+
+    These jobs do NOT declare `environment: governance`, so their OIDC subject is
+    the branch-ref / pull_request claim that the existing config-read + preview/
+    drift roles trust — so the CI-config load still works for them.
+    """
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+    non_apply_credentialed = (
+        "governance_test_plan",
+        "governance_test_post_apply_drift",
+        "governance_prod_plan",
+    )
+    for job_id in non_apply_credentialed:
+        job = jobs[job_id]
+        assert "environment" not in job, job_id  # nosec B101
+        uses = {step.get("uses") for step in _job_steps(job)}
+        assert "./.github/actions/load-aws-ci-env" in uses, job_id  # nosec B101
+
+
+def test_status_state_is_command_target_aware() -> None:
+    """The commit-status state reflects the stage the request was meant to reach."""
+    status_job = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["governance_status"]
+    run_text = _step_run_text(status_job)
+
+    # Each command:target combination maps to the relevant stage result so a plan
+    # or a test-up is not reported as a failed prod apply.
+    assert "up:prod) gate_result=" in run_text  # nosec B101
+    assert "up:test) gate_result=" in run_text  # nosec B101
+    assert "plan:prod) gate_result=" in run_text  # nosec B101
+    assert "plan:test) gate_result=" in run_text  # nosec B101
+    # Still terminal: success only, everything else failure; never pending.
+    assert 'success) status_state="success" ;;' in run_text  # nosec B101
+    assert '*) status_state="failure" ;;' in run_text  # nosec B101
+    assert 'status_state="pending"' not in run_text  # nosec B101

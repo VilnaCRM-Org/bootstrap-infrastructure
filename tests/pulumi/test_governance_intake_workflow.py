@@ -162,6 +162,32 @@ def test_both_dispatches_include_comment_id_and_pr_metadata() -> None:
         assert "client_payload[head_sha]" in run_text  # nosec B101
 
 
+def test_both_dispatches_thread_command_and_target() -> None:
+    """Each dispatch threads the parsed command + target_environment (F1).
+
+    The governance runner re-validates and re-derives these server-side, but the
+    intake must pass them through so the runner knows whether to plan-only or
+    apply, and which stack to target. Without them the runner would default to a
+    full apply for every request.
+    """
+    dispatch_steps = _dispatch_steps()
+
+    assert len(dispatch_steps) == 2  # nosec B101
+    for step in dispatch_steps:
+        run_text = step.get("run", "")
+        assert "client_payload[command]" in run_text  # nosec B101
+        assert "client_payload[target_environment]" in run_text  # nosec B101
+        # The values are bound via the step env from the parse step's outputs.
+        step_env = step.get("env", {})
+        assert (  # nosec B101
+            step_env["PULUMI_COMMAND"] == "${{ steps.parse.outputs.command }}"
+        )
+        assert (  # nosec B101
+            step_env["TARGET_ENVIRONMENT"]
+            == "${{ steps.parse.outputs.target_environment }}"
+        )
+
+
 def test_dispatch_event_types_are_mutually_exclusive() -> None:
     """Exactly one of the two routing dispatches fires per command."""
     run_text = _all_run_text()

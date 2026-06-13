@@ -22,6 +22,17 @@ and read those values:
 The role ARNs are not secret. Each role is trusted by GitHub OIDC and scoped to
 one fixed CI secret suffix.
 
+The dedicated governance apply runner (`.github/workflows/pulumi-governance.yml`)
+reads its own non-secret repo variables, because its apply jobs run under
+`environment: governance` and cannot assume the `environment:test`/`prod`-trusted
+CI-config roles above (see `docs/governance-stack.md`, Step 1b/Step 5):
+
+- `AWS_GOVERNANCE_TEST_APPLY_ROLE_ARN` / `AWS_GOVERNANCE_PROD_APPLY_ROLE_ARN`
+  (per-account governance automation role ARNs, trust = `environment:governance`)
+- `AWS_GOVERNANCE_TEST_ACCOUNT_ID` / `AWS_GOVERNANCE_PROD_ACCOUNT_ID`
+- `AWS_GOVERNANCE_TEST_BACKEND_URL` / `AWS_GOVERNANCE_PROD_BACKEND_URL`
+- `AWS_GOVERNANCE_TEST_SECRETS_PROVIDER` / `AWS_GOVERNANCE_PROD_SECRETS_PROVIDER`
+
 ## Fixed Secret IDs
 
 | CI suffix | AWS Secrets Manager secret ID |

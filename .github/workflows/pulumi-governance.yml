@@ -40,12 +40,19 @@ jobs:
     outputs:
       head_sha: ${{ steps.resolve.outputs.head_sha }}
       pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
+      command: ${{ steps.resolve.outputs.command }}
+      target_environment: ${{ steps.resolve.outputs.target_environment }}
     env:
       GH_TOKEN: ${{ github.token }}
       # All inputs arrive via client_payload only (no trusted workflow_dispatch).
       REQUEST_PR_NUMBER: ${{ github.event.client_payload.pull_request_number }}
       REQUEST_HEAD_SHA: ${{ github.event.client_payload.head_sha }}
       REQUEST_COMMENT_ID: ${{ github.event.client_payload.comment_id }}
+      # command (plan|up) and target_environment (test|prod) arrive via
+      # client_payload too and are NEVER trusted blindly — preflight re-validates
+      # them against a fixed allowlist before emitting them as job-guard outputs.
+      REQUEST_COMMAND: ${{ github.event.client_payload.command }}
+      REQUEST_TARGET_ENVIRONMENT: ${{ github.event.client_payload.target_environment }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -76,16 +83,32 @@ jobs:
             echo "error: comment_id must be numeric." >&2
             exit 1
           fi
+          # Re-derive command + target server-side against a fixed allowlist; the
+          # client_payload values are untrusted. An out-of-range value is a
+          # malformed request (exit 1, no postable run) exactly like a bad SHA.
+          if [[ "${REQUEST_COMMAND}" != "plan" && "${REQUEST_COMMAND}" != "up" ]]; then
+            echo "error: command must be plan or up." >&2
+            exit 1
+          fi
+          if [[ "${REQUEST_TARGET_ENVIRONMENT}" != "test" \
+                && "${REQUEST_TARGET_ENVIRONMENT}" != "prod" ]]; then
+            echo "error: target_environment must be test or prod." >&2
+            exit 1
+          fi
 
-          # Emit the resolved head SHA / PR number as soon as the FORMAT is known
-          # to be valid (numeric PR, 40-char lowercase SHA), and BEFORE any
-          # auth/scope/head-moved rejection that exits 1. A rejected governance
-          # PR must still leave these outputs populated so the always() status
-          # job can post a TERMINAL "Governance Apply" failure to the head SHA
-          # instead of stranding the required check pending (FEASIBILITY-1).
+          # Emit the resolved head SHA / PR number / command / target as soon as
+          # the FORMAT is known to be valid (numeric PR, 40-char lowercase SHA,
+          # allowlisted command/target), and BEFORE any auth/scope/head-moved
+          # rejection that exits 1. A rejected governance PR must still leave these
+          # outputs populated so the always() status job can post a TERMINAL
+          # "Governance Apply" failure to the head SHA instead of stranding the
+          # required check pending (FEASIBILITY-1). The command/target outputs gate
+          # which apply jobs run (plan never applies; test-up never reaches prod).
           {
             echo "head_sha=${REQUEST_HEAD_SHA}"
             echo "pull_request_number=${REQUEST_PR_NUMBER}"
+            echo "command=${REQUEST_COMMAND}"
+            echo "target_environment=${REQUEST_TARGET_ENVIRONMENT}"
           } >> "${GITHUB_OUTPUT}"
 
           # Re-validate PR number / head SHA / open-not-merged / same-repo head.
@@ -189,6 +212,14 @@ jobs:
 
   governance_test_apply:
     name: Governance Test Apply
+    # Runs only for an apply request: `test up` (apply the test stack) or any
+    # `prod` request (test-then-prod ordering applies test first, FR15). A `plan`
+    # request NEVER reaches this apply job; a `test up` request never reaches the
+    # prod jobs below.
+    if: >-
+      needs.preflight.outputs.target_environment == 'prod' ||
+      (needs.preflight.outputs.target_environment == 'test' &&
+      needs.preflight.outputs.command == 'up')
     runs-on: ubuntu-latest
     needs:
       - preflight
@@ -204,31 +235,39 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       PULUMI_DIR: pulumi/governance
       PULUMI_STACK: test
+      # The governance program's OWN backend + secrets provider (the platform
+      # bootstrap state, NOT a managed repo's CI config). These are fixed,
+      # account-level values set as repo variables by the operator (runbook).
+      PULUMI_BACKEND_URL: ${{ vars.AWS_GOVERNANCE_TEST_BACKEND_URL }}
+      PULUMI_SECRETS_PROVIDER: ${{ vars.AWS_GOVERNANCE_TEST_SECRETS_PROVIDER }}
+      PULUMI_PREVIEW_STACKS: test
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
-      - name: Load test AWS CI configuration
-        id: ci_config
-        uses: ./.github/actions/load-aws-ci-env
-        with:
-          environment: test
-          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_TEST_REGION }}
-          purpose: Governance test apply
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
-
-      - name: Configure AWS apply credentials via OIDC
+      # The apply job runs under `environment: governance`, so the OIDC token's
+      # `environment` claim is `governance` and its `sub` is
+      # `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:governance`. The
+      # bootstrap test/prod CI-config and deploy roles trust `environment:test`/
+      # `environment:prod`/branch-ref — NOT `environment:governance` — so they
+      # CANNOT be assumed here. The runner instead assumes the dedicated
+      # per-account governance automation role whose trust accepts
+      # `environment:governance` and whose permissions apply the pulumi/governance
+      # program. That role is created by the one-time operator bootstrap (admin)
+      # and pinned in the repo variable AWS_GOVERNANCE_TEST_APPLY_ROLE_ARN (the
+      # prod account uses AWS_GOVERNANCE_PROD_APPLY_ROLE_ARN); see
+      # docs/governance-stack.md.
+      - name: Configure AWS governance apply credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
+          # Per-account governance automation role for the test account
+          # (891377212104). Trust = environment:governance only.
+          role-to-assume: ${{ vars.AWS_GOVERNANCE_TEST_APPLY_ROLE_ARN }}
           role-session-name: gha-gov-test-apply-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          allowed-account-ids: ${{ vars.AWS_GOVERNANCE_TEST_ACCOUNT_ID }}
 
       - name: Start development environment
         run: make start
@@ -249,6 +288,12 @@ jobs:
 
   governance_test_post_apply_drift:
     name: Governance Test Post-Apply Drift
+    # Runs whenever the test apply ran (test up, or any prod request); never for
+    # a plan-only request.
+    if: >-
+      needs.preflight.outputs.target_environment == 'prod' ||
+      (needs.preflight.outputs.target_environment == 'test' &&
+      needs.preflight.outputs.command == 'up')
     runs-on: ubuntu-latest
     needs:
       - preflight
@@ -297,6 +342,12 @@ jobs:
 
   governance_prod_plan:
     name: Governance Prod Plan
+    # Prod jobs run ONLY for a prod request, and only after the test apply +
+    # post-apply drift succeeded (test-then-prod, FR15). A `test ...` request
+    # (plan or up) never reaches any prod job.
+    if: >-
+      needs.preflight.outputs.target_environment == 'prod' &&
+      needs.governance_test_post_apply_drift.result == 'success'
     runs-on: ubuntu-latest
     needs:
       - preflight
@@ -356,6 +407,11 @@ jobs:
 
   governance_prod_apply:
     name: Governance Prod Apply
+    # The prod stack is mutated ONLY for `prod up`: a `prod plan` runs the
+    # test apply + prod preview (test-then-prod validation) but never applies prod.
+    if: >-
+      needs.preflight.outputs.target_environment == 'prod' &&
+      needs.preflight.outputs.command == 'up'
     runs-on: ubuntu-latest
     needs:
       - preflight
@@ -373,6 +429,11 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       PULUMI_DIR: pulumi/governance
       PULUMI_STACK: prod
+      # The governance program's OWN prod backend + secrets provider (platform
+      # bootstrap state), set as repo variables by the operator (runbook).
+      PULUMI_BACKEND_URL: ${{ vars.AWS_GOVERNANCE_PROD_BACKEND_URL }}
+      PULUMI_SECRETS_PROVIDER: ${{ vars.AWS_GOVERNANCE_PROD_SECRETS_PROVIDER }}
+      PULUMI_PREVIEW_STACKS: prod
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -388,25 +449,19 @@ jobs:
           fi
           echo "Approved governance SHA: ${checked_out_sha}"
 
-      - name: Load prod AWS CI configuration
-        id: ci_config
-        uses: ./.github/actions/load-aws-ci-env
-        with:
-          environment: prod
-          config-role-arn: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_PROD_REGION }}
-          purpose: Governance prod apply
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
-
-      - name: Configure AWS apply credentials via OIDC
+      # As with the test apply: this job runs under `environment: governance`, so
+      # the OIDC token carries `environment:governance`. Only the dedicated
+      # governance automation role trusts that claim; the bootstrap prod deploy /
+      # CI-config roles (which trust `environment:prod`) cannot be assumed here.
+      - name: Configure AWS governance apply credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
+          # Per-account governance automation role for the prod account
+          # (933245420672). Trust = environment:governance only.
+          role-to-assume: ${{ vars.AWS_GOVERNANCE_PROD_APPLY_ROLE_ARN }}
           role-session-name: gha-gov-prod-apply-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          allowed-account-ids: ${{ vars.AWS_GOVERNANCE_PROD_ACCOUNT_ID }}
 
       - name: Start development environment
         run: make start
@@ -447,6 +502,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       HEAD_SHA: ${{ needs.preflight.outputs.head_sha }}
       PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+      REQUEST_COMMAND: ${{ needs.preflight.outputs.command }}
+      REQUEST_TARGET_ENVIRONMENT: ${{ needs.preflight.outputs.target_environment }}
+      TEST_PLAN_RESULT: ${{ needs.governance_test_plan.result }}
+      TEST_APPLY_RESULT: ${{ needs.governance_test_apply.result }}
+      PROD_PLAN_RESULT: ${{ needs.governance_prod_plan.result }}
       PROD_APPLY_RESULT: ${{ needs.governance_prod_apply.result }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
@@ -458,20 +518,33 @@ jobs:
         # TERMINAL status so the required check never strands pending.
         if: needs.preflight.outputs.head_sha != ''
         run: |
-          # The required check "Governance Apply" resolves only because this
-          # runner explicitly posts that exact context to the approved head SHA
-          # (FR15, FEASIBILITY-1). The state is ALWAYS terminal: success only
-          # when the prod apply succeeded, failure for every other result
-          # (failure / skipped / cancelled / empty — e.g. a preflight rejection
-          # short-circuits the apply jobs to skipped). Never pending.
-          case "${PROD_APPLY_RESULT}" in
+          # The "Governance Apply" status resolves only because this runner
+          # explicitly posts that exact context to the approved head SHA (FR15,
+          # FEASIBILITY-1). The state is ALWAYS terminal — never pending — and it
+          # reflects the stage the REQUEST was meant to reach so a `plan` or a
+          # `test up` is not reported as a failed prod apply:
+          #   - prod up  -> the gated prod apply result (the success-before-merge
+          #                 signal: success only when prod actually applied)
+          #   - test up  -> the test apply result
+          #   - plan     -> the relevant plan result (test plan / prod plan)
+          # A preflight rejection short-circuits every job to skipped/empty, which
+          # maps to failure (terminal). Any non-success result is a failure.
+          case "${REQUEST_COMMAND}:${REQUEST_TARGET_ENVIRONMENT}" in
+            up:prod) gate_result="${PROD_APPLY_RESULT}" ;;
+            up:test) gate_result="${TEST_APPLY_RESULT}" ;;
+            plan:prod) gate_result="${PROD_PLAN_RESULT}" ;;
+            plan:test) gate_result="${TEST_PLAN_RESULT}" ;;
+            # Empty/unknown command+target means a malformed/rejected request.
+            *) gate_result="${PROD_APPLY_RESULT}" ;;
+          esac
+          case "${gate_result}" in
             success) status_state="success" ;;
             *) status_state="failure" ;;
           esac
           if [[ "${status_state}" == "success" ]]; then
-            status_description="Governance apply succeeded."
+            status_description="Governance ${REQUEST_COMMAND:-apply} succeeded."
           else
-            status_description="Governance apply rejected or did not complete."
+            status_description="Governance ${REQUEST_COMMAND:-apply} rejected or did not complete."
           fi
           gh api \
             --method POST \
