@@ -39,6 +39,7 @@ These checks should be required in branch protection:
 | `CodeQL (python)` | GitHub-native | Static security/code scanning for Python |
 | `CodeQL (actions)` | GitHub-native | Static security/code scanning for workflows |
 | `Test Account Evidence` | `make report-well-architected-evidence` | Real test-account Well-Architected evidence gate for trusted PRs and main |
+| `Governance Apply` | `.github/workflows/pulumi-governance.yml` | Success-before-merge commit status the governance runner posts to the approved head SHA after a `@Kravalg`-approved governance apply |
 
 `make ci-pr` is the canonical local equivalent of the real non-mutation
 pull-request battery and backs the required `Local Battery` check.

@@ -8,9 +8,40 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
+GOVERNANCE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pulumi-governance.yml"
+GOVERNANCE_STATUS_CONTEXT = "Governance Apply"
+# Status contexts present BEFORE the governance apply gate was registered; these
+# must never regress when the new context is appended (test/prod check list).
+LEGACY_REQUIRED_STATUS_CHECKS = (
+    "Ruff",
+    "Ty",
+    "Maintainability",
+    "Architecture",
+    "Structural",
+    "Dependency Hygiene",
+    "Coverage",
+    "Local Battery",
+    "Mutation",
+    "Run Bats Tests",
+    "Secrets Scan",
+    "Dependency Audit",
+    "Bandit",
+    "Dependency Review",
+    "Actionlint",
+    "Yamllint",
+    "Hadolint",
+    "Preview",
+    "Destructive Diff Gate",
+    "IAM Validation",
+    "Policy",
+    "CodeQL (python)",
+    "CodeQL (actions)",
+    "Test Account Evidence",
+)
 
 REVIEWER_ID = 9444106
 
@@ -272,3 +303,72 @@ def test_verify_applied_controls_blocks_on_weak_governance(
 
     with pytest.raises(RuntimeError, match="Governance environment"):
         module._verify_applied_controls("example/repo", REVIEWER_ID)  # noqa: SLF001
+
+
+def _governance_status_run_text() -> str:
+    """Concatenate every `run` body in the governance-status job for assertions."""
+    workflow = yaml.safe_load(GOVERNANCE_WORKFLOW.read_text(encoding="utf-8"))
+    status_job = workflow["jobs"]["governance_status"]
+    return "\n".join(step.get("run", "") for step in status_job.get("steps", []))
+
+
+def test_governance_apply_context_registered_in_required_status_checks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """FR15/FEASIBILITY-1: the governance apply context is a required PR check."""
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+
+    assert (  # nosec B101
+        GOVERNANCE_STATUS_CONTEXT in controls.REQUIRED_STATUS_CHECKS
+    )
+
+
+def test_required_status_checks_keep_existing_contexts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No regression: every legacy required check survives the new addition."""
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+
+    for context in LEGACY_REQUIRED_STATUS_CHECKS:
+        assert context in controls.REQUIRED_STATUS_CHECKS  # nosec B101
+    # The governance gate is appended, not substituted, so the legacy set is a
+    # strict subset of the registered required checks.
+    assert set(LEGACY_REQUIRED_STATUS_CHECKS).issubset(  # nosec B101
+        set(controls.REQUIRED_STATUS_CHECKS)
+    )
+
+
+def test_governance_runner_posts_required_check_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The runner posts the BYTE-IDENTICAL required context to the head SHA.
+
+    FEASIBILITY-1: the governance runner fires on `repository_dispatch`, so the
+    required check resolves only because this workflow explicitly posts that
+    exact context to the verified head SHA. A context-string mismatch between
+    the tuple and the runner's status-post would make the PR unmergeable, so the
+    two are asserted to agree here (architecture §7.5).
+    """
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    run_text = _governance_status_run_text()
+
+    # The runner posts a commit status to the verified head SHA.
+    assert "statuses/${HEAD_SHA}" in run_text  # nosec B101
+    # The posted context is byte-identical to the registered required check.
+    assert f'context="{GOVERNANCE_STATUS_CONTEXT}"' in run_text  # nosec B101
+    assert GOVERNANCE_STATUS_CONTEXT in controls.REQUIRED_STATUS_CHECKS  # nosec B101
+
+
+def test_governance_required_check_string_matches_runner_post(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Negative guard: a context-string mismatch fails the binding assertion."""
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    run_text = _governance_status_run_text()
+
+    posted_context = next(
+        context
+        for context in controls.REQUIRED_STATUS_CHECKS
+        if f'context="{context}"' in run_text
+    )
+    assert posted_context == GOVERNANCE_STATUS_CONTEXT  # nosec B101
