@@ -32,6 +32,26 @@ _MOCK_PROVIDER_ARN = (
 )
 
 
+def _flush_component(component: RepoGovernance) -> None:
+    """Force every resource this component registers to land in the mock list.
+
+    Pulumi registers resources asynchronously, so the mock ``resources`` list is
+    appended to only once each registration RPC resolves. Awaiting the
+    component's exposed outputs drives those RPCs to completion, so a scan run
+    immediately afterwards sees every resource the component created (its deploy
+    roles + attached policies, config-read roles + policies, state bucket and
+    KMS alias) instead of racing a still-in-flight registration.
+    """
+    for arn in component.deployment_role_arns.values():
+        _sync_await(future_output(arn))
+    for arn in component.config_read_role_arns.values():
+        _sync_await(future_output(arn))
+    _sync_await(future_output(component.state_bucket_name))
+    _sync_await(future_output(component.state_bucket_arn))
+    _sync_await(future_output(component.secrets_alias_name))
+    _sync_await(future_output(component.secrets_key_arn))
+
+
 def _governance_settings(environment: str) -> config.BootstrapSettings:
     """Return settings for governance component tests (mock account/region)."""
     return config.BootstrapSettings(
@@ -100,9 +120,20 @@ def _build_repo_governance(
     )
 
 
-def _state_by_name(pulumi_mocks, name: str) -> dict:
+def _resources_created_since(pulumi_mocks, start: int):
+    """Return only resources this test created (after the ``start`` snapshot).
+
+    ``pulumi_mocks.resources`` is session-scoped: it accumulates every resource
+    registered by every test in the run. Slicing from a per-test snapshot keeps
+    each scan scoped to the component under test, so prior tests' resources can
+    never be matched by ``Sid``/type/name.
+    """
+    return pulumi_mocks.resources[start:]
+
+
+def _state_by_name(pulumi_mocks, name: str, *, start: int = 0) -> dict:
     """Return the recorded mock state for a registered resource by name."""
-    for _typ, resource_name, state in pulumi_mocks.resources:
+    for _typ, resource_name, state in _resources_created_since(pulumi_mocks, start):
         if resource_name == name:
             return state
     raise AssertionError(f"resource {name!r} was not registered")
@@ -245,31 +276,29 @@ def test_repo_governance_renders_full_per_repo_surface(pulumi_mocks, monkeypatch
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
 
+    start = len(pulumi_mocks.resources)
     component = _build_repo_governance(
         "gov-test-user-service-infrastructure",
         repo=repo,
         settings=settings,
     )
 
-    _sync_await(future_output(component.deployment_role_arns["preview"]))
-    _sync_await(future_output(component.deployment_role_arns["apply"]))
-    _sync_await(future_output(component.deployment_role_arns["drift"]))
-    _sync_await(future_output(component.config_read_role_arns["test-pr"]))
-    _sync_await(future_output(component.config_read_role_arns["test"]))
-    _sync_await(future_output(component.state_bucket_name))
-    _sync_await(future_output(component.secrets_alias_name))
+    _flush_component(component)
 
     assert set(component.deployment_role_arns) == {  # nosec B101
         "preview",
         "apply",
         "drift",
     }
-    registered = {name for _typ, name, _state in pulumi_mocks.resources}
+    registered = {
+        name for _typ, name, _state in _resources_created_since(pulumi_mocks, start)
+    }
     # state bucket + replica
     assert any("-user-service-infrastructure" in n for n in registered)  # nosec B101
     bucket_state = _state_by_name(
         pulumi_mocks,
         "gov-test-user-service-infrastructure-state-user-service-infrastructure",
+        start=start,
     )
     assert (  # nosec B101
         bucket_state["bucket"] == "pulumi-user-service-infrastructure-test-state"
@@ -295,15 +324,18 @@ def test_repo_governance_apply_role_trust_is_environment_governance_only(
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
 
-    _build_repo_governance(
+    start = len(pulumi_mocks.resources)
+    component = _build_repo_governance(
         "gov-test-user-service-infrastructure",
         repo=repo,
         settings=settings,
     )
+    _flush_component(component)
 
     apply_state = _state_by_name(
         pulumi_mocks,
         "gov-test-user-service-infrastructure-apply-role",
+        start=start,
     )
     apply_trust = json.loads(apply_state["assumeRolePolicy"])
     subjects = apply_trust["Statement"][0]["Condition"]["StringEquals"][
@@ -323,15 +355,18 @@ def test_repo_governance_prod_apply_role_trust_is_environment_governance_only(
     settings = _governance_settings("prod")
     repo = _synthetic_repo("user-service-infrastructure")
 
-    _build_repo_governance(
+    start = len(pulumi_mocks.resources)
+    component = _build_repo_governance(
         "gov-prod-user-service-infrastructure",
         repo=repo,
         settings=settings,
     )
+    _flush_component(component)
 
     apply_state = _state_by_name(
         pulumi_mocks,
         "gov-prod-user-service-infrastructure-apply-role",
+        start=start,
     )
     apply_trust = json.loads(apply_state["assumeRolePolicy"])
     subjects = apply_trust["Statement"][0]["Condition"]["StringEquals"][
@@ -351,15 +386,18 @@ def test_repo_governance_preview_role_keeps_existing_subjects(
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
 
-    _build_repo_governance(
+    start = len(pulumi_mocks.resources)
+    component = _build_repo_governance(
         "gov-test-user-service-infrastructure",
         repo=repo,
         settings=settings,
     )
+    _flush_component(component)
 
     preview_state = _state_by_name(
         pulumi_mocks,
         "gov-test-user-service-infrastructure-preview-role",
+        start=start,
     )
     preview_trust = json.loads(preview_state["assumeRolePolicy"])
     subjects = preview_trust["Statement"][0]["Condition"]["StringEquals"][
@@ -384,16 +422,18 @@ def test_repo_governance_deploy_policy_has_no_other_repo_or_platform_reference(
     settings = _governance_settings("test")
     repo_a = _synthetic_repo("user-service-infrastructure")
 
-    _build_repo_governance(
+    start = len(pulumi_mocks.resources)
+    component = _build_repo_governance(
         "gov-test-user-service-infrastructure",
         repo=repo_a,
         settings=settings,
     )
+    _flush_component(component)
 
     other_repo = "billing-service-infrastructure"
     policy_blobs = [
         state["policy"]
-        for typ, _name, state in pulumi_mocks.resources
+        for typ, _name, state in _resources_created_since(pulumi_mocks, start)
         if typ in {"aws:iam/policy:Policy", "aws:iam/rolePolicy:RolePolicy"}
         and "policy" in state
     ]
@@ -412,13 +452,15 @@ def test_repo_governance_deploy_policies_have_no_allow_wildcard(
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
 
-    _build_repo_governance(
+    start = len(pulumi_mocks.resources)
+    component = _build_repo_governance(
         "gov-test-user-service-infrastructure",
         repo=repo,
         settings=settings,
     )
+    _flush_component(component)
 
-    for typ, _name, state in pulumi_mocks.resources:
+    for typ, _name, state in _resources_created_since(pulumi_mocks, start):
         if typ not in {
             "aws:iam/policy:Policy",
             "aws:iam/rolePolicy:RolePolicy",
@@ -448,14 +490,16 @@ def test_repo_governance_apply_policy_denies_foreign_secret_reads(
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
 
-    _build_repo_governance(
+    start = len(pulumi_mocks.resources)
+    component = _build_repo_governance(
         "gov-test-user-service-infrastructure",
         repo=repo,
         settings=settings,
     )
+    _flush_component(component)
 
     deny_statements = []
-    for typ, _name, state in pulumi_mocks.resources:
+    for typ, _name, state in _resources_created_since(pulumi_mocks, start):
         if typ != "aws:iam/policy:Policy" or "policy" not in state:
             continue
         document = json.loads(state["policy"])
@@ -486,14 +530,16 @@ def test_repo_governance_backend_policy_is_account_and_region_parametric(
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
 
-    _build_repo_governance(
+    start = len(pulumi_mocks.resources)
+    component = _build_repo_governance(
         "gov-test-user-service-infrastructure",
         repo=repo,
         settings=settings,
     )
+    _flush_component(component)
 
     backend_statements = None
-    for typ, _name, state in pulumi_mocks.resources:
+    for typ, _name, state in _resources_created_since(pulumi_mocks, start):
         if typ not in {
             "aws:iam/policy:Policy",
             "aws:iam/rolePolicy:RolePolicy",
@@ -536,6 +582,7 @@ def test_repo_governance_skips_secret_versions_when_not_writing(
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
 
+    start = len(pulumi_mocks.resources)
     component = _build_repo_governance(
         "gov-test-user-service-infrastructure",
         repo=repo,
@@ -543,11 +590,11 @@ def test_repo_governance_skips_secret_versions_when_not_writing(
         write_secret_values=False,
     )
 
-    _sync_await(future_output(component.deployment_role_arns["apply"]))
+    _flush_component(component)
     assert component.secret_versions == {}  # nosec B101
     assert not any(  # nosec B101
         typ == "aws:secretsmanager/secretVersion:SecretVersion"
-        for typ, _name, _state in pulumi_mocks.resources
+        for typ, _name, _state in _resources_created_since(pulumi_mocks, start)
     )
 
 

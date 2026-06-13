@@ -29,6 +29,29 @@ from infra.repository_catalog import ManagedRepositoryCatalog
 from infra.utils.outputs import future_output
 from pulumi.runtime.sync_await import _sync_await
 
+
+def _flush_stack(stack: GovernanceStack) -> None:
+    """Force every resource the stack registers to land in the mock list.
+
+    Pulumi registers resources asynchronously, so the mock ``resources`` list is
+    appended to only once each registration RPC resolves. Awaiting the consumed
+    OIDC provider ARN plus every per-repo deploy/config-read role ARN, state
+    bucket and KMS alias drives those RPCs to completion, so a scan run
+    immediately afterwards sees every resource the stack created instead of
+    racing a still-in-flight registration.
+    """
+    _sync_await(future_output(stack.oidc_provider_arn))
+    for component in stack.repo_components.values():
+        for arn in component.deployment_role_arns.values():
+            _sync_await(future_output(arn))
+        for arn in component.config_read_role_arns.values():
+            _sync_await(future_output(arn))
+        _sync_await(future_output(component.state_bucket_name))
+        _sync_await(future_output(component.state_bucket_arn))
+        _sync_await(future_output(component.secrets_alias_name))
+        _sync_await(future_output(component.secrets_key_arn))
+
+
 _MOCK_ACCOUNT_ID = "123456789012"
 _MOCK_PROVIDER_ARN = (
     "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
@@ -112,6 +135,17 @@ def _build_stack(
     return GovernanceStack(name, args=_stack_args(**kwargs))
 
 
+def _resources_created_since(pulumi_mocks, start: int):
+    """Return only resources this test created (after the ``start`` snapshot).
+
+    ``pulumi_mocks.resources`` is session-scoped: it accumulates every resource
+    registered by every test in the run. Slicing from a per-test snapshot keeps
+    each scan scoped to the stack under test, so prior tests' resources can
+    never be matched by type/name.
+    """
+    return pulumi_mocks.resources[start:]
+
+
 # --- account assertion (D1, injectable seam — AWS-SRE-5 / FEAS-3) ---------------
 
 
@@ -169,11 +203,13 @@ def test_stack_registers_zero_oidc_provider_create(pulumi_mocks, monkeypatch):  
     """
     _no_existing_resources(monkeypatch)
 
-    _build_stack()
+    start = len(pulumi_mocks.resources)
+    stack = _build_stack()
+    _flush_stack(stack)
 
     provider_states = [
         state
-        for typ, _name, state in pulumi_mocks.resources
+        for typ, _name, state in _resources_created_since(pulumi_mocks, start)
         if typ == "aws:iam/openIdConnectProvider:OpenIdConnectProvider"
     ]
     create_only_inputs = {"clientIdLists", "thumbprintLists", "url"}
@@ -203,16 +239,15 @@ def test_stack_loop_yields_exactly_three_deploy_roles_per_repo(
     catalog = _two_repo_catalog()
     repo_count = len(catalog.repositories)
 
+    start = len(pulumi_mocks.resources)
     stack = _build_stack(catalog=catalog)
 
     # Force every deploy-role registration RPC to flush before counting.
-    for component in stack.repo_components.values():
-        for arn in component.deployment_role_arns.values():
-            _sync_await(future_output(arn))
+    _flush_stack(stack)
 
     deploy_role_names = [
         name
-        for typ, name, _state in pulumi_mocks.resources
+        for typ, name, _state in _resources_created_since(pulumi_mocks, start)
         if typ == "aws:iam/role:Role"
         and (
             name.endswith("-preview-role")
