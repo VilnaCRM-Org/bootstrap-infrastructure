@@ -352,13 +352,17 @@ def test_claude_readonly_role_emits_role_and_guardrail_policies(
     deny_policy = _sync_await(future_output(readonly.secret_deny_policy.policy))
 
     assert role_name == "ClaudeReadOnly-bootstrap-infrastructure-test"  # nosec B101
+    assert role_arn is not None  # nosec B101
     assert role_arn.endswith(  # nosec B101
         ":role/ClaudeReadOnly-bootstrap-infrastructure-test"
     )
     assert max_session_duration == 3600  # nosec B101
+    assert assume_role_policy is not None  # nosec B101
     assert "aws:MultiFactorAuthPresent" in assume_role_policy  # nosec B101
+    assert tags is not None  # nosec B101
     assert tags["Purpose"] == "claude-readonly"  # nosec B101
     assert attachment_policy_arn == "arn:aws:iam::aws:policy/ReadOnlyAccess"  # nosec B101
+    assert deny_policy is not None  # nosec B101
     assert "DenySecretAndCredentialReads" in deny_policy  # nosec B101
     assert '"Effect": "Deny"' in deny_policy  # nosec B101
 
