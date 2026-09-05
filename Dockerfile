@@ -169,6 +169,7 @@ RUN printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/ap
     && apt-get install -y --no-install-recommends \
         ca-certificates \
         git \
+        jq \
         make \
     && rm -rf /var/lib/apt/lists/*
 
@@ -219,6 +220,7 @@ RUN --mount=type=cache,target=/home/${USERNAME}/.cache/uv,uid=${UID},gid=${GID} 
     && uv sync --frozen --all-groups \
     && pulumi version >/dev/null \
     && aws --version >/dev/null \
+    && jq --version >/dev/null \
     && uv run --frozen python -c 'import pulumi, pulumi_aws' \
     && chown -R "${USERNAME}:$(id -g "${USERNAME}")" \
         "${UV_PROJECT_ENVIRONMENT}" \
