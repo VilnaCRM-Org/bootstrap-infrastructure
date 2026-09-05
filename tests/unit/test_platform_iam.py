@@ -61,10 +61,13 @@ def test_live_config_control_ceiling_fits_iam_quota(environment):
         for statement in statements
         if statement["Effect"] == "Allow"
     )
+    guard = json.loads(platform_iam.platform_control_state_guard(ACCOUNT, configured))[
+        "Statement"
+    ]
     assert any(
         statement["Effect"] == "Deny"
         and "iam:DeleteRolePermissionsBoundary" in values(statement["Action"])
-        for statement in statements
+        for statement in guard
     )
 
 

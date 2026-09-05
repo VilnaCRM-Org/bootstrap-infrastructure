@@ -11,6 +11,7 @@ if str(PULUMI_ROOT) not in sys.path:
     sys.path.insert(0, str(PULUMI_ROOT))
 
 pulumi = import_module("pulumi")
+aws = import_module("pulumi_aws")
 infra = import_module("infra")
 BootstrapSettings = infra.BootstrapSettings
 GovernanceStack = infra.GovernanceStack
@@ -37,7 +38,7 @@ governance = GovernanceStack(
         repository_catalog=catalog,
         expected_account_id=cfg.require("awsAccountId"),
         oidc_provider_arn=cfg.get("githubOidcProviderArn"),
-        region=cfg.get("region") or "eu-central-1",
+        region=cfg.get("region") or aws.get_region().region,
         # PULUMI_DIR flows into each managed repo's generated CI-config payload
         # (governance.py -> _governance_payloads -> the per-repo CI secret), and
         # the managed repo's self-deploy resolves its own Pulumi project from

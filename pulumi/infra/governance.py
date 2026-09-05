@@ -378,8 +378,7 @@ def _governance_secrets_provider(
     override: str | None,
 ) -> str:
     """Return the repo-scoped Pulumi secrets-provider URL for governance."""
-    if override is not None:
-        return override
+    # The controller stack's provider override is not a managed repo capability.
     return settings.pulumi_secrets_provider_for_repo(repo.name, region)
 
 
@@ -564,10 +563,15 @@ class RepoGovernance(pulumi.ComponentResource):
     ) -> BootstrapSettings:
         """Return settings pinned to this repo so derived helpers stay scoped."""
         if settings.repo == repo.name and repo.repository_id is None:
-            return settings
+            return (
+                settings
+                if settings.github_branch == repo.default_branch
+                else dataclasses.replace(settings, github_branch=repo.default_branch)
+            )
         rescoped: BootstrapSettings = dataclasses.replace(
             settings,
             repo=repo.name,
+            github_branch=repo.default_branch,
             github_repository_id=repo.repository_id,
             github_repository_owner_id=repo.repository_owner_id,
         )
@@ -683,7 +687,9 @@ class RepoGovernance(pulumi.ComponentResource):
         )
 
 
-def _resolve_oidc_provider_arn(args: GovernanceStackArgs) -> str:
+def _resolve_oidc_provider_arn(
+    args: GovernanceStackArgs, *, account_id: str, partition: str
+) -> str:
     """Return the pinned per-account OIDC provider ARN or raise (AWS-SRE-2, FR7).
 
     The governance stack NEVER creates/adopts the provider: each account already
@@ -698,6 +704,12 @@ def _resolve_oidc_provider_arn(args: GovernanceStackArgs) -> str:
             "(set governance:githubOidcProviderArn from the bootstrap stack's "
             "oidcProviderArn output); it never creates the OIDC provider."
         )
+    expected = (
+        f"arn:{partition}:iam::{account_id}:"
+        "oidc-provider/token.actions.githubusercontent.com"
+    )
+    if args.oidc_provider_arn != expected:
+        raise ValueError("Governance OIDC provider must be the account's GitHub issuer")
     return args.oidc_provider_arn
 
 
@@ -798,11 +810,12 @@ class GovernanceStack(pulumi.ComponentResource):
         catalog = resolved.repository_catalog or ManagedRepositoryCatalog.from_settings(
             settings
         )
-        provider_arn = _resolve_oidc_provider_arn(resolved)
-
         account_id = aws.get_caller_identity().account_id
         _assert_governance_account(account_id, resolved.expected_account_id)
         partition = aws.get_partition().partition
+        provider_arn = _resolve_oidc_provider_arn(
+            resolved, account_id=account_id, partition=partition
+        )
         region = resolved.region
 
         provider = aws.iam.OpenIdConnectProvider.get(

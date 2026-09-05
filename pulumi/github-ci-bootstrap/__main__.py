@@ -44,6 +44,13 @@ platform_catalog = infra.ManagedRepositoryCatalog.load_from_json_file(
 for repository in platform_catalog:
     if repository.repository_id is None or repository.repository_owner_id is None:
         raise ValueError("Platform catalog repositories require pinned GitHub IDs.")
+    if repository.name != settings.repo:
+        raise ValueError("Platform catalog must contain only the bootstrap repository.")
+    if (
+        repository.repository_id,
+        repository.repository_owner_id,
+    ) != (settings.github_repository_id, settings.github_repository_owner_id):
+        raise ValueError("Bootstrap config and platform catalog GitHub IDs differ.")
 governance_region = aws.get_region().region
 partition = aws.get_partition().partition
 platform_iam = import_module("infra.platform_iam")

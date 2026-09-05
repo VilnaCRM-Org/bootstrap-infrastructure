@@ -2223,7 +2223,7 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     )
     assert "Pulumi PR Guardrails" not in role_state["assumeRolePolicy"]  # nosec B101
     assert (  # nosec B101
-        "Operations Alert Issue Triage" not in triage_role_state["assumeRolePolicy"]
+        "Operations Alert Issue Triage" in triage_role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
         len(policy_states[0]["policy"].encode("utf-8"))

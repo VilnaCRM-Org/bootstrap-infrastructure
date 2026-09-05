@@ -59,9 +59,10 @@ def production_environment_blockers(
         blockers.append(
             f"GitHub environment {metadata.environment!r} does not require reviewers."
         )
-    elif metadata.reviewer_login and list(metadata.reviewer_logins) != [
-        metadata.reviewer_login
-    ]:
+    elif metadata.reviewer_login and (
+        metadata.reviewer_count != 1
+        or list(metadata.reviewer_logins) != [metadata.reviewer_login]
+    ):
         blockers.append(
             f"GitHub environment {metadata.environment!r} required reviewers do not "
             f"contain only {metadata.reviewer_login}."

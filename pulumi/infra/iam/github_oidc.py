@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -275,6 +275,8 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         permissions_boundary: pulumi.Input[str] | None = None,
         adopt_existing_policies: bool = False,
         preferred_inline_policy_names: Mapping[str, str] | None = None,
+        role_guard_factory: Callable[[str, aws.iam.Role], pulumi.Resource]
+        | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize OIDC provider and deploy roles for repositories."""
@@ -292,6 +294,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         self._permissions_boundary = permissions_boundary
         self._adopt_existing_policies = adopt_existing_policies
         self._preferred_inline_policy_names = preferred_inline_policy_names or {}
+        self._role_guard_factory = role_guard_factory
         self.deploy_role_arns: dict[str, pulumi.Output[str]] = {}
 
         if repositories is not None:
@@ -335,6 +338,11 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         )
         if not self._manage_roles:
             return role.arn
+        guard_dependencies = (
+            [self._role_guard_factory(repo.name, role)]
+            if self._role_guard_factory is not None
+            else []
+        )
         key_arn = _required_secret_key_arn(repo.name, secrets_key_arns)
         policy = apply_output(
             cast(
@@ -369,6 +377,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
             policy=policy,
             opts=pulumi.ResourceOptions(
                 parent=self,
+                depends_on=guard_dependencies,
                 import_=(
                     f"{_role_name_for_suffix(repo_suffix)}:{existing_policy}"
                     if existing_policy

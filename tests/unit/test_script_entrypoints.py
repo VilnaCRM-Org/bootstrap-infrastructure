@@ -4170,17 +4170,17 @@ def test_validate_repository_catalogs_governance_fanout_within_thresholds(
     assert "guardDutyDetectors" not in report  # nosec B101
     assert "oidcProviders" not in report  # nosec B101
     assert report["repositories"] == 1  # nosec B101
-    # iamRoles = 3 (trio) + 4 (config-read suffixes) + 1 (replication) per repo.
-    assert report["iamRoles"] == 8  # nosec B101
-    assert report["managedPolicies"] == 7  # nosec B101
-    assert report["secrets"] == 4  # nosec B101
+    # iamRoles = 3 (trio) + 2 (config-read suffixes) + 1 (replication) per repo.
+    assert report["iamRoles"] == 6  # nosec B101
+    assert report["managedPolicies"] == 2  # nosec B101
+    assert report["secrets"] == 2  # nosec B101
 
     quota = module._governance_quota_report(report)
     assert quota["iamRoles"]["limit"] == 1000  # nosec B101
     assert quota["managedPolicies"]["limit"] == 1500  # nosec B101
-    assert quota["managedPoliciesPerRole"]["current"] == 7  # nosec B101
+    assert quota["managedPoliciesPerRole"]["current"] == 2  # nosec B101
     assert quota["managedPoliciesPerRole"]["limit"] == 10  # nosec B101
-    assert quota["managedPoliciesPerRole"]["status"] == "flagged"  # nosec B101
+    assert quota["managedPoliciesPerRole"]["status"] == "ok"  # nosec B101
 
     assert module.main(["--fanout-report", str(catalog_path)]) == 0  # nosec B101
     output = capsys.readouterr().out
@@ -4189,7 +4189,7 @@ def test_validate_repository_catalogs_governance_fanout_within_thresholds(
     assert '"managedPoliciesPerRole"' in output  # nosec B101
 
 
-@pytest.mark.parametrize("limit, expected_exit", [(3, 1), (4, 0)])
+@pytest.mark.parametrize("limit, expected_exit", [(1, 1), (2, 0)])
 def test_validate_repository_catalogs_governance_configuration_quota_cli(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -4224,14 +4224,14 @@ def test_validate_repository_catalogs_governance_configuration_quota_cli(
         )
     )
     assert report["secrets"] == {
-        "current": 4,
+        "current": 2,
         "max": limit,
-        "overBy": max(4 - limit, 0),
-        "remaining": max(limit - 4, 0),
+        "overBy": max(2 - limit, 0),
+        "remaining": max(limit - 2, 0),
         "status": "exceeded" if expected_exit else "ok",
     }
     assert output.err == (
-        f"error: {catalog_path}: secrets fanout 4 exceeds {limit}\n"
+        f"error: {catalog_path}: secrets fanout 2 exceeds {limit}\n"
         if expected_exit
         else ""
     )
@@ -4249,9 +4249,9 @@ def test_validate_repository_catalogs_governance_single_repo_scales_linearly(
     )
     schema_path = pulumi_dir / "repositories.schema.json"
     one_report = module.catalog_fanout_report(one, schema_path)
-    assert one_report["iamRoles"] == 8  # nosec B101
-    assert one_report["managedPolicies"] == 7  # nosec B101
-    assert one_report["secrets"] == 4  # nosec B101
+    assert one_report["iamRoles"] == 6  # nosec B101
+    assert one_report["managedPolicies"] == 2  # nosec B101
+    assert one_report["secrets"] == 2  # nosec B101
 
     two = _write_governance_catalog(
         pulumi_dir,
@@ -4261,22 +4261,22 @@ def test_validate_repository_catalogs_governance_single_repo_scales_linearly(
         ],
     )
     two_report = module.catalog_fanout_report(two, schema_path)
-    assert two_report["iamRoles"] == 16  # nosec B101
-    assert two_report["managedPolicies"] == 14  # nosec B101
-    assert two_report["secrets"] == 8  # nosec B101
+    assert two_report["iamRoles"] == 12  # nosec B101
+    assert two_report["managedPolicies"] == 4  # nosec B101
+    assert two_report["secrets"] == 4  # nosec B101
 
 
 def test_validate_repository_catalogs_rejects_duplicate_project(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Two repos sharing one ``project`` value must fail validation."""
+    """Two repository names with the same canonical token must fail validation."""
     module = load_script_module(monkeypatch, "validate_repository_catalogs")
     pulumi_dir = tmp_path / "repo" / "pulumi"
     catalog_path = _write_governance_catalog(
         pulumi_dir,
         [
-            {"name": "alpha-infrastructure", "project": "shared"},
-            {"name": "beta-infrastructure", "project": "shared"},
+            {"name": "alpha.infrastructure", "project": "first"},
+            {"name": "alpha-infrastructure", "project": "second"},
         ],
     )
     schema_path = pulumi_dir / "repositories.schema.json"
@@ -9901,3 +9901,64 @@ def test_select_stack_for_preview_handles_empty_stderr_error_paths(
         )
         == 1
     )
+
+
+@pytest.mark.parametrize(
+    "command_name, action, plan_flag",
+    [
+        ("plan", "preview", "--save-plan"),
+        ("up-plan", "up", "--plan"),
+    ],
+)
+def test_saved_plan_commands_refresh_cloud_state_without_separate_refresh(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, command_name, action, plan_flag
+):
+    """Both plan phases reconcile drift; preview never writes a checkpoint."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    calls = []
+    context = module.CommandContext(
+        root_dir=tmp_path,
+        env={},
+        pulumi_dir=tmp_path / "pulumi",
+        policy_pack_dir=tmp_path / "policy",
+        plan_dir=tmp_path / "plans",
+        preview_artifact_dir=tmp_path / "preview",
+        backend_url="s3://state/test",
+        secrets_provider="awskms://alias/test",
+        runner=lambda command, **kwargs: calls.append(command),
+    )
+    plan = tmp_path / "plans/reviewed.plan"
+    module._run_stack_command(
+        context,
+        module.StackCommand(command_name, "test", plan_path=plan),
+    )
+    assert len(calls) == 1
+    command = calls[0]
+    assert command[3] == action
+    assert command.count("--refresh") == 1
+    assert command[command.index(plan_flag) + 1] == str(plan)
+    assert command[command.index("--policy-pack") + 1] == str(tmp_path / "policy")
+    assert not {"--target", "--replace", "--force"}.intersection(command)
+
+
+def test_saved_plan_replay_prepares_mandatory_policy_pack(monkeypatch, tmp_path):
+    """Gated replay validates policy even when the preview pack ran elsewhere."""
+    module = load_script_module(monkeypatch, "run_pulumi_command")
+    prepared = []
+    monkeypatch.setattr(module, "run", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        module, "_prepare_policy_pack", lambda root, env: prepared.append(root)
+    )
+    context = module.CommandContext(
+        root_dir=tmp_path,
+        env={},
+        pulumi_dir=tmp_path / "pulumi",
+        policy_pack_dir=tmp_path / "policy",
+        plan_dir=tmp_path / "plans",
+        preview_artifact_dir=tmp_path / "preview",
+        backend_url="s3://state/test",
+        secrets_provider="awskms://alias/test",
+        runner=lambda *args, **kwargs: None,
+    )
+    module._login_and_prepare("up-plan", context)
+    assert prepared == [tmp_path]

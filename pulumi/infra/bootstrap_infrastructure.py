@@ -40,6 +40,7 @@ def _create_ci_config(
         args=CiConfigurationArgs(
             settings=settings,
             oidc_provider_arn=bootstrap.oidc.provider.arn,
+            protect_resources=True,
             manage_resources=getattr(bootstrap, "manage_control_resources", True),
         ),
         opts=opts,

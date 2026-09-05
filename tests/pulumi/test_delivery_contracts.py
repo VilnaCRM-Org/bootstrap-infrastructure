@@ -767,8 +767,8 @@ def test_aws_ci_loader_reads_secrets_manager_without_pulumi_cloud() -> None:
     )
     assert validate_step["env"]["CI_CONFIG_ACTION_PATH"] == "${{ github.action_path }}"
     assert (
-        'python3 "${CI_CONFIG_ACTION_PATH}/../../../scripts/validate_ci_environment.py"'
-        in validate_step["run"]
+        'python3 -I "${CI_CONFIG_ACTION_PATH}/../../../scripts/'
+        'validate_ci_environment.py"' in validate_step["run"]
     )
     assert (  # nosec B101
         "uv run" not in validate_step["run"]
@@ -933,7 +933,9 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
         ci_config_step = next(
             step
             for step in job.get("steps", [])
-            if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
+            if step.get("uses", "")
+            .split("@", 1)[0]
+            .endswith("/.github/actions/load-aws-ci-env")
         )
         if expected_ci_environment == test_pr_environment:
             ci_config_target_step = next(
@@ -1113,22 +1115,30 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     test_preview_ci_config = next(
         step
         for step in test_workflow["jobs"]["preview"]["steps"]
-        if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
+        if step.get("uses", "")
+        .split("@", 1)[0]
+        .endswith("/.github/actions/load-aws-ci-env")
     )
     test_iam_ci_config = next(
         step
         for step in test_workflow["jobs"]["iam_validation"]["steps"]
-        if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
+        if step.get("uses", "")
+        .split("@", 1)[0]
+        .endswith("/.github/actions/load-aws-ci-env")
     )
     test_apply_ci_config = next(
         step
         for step in test_workflow["jobs"]["apply"]["steps"]
-        if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
+        if step.get("uses", "")
+        .split("@", 1)[0]
+        .endswith("/.github/actions/load-aws-ci-env")
     )
     test_drift_ci_config = next(
         step
         for step in test_workflow["jobs"]["post_apply_drift"]["steps"]
-        if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
+        if step.get("uses", "")
+        .split("@", 1)[0]
+        .endswith("/.github/actions/load-aws-ci-env")
     )
     prod_preview_lines = "\n".join(
         _run_lines(prod_workflow["jobs"]["preview"]["steps"])

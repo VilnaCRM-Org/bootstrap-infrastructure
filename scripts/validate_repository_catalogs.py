@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import ipaddress
 import json
 import re
 import sys
@@ -51,27 +52,24 @@ CENTRAL_STACK_FANOUT = {
 # counts must NOT be folded into ``PER_ENVIRONMENT_FANOUT``/``CENTRAL_STACK_FANOUT``
 # or they would silently relax the shared deployment-catalog guard.
 #
-# Per managed ``*-infrastructure`` repo (architecture §9.2):
-#   iamRoles      = 3 (preview/apply/drift trio)
-#                 + 4 (config-read roles, one per CI secret suffix)
-#                 + 1 (PulumiStateRepl-* replication role)            = 8
-#   managedPolicies = 7 (apply role: 5 automation groups + pulumi-backend
-#                        + iam-managed-policies, 7 of the 10 per-role limit)
-#   secrets        = 4 (one CI-config secret per suffix)
+# Per repository in ONE test or prod account: three deploy roles, two
+# config-read roles and one replication role; two CI secrets and two apply
+# managed policies (backend and secret-read deny). Operator-owned boundary
+# policies and existing account usage are separate quota inputs.
 _GOVERNANCE_CI_SECRET_SUFFIXES = ("test-pr", "test", "prod-preview", "prod")
 _GOVERNANCE_PER_REPO_FANOUT = {
-    "iamRoles": 3 + len(_GOVERNANCE_CI_SECRET_SUFFIXES) + 1,
-    "managedPolicies": 7,
-    "secrets": len(_GOVERNANCE_CI_SECRET_SUFFIXES),
+    "iamRoles": 6,
+    "managedPolicies": 2,
+    "secrets": 2,
 }
 # AWS account-level IAM defaults used for the headroom report. The apply role
-# already consumes 7 of the 10 managed-policies-per-role slots — flag it.
+# are reference limits, not a live account usage or quota lookup.
 _IAM_ACCOUNT_QUOTAS = {
     "iamRoles": 1000,
     "managedPolicies": 1500,
     "managedPoliciesPerRole": 10,
 }
-_GOVERNANCE_APPLY_MANAGED_POLICIES = 7
+_GOVERNANCE_APPLY_MANAGED_POLICIES = 2
 _GOVERNANCE_CATALOG_NAME = "repositories.governance.json"
 _MAX_IAM_ROLE_NAME_LENGTH = 64
 # Deploy-role name prefixes, mirroring ``ci_bootstrap._CI_ROLE_PREFIX_BY_PURPOSE``.
@@ -109,12 +107,31 @@ def _sanitize_project_component(value: str) -> str:
     (the derivation in ``ci_config._ci_config_project``) so the validator can
     reproduce the rendered role-name length without importing the Pulumi runtime.
     """
-    candidate = value.strip().lower()
-    candidate = _VALID_CHARS_PATTERN.sub("-", candidate)
+    normalized = value.strip().lower()
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        address = None
+    if address is not None:
+        raise ValueError("Repository project cannot be an IP address.")
+    candidate = _VALID_CHARS_PATTERN.sub("-", normalized)
     candidate = _SEQUENTIAL_DOTS.sub(".", candidate)
     candidate = _SEQUENTIAL_HYPHENS.sub("-", candidate)
     candidate = candidate.strip(".-")
+    _validate_sanitized_project(candidate)
     return candidate.replace(".", "-")
+
+
+def _validate_sanitized_project(candidate: str) -> None:
+    """Mirror canonical bucket rejection rules without importing the SDK."""
+    if re.search(r"\.-|-\.", candidate):
+        raise ValueError("Repository project cannot contain dot-hyphen adjacency.")
+    if re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}", candidate):
+        raise ValueError("Repository project cannot be an IPv4 address.")
+    if not candidate:
+        raise ValueError("Repository project cannot be fully sanitized.")
+    if len(candidate) > 63:
+        raise ValueError("Repository project must resolve to at most 63 characters.")
 
 
 def _sanitize_ci_suffix(suffix: str) -> str:
@@ -339,21 +356,31 @@ def _validate_governance_semantics(repositories: Sequence[object]) -> None:
 
 
 def _validate_unique_projects(repositories: Sequence[object]) -> None:
-    """Reject two governance repos that resolve to the same ``project`` value."""
+    """Reject both rendered-name collisions and duplicate declared project labels."""
+    rendered: list[tuple[str, str]] = []
+    declared: list[tuple[str, str]] = []
+    for item in repositories:
+        if not isinstance(item, str | Mapping):
+            continue
+        name = _repository_name(item)
+        rendered.append((_sanitize_project_component(name), name))
+        if isinstance(item, Mapping):
+            raw_project = item.get("project")
+            if isinstance(raw_project, str) and raw_project.strip():
+                declared.append((raw_project.strip(), name))
+    _reject_project_collisions(rendered)
+    _reject_project_collisions(declared)
+
+
+def _reject_project_collisions(pairs: Sequence[tuple[str, str]]) -> None:
+    """Identify the actual repository names sharing one deployment token."""
     seen: dict[str, str] = {}
     duplicates: set[str] = set()
-    for item in repositories:
-        if not isinstance(item, Mapping):
-            continue
-        raw_project = item.get("project")
-        if not isinstance(raw_project, str) or not raw_project.strip():
-            continue
-        project = raw_project.strip()
+    for project, name in pairs:
         if project in seen:
-            duplicates.add(seen[project])
-            duplicates.add(project)
+            duplicates.update((seen[project], name))
         else:
-            seen[project] = project
+            seen[project] = name
     if duplicates:
         collisions = ", ".join(sorted(duplicates, key=str.casefold))
         raise ValueError(
@@ -437,7 +464,9 @@ def estimate_governance_fanout(payload: Mapping[str, object]) -> dict[str, int]:
     Governance catalogs create NONE of the central-stack resources; every count
     scales linearly with the repo count from ``_GOVERNANCE_PER_REPO_FANOUT``
     (iamRoles = trio + config-read + replication; managedPolicies = apply-role
-    customer-managed policies; secrets = one per CI suffix).
+    customer-managed policies; secrets = two account-local CI suffixes).
+    These are per-account additions, not current usage or an applied quota;
+    separately operator-owned boundary policies must also be budgeted.
     """
     repositories = payload.get("repositories")
     if not isinstance(repositories, list):
@@ -461,7 +490,7 @@ def _governance_quota_report(
 
     Compares the projected fleet-wide IAM role / customer-managed policy counts
     against AWS account defaults (1000 roles, 1500 managed policies) and flags
-    the apply role's fixed 7/10 per-role managed-policy usage.
+    the apply role's current 2/10 per-role managed-policy usage.
     """
     quota: dict[str, dict[str, object]] = {}
     for key in ("iamRoles", "managedPolicies"):
@@ -479,9 +508,7 @@ def _governance_quota_report(
         "limit": per_role_limit,
         "remaining": max(per_role_limit - _GOVERNANCE_APPLY_MANAGED_POLICIES, 0),
         "status": (
-            "exceeded"
-            if _GOVERNANCE_APPLY_MANAGED_POLICIES > per_role_limit
-            else "flagged"
+            "exceeded" if _GOVERNANCE_APPLY_MANAGED_POLICIES > per_role_limit else "ok"
         ),
     }
     return quota

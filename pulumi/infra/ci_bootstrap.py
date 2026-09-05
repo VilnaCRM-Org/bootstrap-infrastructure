@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pulumi_aws as aws
 
@@ -204,6 +204,8 @@ class _BootstrapBuildContext:
     protect_resources: bool
     repo: str | None = None
     project: str | None = None
+    state_guards: dict[str, aws.iam.RolePolicy] = field(default_factory=dict)
+    enable_state_guards: bool = False
 
     def __post_init__(self) -> None:
         """Derive ``repo``/``project`` from settings when not supplied."""
@@ -686,6 +688,27 @@ def _role_specs(
     ]
 
 
+def _create_role_guard(context, spec, role) -> list[pulumi.Resource]:
+    """Guard platform grants without changing the shared governed-service builder."""
+    if not context.enable_state_guards:
+        return []
+    from .platform_iam import platform_control_state_guard
+
+    guard = aws.iam.RolePolicy(
+        f"{context.name}-{spec.purpose}-state-guard",
+        name=f"{spec.role_name}-state-guard",
+        role=role.name,
+        policy=platform_control_state_guard(
+            context.account_id, context.settings, purpose=spec.purpose
+        ),
+        opts=pulumi.ResourceOptions(
+            parent=context.parent, protect=context.protect_resources
+        ),
+    )
+    context.state_guards[spec.purpose] = guard
+    return [guard]
+
+
 def _create_role(
     context: _BootstrapBuildContext,
     spec: _CiRoleSpec,
@@ -723,6 +746,7 @@ def _create_role(
             protect=context.protect_resources,
         ),
     )
+    guard_dependencies = _create_role_guard(context, spec, role)
     for policy_suffix, policy_document in spec.policy_documents:
         if spec.purpose == "apply":
             policy = aws.iam.Policy(
@@ -738,6 +762,7 @@ def _create_role(
                 ),
                 opts=pulumi.ResourceOptions(
                     parent=context.parent,
+                    depends_on=guard_dependencies,
                     protect=context.protect_resources,
                 ),
             )
@@ -747,6 +772,7 @@ def _create_role(
                 policy_arn=policy.arn,
                 opts=pulumi.ResourceOptions(
                     parent=context.parent,
+                    depends_on=guard_dependencies,
                     protect=context.protect_resources,
                 ),
             )
@@ -758,7 +784,7 @@ def _create_role(
                 policy=policy_document,
                 opts=pulumi.ResourceOptions(
                     parent=context.parent,
-                    depends_on=[role],
+                    depends_on=[role, *guard_dependencies],
                     protect=context.protect_resources,
                 ),
             )
@@ -1093,6 +1119,7 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
             provider_arn=oidc.provider.arn,
             pulumi_dir=config.pulumi_dir,
             protect_resources=config.protect_resources,
+            enable_state_guards=True,
         )
 
         self.roles = _create_roles(
@@ -1107,25 +1134,7 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
                 control_permissions_boundary=config.control_permissions_boundary,
             ),
         )
-        from .platform_iam import platform_control_state_guard
-
-        self.state_guards = {
-            purpose: aws.iam.RolePolicy(
-                f"{name}-{purpose}-state-guard",
-                name=(
-                    f"{_ci_role_name(configured_settings, purpose, context.project)}"
-                    "-state-guard"
-                ),
-                role=role.name,
-                policy=platform_control_state_guard(
-                    account_id, configured_settings, purpose=purpose
-                ),
-                opts=pulumi.ResourceOptions(
-                    parent=self, protect=config.protect_resources
-                ),
-            )
-            for purpose, role in self.roles.items()
-        }
+        self.state_guards = context.state_guards
         self.role_arns = {purpose: role.arn for purpose, role in self.roles.items()}
 
         triage_resources = _create_operations_alert_triage(context)

@@ -76,7 +76,7 @@ def test_alerts_fingerprint_ignores_per_occurrence_ids() -> None:
     assert triage.alerts_fingerprint(first) == triage.alerts_fingerprint(second)
 
 
-def test_alert_groups_split_distinct_streams() -> None:
+def test_alerts_keep_streams_separate() -> None:
     alerts = {
         "Messages": [
             _message(backup_job_id="job-1", resource_arn="arn:aws:s3:::one"),

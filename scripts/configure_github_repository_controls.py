@@ -301,6 +301,8 @@ def configure(
     verify_only: bool = False,
 ) -> None:
     """Print or apply the GitHub repository controls."""
+    # Validate the dedicated issuer before any read or write in every mode.
+    ruleset_payload(promotion_app_id=promotion_app_id)
     if apply and not _repo_admin_allowed(repo):
         raise RuntimeError(
             "repository admin rights are required to update branch rulesets "

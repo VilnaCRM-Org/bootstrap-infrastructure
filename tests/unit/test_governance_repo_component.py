@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from infra import ci_config, config, governance, pulumi_secrets, pulumi_state
 from infra.governance import GovernanceStackArgs, RepoGovernance, _governance_payloads
 from infra.iam import github_oidc
@@ -228,8 +229,8 @@ def test_governance_backend_url_returns_explicit_override():
     assert url == "s3://pulumi-custom-override-state"  # nosec B101
 
 
-def test_governance_secrets_provider_returns_explicit_override():
-    """An explicit secrets-provider override is returned verbatim (override path)."""
+def test_governance_secrets_provider_ignores_controller_override():
+    """A controller key override cannot grant a service access to platform secrets."""
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
 
@@ -240,8 +241,8 @@ def test_governance_secrets_provider_returns_explicit_override():
         "awskms://alias/custom-override?region=eu-central-1",
     )
 
-    assert provider == (  # nosec B101
-        "awskms://alias/custom-override?region=eu-central-1"
+    assert provider == settings.pulumi_secrets_provider_for_repo(
+        repo.name, "eu-central-1"
     )
 
 
@@ -760,3 +761,46 @@ def test_governance_stack_args_accepts_injected_region_and_provider():
     assert args.region == "us-east-1"  # nosec B101
     assert args.oidc_provider_arn == _MOCK_PROVIDER_ARN  # nosec B101
     assert args.expected_account_id == "123456789012"  # nosec B101
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_governor_key_ownership_conditions_match_actual_resource_graph(
+    pulumi_mocks, monkeypatch, environment
+):
+    """Every required KMS resource tag exists in the governed key registration."""
+    from infra.governance_automation import governance_repo_storage_policy
+    from test_governance_automation import inputs
+
+    _no_existing_resources(monkeypatch)
+    start = len(pulumi_mocks.resources)
+    repo = _synthetic_repo()
+    component = _build_repo_governance(
+        f"governor-tag-contract-{environment}",
+        repo=repo,
+        settings=_governance_settings(environment),
+    )
+    _flush_component(component)
+    keys = [
+        state
+        for typ, _, state in _resources_created_since(pulumi_mocks, start)
+        if typ == "aws:kms/key:Key"
+    ]
+    assert len(keys) == 1
+    expected_tags = {
+        "Repository": repo.name,
+        "Environment": environment,
+        "Purpose": "pulumi-secrets",
+    }
+    assert {name: keys[0]["tags"][name] for name in expected_tags} == expected_tags
+    for apply in (False, True):
+        document = json.loads(
+            governance_repo_storage_policy(inputs(environment), repo, apply=apply)
+        )
+        key_grants = [s for s in document["Statement"] if ":key/" in str(s["Resource"])]
+        assert key_grants
+        for statement in key_grants:
+            equals = statement["Condition"]["StringEquals"]
+            assert all(
+                equals[f"aws:ResourceTag/{name}"] == value
+                for name, value in expected_tags.items()
+            )

@@ -29,6 +29,7 @@ TARGETS = (
     "tests/unit/test_governance_automation.py",
     "tests/unit/test_security_boundary_regressions.py",
     "tests/unit/test_main_only_environments.py",
+    "tests/unit/test_reviewed_script_boundaries.py",
 )
 GUARDS = {
     "pulumi/infra/github_identity.py": {

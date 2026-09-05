@@ -50,6 +50,24 @@ def _inline_policy_overrides(settings, repositories, configured):
     return result
 
 
+def _control_guard_identity(repository: str | None):
+    """Namespace guard identities while preserving their existing logical names."""
+    if repository is None:
+        return ("automation", ""), "automation"
+    return ("deploy", repository), (
+        "deploy:automation" if repository == "automation" else repository
+    )
+
+
+def _validate_platform_catalog(settings, repositories):
+    """Only the primary repository is covered by the fixed platform ceiling."""
+    if any(repository.name != settings.repo for repository in repositories):
+        raise ValueError(
+            "Platform control IAM supports only the primary bootstrap repository; "
+            "onboard service repositories through governance."
+        )
+
+
 class PlatformControlIam(pulumi.ComponentResource):
     """Adopt control identities once; normal platform stacks only reference them."""
 
@@ -67,6 +85,7 @@ class PlatformControlIam(pulumi.ComponentResource):
         inline_policy_names: Mapping[str, Mapping[str, str]] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
+        _validate_platform_catalog(settings, repositories)
         preferred = _inline_policy_overrides(
             settings,
             repositories,
@@ -81,6 +100,23 @@ class PlatformControlIam(pulumi.ComponentResource):
             ).target_key_arn
             for repository in repositories
         }
+        self.state_guards = {}
+        state_guard = platform_iam.platform_control_state_guard(
+            account_id, settings, purpose="apply"
+        )
+
+        def create_guard(repository, role):
+            identity, key = _control_guard_identity(repository)
+            guard = aws.iam.RolePolicy(
+                f"{name}-{key}-state-guard",
+                name="PlatformControlStateGuard",
+                role=role.name,
+                policy=state_guard,
+                opts=options,
+            )
+            self.state_guards[identity] = guard
+            return guard
+
         # Existing names are intentional: migration retains physical IAM policy IDs.
         self.oidc = GitHubOidcRoles(
             "github-oidc",
@@ -92,6 +128,7 @@ class PlatformControlIam(pulumi.ComponentResource):
             manage_roles=True,
             permissions_boundary=control_boundary_arn,
             adopt_existing_policies=True,
+            role_guard_factory=create_guard,
             preferred_inline_policy_names={
                 repo.name: preferred[
                     (
@@ -118,6 +155,7 @@ class PlatformControlIam(pulumi.ComponentResource):
             manage_triage=settings.environment == "prod",
             permissions_boundary=control_boundary_arn,
             adopt_existing_policies=True,
+            role_guard_factory=lambda role: create_guard(None, role),
             preferred_inline_policy_name=preferred.get(
                 (
                     settings.automation_role_name(settings.repo),
@@ -126,26 +164,6 @@ class PlatformControlIam(pulumi.ComponentResource):
             ),
             opts=options,
         )
-        state_guard = platform_iam.platform_control_state_guard(
-            account_id, settings, purpose="apply"
-        )
-        guarded_roles = {
-            "automation": self.automation.role.name,
-            **{
-                repository: arn.apply(lambda value: value.rsplit("/", 1)[-1])
-                for repository, arn in self.oidc.deploy_role_arns.items()
-            },
-        }
-        self.state_guards = {
-            key: aws.iam.RolePolicy(
-                f"{name}-{key}-state-guard",
-                name="PlatformControlStateGuard",
-                role=role_name,
-                policy=state_guard,
-                opts=options,
-            )
-            for key, role_name in guarded_roles.items()
-        }
         self.config = ConfigRecorderIam(
             "security-account-controls-iam",
             settings=settings,

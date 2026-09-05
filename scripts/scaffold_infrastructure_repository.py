@@ -39,6 +39,10 @@ def generate(root: Path, destination: Path, repository: str) -> dict:
     """Assemble an audited dependency closure without merging into existing data."""
     if not re.fullmatch(r"[a-z][a-z0-9-]*-infrastructure", repository):
         raise ValueError("Repository must be a lowercase *-infrastructure slug")
+    if len(f"GitHubCiConfigRead-{repository}-prod-preview") > 64:
+        raise ValueError(
+            "Repository renders a config-read role longer than 64 characters"
+        )
     if destination.exists() or destination.is_symlink():
         raise FileExistsError("Destination already exists; never overwrite a service")
     template = root / "pulumi/user-service-infrastructure"

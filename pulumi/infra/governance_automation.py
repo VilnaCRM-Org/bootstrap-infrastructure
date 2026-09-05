@@ -20,7 +20,7 @@ import pulumi
 
 from .bootstrap_settings import BootstrapSettings
 from .ci_bootstrap import _ci_role_name, _ci_secret_suffixes
-from .ci_config import _ci_config_project
+from .ci_config import _ci_config_project, _ci_config_read_role_name
 from .github_identity import expand_subjects, identity_conditions
 from .managed_repository import ManagedRepository
 from .pulumi_state import (
@@ -410,7 +410,7 @@ def _role_resources(
         for purpose in ("preview", "apply", "drift")
     ]
     names.extend(
-        f"GitHubCiConfigRead-{project}-{suffix}"
+        _ci_config_read_role_name(args.settings, suffix, project)
         for suffix in _ci_secret_suffixes(args.settings)
     )
     replication = _replication_role_name(
@@ -494,7 +494,13 @@ def governance_repo_storage_policy(
 ) -> str:
     """Manage repo bucket metadata, tagged keys and exact CI secrets."""
     keys = [_key_arn(args)]
-    tags = {"StringEquals": {"aws:ResourceTag/Repository": repo.name}}
+    tags = {
+        "StringEquals": {
+            "aws:ResourceTag/Repository": repo.name,
+            "aws:ResourceTag/Environment": args.settings.environment,
+            "aws:ResourceTag/Purpose": "pulumi-secrets",
+        }
+    }
     alias = (
         f"arn:{args.partition}:kms:{args.region}:{args.account_id}:"
         f"{args.settings.pulumi_secrets_alias_name_for_repo(repo.name)}"
@@ -525,15 +531,23 @@ def governance_repo_storage_policy(
                     keys,
                     {
                         "StringEquals": {
-                            "aws:ResourceTag/Repository": repo.name,
+                            **tags["StringEquals"],
                             "aws:RequestTag/Repository": repo.name,
-                        }
+                        },
+                        "StringEqualsIfExists": {
+                            "aws:RequestTag/Environment": args.settings.environment,
+                            "aws:RequestTag/Purpose": "pulumi-secrets",
+                        },
                     },
                 ),
                 _allow(
                     ["kms:CreateAlias", "kms:UpdateAlias", "kms:DeleteAlias"], [alias]
                 ),
-                _allow(["kms:CreateAlias", "kms:UpdateAlias"], keys, tags),
+                _allow(
+                    ["kms:CreateAlias", "kms:UpdateAlias", "kms:DeleteAlias"],
+                    keys,
+                    tags,
+                ),
                 _allow(_SECRET_EDIT, _repo_secrets(args, repo)),
             ]
         )

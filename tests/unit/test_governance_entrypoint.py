@@ -14,7 +14,7 @@ PULUMI_ROOT = Path(__file__).resolve().parents[2] / "pulumi"
 ENTRYPOINT = PULUMI_ROOT / "governance/__main__.py"
 
 
-def entry_modules(monkeypatch, values, repositories):
+def entry_modules(monkeypatch, values, repositories, region="eu-central-1"):
     """Intercept only the entrypoint's external resource composition boundaries."""
     allocations = []
     exports = {}
@@ -34,6 +34,9 @@ def entry_modules(monkeypatch, values, repositories):
         return component
 
     modules = {
+        "pulumi_aws": SimpleNamespace(
+            get_region=lambda: SimpleNamespace(region=region)
+        ),
         "pulumi": SimpleNamespace(
             Config=lambda: config,
             export=lambda key, value: exports.update({key: value}),
@@ -148,3 +151,14 @@ def test_governance_entrypoint_unpinned_catalog_never_allocates(monkeypatch, mis
         runpy.run_path(str(ENTRYPOINT))
     assert allocations == []
     assert exports == {}
+
+
+def test_governance_defaults_to_actual_provider_region(monkeypatch):
+    values = {
+        "githubRepositoryId": "1098568429",
+        "githubRepositoryOwnerId": "114362548",
+        "awsAccountId": "891377212104",
+    }
+    allocations, *_ = entry_modules(monkeypatch, values, [], region="ap-south-1")
+    runpy.run_path(str(ENTRYPOINT))
+    assert allocations[0][1]["region"] == "ap-south-1"

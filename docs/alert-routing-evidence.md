@@ -211,3 +211,33 @@ accepted values.
   public-endpoint metrics.
 - Add a new row before merging any new alert source, metric alarm, dashboard,
   downstream subscriber, runtime compute, or public endpoint.
+
+
+### Fingerprint version 2 cutover (2026-09-06 source correction)
+
+The reviewed renderer now hashes versioned, canonical JSON of the **complete**
+stable event fields. Display sanitization (backticks/newlines and the 200-character
+field limit) no longer changes hash input. Volatile occurrence identifiers stay
+excluded. The grouped metadata reports `fingerprintVersion: 2`; the issue marker
+remains `operations-alert:fingerprint=<24-hex-digest>` for workflow compatibility.
+All earlier version-1 stream hashes change, including short events. This source
+change does not claim that existing issues were migrated or redelivery QA passed.
+
+Before enabling the corrected triage workflow, the SRE must reconcile each existing
+canonical issue using independently verified full stable event metadata, record
+its v1-to-v2 mapping and evidence, and update/backfill the intended canonical record
+through the protected procedure. A v1 hash alone cannot identify the right stream:
+the old truncation could merge distinct events. Do not automatically fall back to
+v1 markers or close duplicates solely by matching old hashes. If the full stream
+identity is unavailable, retain that uncertainty and create a distinct v2 record
+rather than falsely claiming continuity. After the reviewed cutover, verify a real
+allowed alert and its redelivery update the intended v2 issue, while a different
+stable field after character200 produces a different stream. No live migration
+or notification is performed by the local tests.
+
+Large batches show the first10 sanitized occurrences, total message count and
+explicit omitted count, keeping even four-byte Unicode metadata below the body
+size budget. Omitted IDs are not claimed to appear in an uploaded artifact. The
+workflow must still create/update the issue successfully before deleting the full
+processed SQS group. Counted omission is display policy, not proof that an incident
+was resolved or that all occurrences were individually investigated.

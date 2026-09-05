@@ -45,7 +45,7 @@ __all__ = [
     "_uses_file_backend",
 ]
 
-COMMANDS_WITH_POLICY_PACK = {"preview", "plan", "up", "drift"}
+COMMANDS_WITH_POLICY_PACK = {"preview", "plan", "up", "up-plan", "drift"}
 COMMAND_STACK_LIST_ENV = {
     "preview": "PULUMI_PREVIEW_STACKS",
     "plan": "PULUMI_PREVIEW_STACKS",

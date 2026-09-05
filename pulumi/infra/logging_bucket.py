@@ -451,7 +451,10 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 f"{name}-replication-role",
                 name=platform_role_name(configured_settings, "log-replication"),
                 permissions_boundary=platform_boundary_arn(
-                    account.account_id, configured_settings, "log-replication"
+                    account.account_id,
+                    configured_settings,
+                    "log-replication",
+                    partition=aws.get_partition().partition,
                 ),
                 assume_role_policy=apply_output(
                     bucket.arn,

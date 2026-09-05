@@ -39,16 +39,23 @@ class StackCommand:
     include_policy_pack: bool | None = None
 
 
+# A refreshed preview does not persist its observations. Refresh again on replay
+# so a saved plan cannot silently skip drift against stale checkpoint inputs.
 PULUMI_INVOCATIONS = {
     "preview": PulumiInvocation("preview", include_policy_pack=True),
     "plan": PulumiInvocation(
         "preview",
-        static_args=("--json",),
+        static_args=("--json", "--refresh"),
         include_policy_pack=True,
         plan_flag="--save-plan",
     ),
     "up": PulumiInvocation("up", static_args=("--yes",), include_policy_pack=True),
-    "up-plan": PulumiInvocation("up", static_args=("--yes",), plan_flag="--plan"),
+    "up-plan": PulumiInvocation(
+        "up",
+        static_args=("--yes", "--refresh"),
+        include_policy_pack=True,
+        plan_flag="--plan",
+    ),
     "refresh": PulumiInvocation("refresh", static_args=("--yes",)),
     "drift": PulumiInvocation(
         "preview",

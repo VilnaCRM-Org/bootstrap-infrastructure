@@ -457,9 +457,7 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
     )
     ci_config_step = next(
-        step
-        for step in evidence_steps
-        if step.get("uses") == "./.github/actions/load-aws-ci-env"
+        step for step in evidence_steps if step.get("id") == "ci_config"
     )
     ci_config_target_step = next(
         step

@@ -209,7 +209,9 @@ def test_repo_rescope_never_inherits_bootstrap_identity():
     same = RepoGovernance._repo_settings(
         bootstrap, ManagedRepository("bootstrap-infrastructure", "main")
     )
-    assert same is bootstrap
+    assert same.github_branch == "main"
+    assert same.github_repository_id == bootstrap.github_repository_id
+    assert same.github_repository_owner_id == bootstrap.github_repository_owner_id
     override = RepoGovernance._repo_settings(scoped, service)
     assert override.github_repository_id == REPOSITORY_ID
 

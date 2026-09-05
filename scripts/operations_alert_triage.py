@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+FINGERPRINT_VERSION = 2
+
 
 @dataclass(frozen=True)
 class IssueContext:
@@ -120,7 +122,7 @@ def fingerprint_parts(message: dict[str, Any]) -> tuple[str, ...]:
     detail = event.get("detail")
     detail = detail if isinstance(detail, dict) else {}
     return tuple(
-        safe_value(value)
+        canonical_json(value)
         for value in (
             event.get("source"),
             event.get("detail-type"),
@@ -137,7 +139,9 @@ def fingerprint_parts(message: dict[str, Any]) -> tuple[str, ...]:
 
 def message_fingerprint(message: dict[str, Any]) -> str:
     """Return the stable fingerprint for one alert stream."""
-    digest_input = "|".join(fingerprint_parts(message)).encode("utf-8")
+    digest_input = canonical_json(
+        {"version": FINGERPRINT_VERSION, "parts": fingerprint_parts(message)}
+    ).encode("utf-8")
     return hashlib.sha256(digest_input).hexdigest()[:24]
 
 
@@ -155,6 +159,7 @@ def alert_groups(alerts: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
 def grouped_alerts_payload(alerts: dict[str, Any]) -> dict[str, object]:
     """Return a JSON-serializable grouped alert manifest."""
     return {
+        "fingerprintVersion": FINGERPRINT_VERSION,
         "groups": [
             {
                 "fingerprint": fingerprint,
@@ -162,7 +167,7 @@ def grouped_alerts_payload(alerts: dict[str, Any]) -> dict[str, object]:
                 "alerts": group,
             }
             for fingerprint, group in alert_groups(alerts)
-        ]
+        ],
     }
 
 
@@ -201,12 +206,19 @@ def render_issue_body(
         "",
         "Messages:",
     ]
-    for message in messages:
+    # Bound display size even when metadata uses four-byte Unicode characters.
+    displayed = messages[:10]
+    for message in displayed:
         rendered = ", ".join(
             f"{name}: `{safe_value(value)}`"
             for name, value in message_fields(message).items()
         )
         lines.append(f"- {rendered}")
+    if len(messages) > len(displayed):
+        lines.append(
+            f"- {len(messages) - len(displayed)} additional occurrences omitted; "
+            "not all message IDs are displayed in this issue."
+        )
     lines.append("")
     return "\n".join(lines)
 

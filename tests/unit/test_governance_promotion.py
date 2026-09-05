@@ -214,10 +214,11 @@ def test_scope_success_for_unrelated_pending_for_governance(
     runtime, monkeypatch, filename, expected, verified
 ):
     writes = []
+    kind = "governance" if filename == "Makefile" else "platform"
     status = {
         "context": promotion.CONTEXT,
         "state": "success",
-        "description": promotion.PROMOTION_DESCRIPTION,
+        "description": promotion.promotion_description(78, "b" * 40, kind),
         "creator": {"login": "promotion-evidence[bot]"},
     }
 
@@ -256,11 +257,13 @@ def test_untrusted_or_plan_status_is_not_promotion_proof(runtime, key, value):
     status = {
         "context": promotion.CONTEXT,
         "state": "success",
-        "description": promotion.PROMOTION_DESCRIPTION,
+        "description": promotion.promotion_description(78, "b" * 40, "governance"),
         "creator": {"login": "promotion-evidence[bot]"},
     }
     status[key] = value
-    assert promotion.verified_promotion_status(status) is False
+    assert (
+        promotion.verified_promotion_status(status, 78, "b" * 40, "governance") is False
+    )
 
 
 def test_scope_rejects_incomplete_listing(runtime, monkeypatch):
@@ -347,7 +350,7 @@ def test_moved_base_cannot_publish_valid_saved_plans(runtime, monkeypatch):
         promotion.publish_proof(promotion.build_proof(needs_fixture()))
 
 
-def test_unknown_promotion_kind_fails_closed(runtime, monkeypatch):
+def test_unknown_promotion_kind_is_rejected(runtime, monkeypatch):
     monkeypatch.setenv("PROMOTION_KIND", "untrusted")
     with pytest.raises(ValueError, match="Invalid promotion kind"):
         promotion.build_proof(needs_fixture())

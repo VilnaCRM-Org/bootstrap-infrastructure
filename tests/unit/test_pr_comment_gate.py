@@ -44,7 +44,7 @@ def test_independent_requester_matrix(
 @pytest.mark.parametrize(
     "login,expected", [("Kravalg", "false"), ("dmytrocraft", "true")]
 )
-def test_cli_threads_original_requester_gate(monkeypatch, tmp_path, login, expected):
+def test_cli_preserves_requester_gate(monkeypatch, tmp_path, login, expected):
     output = tmp_path / "output"
     monkeypatch.setenv("GITHUB_OUTPUT", str(output))
     assert (

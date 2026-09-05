@@ -581,7 +581,8 @@ class PulumiStateBuckets(pulumi.ComponentResource):
                 _replication_role_name(role_suffix),
                 opts=_resource_options(self),
             ), None
-        account_id = aws.get_caller_identity().account_id
+        invoke_options = pulumi.InvokeOptions(parent=self)
+        account_id = aws.get_caller_identity(opts=invoke_options).account_id
         replication_role = aws.iam.Role(
             f"{component_name}-replication-role-{suffix}",
             name=_replication_role_name(role_suffix),
@@ -591,6 +592,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
                     account_id,
                     self._settings,
                     "state-replication",
+                    partition=aws.get_partition(opts=invoke_options).partition,
                 )
             ),
             assume_role_policy=apply_output(

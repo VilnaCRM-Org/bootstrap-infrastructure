@@ -108,6 +108,7 @@ gh api graphql \
 
 GITHUB_REPOSITORY_CONTROLS_REPO=VilnaCRM-Org/bootstrap-infrastructure \
 GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER=Kravalg \
+GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID="${PROMOTION_APP_ID:?Set the dedicated App ID}" \
 GITHUB_REPOSITORY_CONTROLS_MODE=--apply \
 make configure-github-repository-controls
 ```

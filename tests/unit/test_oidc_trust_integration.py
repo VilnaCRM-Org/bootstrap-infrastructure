@@ -224,7 +224,11 @@ def test_live_entrypoints_require_identity_before_any_resource(
         GovernanceStackArgs=None,
         ManagedRepositoryCatalog=None,
     )
-    modules = {"pulumi": SimpleNamespace(Config=lambda: cfg), "infra": infra}
+    modules = {
+        "pulumi": SimpleNamespace(Config=lambda: cfg),
+        "infra": infra,
+        "pulumi_aws": SimpleNamespace(),
+    }
     monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
     with pytest.raises(ValueError, match="missing pinned identity"):
         runpy.run_path(

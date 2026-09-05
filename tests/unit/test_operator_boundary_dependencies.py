@@ -32,10 +32,15 @@ def test_all_five_bounded_operator_roles_have_policy_property_dependencies(
     monitor = runtime_settings.get_monitor()
     original = monitor.RegisterResource
     registrations = {}
+    urn_requests = {}
+    resource_ids = {}
 
     def capture(request):
         registrations[request.name] = request
-        return original(request)
+        response = original(request)
+        resource_ids[request.name] = response.id
+        urn_requests[response.urn] = request
+        return response
 
     monkeypatch.setattr(monitor, "RegisterResource", capture)
     boundaries = platform_iam.PlatformIamBoundaries(
@@ -54,7 +59,7 @@ def test_all_five_bounded_operator_roles_have_policy_property_dependencies(
             write_secret_values=False,
         ),
     )
-    PlatformControlIam(
+    controls = PlatformControlIam(
         "controls",
         settings=settings,
         repositories=[repo],
@@ -81,3 +86,55 @@ def test_all_five_bounded_operator_roles_have_policy_property_dependencies(
         assert request.object.fields["permissionsBoundary"].string_value == (
             _sync_await(boundaries.policies[purpose].arn.future())
         )
+    guards = {
+        "ci-apply-role": bootstrap.state_guards["apply"],
+        "github-automation-role": controls.state_guards[("automation", "")],
+        "github-oidc-role-bootstrap-infrastructure": controls.state_guards[
+            ("deploy", "bootstrap-infrastructure")
+        ],
+    }
+    _assert_guard_order(registrations, urn_requests, resource_ids, guards)
+
+
+def _assert_guard_order(registrations, urn_requests, resource_ids, guards):
+    role_guards = {}
+    for logical_name, guard in guards.items():
+        role_request = registrations[logical_name]
+        role_name = role_request.object.fields["name"].string_value
+        guard_urn = _sync_await(guard.urn.future())
+        role_guards[role_name] = guard_urn
+        role_guards[resource_ids[logical_name]] = guard_urn
+        guard_request = urn_requests[guard_urn]
+        role_urn = next(
+            urn for urn, request in urn_requests.items() if request is role_request
+        )
+        assert role_urn in guard_request.propertyDependencies["role"].urns
+
+    grant_counts = dict.fromkeys(role_guards.values(), 0)
+    for urn, request in urn_requests.items():
+        role_name = request.object.fields["role"].string_value
+        if role_name in role_guards and urn != role_guards[role_name]:
+            assert role_guards[role_name] in _ancestors(request, urn_requests)
+            grant_counts[role_guards[role_name]] += 1
+        if request.type == "aws:iam/policy:Policy":
+            for prefix, role_key in (
+                ("ci-apply-", "ci-apply-role"),
+                ("github-automation-", "github-automation-role"),
+            ):
+                if request.name.startswith(prefix):
+                    guard_urn = _sync_await(guards[role_key].urn.future())
+                    assert guard_urn in request.dependencies
+        assert urn not in _ancestors(request, urn_requests), (
+            "Activation graph must be acyclic"
+        )
+    assert all(count > 0 for count in grant_counts.values())
+
+
+def _ancestors(request, urn_requests, seen=None):
+    seen = set() if seen is None else seen
+    for dependency in request.dependencies:
+        if dependency not in seen:
+            seen.add(dependency)
+            if dependency in urn_requests:
+                _ancestors(urn_requests[dependency], urn_requests, seen)
+    return seen

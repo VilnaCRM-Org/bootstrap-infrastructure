@@ -39,3 +39,10 @@
 /.github/actions/                               @Kravalg
 /.github/workflows/governance-promotion.yml       @Kravalg
 /.github/workflows/                              @Kravalg
+
+# Operator identity, boundaries and control ownership
+/pulumi/github-ci-bootstrap/                     @Kravalg
+/pulumi/infra/governance_automation.py           @Kravalg
+/pulumi/infra/github_identity.py                 @Kravalg
+/pulumi/infra/platform_control_iam.py            @Kravalg
+/pulumi/infra/platform_iam.py                    @Kravalg

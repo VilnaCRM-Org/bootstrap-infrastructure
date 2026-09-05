@@ -411,6 +411,7 @@ report-well-architected-closeout: ## Render owner/admin Well-Architected closeou
 		--output "$${WELL_ARCHITECTED_CLOSEOUT_OUTPUT:-.artifacts/well-architected/owner-closeout-bundle.md}"
 
 configure-github-repository-controls: ## Print, apply, or verify GitHub ruleset and protected environment controls.
+	@test -n "$(GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID)" || { echo "Set GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID to the dedicated promotion App ID." >&2; exit 1; }
 	$(REPO_PYTHON) ./scripts/configure_github_repository_controls.py \
 		--repo "$(GITHUB_REPOSITORY_CONTROLS_REPO)" \
 		--prod-reviewer "$(GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER)" \

@@ -727,6 +727,9 @@ def _operations_alert_triage_assume_role_policy(
                                 owner_id,
                             ),
                             **identity_conditions(repository_id, owner_id),
+                            "token.actions.githubusercontent.com:workflow": (
+                                "Operations Alert Issue Triage"
+                            ),
                             "token.actions.githubusercontent.com:ref": (
                                 f"refs/heads/{branch_name}"
                             ),
@@ -1605,6 +1608,7 @@ class GitHubAutomation(pulumi.ComponentResource):
         permissions_boundary: pulumi.Input[str] | None = None,
         adopt_existing_policies: bool = False,
         preferred_inline_policy_name: str | None = None,
+        role_guard_factory: Callable[[aws.iam.Role], pulumi.Resource] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize automation resources for this repository/environment."""
@@ -1640,6 +1644,15 @@ class GitHubAutomation(pulumi.ComponentResource):
             role = _create_automation_role(
                 resource_context, provider_arn, permissions_boundary
             )
+            if role_guard_factory is not None:
+                guard = role_guard_factory(role)
+                resource_context = replace(
+                    resource_context,
+                    opts=pulumi.ResourceOptions.merge(
+                        resource_context.opts,
+                        pulumi.ResourceOptions(depends_on=[guard]),
+                    ),
+                )
             (
                 inline_policy,
                 managed_policies,

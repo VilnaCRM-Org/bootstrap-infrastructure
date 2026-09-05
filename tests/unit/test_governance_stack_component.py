@@ -217,7 +217,7 @@ def test_stack_registers_zero_oidc_provider_create(pulumi_mocks, monkeypatch):  
         assert create_only_inputs.isdisjoint(state)  # nosec B101
 
 
-def test_stack_exposes_consumed_provider_arn(pulumi_mocks, monkeypatch):  # noqa: ARG001
+def test_stack_exports_provider_arn(pulumi_mocks, monkeypatch):  # noqa: ARG001
     """The stack exposes the pinned provider ARN it consumed by ``.get()``."""
     _no_existing_resources(monkeypatch)
 

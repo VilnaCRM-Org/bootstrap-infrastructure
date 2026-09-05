@@ -158,7 +158,7 @@ def test_config_role_and_apply_role_wiring() -> None:
     assert "steps.ci_config.outputs.aws-preview-role-arn" in text  # nosec B101
 
 
-def test_apply_uses_saved_plan_not_direct_up() -> None:
+def test_apply_replays_saved_plan() -> None:
     """Apply steps use the saved-plan target, never the direct-apply target."""
     document = _workflow_document()
     run_commands: list[str] = []

@@ -217,7 +217,13 @@ def platform_control_state_guard(
                 },
             ]
         )
-    statements.extend(platform_control_denies(account_id, settings))
+    denials = platform_control_denies(account_id, settings)
+    # Preserve the exact compact ceiling's IAM denials when moving them into
+    # the immutable guard. Identity grants are ordered after this resource.
+    _compress_sensitive_statements(
+        [item for item in denials if item["Sid"] in _GUARD_ONLY_IAM_DENIALS]
+    )
+    statements.extend(denials)
     return json.dumps(
         {"Version": "2012-10-17", "Statement": statements},
         separators=(",", ":"),
@@ -256,7 +262,13 @@ def platform_control_denies(
                 "iam:SetDefaultPolicyVersion",
                 "iam:TagPolicy",
                 "iam:UntagPolicy",
-                "iam:*OpenIDConnectProvider*",
+                "iam:CreateOpenIDConnectProvider",
+                "iam:DeleteOpenIDConnectProvider",
+                "iam:AddClientIDToOpenIDConnectProvider",
+                "iam:RemoveClientIDFromOpenIDConnectProvider",
+                "iam:UpdateOpenIDConnectProviderThumbprint",
+                "iam:TagOpenIDConnectProvider",
+                "iam:UntagOpenIDConnectProvider",
                 "iam:*SAMLProvider*",
                 "iam:DeleteRolePermissionsBoundary",
             ],
@@ -357,6 +369,7 @@ def _compress_sensitive_statements(statements: list[dict[str, Any]]) -> None:
                 "iam:*RolePolicy",
                 "iam:CreateRole",
                 "iam:DeleteRole",
+                "iam:UpdateAssumeRolePolicy",
                 "iam:UpdateRole*",
                 "iam:PutRolePermissionsBoundary",
             ]
@@ -392,9 +405,13 @@ def _boundary_statement_group(statement: dict[str, Any], actions: list[str]) -> 
     if actions == ["secretsmanager:DescribeSecret"]:
         return "global"
     service_allow = statement["Effect"] == "Allow" and all(
-        not action.startswith(("iam:", "sts:", "kms:")) for action in actions
+        not action.startswith(("iam:", "sts:", "kms:", "ce:")) for action in actions
     )
-    if service_allow and statement.get("Resource") != "*":
+    if (
+        service_allow
+        and statement.get("Resource") != "*"
+        and "Condition" not in statement
+    ):
         return "service"
     if (
         statement["Effect"] == "Allow"
@@ -403,6 +420,13 @@ def _boundary_statement_group(statement: dict[str, Any], actions: list[str]) -> 
     ):
         return "global"
     return "sensitive"
+
+
+_GUARD_ONLY_IAM_DENIALS = (
+    "DenyControllerIamChanges",
+    "DenyPolicyAndIdentityProviderChanges",
+    "DenyControllerPassRole",
+)
 
 
 def _boundary_source_groups(
@@ -419,6 +443,7 @@ def _boundary_source_groups(
         if statement["Sid"] in (
             "DenyAdministratorAttachments",
             "DenyForeignRepositoryKms",
+            *_GUARD_ONLY_IAM_DENIALS,
         ):
             continue
         result = {key: value for key, value in statement.items() if key != "Sid"}
@@ -438,20 +463,31 @@ def _boundary_source_groups(
     return statements, service_actions, service_resources, global_actions
 
 
+def _is_tagged_creation(statement, settings):
+    """Only combine the reviewed create shapes; retain any added restrictions."""
+    purposes = {
+        "ce:CreateAnomalyMonitor": "cost-anomaly-monitor",
+        "ce:CreateAnomalySubscription": "cost-anomaly-subscription",
+        "guardduty:CreateDetector": "security-detection",
+    }
+    actions = statement.get("Action", [])
+    if len(actions) != 1 or actions[0] not in purposes:
+        return False
+    return statement.get("Effect") == "Allow" and statement.get("Condition") == {
+        "StringEquals": {
+            "aws:RequestTag/Environment": settings.environment,
+            "aws:RequestTag/Purpose": purposes[actions[0]],
+        }
+    }
+
+
 def _coalesce_tagged_creation(
     statements: list[dict[str, Any]], settings: BootstrapSettings
 ) -> list[dict[str, Any]]:
-    """Combine creation ceilings with the existing environment/purpose tags."""
-    creates = [
-        statement
-        for statement in statements
-        if statement.get("Action")
-        in (
-            ["ce:CreateAnomalyMonitor"],
-            ["ce:CreateAnomalySubscription"],
-            ["guardduty:CreateDetector"],
-        )
-    ]
+    """Keep exact create actions behind the common project/environment ceiling."""
+    creates = [item for item in statements if _is_tagged_creation(item, settings)]
+    if not creates:
+        return statements
     statements = [statement for statement in statements if statement not in creates]
     statements.append(
         {
@@ -463,16 +499,64 @@ def _coalesce_tagged_creation(
             "Condition": {
                 "StringEquals": {
                     "aws:RequestTag/Environment": settings.environment,
-                    "aws:RequestTag/Purpose": [
-                        "cost-anomaly-monitor",
-                        "cost-anomaly-subscription",
-                        "security-detection",
-                    ],
+                    "aws:RequestTag/Project": settings.repo,
                 }
             },
         }
     )
     return statements
+
+
+def _is_tagged_management(statement, settings):
+    """Retain foreign service grants and any additional condition restrictions."""
+    purpose = (
+        statement.get("Condition", {})
+        .get("StringEquals", {})
+        .get("aws:ResourceTag/Purpose")
+    )
+    if purpose not in (
+        "cost-anomaly-monitor",
+        "cost-anomaly-subscription",
+        "security-detection",
+    ):
+        return False
+    return (
+        statement.get("Effect") == "Allow"
+        and all(
+            action.startswith(("ce:", "guardduty:")) for action in statement["Action"]
+        )
+        and statement.get("Condition")
+        == {
+            "StringEquals": {
+                "aws:ResourceTag/Environment": settings.environment,
+                "aws:ResourceTag/Purpose": purpose,
+            }
+        }
+    )
+
+
+def _coalesce_tagged_management(
+    statements: list[dict[str, Any]], settings: BootstrapSettings
+) -> list[dict[str, Any]]:
+    """Share the CE/GD ceiling; exact Purpose constraints stay in identities."""
+    managed = [item for item in statements if _is_tagged_management(item, settings)]
+    if not managed:
+        return statements
+    remaining = [statement for statement in statements if statement not in managed]
+    remaining.append(
+        {
+            "Effect": "Allow",
+            "Action": sorted({action for item in managed for action in item["Action"]}),
+            "Resource": sorted({arn for item in managed for arn in item["Resource"]}),
+            "Condition": {
+                "StringEquals": {
+                    "aws:ResourceTag/Environment": settings.environment,
+                    "aws:ResourceTag/Project": settings.repo,
+                }
+            },
+        }
+    )
+    return remaining
 
 
 def _coalesced_service_grants(
@@ -542,6 +626,7 @@ def platform_control_boundary(
     )
     _compress_sensitive_statements(statements)
     statements = _coalesce_tagged_creation(statements, settings)
+    statements = _coalesce_tagged_management(statements, settings)
     statements.extend(
         _coalesced_service_grants(
             account_id, service_actions, service_resources, global_actions
@@ -669,7 +754,7 @@ def platform_workload_boundaries(
     for statement in backup:
         if "kms:Decrypt" in statement.get("Action", []):
             statement["Condition"]["ForAnyValue:StringLike"]["kms:ResourceAliases"] = [
-                f"alias/pulumi-{repo.name}-{settings.environment}-secrets"
+                settings.pulumi_secrets_alias_name_for_repo(repo.name)
                 for repo in repositories
             ] + [
                 f"alias/pulumi-platform-bootstrap-{settings.environment}",
@@ -721,6 +806,11 @@ class PlatformIamBoundaries(pulumi.ComponentResource):
         )
 
 
+def _state_replication_logical_key(repository: str) -> str:
+    """Preserve old URNs except the previously colliding reserved logs name."""
+    return "state:logs" if repository == "logs" else repository
+
+
 class PlatformReplicationIam(pulumi.ComponentResource):
     """Operator-owned fixed platform replication roles with independent ceilings."""
 
@@ -754,6 +844,7 @@ class PlatformReplicationIam(pulumi.ComponentResource):
         primary_log = settings.central_logging_bucket_name(region)
         entries = [
             (
+                ("logs", ""),
                 "logs",
                 platform_role_name(settings, "log-replication"),
                 primary_log,
@@ -763,7 +854,8 @@ class PlatformReplicationIam(pulumi.ComponentResource):
         ]
         entries.extend(
             (
-                repo.name,
+                ("state", repo.name),
+                _state_replication_logical_key(repo.name),
                 _replication_role_name(
                     _replication_role_suffix(repo.name, settings_obj=settings)
                 ),
@@ -777,7 +869,8 @@ class PlatformReplicationIam(pulumi.ComponentResource):
             for repo in repositories
         )
         self.roles = {}
-        for key, role_name, bucket, old_prefix, purpose in entries:
+        self.namespaced_roles = {}
+        for identity, key, role_name, bucket, old_prefix, purpose in entries:
             source = f"arn:{partition}:s3:::{bucket}"
             replica = _replica_bucket_name(
                 bucket, settings.replication_region or "eu-west-1"
@@ -812,6 +905,7 @@ class PlatformReplicationIam(pulumi.ComponentResource):
                 ),
             )
             self.roles[key] = role
+            self.namespaced_roles[identity] = role
         self.register_outputs(
             {"roleArns": {key: role.arn for key, role in self.roles.items()}}
         )

@@ -23,6 +23,11 @@ from fnmatch import fnmatch
 # .github/CODEOWNERS.
 GOVERNANCE_PATH_GLOBS: tuple[str, ...] = (
     "/pulumi/governance/",
+    "/pulumi/github-ci-bootstrap/",
+    "/pulumi/infra/governance_automation.py",
+    "/pulumi/infra/github_identity.py",
+    "/pulumi/infra/platform_control_iam.py",
+    "/pulumi/infra/platform_iam.py",
     "/pulumi/infra/governance.py",
     "/pulumi/infra/iam/",
     "/pulumi/infra/ci_bootstrap.py",

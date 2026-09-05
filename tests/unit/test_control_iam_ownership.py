@@ -150,11 +150,13 @@ def test_operator_automation_adopts_control_policies_without_creating_ecr(
 
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("repo_name", [REPO.name, "automation"])
 def test_operator_composition_uses_existing_kms_and_separates_test_triage(
-    allocations, monkeypatch, environment
+    allocations, monkeypatch, environment, repo_name
 ):
     import infra.platform_control_iam as module
 
+    repo = replace(REPO, name=repo_name)
     monkeypatch.setattr(
         module.platform_iam,
         "platform_control_state_guard",
@@ -170,14 +172,16 @@ def test_operator_composition_uses_existing_kms_and_separates_test_triage(
 
     def oidc(name, **kwargs):
         calls["oidc"] = (name, kwargs)
+        kwargs["role_guard_factory"](repo.name, SimpleNamespace(name="deploy"))
         return SimpleNamespace(
             deploy_role_arns={
-                REPO.name: Output.from_input("arn:aws:iam::123456789012:role/deploy")
+                repo.name: Output.from_input("arn:aws:iam::123456789012:role/deploy")
             }
         )
 
     def automate(name, **kwargs):
         calls["automation"] = (name, kwargs)
+        kwargs["role_guard_factory"](SimpleNamespace(name="automation"))
         return SimpleNamespace(
             role=SimpleNamespace(arn="automation-arn", name="automation"),
             operations_alert_triage_role=SimpleNamespace(arn="triage-arn"),
@@ -198,10 +202,10 @@ def test_operator_composition_uses_existing_kms_and_separates_test_triage(
             and SimpleNamespace(roles={"logs": SimpleNamespace(arn="replication-arn")})
         ),
     )
-    PlatformControlIam(
+    component = PlatformControlIam(
         "operator",
-        settings=inputs(environment).settings,
-        repositories=ManagedRepositoryCatalog([REPO]).repositories,
+        settings=replace(inputs(environment).settings, repo=repo.name),
+        repositories=ManagedRepositoryCatalog([repo]).repositories,
         account_id=ACCOUNT,
         partition="aws",
         region="eu-central-1",
@@ -213,7 +217,18 @@ def test_operator_composition_uses_existing_kms_and_separates_test_triage(
         },
     )
     _sync_await(wait_for_rpcs())
-    assert calls["oidc"][1]["secrets_key_arns"] == {REPO.name: key_arn}
+    assert set(component.state_guards) == {("automation", ""), ("deploy", repo.name)}
+    guard_names = {
+        r.name
+        for r in managed(allocations, "aws:iam/rolePolicy:")
+        if r.inputs.get("name") == "PlatformControlStateGuard"
+    }
+    suffix = "deploy:automation" if repo.name == "automation" else repo.name
+    assert guard_names == {
+        "operator-automation-state-guard",
+        f"operator-{suffix}-state-guard",
+    }
+    assert calls["oidc"][1]["secrets_key_arns"] == {repo.name: key_arn}
     assert calls["oidc"][1]["manage_provider"] is False
     assert calls["automation"][0] == "github-automation"
     assert calls["automation"][1]["manage_repository"] is False

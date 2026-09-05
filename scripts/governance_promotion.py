@@ -91,10 +91,8 @@ def report_scope() -> None:
         for name in (item["filename"], item.get("previous_filename", ""))
     ]
     governance = paths_touch_governance(files)
-    statuses = gh(
-        f"{base}/commits/{sha}/statuses?per_page=100", "--paginate", "--slurp"
-    )
-    if any(verified_promotion_status(status) for page in statuses for status in page):
+    kind = "governance" if governance else "platform"
+    if matching_promotion_exists(base, sha, pr_number, base_sha, kind):
         return
     post_status(
         sha,
@@ -106,12 +104,41 @@ def report_scope() -> None:
     )
 
 
-def verified_promotion_status(status: dict) -> bool:
+def matching_promotion_exists(
+    base: str, sha: str, pr_number: int, base_sha: str, kind: str
+) -> bool:
+    """Look up only App attestations bound to this PR's exact current scope."""
+    statuses = gh(
+        f"{base}/commits/{sha}/statuses?per_page=100", "--paginate", "--slurp"
+    )
+    latest = next(
+        (
+            status
+            for page in statuses
+            for status in page
+            if status.get("context") == CONTEXT
+            and status.get("creator", {}).get("login")
+            == f"{os.environ['PROMOTION_APP_SLUG']}[bot]"
+        ),
+        {},
+    )
+    return verified_promotion_status(latest, pr_number, base_sha, kind)
+
+
+def promotion_description(pr_number: int | str, base_sha: str, kind: str) -> str:
+    """Bind the App attestation to one PR, base revision and deployment scope."""
+    return f"{PROMOTION_DESCRIPTION}: PR{pr_number} {kind} {base_sha}"
+
+
+def verified_promotion_status(
+    status: dict, pr_number: int | str, base_sha: str, kind: str
+) -> bool:
     """Only the isolated promotion App can preserve its completed proof."""
     return (
         status.get("context") == CONTEXT
         and status.get("state") == "success"
-        and status.get("description") == PROMOTION_DESCRIPTION
+        and status.get("description")
+        == promotion_description(pr_number, base_sha, kind)
         and status.get("creator", {}).get("login")
         == f"{os.environ['PROMOTION_APP_SLUG']}[bot]"
     )
@@ -236,7 +263,12 @@ def publish_proof(proof: dict) -> None:
             },
         )
     post_status(
-        proof["head_sha"], "success", PROMOTION_DESCRIPTION, evidence["artifact_url"]
+        proof["head_sha"],
+        "success",
+        promotion_description(
+            proof["pull_request_number"], proof["base_sha"], proof["kind"]
+        ),
+        evidence["artifact_url"],
     )
 
 

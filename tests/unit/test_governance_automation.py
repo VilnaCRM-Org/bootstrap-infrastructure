@@ -92,7 +92,11 @@ def test_entrypoint_asserts_account_before_first_resource(
         ),
         "infra": SimpleNamespace(
             BootstrapSettings=SimpleNamespace(
-                from_pulumi_config=lambda cfg: inputs().settings
+                from_pulumi_config=lambda cfg: dataclasses.replace(
+                    inputs().settings,
+                    github_repository_id=REPO.repository_id,
+                    github_repository_owner_id=REPO.repository_owner_id,
+                )
             ),
             GitHubCiBootstrap=allocate,
             GitHubCiBootstrapArgs=lambda **kwargs: kwargs,
@@ -103,6 +107,8 @@ def test_entrypoint_asserts_account_before_first_resource(
                     )
                     if missing_catalog
                     and f"repositories.{missing_catalog}.json" in path
+                    else dataclasses.replace(REPO, name="bootstrap-infrastructure")
+                    if "repositories.bootstrap.json" in path
                     else REPO
                 ]
             ),
@@ -128,10 +134,19 @@ def test_entrypoint_asserts_account_before_first_resource(
 
 
 @pytest.mark.parametrize("overrides", [False, True])
-def test_entrypoint_wires_complete_bootstrap_and_governance(monkeypatch, overrides):
+@pytest.mark.parametrize(
+    "catalog_change", [None, "name", "repository_id", "repository_owner_id"]
+)
+def test_entrypoint_wires_complete_bootstrap_and_governance(
+    monkeypatch, overrides, catalog_change
+):
     """The operator entrypoint keeps account, provider, backend and outputs aligned."""
     environment = "prod" if overrides else "test"
-    settings = inputs(environment).settings
+    settings = dataclasses.replace(
+        inputs(environment).settings,
+        github_repository_id="12345",
+        github_repository_owner_id="67890",
+    )
     values = {
         "awsAccountId": ACCOUNT,
         "githubRepositoryId": "12345",
@@ -188,6 +203,18 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(monkeypatch, overrid
 
     def load_catalog(path):
         catalog_paths.append(path)
+        if "repositories.bootstrap.json" in path:
+            repository = dataclasses.replace(
+                REPO,
+                name=settings.repo,
+                repository_id="12345",
+                repository_owner_id="67890",
+            )
+            if catalog_change:
+                repository = dataclasses.replace(
+                    repository, **{catalog_change: "99999"}
+                )
+            return [repository]
         return catalog
 
     modules = {
@@ -237,6 +264,12 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(monkeypatch, overrid
     if overrides:
         monkeypatch.setattr(sys, "path", [p for p in sys.path if p != str(root)])
     monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
+    if catalog_change:
+        with pytest.raises(ValueError, match="Platform catalog|GitHub IDs differ"):
+            runpy.run_path(str(root / "github-ci-bootstrap/__main__.py"))
+        assert allocations == {}
+        assert exported == {}
+        return
     runpy.run_path(str(root / "github-ci-bootstrap/__main__.py"))
     assert str(root) in sys.path
     bootstrap_args = allocations["github-ci-bootstrap"]

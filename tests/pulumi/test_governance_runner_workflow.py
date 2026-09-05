@@ -326,7 +326,7 @@ def test_test_apply_and_drift_gated_to_up_requests_only() -> None:
         assert "command == 'up'" in guard  # nosec B101
 
 
-def test_prod_jobs_gated_to_prod_target_only() -> None:
+def test_prod_jobs_require_prod_target() -> None:
     """Prod plan/apply run only for a `prod` request, never for any `test` request."""
     jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
 

@@ -22,6 +22,8 @@ permissions:
 
 jobs:
   cleanup:
+    if: github.ref == 'refs/heads/main'
+    environment: governance
     name: Remove Legacy Account Variables
     runs-on: ubuntu-latest
     timeout-minutes: 10

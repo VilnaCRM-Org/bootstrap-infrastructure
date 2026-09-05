@@ -213,9 +213,9 @@ jobs:
 
       - name: Stage pull request labels for destructive diff override
         run: |
-          mkdir -p .artifacts
+          mkdir -p .artifacts/pulumi-preview
           labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --jq '[.[] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/pulumi-preview/pull-request-event.json
 
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
@@ -548,9 +548,9 @@ jobs:
 
       - name: Stage pull request labels for destructive diff override
         run: |
-          mkdir -p .artifacts
+          mkdir -p .artifacts/pulumi-preview
           labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --jq '[.[] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/pulumi-preview/pull-request-event.json
 
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
