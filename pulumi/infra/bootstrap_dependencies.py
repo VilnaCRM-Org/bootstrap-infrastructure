@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from .automation import GitHubAutomation
 from .backup import S3BackupPlan
+from .ci_config import CiConfiguration
 from .cost_controls import CostControls
 from .iam import GitHubOidcRoles
 from .logging_bucket import CentralLoggingBuckets
@@ -23,6 +24,7 @@ class BootstrapInfrastructureDependencies:
     state_buckets_cls: type[PulumiStateBuckets] = PulumiStateBuckets
     secrets_keys_cls: type[PulumiSecretsKeys] = PulumiSecretsKeys
     oidc_roles_cls: type[GitHubOidcRoles] = GitHubOidcRoles
+    ci_config_cls: type[CiConfiguration] = CiConfiguration
     automation_cls: type[GitHubAutomation] = GitHubAutomation
     backup_plan_cls: type[S3BackupPlan] = S3BackupPlan
     monitoring_cls: type[OperationsMonitoring] = OperationsMonitoring

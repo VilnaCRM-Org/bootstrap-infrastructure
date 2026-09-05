@@ -14,6 +14,7 @@ These checks are intended to be marked as required in branch protection:
 
 | Check | Local command | Purpose |
 | --- | --- | --- |
+| `Governance Promotion` | Trusted main controller and dedicated App | Same-head test/prod deployment proof; enroll after controller installation and real live validation |
 | `Ruff` | `make test-ruff` | Lint, import-order, formatting drift, and McCabe complexity |
 | `Ty` | `make test-ty` | Fast static typing diagnostics |
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
@@ -114,6 +115,27 @@ fall back to a direct `make pulumi-up` only when `pulumi up --plan` fails with
 Pulumi's known KMS-backed saved-plan decryption error after the same-run
 preview, destructive-diff, and IAM validation gates have passed under the
 test-state concurrency lock.
+
+For S3 backends, every command prepares a private temporary stack configuration
+from the existing checkpoint before preview or apply. Set `AWS_ACCOUNT_ID` to
+the independently expected account; Make forwards it into the container. The
+helper checks the caller account, the exact project/stack checkpoint with S3's
+expected-owner header, its version before and after export, and the KMS key's
+account and region. It preserves the existing encrypted data key and never
+initializes a missing shared stack or generates a replacement key. Exported
+checkpoint contents stay in memory. Temporary configuration files have mode
+0600 in a mode-0700 directory outside the checkout and are removed on exit;
+encrypted-key metadata must not be committed to Git or copied into CI logs.
+
+Each S3 plan entry binds the provider-state and effective configuration hashes,
+the resolved KMS key ARN, and checkpoint VersionId/ETag. Apply derives these
+again in its own job and rejects any difference or missing binding before
+replaying the plan. An older S3 plan without this binding requires regeneration.
+The same provider URI alone does not establish key continuity between jobs.
+The credential role needs its existing scoped checkpoint read permissions plus
+`kms:DescribeKey`; these checks do not require state writes or KMS encryption.
+Local `file://` commands retain their isolated development behavior and do not
+constitute shared-backend deployment evidence.
 
 Stack selection follows this order:
 

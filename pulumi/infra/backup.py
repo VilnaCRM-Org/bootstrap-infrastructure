@@ -9,6 +9,7 @@ import pulumi
 
 from .bootstrap_settings import BootstrapSettings
 from .config import settings as default_settings
+from .platform_iam import platform_boundary_arn, platform_role_name
 from .utils.tags import base_tags
 
 
@@ -132,6 +133,10 @@ class S3BackupPlan(pulumi.ComponentResource):
 
         backup_role = aws.iam.Role(
             f"{name}-role",
+            name=platform_role_name(configured_settings, "backup"),
+            permissions_boundary=platform_boundary_arn(
+                account_id, configured_settings, "backup", partition=partition
+            ),
             assume_role_policy=json.dumps(
                 {
                     "Version": "2012-10-17",

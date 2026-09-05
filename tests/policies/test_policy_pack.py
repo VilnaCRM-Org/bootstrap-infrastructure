@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import runpy
@@ -31,6 +32,8 @@ def policy_runtime(
         "policy.config",
         "policy.guardrails",
         "policy.pack",
+        "reviewed_iam",
+        "policy.reviewed_iam",
     )
     for module_name in module_names:
         monkeypatch.delitem(sys.modules, module_name, raising=False)
@@ -56,6 +59,8 @@ def policy_runtime(
 
     config = load_module("config", POLICY_DIR / "config.py")
     load_module("policy.config", POLICY_DIR / "config.py")
+    load_module("reviewed_iam", POLICY_DIR / "reviewed_iam.py")
+    load_module("policy.reviewed_iam", POLICY_DIR / "reviewed_iam.py")
     guardrails = load_module("guardrails", POLICY_DIR / "guardrails.py")
     load_module("policy.guardrails", POLICY_DIR / "guardrails.py")
     pack = load_module("pack", POLICY_DIR / "pack.py")
@@ -81,6 +86,7 @@ def policy_runtime(
                 guardrails.storage_encryption_stack_violations
             ),
             storage_encryption_violations=guardrails.storage_encryption_violations,
+            reviewed_iam_document_matches=guardrails.reviewed_iam_document_matches,
             wildcard_iam_violations=guardrails.wildcard_iam_violations,
             POLICY_PACK_NAME=pack.POLICY_PACK_NAME,
             block_open_admin_ports=pack.block_open_admin_ports,
@@ -107,7 +113,7 @@ def _custom_config(policy_runtime: SimpleNamespace, **overrides: object) -> obje
         "allowed_regions": ("eu-central-1", "eu-west-1"),
         "production_environments": ("prod", "production"),
         "public_s3_bucket_allowlist": frozenset(),
-        "wildcard_iam_allowlist": frozenset(),
+        "reviewed_iam_documents": {},
         "annotations": {
             "public_s3_tag": "AllowPublicBucket",
             "wildcard_iam_tag": "AllowWildcardIam",
@@ -189,7 +195,17 @@ def test_repo_policy_config_declares_expected_defaults(
     assert config.production_environments == ("prod", "production", "live")
     assert config.annotations["public_s3_tag"] == "AllowPublicBucket"
     assert config.public_s3_bucket_allowlist == frozenset()
-    assert config.wildcard_iam_allowlist == frozenset()
+    assert config.reviewed_iam_documents
+    assert all(
+        "Governance" not in identity
+        and ("GitHubCi" not in identity or "-bootstrap-infrastructure-" in identity)
+        for identity in config.reviewed_iam_documents
+    )
+    assert all(
+        len(digest) == 64
+        for digests in config.reviewed_iam_documents.values()
+        for digest in digests
+    )
 
 
 def test_load_policy_config_defaults_optional_sections(
@@ -215,7 +231,7 @@ def test_load_policy_config_defaults_optional_sections(
     assert config.production_environments == ()
     assert config.annotations == {}
     assert config.public_s3_bucket_allowlist == frozenset()
-    assert config.wildcard_iam_allowlist == frozenset()
+    assert config.reviewed_iam_documents == {}
 
 
 def test_load_policy_config_freezes_annotations_mapping(
@@ -275,6 +291,46 @@ def test_load_policy_config_rejects_invalid_documents(
 
     with pytest.raises(ValueError, match=message):
         policy_runtime.load_policy_config(path)
+
+
+@pytest.mark.parametrize("digest", ["short", "A" * 64, "z" * 64])
+def test_reviewed_policy_config_rejects_invalid_hashes(
+    policy_runtime: SimpleNamespace, tmp_path: Path, digest: str
+) -> None:
+    """A malformed review pin must fail configuration loading."""
+    path = tmp_path / "guardrails.yaml"
+    path.write_text(
+        "required_tags: []\nallowed_regions: []\nproduction_environments: []\n"
+        "reviewed_iam_documents:\n  reviewed-policy:\n    - " + digest + "\n"
+    )
+    with pytest.raises(ValueError, match="lowercase SHA256"):
+        policy_runtime.load_policy_config(path)
+
+
+def test_reviewed_policy_config_cannot_mutate_or_use_legacy_name_bypass(
+    policy_runtime: SimpleNamespace, tmp_path: Path
+) -> None:
+    """Legacy names cannot allow arbitrary policy content; pins are immutable."""
+    path = tmp_path / "guardrails.yaml"
+    path.write_text(
+        "required_tags: []\nallowed_regions: []\nproduction_environments: []\n"
+        "allowlists:\n  wildcard_iam: [formerly-allowed]\n"
+        "reviewed_iam_documents:\n  approved-policy:\n    - '" + "a" * 64 + "'\n"
+    )
+    config = policy_runtime.load_policy_config(path)
+    assert config.reviewed_iam_documents == {"approved-policy": ("a" * 64,)}
+    with pytest.raises(TypeError):
+        cast(Any, config.reviewed_iam_documents)["new"] = ("b" * 64,)
+    assert policy_runtime.wildcard_iam_violations(
+        "aws:iam/policy:Policy",
+        {
+            "name": "formerly-allowed",
+            "policy": _json(
+                {"Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}]}
+            ),
+        },
+        config,
+    )
 
 
 def test_extract_tags_prefers_tags_all_and_merges_explicit_overrides(
@@ -1096,7 +1152,18 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
     )
     config = _custom_config(policy_runtime)
     allowlisted = _custom_config(
-        policy_runtime, wildcard_iam_allowlist=frozenset({"allowed-policy"})
+        policy_runtime,
+        reviewed_iam_documents={
+            "aws:iam/policy:Policy|allowed-policy": (
+                hashlib.sha256(
+                    json.dumps(
+                        json.loads(wildcard_policy),
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode()
+                ).hexdigest(),
+            )
+        },
     )
 
     violations = policy_runtime.wildcard_iam_violations(
@@ -1120,20 +1187,20 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
         )
         == []
     )
-    assert (
-        policy_runtime.wildcard_iam_violations(
-            "aws:iam/role:Role",
-            {
-                "inlinePolicies": [{"policy": wildcard_policy}],
-                "tags": {
-                    "AllowWildcardIam": "true",
-                    "AllowWildcardIamReason": "bootstrap role",
-                },
+    assert policy_runtime.wildcard_iam_violations(
+        "aws:iam/role:Role",
+        {
+            "inlinePolicies": [{"policy": wildcard_policy}],
+            "tags": {
+                "AllowWildcardIam": "true",
+                "AllowWildcardIamReason": "bootstrap role",
             },
-            config,
-        )
-        == []
-    )
+        },
+        config,
+    ) == [
+        "inlinePolicies[0].policy must not use wildcard IAM permissions "
+        "without an explicit allowlist."
+    ]
     assert policy_runtime.wildcard_iam_violations(
         "aws:iam/role:Role",
         {
@@ -1952,6 +2019,7 @@ def test_guardrails_support_direct_script_import(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Keep direct policy-analyzer startup working when `policy` is not a package."""
+    monkeypatch.syspath_prepend(str(POLICY_DIR))
     for module_name in (
         "config",
         "guardrails",

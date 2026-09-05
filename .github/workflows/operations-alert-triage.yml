@@ -22,19 +22,30 @@ jobs:
     name: Triage Operations Alerts
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: test
     permissions:
       contents: read
       issues: write
       id-token: write
     env:
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN: ${{ vars.AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN }}
       GH_TOKEN: ${{ github.token }}
-      OPERATIONS_ALERT_QUEUE_NAME: ${{ vars.OPERATIONS_ALERT_QUEUE_NAME || 'bootstrap-test-operations-alerts' }}
     steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: operations alert triage
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN,
+            OPERATIONS_ALERT_QUEUE_NAME
+
       - name: Validate triage prerequisites
         run: |
           missing=()
@@ -58,10 +69,10 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-operations-alert-triage-role-arn }}
           role-session-name: gha-operations-alert-triage-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
       - name: Create GitHub issue for queued operations alerts
         env:

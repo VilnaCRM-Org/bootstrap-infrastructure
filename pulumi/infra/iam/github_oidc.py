@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -14,6 +14,7 @@ import pulumi
 
 from ..bootstrap_settings import BootstrapSettings
 from ..config import managed_repositories, settings
+from ..github_identity import expand_subjects, identity_conditions
 from ..managed_repository import ManagedRepository
 from ..repository_catalog import ManagedRepositoryCatalog
 from ..utils.outputs import apply_output
@@ -34,6 +35,8 @@ class _DeployRoleContext:
     branch_name: str
     repository_project: str
     repository_metadata: Mapping[str, str]
+    repository_id: str | None = None
+    repository_owner_id: str | None = None
 
 
 def _role_exists(name: str) -> bool:
@@ -89,31 +92,50 @@ def _role_name_for_suffix(repo_suffix: str) -> str:
     return f"{_ROLE_NAME_PREFIX}{_truncate_role_suffix(repo_suffix)}"
 
 
-def _assume_role_policy(arn: str, org: str, repo_name: str, branch_name: str) -> str:
-    """Build the OIDC trust policy for a specific GitHub repo and branch."""
-    return f"""
-{{
-  "Version": "2012-10-17",
-  "Statement": [
-    {{
-      "Effect": "Allow",
-      "Principal": {{
-        "Federated": "{arn}"
-      }},
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {{
-        "StringEquals": {{
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        }},
-        "StringLike": {{
-          "token.actions.githubusercontent.com:sub":
-            "repo:{org}/{repo_name}:ref:refs/heads/{branch_name}"
-        }}
-      }}
-    }}
-  ]
-}}
-"""
+def _assume_role_policy(
+    arn: str,
+    org: str,
+    repo_name: str,
+    branch_name: str,
+    *,
+    environment: str,
+    repository_id: str | None = None,
+    owner_id: str | None = None,
+) -> str:
+    """Bind the protected environment, immutable identity and protected branch."""
+    repository = f"{org}/{repo_name}"
+    branch_ref = f"refs/heads/{branch_name}"
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Federated": arn},
+                    "Action": "sts:AssumeRoleWithWebIdentity",
+                    "Condition": {
+                        "StringEquals": {
+                            "token.actions.githubusercontent.com:aud": (
+                                "sts.amazonaws.com"
+                            ),
+                            "token.actions.githubusercontent.com:repository": (
+                                repository
+                            ),
+                            "token.actions.githubusercontent.com:ref": branch_ref,
+                            "token.actions.githubusercontent.com:sub": expand_subjects(
+                                [f"repo:{repository}:environment:{environment}"],
+                                repository,
+                                repository_id,
+                                owner_id,
+                            ),
+                            **identity_conditions(repository_id, owner_id),
+                        }
+                    },
+                }
+            ],
+        },
+        sort_keys=True,
+    )
 
 
 def _deploy_policy(
@@ -157,10 +179,25 @@ def _deploy_policy(
 
 
 def _assume_role_policy_for_repo(
-    arn: str, org: str, repo_name: str, branch_name: str
+    arn: str,
+    org: str,
+    repo_name: str,
+    branch_name: str,
+    *,
+    environment: str,
+    repository_id: str | None = None,
+    owner_id: str | None = None,
 ) -> str:
     """Typed wrapper used by Pulumi Output.apply during OIDC trust policy creation."""
-    return _assume_role_policy(arn, org, repo_name, branch_name)
+    return _assume_role_policy(
+        arn,
+        org,
+        repo_name,
+        branch_name,
+        environment=environment,
+        repository_id=repository_id,
+        owner_id=owner_id,
+    )
 
 
 def _deploy_policy_from_values(values: Sequence[str | None]) -> str:
@@ -176,12 +213,21 @@ def _provider_resource(
     name: str,
     parent: pulumi.ComponentResource,
     settings_obj: BootstrapSettings,
+    *,
+    manage_provider: bool | None = None,
+    configured_provider_arn: pulumi.Input[str] | None = None,
 ) -> aws.iam.OpenIdConnectProvider:
     """Return the shared GitHub Actions OIDC provider resource."""
-    provider_arn = (
-        settings_obj.github_oidc_provider_arn or _existing_github_oidc_provider_arn()
-    )
-    if provider_arn:
+    provider_arn = configured_provider_arn or settings_obj.github_oidc_provider_arn
+    if manage_provider is False and provider_arn is None:
+        provider_arn = (
+            f"arn:{aws.get_partition().partition}:iam::"
+            f"{aws.get_caller_identity().account_id}:"
+            "oidc-provider/token.actions.githubusercontent.com"
+        )
+    if provider_arn is None:
+        provider_arn = _existing_github_oidc_provider_arn()
+    if manage_provider is False or (manage_provider is None and provider_arn):
         return aws.iam.OpenIdConnectProvider.get(
             f"{name}-provider",
             provider_arn,
@@ -196,7 +242,7 @@ def _provider_resource(
         ],
         tags=base_tags({"Purpose": "github-actions-oidc"}, settings=settings_obj),
         url=_GITHUB_OIDC_URL,
-        opts=pulumi.ResourceOptions(parent=parent),
+        opts=pulumi.ResourceOptions(parent=parent, import_=provider_arn),
     )
 
 
@@ -223,13 +269,32 @@ class GitHubOidcRoles(pulumi.ComponentResource):
         repositories: Sequence[ManagedRepository] | None = None,
         secrets_key_arns: Mapping[str, pulumi.Input[str]] | None = None,
         settings: BootstrapSettings | None = None,
+        manage_provider: bool | None = None,
+        manage_roles: bool = True,
+        provider_arn: pulumi.Input[str] | None = None,
+        permissions_boundary: pulumi.Input[str] | None = None,
+        adopt_existing_policies: bool = False,
+        preferred_inline_policy_names: Mapping[str, str] | None = None,
+        role_guard_factory: Callable[[str, aws.iam.Role], pulumi.Resource]
+        | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize OIDC provider and deploy roles for repositories."""
         super().__init__("bootstrap:iam:GitHubOidcRoles", name, None, opts)
 
         self._settings = settings or globals()["settings"]
-        self.provider = _provider_resource(name, self, self._settings)
+        self.provider = _provider_resource(
+            name,
+            self,
+            self._settings,
+            manage_provider=manage_provider,
+            configured_provider_arn=provider_arn,
+        )
+        self._manage_roles = manage_roles
+        self._permissions_boundary = permissions_boundary
+        self._adopt_existing_policies = adopt_existing_policies
+        self._preferred_inline_policy_names = preferred_inline_policy_names or {}
+        self._role_guard_factory = role_guard_factory
         self.deploy_role_arns: dict[str, pulumi.Output[str]] = {}
 
         if repositories is not None:
@@ -267,7 +332,16 @@ class GitHubOidcRoles(pulumi.ComponentResource):
                 or "main",
                 repository_project=repo.project_name,
                 repository_metadata=repo.tag_metadata(),
+                repository_id=repo.repository_id,
+                repository_owner_id=repo.repository_owner_id,
             )
+        )
+        if not self._manage_roles:
+            return role.arn
+        guard_dependencies = (
+            [self._role_guard_factory(repo.name, role)]
+            if self._role_guard_factory is not None
+            else []
         )
         key_arn = _required_secret_key_arn(repo.name, secrets_key_arns)
         policy = apply_output(
@@ -281,11 +355,35 @@ class GitHubOidcRoles(pulumi.ComponentResource):
             ),
             _deploy_policy_from_values,
         )
+        policy_name = f"{component_name}-policy-{repo_suffix}"
+        existing_policy = None
+        if self._adopt_existing_policies:
+            from .adoption import inline_policy_name
+
+            existing_policy = inline_policy_name(
+                _role_name_for_suffix(repo_suffix),
+                policy_name,
+                **(
+                    {"preferred_name": self._preferred_inline_policy_names[repo.name]}
+                    if repo.name in self._preferred_inline_policy_names
+                    else {}
+                ),
+            )
         aws.iam.RolePolicy(
-            f"{component_name}-policy-{repo_suffix}",
+            policy_name,
+            name=existing_policy
+            or (policy_name if self._adopt_existing_policies else None),
             role=role.id,
             policy=policy,
-            opts=pulumi.ResourceOptions(parent=self),
+            opts=pulumi.ResourceOptions(
+                parent=self,
+                depends_on=guard_dependencies,
+                import_=(
+                    f"{_role_name_for_suffix(repo_suffix)}:{existing_policy}"
+                    if existing_policy
+                    else None
+                ),
+            ),
         )
         return role.arn
 
@@ -295,12 +393,13 @@ class GitHubOidcRoles(pulumi.ComponentResource):
     ) -> aws.iam.Role:
         """Create or import the IAM role used by GitHub Actions for one repo."""
         role_name = _role_name_for_suffix(context.repo_suffix)
-        if _role_exists(role_name):
+        if not self._manage_roles:
             return aws.iam.Role.get(
                 f"{context.component_name}-role-{context.repo_suffix}",
                 role_name,
                 opts=pulumi.ResourceOptions(parent=self),
             )
+        existing_role = _role_exists(role_name)
         assume_role_policy = apply_output(
             self.provider.arn,
             lambda arn: _assume_role_policy_for_repo(
@@ -308,11 +407,15 @@ class GitHubOidcRoles(pulumi.ComponentResource):
                 self._settings.org,
                 context.repo_name,
                 context.branch_name,
+                environment=self._settings.environment,
+                repository_id=context.repository_id,
+                owner_id=context.repository_owner_id,
             ),
         )
         return aws.iam.Role(
             f"{context.component_name}-role-{context.repo_suffix}",
             name=role_name,
+            permissions_boundary=self._permissions_boundary,
             assume_role_policy=assume_role_policy,
             tags=base_tags(
                 {
@@ -324,5 +427,7 @@ class GitHubOidcRoles(pulumi.ComponentResource):
                 },
                 settings=self._settings,
             ),
-            opts=pulumi.ResourceOptions(parent=self),
+            opts=pulumi.ResourceOptions(
+                parent=self, import_=role_name if existing_role else None
+            ),
         )

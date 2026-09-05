@@ -58,8 +58,13 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
     assert data["tool"]["ruff"]["lint"]["mccabe"]["max-complexity"] == 10
     expected_first_party = [
         "_github_environment_controls",
+        "_github_evidence_environment",
         "_github_repository_controls",
         "_pulumi_command_support",
+        "_pulumi_stack_config",
+        "governance_paths",
+        "pulumi_command_preflight",
+        "pulumi_pr_comment",
         "_script_support",
         "_well_architected_alert_route_observation",
         "_well_architected_aws_alert_route",
@@ -86,13 +91,14 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "app",
         "infra",
         "policy",
+        "reviewed_iam",
         "validate_repository_catalogs",
     ]
     assert deptry["known_first_party"] == expected_first_party  # nosec B101
     assert deptry["package_module_name_map"]["pyyaml"] == ["yaml"]
     assert deptry["package_module_name_map"]["pulumi-policy"] == ["pulumi_policy"]
     assert deptry["per_rule_ignores"]["DEP002"] == ["pulumi-aws"]
-    assert importlinter["root_packages"] == ["app", "policy"]
+    assert importlinter["root_packages"] == ["app", "policy", "infra"]
     assert importlinter["include_external_packages"] is True
     contracts = {contract["name"]: contract for contract in importlinter["contracts"]}
     assert set(contracts) == {
@@ -140,6 +146,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
     assert contracts["Policy layering remains one-way"]["layers"] == [
         "pack",
         "guardrails",
+        "reviewed_iam",
         "config",
     ]
     assert data["tool"]["vulture"]["min_confidence"] == 80

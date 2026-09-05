@@ -5,7 +5,9 @@
   "description": "Repository catalog consumed by bootstrap-infrastructure:repositoryCatalogPath.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["repositories"],
+  "required": [
+    "repositories"
+  ],
   "properties": {
     "$schema": {
       "type": "string",
@@ -22,7 +24,9 @@
           {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "properties": {
               "name": {
                 "$ref": "#/$defs/nonBlankString"
@@ -38,7 +42,12 @@
               },
               "lifecycleState": {
                 "type": "string",
-                "enum": ["active", "planned", "deprecated", "archived"]
+                "enum": [
+                  "active",
+                  "planned",
+                  "deprecated",
+                  "archived"
+                ]
               },
               "lastReviewed": {
                 "type": "string",
@@ -47,7 +56,21 @@
               "expectedEnvironments": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "repositoryId": {
+                "$ref": "#/$defs/githubIdentityId"
+              },
+              "repositoryOwnerId": {
+                "$ref": "#/$defs/githubIdentityId"
               }
+            },
+            "dependentRequired": {
+              "repositoryId": [
+                "repositoryOwnerId"
+              ],
+              "repositoryOwnerId": [
+                "repositoryId"
+              ]
             }
           }
         ]
@@ -59,6 +82,18 @@
       "type": "string",
       "pattern": "\\S",
       "minLength": 1
+    },
+    "githubIdentityId": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        {
+          "type": "integer",
+          "minimum": 1
+        }
+      ]
     }
   }
 }

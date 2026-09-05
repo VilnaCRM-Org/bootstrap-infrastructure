@@ -3,8 +3,9 @@ import json
 from types import SimpleNamespace
 
 import infra.automation as automation
+import infra.bootstrap_infrastructure as bootstrap_infrastructure
 import pytest
-from infra import config, pulumi_secrets
+from infra import ci_config, config, pulumi_secrets
 from infra.iam import github_oidc
 
 import pulumi
@@ -41,6 +42,221 @@ def test_mutation_target_adoption_helpers_detect_existing_resources(monkeypatch)
     assert automation._ecr_repository_exists("repo") is True  # nosec B101
     assert automation._iam_role_exists("role") is True  # nosec B101
     assert pulumi_secrets._kms_alias_exists("alias/repo") is True  # nosec B101
+
+
+def test_mutation_target_bootstrap_repository_project_fallback():
+    repositories = [
+        config.ManagedRepository(
+            name="core-service-infrastructure",
+            default_branch="main",
+            project="core-service",
+        )
+    ]
+
+    assert (  # nosec B101
+        bootstrap_infrastructure._repository_project(
+            repositories,
+            "core-service-infrastructure",
+        )
+        == "core-service"
+    )
+    assert (  # nosec B101
+        bootstrap_infrastructure._repository_project(repositories, "missing-repo")
+        == "missing-repo"
+    )
+
+
+def test_mutation_target_ci_config_secret_contract():
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="test",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    assert ci_config._ci_secret_suffixes("test") == ("test-pr", "test")  # nosec B101
+    assert ci_config._ci_secret_suffixes("prod") == (  # nosec B101
+        "prod-preview",
+        "prod",
+    )
+    assert ci_config._ci_secret_id(settings, "test") == (  # nosec B101
+        "/bootstrap-infrastructure/ci/test"
+    )
+    assert ci_config._github_actions_subjects(settings, "test-pr") == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+    ]
+    assert ci_config._github_actions_subjects(settings, "test") == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test-preview",
+    ]
+
+    policy = json.loads(
+        ci_config._ci_config_read_policy(
+            account_id="123456789012",
+            partition="aws",
+            settings=settings,
+            suffixes=("test-pr", "test"),
+        )
+    )
+    statement = policy["Statement"][0]
+    assert statement["Action"] == [  # nosec B101
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+    ]
+    assert statement["Resource"] == [  # nosec B101
+        (
+            "arn:aws:secretsmanager:*:123456789012:secret:"
+            "/bootstrap-infrastructure/ci/test-pr-*"
+        ),
+        (
+            "arn:aws:secretsmanager:*:123456789012:secret:"
+            "/bootstrap-infrastructure/ci/test-*"
+        ),
+    ]
+
+
+def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="test",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+    no_repo_settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo=None,
+        environment="test",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+    long_role_settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="a" * 50,
+        environment="test",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    with pytest.raises(ValueError, match="repoSlug config is required"):
+        ci_config._ci_config_project(no_repo_settings)
+    with pytest.raises(ValueError, match="repoSlug config is required"):
+        ci_config._github_actions_subjects(no_repo_settings, "test")
+    with pytest.raises(ValueError, match="repoSlug config is required"):
+        ci_config._github_actions_workflows(no_repo_settings, "test")
+    with pytest.raises(ValueError, match="longer than 64 characters"):
+        ci_config._ci_config_read_role_name(long_role_settings, "test")
+    assert ci_config._ci_config_read_role_name(settings, "test") == (  # nosec B101
+        "GitHubCiConfigRead-bootstrap-infrastructure-test"
+    )
+    assert ci_config._github_actions_subjects(settings, "test-pr") == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+    ]
+    assert ci_config._github_actions_workflows(settings, "test-pr") == [  # nosec B101
+        "Pulumi PR Guardrails",
+        "Well-Architected Evidence",
+    ]
+    assert ci_config._github_actions_subjects(settings, "prod") == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"
+    ]
+    trust_policy = json.loads(
+        ci_config._ci_config_read_assume_role_policy(
+            "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+            settings,
+            "prod-preview",
+        )
+    )
+    assert trust_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+        "token.actions.githubusercontent.com:sub"
+    ] == [
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod-preview",
+    ]
+    assert ci_config._is_missing_lookup_error(  # nosec B101
+        "reading KMS Alias: empty result",
+        (),
+    )
+    assert not ci_config._is_missing_lookup_error("iam throttled", ())  # nosec B101
+
+    monkeypatch.setattr(
+        ci_config.aws.secretsmanager,
+        "get_secret",
+        lambda *, name: SimpleNamespace(arn=f"arn:aws:secretsmanager:::secret:{name}"),
+    )
+    assert ci_config._secret_import_id("present") == (  # nosec B101
+        "arn:aws:secretsmanager:::secret:present"
+    )
+    monkeypatch.setattr(
+        ci_config.aws.secretsmanager,
+        "get_secret",
+        lambda *, name: SimpleNamespace(name=name),
+    )
+    assert ci_config._secret_import_id("without-arn") is None  # nosec B101
+
+    def missing_secret(*, name):  # noqa: ARG001
+        raise RuntimeError("ResourceNotFoundException")
+
+    def failing_secret(*, name):  # noqa: ARG001
+        raise RuntimeError("secretsmanager throttled")
+
+    monkeypatch.setattr(ci_config.aws.secretsmanager, "get_secret", missing_secret)
+    assert ci_config._secret_import_id("missing") is None  # nosec B101
+    monkeypatch.setattr(ci_config.aws.secretsmanager, "get_secret", failing_secret)
+    with pytest.raises(RuntimeError, match="secretsmanager throttled"):
+        ci_config._secret_import_id("failing")
+
+    monkeypatch.setattr(
+        ci_config.aws.iam,
+        "get_role",
+        lambda *, name: SimpleNamespace(arn=f"arn:aws:iam:::role/{name}"),
+    )
+    assert ci_config._iam_role_exists("present") is True  # nosec B101
+
+    def missing_role(*, name):  # noqa: ARG001
+        raise RuntimeError("NoSuchEntity")
+
+    def failing_role(*, name):  # noqa: ARG001
+        raise RuntimeError("iam throttled")
+
+    monkeypatch.setattr(ci_config.aws.iam, "get_role", missing_role)
+    assert ci_config._iam_role_exists("missing") is False  # nosec B101
+    monkeypatch.setattr(ci_config.aws.iam, "get_role", failing_role)
+    with pytest.raises(RuntimeError, match="iam throttled"):
+        ci_config._iam_role_exists("failing")
 
 
 def test_mutation_target_adoption_helpers_treat_not_found_as_absent(monkeypatch):
@@ -247,43 +463,73 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     )
 
     assert "s3:*" not in actions  # nosec B101
-    assert "kms:*" not in actions  # nosec B101
+    assert "kms:*" not in allow_actions  # nosec B101
     assert "backup:*" not in actions  # nosec B101
     assert "ecr:*" not in actions  # nosec B101
     assert "events:*" not in actions  # nosec B101
     assert "cloudtrail:*" not in actions  # nosec B101
     assert "sns:*" not in actions  # nosec B101
+    assert "secretsmanager:*" not in actions  # nosec B101
     assert "guardduty:*" not in actions  # nosec B101
     assert "securityhub:*" not in actions  # nosec B101
     assert "config:*" not in actions  # nosec B101
     assert "s3:CreateBucket" in actions  # nosec B101
+    assert "s3:GetAccelerateConfiguration" in actions  # nosec B101
     assert "kms:CreateKey" in actions  # nosec B101
-    assert "kms:Decrypt" not in actions  # nosec B101
-    assert "kms:Encrypt" not in actions  # nosec B101
-    assert "kms:GenerateDataKey" not in actions  # nosec B101
+    assert "kms:Decrypt" not in allow_actions  # nosec B101
+    assert "kms:Encrypt" not in allow_actions  # nosec B101
+    assert "kms:GenerateDataKey" not in allow_actions  # nosec B101
     assert "backup:CreateBackupPlan" in actions  # nosec B101
     assert "ecr:CreateRepository" in actions  # nosec B101
+    assert "ecr:DescribeImages" in actions  # nosec B101
     assert "events:PutRule" in actions  # nosec B101
     assert "cloudtrail:CreateTrail" in actions  # nosec B101
     assert "sns:CreateTopic" in actions  # nosec B101
     assert "sqs:CreateQueue" in actions  # nosec B101
+    assert "secretsmanager:CreateSecret" not in allow_actions  # nosec B101
+    assert "secretsmanager:GetSecretValue" not in allow_actions  # nosec B101
+    assert "secretsmanager:PutSecretValue" not in allow_actions  # nosec B101
+    assert "secretsmanager:UpdateSecret" not in allow_actions  # nosec B101
     assert "sqs:ReceiveMessage" not in allow_actions  # nosec B101
     assert "sqs:DeleteMessage" not in allow_actions  # nosec B101
     assert "budgets:ModifyBudget" in actions  # nosec B101
-    assert "budgets:DescribeBudget" in actions  # nosec B101
+    assert "budgets:ViewBudget" in actions  # nosec B101
     assert "ce:CreateAnomalyMonitor" in actions  # nosec B101
     assert "billing:GetBillingViewData" in actions  # nosec B101
     assert "guardduty:CreateDetector" in actions  # nosec B101
     assert "securityhub:EnableSecurityHub" in actions  # nosec B101
     assert "config:PutConfigurationRecorder" in actions  # nosec B101
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
-        "arn:aws:s3:::pulumi-*-test-state",
-        "arn:aws:s3:::pulumi-*-test-state-*-replication",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure--c1194dce-eu-west-1-replication",
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-*-replication",
         "arn:aws:s3:::bootstrap-*-test-cloudtrail",
         "arn:aws:s3:::bootstrap-*-test-aws-config",
     ]
+    assert statements["PassBootstrapRolesToS3Replication"] == {  # nosec B101
+        "Sid": "PassBootstrapRolesToS3Replication",
+        "Effect": "Allow",
+        "Action": ["iam:PassRole"],
+        "Resource": [
+            "arn:aws:iam::123456789012:role/PulumiStateRepl-bootstrap-infrastructure-test",
+            "arn:aws:iam::123456789012:role/central-logging-replication-role-test",
+        ],
+        "Condition": {"StringEquals": {"iam:PassedToService": "s3.amazonaws.com"}},
+    }
+    pass_role_statements = [
+        statement
+        for statement in statements.values()
+        if statement["Action"] == ["iam:PassRole"] and statement["Effect"] == "Allow"
+    ]
+    assert {statement["Sid"] for statement in pass_role_statements} == {  # nosec B101
+        "PassBootstrapRolesToBackup",
+        "PassBootstrapRolesToConfig",
+        "PassBootstrapRolesToS3Replication",
+    }
+    assert all(  # nosec B101
+        statement["Resource"] != "*" for statement in pass_role_statements
+    )
     assert statements["ManageBootstrapEcr"]["Resource"] == [  # nosec B101
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
         "bootstrap-infrastructure-test"
@@ -306,6 +552,11 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert statements["ManageBootstrapSnsSubscriptions"]["Resource"] == "*"  # nosec B101
     assert statements["ManageBootstrapSqs"]["Resource"] == [  # nosec B101
         "arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"
+    ]
+    assert "CreateBootstrapCiSecrets" not in statements
+    assert "ManageBootstrapCiSecrets" not in statements
+    assert statements["ReadPlatformCiSecrets"]["Action"] == [
+        "secretsmanager:DescribeSecret"
     ]
     assert statements["DenyBootstrapSqsConsumption"] == {  # nosec B101
         "Sid": "DenyBootstrapSqsConsumption",
@@ -361,10 +612,14 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
             "aws:ResourceTag/Purpose": "cost-anomaly-subscription",
         }
     }
-    assert (  # nosec B101
-        "arn:aws:iam::123456789012:role/PulumiAutomation-"
-        "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
-    )
+    assert "ManageBootstrapIam" not in statements
+    assert statements["ManageBoundedBackup"]["Condition"] == {
+        "StringEquals": {
+            "iam:PermissionsBoundary": (
+                "arn:aws:iam::123456789012:policy/PlatformBoundary-backup-test"
+            )
+        }
+    }
     assert (  # nosec B101
         statements["ManageBootstrapKmsKeys"]["Condition"]["StringEquals"]
         == {
@@ -413,14 +668,12 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert {
         statement["Sid"]
         for statement in policy["Statement"]
-        if statement["Resource"] == "*"
+        if statement.get("Resource") == "*" and statement["Effect"] == "Allow"
     } == {
         "CreateBootstrapKmsKeys",
         "CreateBootstrapCostAnomalyMonitor",
         "CreateBootstrapCostAnomalySubscription",
-        "CreateBootstrapOidcProvider",
         "CreateBootstrapGuardDutyDetector",
-        "ListBootstrapOidcProviders",
         "ListBootstrapKmsAliases",
         "ManageBootstrapSnsSubscriptions",
         "ManageAwsConfigDeliveryChannel",
@@ -428,6 +681,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "ReadCloudTrailTrailsForRefresh",
         "ReadGuardDutyDetectors",
         "ReadIdentity",
+        "ReadPlatformIam",
     }  # nosec B101
 
 

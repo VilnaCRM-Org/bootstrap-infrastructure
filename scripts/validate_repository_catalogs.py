@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import ipaddress
 import json
 import re
 import sys
@@ -45,7 +46,134 @@ CENTRAL_STACK_FANOUT = {
     "configRecorders": 1,
     "configDeliveryChannels": 1,
 }
+# Governance catalogs (``repositories.governance.json``) fan out a *separate*
+# per-repo shape (AWS-SRE-6): NO central-stack resources, more than the two
+# deployment IAM roles per repo, plus customer-managed apply policies. These
+# counts must NOT be folded into ``PER_ENVIRONMENT_FANOUT``/``CENTRAL_STACK_FANOUT``
+# or they would silently relax the shared deployment-catalog guard.
+#
+# Per repository in ONE test or prod account: three deploy roles, two
+# config-read roles and one replication role; two CI secrets and two apply
+# managed policies (backend and secret-read deny). Operator-owned boundary
+# policies and existing account usage are separate quota inputs.
+_GOVERNANCE_CI_SECRET_SUFFIXES = ("test-pr", "test", "prod-preview", "prod")
+_GOVERNANCE_PER_REPO_FANOUT = {
+    "iamRoles": 6,
+    "managedPolicies": 2,
+    "secrets": 2,
+}
+# AWS account-level IAM defaults used for the headroom report. The apply role
+# are reference limits, not a live account usage or quota lookup.
+_IAM_ACCOUNT_QUOTAS = {
+    "iamRoles": 1000,
+    "managedPolicies": 1500,
+    "managedPoliciesPerRole": 10,
+}
+_GOVERNANCE_APPLY_MANAGED_POLICIES = 2
+_GOVERNANCE_CATALOG_NAME = "repositories.governance.json"
+_MAX_IAM_ROLE_NAME_LENGTH = 64
+# Deploy-role name prefixes, mirroring ``ci_bootstrap._CI_ROLE_PREFIX_BY_PURPOSE``.
+_CI_DEPLOY_ROLE_PREFIXES = ("GitHubCiPreview", "GitHubCiApply", "GitHubCiDrift")
+# Deployment-role environment tokens, mirroring ``_environment_part(settings)``
+# for the two governance stacks (``test`` / ``prod``).
+_GOVERNANCE_ENVIRONMENT_PARTS = ("test", "prod")
+# Config-read role prefix, mirroring ``ci_config._ci_config_read_role_name``.
+_CI_CONFIG_READ_ROLE_PREFIX = "GitHubCiConfigRead"
+# DNS-safe sanitization mirroring ``BootstrapSettings.sanitize_bucket_component``
+# so the validator rejects over-long role names at catalog time, exactly as the
+# component would raise at apply time (FEASIBILITY-4).
+_VALID_CHARS_PATTERN = re.compile(r"[^a-z0-9.-]")
+_SEQUENTIAL_DOTS = re.compile(r"\.{2,}")
+_SEQUENTIAL_HYPHENS = re.compile(r"-{2,}")
 LAST_REVIEWED_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _catalog_kind(catalog_path: Path) -> str:
+    """Return the fanout kind for a catalog file, keyed on its filename.
+
+    ``repositories.governance.json`` drives the governance fanout (per-repo IAM
+    roles + managed policies, no central-stack resources); every other catalog
+    keeps the existing ``deployment``/``central`` fanout unchanged (AWS-SRE-6).
+    """
+    if catalog_path.name == _GOVERNANCE_CATALOG_NAME:
+        return "governance"
+    return "deployment"
+
+
+def _sanitize_project_component(value: str) -> str:
+    """Return the ``{project}`` token a governed repo name resolves to.
+
+    Mirrors ``BootstrapSettings.sanitize_bucket_component(value).replace(".","-")``
+    (the derivation in ``ci_config._ci_config_project``) so the validator can
+    reproduce the rendered role-name length without importing the Pulumi runtime.
+    """
+    normalized = value.strip().lower()
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        address = None
+    if address is not None:
+        raise ValueError("Repository project cannot be an IP address.")
+    candidate = _VALID_CHARS_PATTERN.sub("-", normalized)
+    candidate = _SEQUENTIAL_DOTS.sub(".", candidate)
+    candidate = _SEQUENTIAL_HYPHENS.sub("-", candidate)
+    candidate = candidate.strip(".-")
+    _validate_sanitized_project(candidate)
+    return candidate.replace(".", "-")
+
+
+def _validate_sanitized_project(candidate: str) -> None:
+    """Mirror canonical bucket rejection rules without importing the SDK."""
+    if re.search(r"\.-|-\.", candidate):
+        raise ValueError("Repository project cannot contain dot-hyphen adjacency.")
+    if re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}", candidate):
+        raise ValueError("Repository project cannot be an IPv4 address.")
+    if not candidate:
+        raise ValueError("Repository project cannot be fully sanitized.")
+    if len(candidate) > 63:
+        raise ValueError("Repository project must resolve to at most 63 characters.")
+
+
+def _sanitize_ci_suffix(suffix: str) -> str:
+    """Return the sanitized CI-config suffix token used in config-read role names.
+
+    Mirrors ``ci_config._ci_config_read_role_name`` which applies
+    ``sanitize_bucket_component(suffix).replace(".", "-")``.
+    """
+    return _sanitize_project_component(suffix)
+
+
+def _rendered_governance_role_names(name: str) -> list[str]:
+    """Return every IAM role name the governance stack renders for one repo.
+
+    These are the names the Pulumi component would build (and length-guard) at
+    apply time (FEASIBILITY-4): the preview/apply/drift deploy trio per stack and
+    the per-suffix config-read roles. The longest is the config-read role
+    ``GitHubCiConfigRead-{project}-prod-preview`` — the previous guard only checked
+    ``{project}-prod-preview`` and so under-counted the prefix, letting an
+    over-long config-read role validate yet fail at apply.
+    """
+    project = _sanitize_project_component(name)
+    names: list[str] = []
+    # Deploy trio: GitHubCi{Preview,Apply,Drift}-{project}-{env}.
+    for prefix in _CI_DEPLOY_ROLE_PREFIXES:
+        for env in _GOVERNANCE_ENVIRONMENT_PARTS:
+            names.append(f"{prefix}-{project}-{env}")
+    # Config-read roles: GitHubCiConfigRead-{project}-{suffix}.
+    for suffix in _GOVERNANCE_CI_SECRET_SUFFIXES:
+        names.append(
+            f"{_CI_CONFIG_READ_ROLE_PREFIX}-{project}-{_sanitize_ci_suffix(suffix)}"
+        )
+    return names
+
+
+def _longest_governance_role_name(name: str) -> str:
+    """Return the longest rendered governance role name for one repo."""
+    longest = ""
+    for role_name in _rendered_governance_role_names(name):
+        if len(role_name) > len(longest):
+            longest = role_name
+    return longest
 
 
 def repository_catalog_paths(root_dir: Path) -> list[Path]:
@@ -187,7 +315,9 @@ def _validate_expected_environments_metadata(item: Mapping[str, object]) -> None
         )
 
 
-def _validate_loader_semantics(payload: Mapping[str, object]) -> None:
+def _validate_loader_semantics(
+    payload: Mapping[str, object], kind: str = "deployment"
+) -> None:
     """Validate catalog rules that the JSON Schema cannot fully express."""
     repositories = payload["repositories"]
     if not isinstance(repositories, list):
@@ -210,6 +340,73 @@ def _validate_loader_semantics(payload: Mapping[str, object]) -> None:
         duplicate_names = ", ".join(sorted(duplicates, key=str.casefold))
         raise ValueError(f"Managed repository names must be unique: {duplicate_names}.")
 
+    if kind == "governance":
+        _validate_governance_semantics(repositories)
+
+
+def _validate_governance_semantics(repositories: Sequence[object]) -> None:
+    """Apply governance-only structural guards (§4 uniqueness, FEASIBILITY-4).
+
+    Governance catalogs back per-repo IAM role names embedding ``{project}``;
+    a shared ``project`` would collide and an over-long repo name would only fail
+    at apply time. Both are rejected here so CI catches them before apply.
+    """
+    _validate_unique_projects(repositories)
+    _validate_governance_role_name_lengths(repositories)
+
+
+def _validate_unique_projects(repositories: Sequence[object]) -> None:
+    """Reject both rendered-name collisions and duplicate declared project labels."""
+    rendered: list[tuple[str, str]] = []
+    declared: list[tuple[str, str]] = []
+    for item in repositories:
+        if not isinstance(item, str | Mapping):
+            continue
+        name = _repository_name(item)
+        rendered.append((_sanitize_project_component(name), name))
+        if isinstance(item, Mapping):
+            raw_project = item.get("project")
+            if isinstance(raw_project, str) and raw_project.strip():
+                declared.append((raw_project.strip(), name))
+    _reject_project_collisions(rendered)
+    _reject_project_collisions(declared)
+
+
+def _reject_project_collisions(pairs: Sequence[tuple[str, str]]) -> None:
+    """Identify the actual repository names sharing one deployment token."""
+    seen: dict[str, str] = {}
+    duplicates: set[str] = set()
+    for project, name in pairs:
+        if project in seen:
+            duplicates.update((seen[project], name))
+        else:
+            seen[project] = name
+    if duplicates:
+        collisions = ", ".join(sorted(duplicates, key=str.casefold))
+        raise ValueError(
+            f"Governance repository project values must be unique: {collisions}."
+        )
+
+
+def _validate_governance_role_name_lengths(repositories: Sequence[object]) -> None:
+    """Reject repos whose longest rendered IAM role would exceed the 64-char limit.
+
+    The guard is computed against the ACTUAL rendered role names — the
+    preview/apply/drift deploy trio per stack and the per-suffix config-read roles
+    (``GitHubCiConfigRead-{project}-prod-preview`` is the longest) — so a catalog
+    cannot validate yet produce a >64-char role that fails at apply (FEASIBILITY-4).
+    """
+    for item in repositories:
+        name = _repository_name(item)
+        longest = _longest_governance_role_name(name)
+        if len(longest) > _MAX_IAM_ROLE_NAME_LENGTH:
+            raise ValueError(
+                "Governance repository "
+                f"'{name}' produces an IAM role name '{longest}' "
+                f"longer than {_MAX_IAM_ROLE_NAME_LENGTH} characters; "
+                "rename the repository so it fits."
+            )
+
 
 def validate_catalog(catalog_path: Path, schema_path: Path) -> Path:
     """Validate one repository catalog against JSON Schema and loader semantics."""
@@ -226,7 +423,7 @@ def validate_catalog(catalog_path: Path, schema_path: Path) -> Path:
     if errors:
         raise ValueError(f"{catalog_path}: {_format_schema_error(errors[0])}")
 
-    _validate_loader_semantics(payload)
+    _validate_loader_semantics(payload, _catalog_kind(catalog_path))
     return catalog_path
 
 
@@ -261,12 +458,70 @@ def estimate_fanout(payload: Mapping[str, object]) -> dict[str, int]:
     return fanout
 
 
+def estimate_governance_fanout(payload: Mapping[str, object]) -> dict[str, int]:
+    """Estimate the per-repo governance fanout (AWS-SRE-6).
+
+    Governance catalogs create NONE of the central-stack resources; every count
+    scales linearly with the repo count from ``_GOVERNANCE_PER_REPO_FANOUT``
+    (iamRoles = trio + config-read + replication; managedPolicies = apply-role
+    customer-managed policies; secrets = two account-local CI suffixes).
+    These are per-account additions, not current usage or an applied quota;
+    separately operator-owned boundary policies must also be budgeted.
+    """
+    repositories = payload.get("repositories")
+    if not isinstance(repositories, list):
+        raise ValueError("managedRepositories config must be a list.")
+    repo_count = len(repositories)
+    fanout: dict[str, int] = {"repositories": repo_count}
+    for key, per_repo in _GOVERNANCE_PER_REPO_FANOUT.items():
+        fanout[key] = per_repo * repo_count
+    return fanout
+
+
+def governance_quota_report(report: Mapping[str, int]) -> dict[str, dict[str, object]]:
+    """Public alias for the governance account-quota headroom report."""
+    return _governance_quota_report(report)
+
+
+def _governance_quota_report(
+    report: Mapping[str, int],
+) -> dict[str, dict[str, object]]:
+    """Return account-quota headroom for governance IAM resources.
+
+    Compares the projected fleet-wide IAM role / customer-managed policy counts
+    against AWS account defaults (1000 roles, 1500 managed policies) and flags
+    the apply role's current 2/10 per-role managed-policy usage.
+    """
+    quota: dict[str, dict[str, object]] = {}
+    for key in ("iamRoles", "managedPolicies"):
+        current = report.get(key, 0)
+        limit = _IAM_ACCOUNT_QUOTAS[key]
+        quota[key] = {
+            "current": current,
+            "limit": limit,
+            "remaining": max(limit - current, 0),
+            "status": "exceeded" if current > limit else "ok",
+        }
+    per_role_limit = _IAM_ACCOUNT_QUOTAS["managedPoliciesPerRole"]
+    quota["managedPoliciesPerRole"] = {
+        "current": _GOVERNANCE_APPLY_MANAGED_POLICIES,
+        "limit": per_role_limit,
+        "remaining": max(per_role_limit - _GOVERNANCE_APPLY_MANAGED_POLICIES, 0),
+        "status": (
+            "exceeded" if _GOVERNANCE_APPLY_MANAGED_POLICIES > per_role_limit else "ok"
+        ),
+    }
+    return quota
+
+
 def catalog_fanout_report(catalog_path: Path, schema_path: Path) -> dict[str, int]:
     """Validate a catalog and return its projected resource fanout."""
     validate_catalog(catalog_path, schema_path)
     payload = _load_json(catalog_path)
     if not isinstance(payload, Mapping):
         raise ValueError("Repository catalog JSON must be an object.")
+    if _catalog_kind(catalog_path) == "governance":
+        return estimate_governance_fanout(payload)
     return estimate_fanout(payload)
 
 
@@ -359,6 +614,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-security-hub-accounts", type=int, default=20)
     parser.add_argument("--max-config-recorders", type=int, default=20)
     parser.add_argument("--max-config-delivery-channels", type=int, default=20)
+    parser.add_argument("--max-governance-iam-roles", type=int, default=300)
+    parser.add_argument("--max-governance-managed-policies", type=int, default=300)
+    parser.add_argument(
+        "--max-governance-secrets",
+        dest="max_governance_configuration_objects",
+        metavar="MAX_GOVERNANCE_SECRETS",
+        type=int,
+        default=300,
+    )
     args = parser.parse_args(argv)
 
     catalog_paths = list(args.catalogs) or repository_catalog_paths(ROOT_DIR)
@@ -383,23 +647,66 @@ def main(argv: Sequence[str] | None = None) -> int:
     for path in validated_paths:
         print(f"validated repository catalog: {path}")
     failures: list[str] = []
-    thresholds = _fanout_thresholds(args)
     for path, report in reports:
-        print(
-            f"repository fanout estimate for {path}: "
-            f"{json.dumps(report, sort_keys=True)}"
-        )
-        threshold_report_json = json.dumps(
-            _fanout_threshold_report(report, thresholds),
-            sort_keys=True,
-        )
-        print(f"repository fanout thresholds for {path}: {threshold_report_json}")
-        failures.extend(_fanout_failures(path, report, thresholds))
+        failures.extend(_emit_fanout_report(path, report, args))
     if failures:
         for failure in failures:
             print(f"error: {failure}", file=sys.stderr)
         return 1
     return 0
+
+
+def _governance_fanout_thresholds(args: argparse.Namespace) -> dict[str, int]:
+    """Return the governance-specific fanout thresholds (kept separate)."""
+    return {
+        "iamRoles": args.max_governance_iam_roles,
+        "managedPolicies": args.max_governance_managed_policies,
+        # This is a count of CI configuration objects, never their secret values.
+        "secrets": args.max_governance_configuration_objects,
+    }
+
+
+def _emit_fanout_report(
+    path: Path, report: Mapping[str, int], args: argparse.Namespace
+) -> list[str]:
+    """Print one catalog's fanout report and return its threshold violations."""
+    if _catalog_kind(path) == "governance":
+        return _emit_governance_fanout_report(path, report, args)
+    return _emit_deployment_fanout_report(path, report, args)
+
+
+def _emit_deployment_fanout_report(
+    path: Path, report: Mapping[str, int], args: argparse.Namespace
+) -> list[str]:
+    """Print the deployment/central catalog fanout report (unchanged)."""
+    thresholds = _fanout_thresholds(args)
+    print(
+        f"repository fanout estimate for {path}: {json.dumps(report, sort_keys=True)}"
+    )
+    threshold_report_json = json.dumps(
+        _fanout_threshold_report(report, thresholds),
+        sort_keys=True,
+    )
+    print(f"repository fanout thresholds for {path}: {threshold_report_json}")
+    return _fanout_failures(path, report, thresholds)
+
+
+def _emit_governance_fanout_report(
+    path: Path, report: Mapping[str, int], args: argparse.Namespace
+) -> list[str]:
+    """Print the governance catalog fanout + account-quota headroom report."""
+    thresholds = _governance_fanout_thresholds(args)
+    print(
+        f"governance fanout estimate for {path}: {json.dumps(report, sort_keys=True)}"
+    )
+    threshold_report_json = json.dumps(
+        _fanout_threshold_report(report, thresholds),
+        sort_keys=True,
+    )
+    print(f"governance fanout thresholds for {path}: {threshold_report_json}")
+    quota_json = json.dumps(_governance_quota_report(report), sort_keys=True)
+    print(f"governance quota headroom for {path}: {quota_json}")
+    return _fanout_failures(path, report, thresholds)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -141,16 +141,27 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         "",
     )
     destructive_diff_job_if = " ".join(jobs["destructive_diff"]["if"].split())
-    pr_backend_expression = (
-        "${{ github.event_name == 'pull_request' && "
-        + "vars.PULUMI_PR_BACKEND_URL || vars.PULUMI_BACKEND_URL || "
-        + "vars.PULUMI_PR_BACKEND_URL }}"
+    preview_ci_config_step = next(
+        step
+        for step in jobs["preview"]["steps"]
+        if step.get("uses") == "./.github/actions/load-aws-ci-env"
     )
-    pr_stack_expression = (
-        "${{ github.event_name == 'pull_request' && "
-        + "vars.PULUMI_PR_PREVIEW_STACKS || vars.PULUMI_PREVIEW_STACKS || "
-        + "vars.PULUMI_PR_PREVIEW_STACKS }}"
+    iam_ci_config_step = next(
+        step
+        for step in jobs["iam_validation"]["steps"]
+        if step.get("uses") == "./.github/actions/load-aws-ci-env"
     )
+    preview_ci_config_target_step = next(
+        step
+        for step in jobs["preview"]["steps"]
+        if step.get("name") == "Select test AWS CI configuration"
+    )
+    iam_ci_config_target_step = next(
+        step
+        for step in jobs["iam_validation"]["steps"]
+        if step.get("name") == "Select test AWS CI configuration"
+    )
+    pr_ci_environment = "${{ steps.ci_config_target.outputs.environment }}"
 
     assert workflow["concurrency"]["cancel-in-progress"] is True
     assert "environment" not in jobs["preview_mode"]  # nosec B101
@@ -160,13 +171,21 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         == "${{ needs.preview_mode.outputs.privileged == 'true' }}"
     )
     assert jobs["preview"]["needs"] == ["preview_mode"]  # nosec B101
-    assert jobs["preview"]["environment"] == "test"  # nosec B101
-    assert (  # nosec B101
-        jobs["preview"]["env"]["PULUMI_BACKEND_URL"] == pr_backend_expression
+    assert "environment" not in jobs["preview"]  # nosec B101
+    assert preview_ci_config_step["with"]["environment"] == pr_ci_environment  # nosec B101
+    assert iam_ci_config_step["with"]["environment"] == pr_ci_environment  # nosec B101
+    assert preview_ci_config_step["with"]["config-role-arn"] == (  # nosec B101
+        "${{ steps.ci_config_target.outputs.config-role-arn }}"
     )
-    assert (  # nosec B101
-        jobs["preview"]["env"]["PULUMI_PREVIEW_STACKS"] == pr_stack_expression
+    assert iam_ci_config_step["with"]["config-role-arn"] == (  # nosec B101
+        "${{ steps.ci_config_target.outputs.config-role-arn }}"
     )
+    for target_step in (preview_ci_config_target_step, iam_ci_config_target_step):
+        assert "AWS_TEST_PR_CI_CONFIG_ROLE_ARN" in target_step["run"]  # nosec B101
+        assert "AWS_TEST_CI_CONFIG_ROLE_ARN" in target_step["run"]  # nosec B101
+        assert "must be set" in target_step["run"]  # nosec B101
+    assert "PULUMI_BACKEND_URL" in preview_ci_config_step["with"]["required-keys"]  # nosec B101
+    assert "PULUMI_PREVIEW_STACKS" in preview_ci_config_step["with"]["required-keys"]  # nosec B101
     assert jobs["preview"]["permissions"] == {  # nosec B101
         "contents": "read",
         "id-token": "write",
@@ -180,6 +199,7 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         == "${{ needs.preview_unprivileged.result == 'success' }}"
     )
     assert "environment" not in jobs["iam_validation_unprivileged"]  # nosec B101
+    assert "environment" not in jobs["iam_validation"]  # nosec B101
     assert jobs["iam_validation_unprivileged"]["permissions"] == {"contents": "read"}  # nosec B101
     assert destructive_diff_job_if == destructive_diff_if  # nosec B101
     assert jobs["destructive_diff"]["needs"] == [  # nosec B101
@@ -204,16 +224,30 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     assert preview_upload_step["with"]["name"] == "pulumi-preview"  # nosec B101
     assert "if" not in preview_oidc_step  # nosec B101
     assert (  # nosec B101
-        preview_oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"
+        preview_oidc_step["with"]["role-to-assume"]
+        == "${{ steps.ci_config.outputs.aws-preview-role-arn }}"
     )
     assert (  # nosec B101
-        preview_oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"
+        preview_oidc_step["with"]["allowed-account-ids"]
+        == "${{ steps.ci_config.outputs.aws-account-id }}"
     )
-    assert preview_oidc_step["with"]["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
+    assert (  # nosec B101
+        preview_oidc_step["with"]["aws-region"]
+        == "${{ steps.ci_config.outputs.aws-region }}"
+    )
     assert "if" not in iam_oidc_step  # nosec B101
-    assert iam_oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"  # nosec B101
-    assert iam_oidc_step["with"]["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
-    assert iam_oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+    assert (  # nosec B101
+        iam_oidc_step["with"]["role-to-assume"]
+        == "${{ steps.ci_config.outputs.aws-preview-role-arn }}"
+    )
+    assert (  # nosec B101
+        iam_oidc_step["with"]["aws-region"]
+        == "${{ steps.ci_config.outputs.aws-region }}"
+    )
+    assert (  # nosec B101
+        iam_oidc_step["with"]["allowed-account-ids"]
+        == "${{ steps.ci_config.outputs.aws-account-id }}"
+    )
     assert "make publish-pulumi-preview-summary" in preview_run_step["run"]  # nosec B101
     assert "make test-preview-unprivileged" in unprivileged_preview_run  # nosec B101
     assert preview_run_step["env"] == {  # nosec B101
@@ -331,6 +365,16 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
     ]
     test_drift_steps = jobs["test_drift_detection"]["steps"]
     prod_drift_steps = jobs["prod_drift_detection"]["steps"]
+    test_ci_config_step = next(
+        step
+        for step in test_drift_steps
+        if step.get("uses") == "./.github/actions/load-aws-ci-env"
+    )
+    prod_ci_config_step = next(
+        step
+        for step in prod_drift_steps
+        if step.get("uses") == "./.github/actions/load-aws-ci-env"
+    )
     preflight_step = next(
         (
             step
@@ -351,16 +395,16 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
         jobs["prod_drift_detection"]["concurrency"]["group"]
         == "bootstrap-infrastructure-prod-state"
     )
-    assert jobs["test_drift_detection"]["environment"] == "test"  # nosec B101
-    assert jobs["prod_drift_detection"]["environment"] == "prod-preview"  # nosec B101
+    assert "environment" not in jobs["test_drift_detection"]  # nosec B101
+    assert "environment" not in jobs["prod_drift_detection"]  # nosec B101
+    assert test_ci_config_step["with"]["environment"] == "test"  # nosec B101
+    assert prod_ci_config_step["with"]["environment"] == "prod-preview"  # nosec B101
     expected_drift_permissions = {
         "contents": "read",
         "id-token": "write",
     }
-    expected_expression = "".join(("${{ secrets.", "PULUMI_ACCESS_", "TOKEN", " }}"))
     assert jobs["test_drift_detection"]["permissions"] == expected_drift_permissions  # nosec B101
-    drift_access_token = jobs["test_drift_detection"]["env"]["PULUMI_ACCESS_TOKEN"]
-    assert drift_access_token == expected_expression  # nosec B101
+    assert jobs["test_drift_detection"]["env"] == {"PULUMI_SKIP_UPDATE_CHECK": "true"}  # nosec B101
     assert preflight_step is not None, "drift preflight step not found"  # nosec B101
     assert "AWS_DRIFT_ROLE_ARN" in preflight_step["run"]  # nosec B101
     assert "PULUMI_BACKEND_URL" in preflight_step["run"]  # nosec B101
@@ -373,9 +417,18 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
             for step in drift_steps
             if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
         )
-        assert oidc_step["with"]["role-to-assume"] == "${{ env.AWS_DRIFT_ROLE_ARN }}"  # nosec B101
-        assert oidc_step["with"]["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
-        assert oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+        assert (  # nosec B101
+            oidc_step["with"]["role-to-assume"]
+            == "${{ steps.ci_config.outputs.aws-drift-role-arn }}"
+        )
+        assert (  # nosec B101
+            oidc_step["with"]["aws-region"]
+            == "${{ steps.ci_config.outputs.aws-region }}"
+        )
+        assert (  # nosec B101
+            oidc_step["with"]["allowed-account-ids"]
+            == "${{ steps.ci_config.outputs.aws-account-id }}"
+        )
         assert any(step.get("run") == "make test-drift" for step in drift_steps)  # nosec B101
     assert any("ossf/scorecard-action@" in uses for uses in scorecard_uses)  # nosec B101
     assert any("upload-sarif@" in uses for uses in scorecard_uses)  # nosec B101
@@ -402,6 +455,14 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         step
         for step in evidence_steps
         if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+    )
+    ci_config_step = next(
+        step for step in evidence_steps if step.get("id") == "ci_config"
+    )
+    ci_config_target_step = next(
+        step
+        for step in evidence_steps
+        if step.get("name") == "Select test AWS CI configuration"
     )
     checkout_step = next(
         step
@@ -444,7 +505,20 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         "privileged": "${{ steps.evidence_mode.outputs.privileged }}"
     }
     assert "Fork pull request detected" in mode_step["run"]  # nosec B101
-    assert jobs["test_account_evidence"]["environment"] == "test"  # nosec B101
+    assert "environment" not in jobs["test_account_evidence"]  # nosec B101
+    assert (  # nosec B101
+        ci_config_step["with"]["environment"]
+        == "${{ steps.ci_config_target.outputs.environment }}"
+    )
+    assert (  # nosec B101
+        ci_config_step["with"]["config-role-arn"]
+        == "${{ steps.ci_config_target.outputs.config-role-arn }}"
+    )
+    assert "AWS_TEST_PR_CI_CONFIG_ROLE_ARN" in ci_config_target_step["run"]  # nosec B101
+    assert "AWS_TEST_CI_CONFIG_ROLE_ARN" in ci_config_target_step["run"]  # nosec B101
+    assert "must be set" in ci_config_target_step["run"]  # nosec B101
+    assert "||" not in ci_config_step["with"]["config-role-arn"]  # nosec B101
+    assert "OPERATIONS_TOPIC_ARN" in ci_config_step["with"]["required-keys"]  # nosec B101
     assert jobs["test_account_evidence"]["permissions"] == {  # nosec B101
         "contents": "read",
         "id-token": "write",
@@ -478,6 +552,22 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         jobs["test_account_evidence"]["env"]["DEPENDABOT_EXCEPTION_EVIDENCE"]
         == "${{ vars.DEPENDABOT_EXCEPTION_EVIDENCE }}"
     )
+    question_matrix_evidence = (
+        "specs/issue-17-well-architected-5-of-5/"
+        "question-matrix-evidence-2026-05-17.json"
+    )
+    assert (  # nosec B101
+        jobs["test_account_evidence"]["env"]["QUESTION_MATRIX_EVIDENCE"]
+        == question_matrix_evidence
+    )
+    external_control_evidence = (
+        "specs/issue-17-well-architected-5-of-5/"
+        "external-control-evidence-2026-05-17.json"
+    )
+    assert (  # nosec B101
+        jobs["test_account_evidence"]["env"]["EXTERNAL_CONTROL_EVIDENCE"]
+        == external_control_evidence
+    )
     alert_route_evidence = (
         "${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE || "
         "'specs/issue-17-well-architected-5-of-5/"
@@ -505,12 +595,20 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         jobs["test_account_evidence"]["env"]["PRODUCTION_DR_OWNER_EVIDENCE"]
         == production_dr_evidence
     )
-    assert oidc_step["with"]["role-to-assume"] == "${{ env.AWS_PREVIEW_ROLE_ARN }}"  # nosec B101
-    assert oidc_step["with"]["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+    assert (  # nosec B101
+        oidc_step["with"]["role-to-assume"]
+        == "${{ steps.ci_config.outputs.aws-preview-role-arn }}"
+    )
+    assert (  # nosec B101
+        oidc_step["with"]["allowed-account-ids"]
+        == "${{ steps.ci_config.outputs.aws-account-id }}"
+    )
     assert "uv==0.9.21" in " ".join(  # nosec B101
         step.get("run", "") for step in evidence_steps
     )
-    assert "make report-well-architected-evidence" in collector_step["run"]  # nosec B101
+    assert (  # nosec B101
+        "./scripts/collect_well_architected_evidence.py" in collector_step["run"]
+    )
     assert "make verify-well-architected-questions" in collector_step["run"]  # nosec B101
     assert "make report-well-architected-closeout" in collector_step["run"]  # nosec B101
     assert "owner-closeout-bundle.md" in collector_step["run"]  # nosec B101
@@ -589,6 +687,8 @@ def test_new_workflows_keep_actions_pinned_to_full_shas() -> None:
             for step in job.get("steps", []):
                 uses = step.get("uses")
                 if uses is None:
+                    continue
+                if uses.startswith("./"):
                     continue
                 assert ACTION_SHA_REF.match(uses), (
                     f"{workflow_name} must pin `{uses}` to a full commit SHA"

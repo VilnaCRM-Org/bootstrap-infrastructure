@@ -2,15 +2,20 @@ import asyncio
 import json
 import runpy
 from pathlib import Path
+from typing import cast
 
 import pytest
 from infra import (
     BootstrapInfrastructure,
     BootstrapInfrastructureDependencies,
     CentralLoggingBuckets,
+    CiConfiguration,
+    CiConfigurationArgs,
     CostControlInputs,
     CostControls,
     GitHubAutomation,
+    GitHubCiBootstrap,
+    GitHubCiBootstrapArgs,
     ManagedRepositoryCatalog,
     OperationsMonitoring,
     PulumiSecretsKeys,
@@ -18,6 +23,8 @@ from infra import (
     S3BackupPlan,
     SecurityAccountControls,
     automation,
+    ci_bootstrap,
+    ci_config,
     config,
     logging_bucket,
     operations_monitoring,
@@ -47,6 +54,26 @@ def _resource_state_by_name(pulumi_mocks, name: str) -> dict:
                 return state
         asyncio.get_event_loop().run_until_complete(asyncio.sleep(0.01))
     pytest.fail(f"Expected mock resource {name!r} to be registered.")
+
+
+def _ci_bootstrap_settings(environment: str) -> config.BootstrapSettings:
+    """Return settings for GitHub CI bootstrap component tests."""
+    return config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment=environment,
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+        manage_cost_allocation_tags=environment == "test",
+    )
 
 
 def test_managed_cost_allocation_tag_keys_returns_stable_copy():
@@ -215,6 +242,885 @@ def test_github_automation_policy_normalizes_sns_environment_and_allocation_tags
                 ]
             }
         }
+    )
+
+
+def test_github_automation_trust_requires_environment_for_every_apply():
+    provider_arn = (
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    )
+
+    test_policy = json.loads(
+        automation._automation_assume_role_policy(
+            provider_arn,
+            "VilnaCRM-Org",
+            "bootstrap-infrastructure",
+            "test",
+            "main",
+        )
+    )
+    prod_policy = json.loads(
+        automation._automation_assume_role_policy(
+            provider_arn,
+            "VilnaCRM-Org",
+            "bootstrap-infrastructure",
+            "prod",
+            "main",
+        )
+    )
+
+    test_condition = test_policy["Statement"][0]["Condition"]
+    prod_condition = prod_policy["Statement"][0]["Condition"]
+    test_subjects = test_condition["StringEquals"][
+        "token.actions.githubusercontent.com:sub"
+    ]
+    prod_subjects = prod_condition["StringEquals"][
+        "token.actions.githubusercontent.com:sub"
+    ]
+
+    assert test_subjects == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
+    ]
+    assert prod_subjects == [  # nosec B101
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"
+    ]
+    assert (
+        test_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert (
+        prod_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert "StringLike" not in test_condition  # nosec B101
+    assert "StringLike" not in prod_condition  # nosec B101
+
+
+def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
+    pulumi_mocks,
+    monkeypatch,
+):  # noqa: ARG001
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
+    monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
+    provider_arn = (
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    )
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="test",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    start = len(pulumi_mocks.resources)
+    component = CiConfiguration(
+        "ci-configuration",
+        args=CiConfigurationArgs(
+            settings=settings,
+            oidc_provider_arn=provider_arn,
+        ),
+    )
+
+    _sync_await(future_output(component.secret_arns["test-pr"]))
+    _sync_await(future_output(component.secret_arns["test"]))
+    test_pr_role_arn = _sync_await(future_output(component.read_role_arns["test-pr"]))
+    test_role_arn = _sync_await(future_output(component.read_role_arns["test"]))
+    assert test_pr_role_arn.endswith(  # nosec B101
+        ":role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr"
+    )
+    assert test_role_arn.endswith(  # nosec B101
+        ":role/GitHubCiConfigRead-bootstrap-infrastructure-test"
+    )
+    assert component.secret_ids == {  # nosec B101
+        "test-pr": "/bootstrap-infrastructure/ci/test-pr",
+        "test": "/bootstrap-infrastructure/ci/test",
+    }
+
+    new_resources = pulumi_mocks.resources[start:]
+    secret_states = {
+        state["name"]: state
+        for resource_type, _name, state in new_resources
+        if resource_type == "aws:secretsmanager/secret:Secret"
+    }
+    assert not any(  # nosec B101
+        resource_type == "aws:secretsmanager/secretVersion:SecretVersion"
+        for resource_type, _name, _state in new_resources
+    )
+    assert set(secret_states) == {  # nosec B101
+        "/bootstrap-infrastructure/ci/test-pr",
+        "/bootstrap-infrastructure/ci/test",
+    }
+    assert all(  # nosec B101
+        state["tags"]["Purpose"] == "ci-configuration"
+        for state in secret_states.values()
+    )
+    assert (
+        secret_states["/bootstrap-infrastructure/ci/test-pr"]["tags"][  # nosec B101
+            "CiConfigSuffix"
+        ]
+        == "test-pr"
+    )
+
+    test_pr_role_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-github-ci-config-read-role-test-pr",
+    )
+    test_role_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-github-ci-config-read-role-test",
+    )
+    test_pr_policy = json.loads(test_pr_role_state["assumeRolePolicy"])
+    test_policy = json.loads(test_role_state["assumeRolePolicy"])
+    test_pr_condition = test_pr_policy["Statement"][0]["Condition"]
+    test_condition = test_policy["Statement"][0]["Condition"]
+    assert test_pr_condition["StringEquals"] == {  # nosec B101
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:repository": (
+            "VilnaCRM-Org/bootstrap-infrastructure"
+        ),
+        "token.actions.githubusercontent.com:sub": [
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+        ],
+    }
+    assert "StringLike" not in test_pr_condition  # nosec B101
+    assert test_condition["StringEquals"] == {  # nosec B101
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:ref": "refs/heads/main",
+        "token.actions.githubusercontent.com:repository": (
+            "VilnaCRM-Org/bootstrap-infrastructure"
+        ),
+        "token.actions.githubusercontent.com:sub": [
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
+            "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test-preview",
+        ],
+    }
+    assert "StringLike" not in test_condition  # nosec B101
+
+    test_pr_policy_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-github-ci-config-read-policy-test-pr",
+    )
+    test_policy_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-github-ci-config-read-policy-test",
+    )
+    policy = json.loads(test_pr_policy_state["policy"])
+    statement = policy["Statement"][0]
+    assert statement["Action"] == [  # nosec B101
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+    ]
+    assert statement["Resource"] == [  # nosec B101
+        "arn:aws:secretsmanager:*:123456789012:secret:"
+        "/bootstrap-infrastructure/ci/test-pr-*"
+    ]
+    test_policy_document = json.loads(test_policy_state["policy"])
+    assert (  # nosec B101
+        "/bootstrap-infrastructure/ci/test" in json.dumps(test_policy_document)
+    )
+
+
+def test_ci_configuration_uses_github_oidc_provider_for_prod_suffixes(
+    pulumi_mocks,
+    monkeypatch,
+):  # noqa: ARG001
+    provider_arn = (
+        "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    )
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
+    monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="prod",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    start = len(pulumi_mocks.resources)
+    component = CiConfiguration(
+        "ci-configuration-prod",
+        args=CiConfigurationArgs(
+            settings=settings,
+            oidc_provider_arn=provider_arn,
+        ),
+    )
+
+    _sync_await(future_output(component.read_role_arns["prod-preview"]))
+    _sync_await(future_output(component.read_role_arns["prod"]))
+    provider_resources = {
+        name
+        for resource_type, name, _state in pulumi_mocks.resources[start:]
+        if resource_type == "aws:iam/openIdConnectProvider:OpenIdConnectProvider"
+    }
+    assert provider_resources == set()  # nosec B101
+    assert component.secret_ids == {  # nosec B101
+        "prod-preview": "/bootstrap-infrastructure/ci/prod-preview",
+        "prod": "/bootstrap-infrastructure/ci/prod",
+    }
+    preview_role_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-prod-github-ci-config-read-role-prod-preview",
+    )
+    prod_role_state = _resource_state_by_name(
+        pulumi_mocks,
+        "ci-configuration-prod-github-ci-config-read-role-prod",
+    )
+    preview_policy = json.loads(preview_role_state["assumeRolePolicy"])
+    prod_policy = json.loads(prod_role_state["assumeRolePolicy"])
+    assert preview_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+        "token.actions.githubusercontent.com:sub"
+    ] == [
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod-preview",
+    ]
+    assert prod_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+        "token.actions.githubusercontent.com:sub"
+    ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"]
+    assert (
+        prod_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert "StringLike" not in prod_policy["Statement"][0]["Condition"]  # nosec B101
+
+
+def test_ci_configuration_requires_github_oidc_provider(
+    pulumi_mocks,
+    monkeypatch,
+):  # noqa: ARG001
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
+    monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
+    settings = config.BootstrapSettings(
+        org="VilnaCRM-Org",
+        repo="bootstrap-infrastructure",
+        environment="test",
+        owner="platform",
+        cost_center="core",
+        data_classification="internal",
+        criticality="high",
+        retention_class="standard",
+        github_branch="main",
+        logging_prefix="company",
+        replication_region=None,
+        github_token=None,
+        github_oidc_provider_arn=None,
+    )
+
+    with pytest.raises(ValueError, match="githubOidcProviderArn config is required"):
+        CiConfiguration(
+            "ci-configuration-no-provider",
+            args=CiConfigurationArgs(settings=settings),
+        )
+
+
+def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
+    pulumi_mocks,
+    monkeypatch,
+):  # noqa: ARG001
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
+    monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
+    monkeypatch.setattr(ci_bootstrap, "_iam_role_exists", lambda _name: False)
+    monkeypatch.setattr(
+        github_oidc,
+        "_existing_github_oidc_provider_arn",
+        lambda: None,
+    )
+    settings = _ci_bootstrap_settings("test")
+
+    start = len(pulumi_mocks.resources)
+    component = GitHubCiBootstrap(
+        "github-ci-bootstrap-test",
+        args=GitHubCiBootstrapArgs(
+            settings=settings,
+            protect_resources=True,
+        ),
+    )
+
+    _sync_await(future_output(component.role_arns["preview"]))
+    _sync_await(future_output(component.role_arns["apply"]))
+    _sync_await(future_output(component.role_arns["drift"]))
+    _sync_await(future_output(component.ci_configuration.read_role_arns["test-pr"]))
+    _sync_await(future_output(component.ci_configuration.read_role_arns["test"]))
+    assert component.operations_alert_triage_role is not None  # nosec B101
+    _sync_await(future_output(component.operations_alert_triage_role.arn))
+
+    assert _resource_state_by_name(  # nosec B101
+        pulumi_mocks,
+        "github-ci-bootstrap-test-secret-value-test",
+    )
+    assert _resource_state_by_name(  # nosec B101
+        pulumi_mocks,
+        "github-ci-bootstrap-test-secret-value-test-pr",
+    )
+    new_resources = pulumi_mocks.resources[start:]
+    assert component.ci_configuration.secret_ids == {  # nosec B101
+        "test-pr": "/bootstrap-infrastructure/ci/test-pr",
+        "test": "/bootstrap-infrastructure/ci/test",
+    }
+    assert set(component.role_arns) == {"preview", "apply", "drift"}  # nosec B101
+    assert component.secret_payload_keys["test-pr"] == [  # nosec B101
+        "AWS_ACCOUNT_ID",
+        "AWS_PREVIEW_ROLE_ARN",
+        "AWS_REGION",
+        "OPERATIONS_CLOUDTRAIL_NAME",
+        "OPERATIONS_TOPIC_ARN",
+        "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
+        "PULUMI_PREVIEW_STACKS",
+        "PULUMI_SECRETS_PROVIDER",
+    ]
+    assert "AWS_APPLY_ROLE_ARN" not in component.secret_payload_keys["test-pr"]  # nosec B101
+    assert "AWS_DRIFT_ROLE_ARN" not in component.secret_payload_keys["test-pr"]  # nosec B101
+    assert component.secret_payload_keys["test"] == [  # nosec B101
+        "AWS_ACCOUNT_ID",
+        "AWS_APPLY_ROLE_ARN",
+        "AWS_DRIFT_ROLE_ARN",
+        "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN",
+        "AWS_PREVIEW_ROLE_ARN",
+        "AWS_REGION",
+        "OPERATIONS_ALERT_QUEUE_NAME",
+        "OPERATIONS_CLOUDTRAIL_NAME",
+        "OPERATIONS_TOPIC_ARN",
+        "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
+        "PULUMI_DRIFT_STACKS",
+        "PULUMI_PREVIEW_STACKS",
+        "PULUMI_SECRETS_PROVIDER",
+    ]
+
+    preview_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-ci-bootstrap-test-preview-role",
+    )
+    apply_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-ci-bootstrap-test-apply-role",
+    )
+    triage_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-ci-bootstrap-test-operations-alert-triage-role",
+    )
+    preview_trust = json.loads(preview_state["assumeRolePolicy"])
+    apply_trust = json.loads(apply_state["assumeRolePolicy"])
+    triage_trust = json.loads(triage_state["assumeRolePolicy"])
+
+    preview_condition = preview_trust["Statement"][0]["Condition"]
+    apply_condition = apply_trust["Statement"][0]["Condition"]
+    triage_condition = triage_trust["Statement"][0]["Condition"]
+    assert preview_condition["StringEquals"][  # nosec B101
+        "token.actions.githubusercontent.com:sub"
+    ] == [
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test-preview",
+    ]
+    assert apply_condition["StringEquals"][  # nosec B101
+        "token.actions.githubusercontent.com:sub"
+    ] == [
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
+    ]
+    assert "pull_request" not in json.dumps(apply_condition)  # nosec B101
+    assert "pulumi-pr-guardrails.yml" not in json.dumps(apply_condition)  # nosec B101
+    assert (
+        preview_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert (
+        apply_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert (
+        triage_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert "StringLike" not in preview_condition  # nosec B101
+    assert "StringLike" not in apply_condition  # nosec B101
+    assert "StringLike" not in triage_condition  # nosec B101
+
+    backend_policy = json.loads(
+        ci_bootstrap._pulumi_backend_policy_document(
+            "123456789012",
+            "aws",
+            settings,
+        )
+    )
+    backend_statements = {
+        statement["Sid"]: statement for statement in backend_policy["Statement"]
+    }
+    assert backend_statements["UsePulumiStateBucket"]["Resource"] == [  # nosec B101
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/state/test/*",
+    ]
+
+    policy_documents = [
+        json.loads(state["policy"])
+        for resource_type, _name, state in new_resources
+        if resource_type in {"aws:iam/policy:Policy", "aws:iam/rolePolicy:RolePolicy"}
+    ]
+    assert policy_documents  # nosec B101
+    read_stack_metadata = next(
+        statement
+        for policy_document in policy_documents
+        for statement in policy_document["Statement"]
+        if statement["Sid"] == "ReadStackMetadata"
+    )
+    assert "ce:ListCostAllocationTags" in read_stack_metadata["Action"]  # nosec B101
+    assert any(  # nosec B101
+        resource_type == "aws:iam/policy:Policy"
+        and name.startswith("github-ci-bootstrap-test-apply-")
+        for resource_type, name, _state in new_resources
+    )
+    for policy_document in policy_documents:
+        serialized = json.dumps(policy_document)
+        assert "AdministratorAccess" not in serialized  # nosec B101
+        for statement in policy_document["Statement"]:
+            actions = statement["Action"]
+            if isinstance(actions, str):
+                actions = [actions]
+            assert "*" not in actions  # nosec B101
+
+
+def test_github_ci_bootstrap_prod_stack_uses_protected_apply_subject(
+    pulumi_mocks,
+    monkeypatch,
+):  # noqa: ARG001
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
+    monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
+    monkeypatch.setattr(ci_bootstrap, "_iam_role_exists", lambda _name: False)
+    monkeypatch.setattr(
+        github_oidc,
+        "_existing_github_oidc_provider_arn",
+        lambda: None,
+    )
+    settings = _ci_bootstrap_settings("prod")
+
+    start = len(pulumi_mocks.resources)
+    component = GitHubCiBootstrap(
+        "github-ci-bootstrap-prod",
+        args=GitHubCiBootstrapArgs(
+            settings=settings,
+            protect_resources=True,
+        ),
+    )
+
+    _sync_await(future_output(component.role_arns["preview"]))
+    _sync_await(future_output(component.role_arns["apply"]))
+    _sync_await(future_output(component.role_arns["drift"]))
+    _sync_await(
+        future_output(component.ci_configuration.read_role_arns["prod-preview"])
+    )
+    _sync_await(future_output(component.ci_configuration.read_role_arns["prod"]))
+
+    assert component.operations_alert_triage_role is None  # nosec B101
+    assert component.ci_configuration.secret_ids == {  # nosec B101
+        "prod-preview": "/bootstrap-infrastructure/ci/prod-preview",
+        "prod": "/bootstrap-infrastructure/ci/prod",
+    }
+    assert sorted(component.secret_payload_keys) == [  # nosec B101
+        "prod",
+        "prod-preview",
+    ]
+    assert "AWS_APPLY_ROLE_ARN" not in component.secret_payload_keys["prod-preview"]  # nosec B101
+    assert component.secret_payload_keys["prod"] == [  # nosec B101
+        "AWS_ACCOUNT_ID",
+        "AWS_APPLY_ROLE_ARN",
+        "AWS_REGION",
+        "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
+        "PULUMI_PREVIEW_STACKS",
+        "PULUMI_SECRETS_PROVIDER",
+    ]
+    assert _resource_state_by_name(  # nosec B101
+        pulumi_mocks,
+        "github-ci-bootstrap-prod-secret-value-prod",
+    )
+    assert _resource_state_by_name(  # nosec B101
+        pulumi_mocks,
+        "github-ci-bootstrap-prod-secret-value-prod-preview",
+    )
+    new_resources = pulumi_mocks.resources[start:]
+    assert not any(  # nosec B101
+        name == "github-ci-bootstrap-prod-operations-alert-triage-role"
+        for _resource_type, name, _state in new_resources
+    )
+
+    apply_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-ci-bootstrap-prod-apply-role",
+    )
+    preview_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-ci-bootstrap-prod-preview-role",
+    )
+    drift_state = _resource_state_by_name(
+        pulumi_mocks,
+        "github-ci-bootstrap-prod-drift-role",
+    )
+    apply_trust = json.loads(apply_state["assumeRolePolicy"])
+    preview_trust = json.loads(preview_state["assumeRolePolicy"])
+    drift_trust = json.loads(drift_state["assumeRolePolicy"])
+
+    assert apply_trust["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+        "token.actions.githubusercontent.com:sub"
+    ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"]
+    assert "pull_request" not in json.dumps(apply_trust)  # nosec B101
+    assert (
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"
+        not in (
+            preview_trust["Statement"][0]["Condition"]["StringEquals"][
+                "token.actions.githubusercontent.com:sub"
+            ]
+        )
+    )
+    assert (
+        preview_trust["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert (
+        apply_trust["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert (
+        drift_trust["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:repository"
+        ]
+        == "VilnaCRM-Org/bootstrap-infrastructure"
+    )
+    assert "StringLike" not in preview_trust["Statement"][0]["Condition"]  # nosec B101
+    assert "StringLike" not in apply_trust["Statement"][0]["Condition"]  # nosec B101
+    assert "StringLike" not in drift_trust["Statement"][0]["Condition"]  # nosec B101
+
+
+def test_github_ci_bootstrap_helpers_cover_error_paths(monkeypatch):
+    settings = _ci_bootstrap_settings("test")
+    long_settings = _ci_bootstrap_settings("stage")
+    long_settings.repo = "x" * 50
+    missing_repo_settings = _ci_bootstrap_settings("test")
+    missing_repo_settings.repo = None
+
+    assert ci_bootstrap._ci_secret_suffixes(settings) == ("test-pr", "test")  # nosec B101
+    assert ci_bootstrap._ci_secret_suffixes(long_settings) == ("stage",)  # nosec B101
+    with pytest.raises(ValueError, match="longer than 64 characters"):
+        ci_bootstrap._ci_role_name(long_settings, "preview")
+    with pytest.raises(ValueError, match="OIDC subjects"):
+        ci_bootstrap._repo_subject(missing_repo_settings, "pull_request")
+    monkeypatch.setattr(
+        ci_bootstrap,
+        "_pulumi_backend_policy_document",
+        lambda _account_id, _partition, _settings, _repo=None, **_kwargs: "{}",
+    )
+    with pytest.raises(ValueError, match="apply policy"):
+        ci_bootstrap._role_policy_documents(
+            "123456789012",
+            "aws",
+            missing_repo_settings,
+            "apply",
+        )
+    with pytest.raises(ValueError, match="GitHub CI bootstrap"):
+        ci_bootstrap._require_repo(missing_repo_settings)
+
+    monkeypatch.setattr(ci_bootstrap.aws.iam, "get_role", lambda name: object())
+    assert ci_bootstrap._iam_role_exists("present") is True  # nosec B101
+
+    def missing_role(*, name: str):
+        raise RuntimeError(f"NoSuchEntity: {name}")
+
+    monkeypatch.setattr(ci_bootstrap.aws.iam, "get_role", missing_role)
+    assert ci_bootstrap._iam_role_exists("missing") is False  # nosec B101
+
+    def unknown_error(*, name: str):
+        raise RuntimeError(f"unexpected lookup failure for {name}")
+
+    monkeypatch.setattr(ci_bootstrap.aws.iam, "get_role", unknown_error)
+    with pytest.raises(RuntimeError, match="unexpected lookup failure"):
+        ci_bootstrap._iam_role_exists("broken")
+
+
+def test_secrets_alias_for_repo_is_repo_and_env_scoped():
+    """The convenience alias helper is repo/env scoped without the wildcard."""
+    settings = _ci_bootstrap_settings("test")
+
+    assert (  # nosec B101
+        settings.pulumi_secrets_alias_name_for_repo("user-service-infrastructure")
+        == "alias/pulumi-user-service-infrastructure-test-secrets"
+    )
+    assert (  # nosec B101
+        settings.secrets_alias_for_repo("user-service-infrastructure", "test")
+        == "alias/pulumi-user-service-infrastructure-test-secrets"
+    )
+    # secrets_alias_for_repo honours an explicit env distinct from settings.environment.
+    assert (  # nosec B101
+        settings.secrets_alias_for_repo("user-service-infrastructure", "prod")
+        == "alias/pulumi-user-service-infrastructure-prod-secrets"
+    )
+    # Dotted repo/env segments collapse to hyphens (KMS alias rules).
+    assert (  # nosec B101
+        settings.secrets_alias_for_repo("repo.with.dots", "stage.1")
+        == "alias/pulumi-repo-with-dots-stage-1-secrets"
+    )
+
+
+def test_secrets_alias_for_repo_rejects_blank_repo():
+    """Blank repo names cannot be sanitized into an alias and must raise."""
+    settings = _ci_bootstrap_settings("test")
+
+    with pytest.raises(ValueError, match="cannot be fully sanitized"):
+        settings.secrets_alias_for_repo("   ", "test")
+
+
+def test_pulumi_secrets_alias_conditions_service_repo_excludes_platform_bootstrap():
+    """Governance service-repo path (AWS-SRE-1, FR3) drops platform-bootstrap."""
+    settings = _ci_bootstrap_settings("test")
+
+    conditions = ci_bootstrap._pulumi_secrets_alias_conditions(
+        settings,
+        "user-service-infrastructure",
+        "test",
+        include_platform_bootstrap=False,
+    )
+
+    assert conditions == [  # nosec B101
+        "alias/pulumi-user-service-infrastructure-test-secrets",
+    ]
+    # No platform-bootstrap master-key alias for a managed service repo.
+    assert "pulumi-platform-bootstrap" not in json.dumps(conditions)  # nosec B101
+    # No wildcard alias survives the refactor.
+    assert "pulumi-*" not in json.dumps(conditions)  # nosec B101
+
+
+def test_pulumi_secrets_alias_conditions_single_repo_keeps_platform_bootstrap():
+    """Single-repo bootstrap back-compat keeps the two-alias repo-scoped list."""
+    settings = _ci_bootstrap_settings("test")
+
+    conditions = ci_bootstrap._pulumi_secrets_alias_conditions(
+        settings,
+        "bootstrap-infrastructure",
+        "test",
+        include_platform_bootstrap=True,
+    )
+
+    assert conditions == [  # nosec B101
+        "alias/pulumi-bootstrap-infrastructure-test-secrets",
+        "alias/pulumi-platform-bootstrap-test",
+    ]
+    # The wildcard alias is replaced by the repo-scoped alias either way.
+    assert "pulumi-*" not in json.dumps(conditions)  # nosec B101
+
+
+def test_pulumi_secrets_alias_conditions_isolate_repos():
+    """Repo A's alias-condition list never references repo B's alias (FR3)."""
+    settings = _ci_bootstrap_settings("test")
+
+    repo_a = ci_bootstrap._pulumi_secrets_alias_conditions(
+        settings,
+        "repo-a-infrastructure",
+        "test",
+        include_platform_bootstrap=False,
+    )
+
+    assert "repo-b-infrastructure" not in json.dumps(repo_a)  # nosec B101
+
+
+def test_pulumi_secrets_alias_conditions_rejects_blank_repo():
+    """Blank repo names raise, matching the _require_repo guard intent (edge)."""
+    settings = _ci_bootstrap_settings("test")
+
+    with pytest.raises(ValueError, match="cannot be fully sanitized"):
+        ci_bootstrap._pulumi_secrets_alias_conditions(
+            settings,
+            "   ",
+            "test",
+            include_platform_bootstrap=False,
+        )
+
+
+def test_pulumi_backend_policy_document_uses_repo_scoped_alias_condition():
+    """The single-repo backend policy renders the repo-scoped two-alias list."""
+    settings = _ci_bootstrap_settings("test")
+
+    backend_policy = json.loads(
+        ci_bootstrap._pulumi_backend_policy_document(
+            "123456789012",
+            "aws",
+            settings,
+        )
+    )
+    secrets_statement = next(
+        statement
+        for statement in backend_policy["Statement"]
+        if statement["Sid"] == "UsePulumiSecretsProviderKey"
+    )
+    aliases = secrets_statement["Condition"]["ForAnyValue:StringLike"][
+        "kms:ResourceAliases"
+    ]
+    assert aliases == [  # nosec B101
+        "alias/pulumi-bootstrap-infrastructure-test-secrets",
+        "alias/pulumi-platform-bootstrap-test",
+    ]
+    assert "pulumi-*" not in json.dumps(aliases)  # nosec B101
+
+
+def test_github_ci_bootstrap_payload_helpers_cover_custom_env_and_secret_string():
+    settings = _ci_bootstrap_settings("stage")
+    role_arns = {
+        "preview": "arn:aws:iam::123456789012:role/preview",
+        "apply": "arn:aws:iam::123456789012:role/apply",
+        "drift": "arn:aws:iam::123456789012:role/drift",
+    }
+
+    payload_context = ci_bootstrap._BootstrapBuildContext(
+        parent=cast(pulumi.Resource, object()),
+        name="github-ci-bootstrap-stage",
+        account_id="123456789012",
+        partition="aws",
+        region="eu-central-1",
+        settings=settings,
+        provider_arn="arn:aws:iam::123456789012:oidc-provider/token",
+        pulumi_dir="pulumi",
+        protect_resources=True,
+    )
+    payloads = ci_bootstrap._payloads(
+        payload_context,
+        ci_bootstrap._PayloadOverrides(
+            role_arns=role_arns,
+            operations_alert_triage_role_arn=None,
+            pulumi_backend_url="s3://custom-state",
+            pulumi_dir="pulumi",
+            pulumi_secrets_provider="awskms://alias/custom?region=eu-central-1",
+        ),
+    )
+    secret_json = _sync_await(
+        future_output(
+            ci_bootstrap._secret_string(
+                {"B": "2", "A": pulumi.Output.from_input("1")},
+            )
+        )
+    )
+
+    assert list(payloads) == ["stage"]  # nosec B101
+    assert payloads["stage"] == {  # nosec B101
+        "AWS_ACCOUNT_ID": "123456789012",
+        "AWS_APPLY_ROLE_ARN": role_arns["apply"],
+        "AWS_DRIFT_ROLE_ARN": role_arns["drift"],
+        "AWS_PREVIEW_ROLE_ARN": role_arns["preview"],
+        "AWS_REGION": "eu-central-1",
+        "PULUMI_BACKEND_URL": "s3://custom-state",
+        "PULUMI_DIR": "pulumi",
+        "PULUMI_DRIFT_STACKS": "stage",
+        "PULUMI_PREVIEW_STACKS": "stage",
+        "PULUMI_SECRETS_PROVIDER": "awskms://alias/custom?region=eu-central-1",
+    }
+    assert json.loads(secret_json) == {"A": "1", "B": "2"}  # nosec B101
+
+    with pytest.raises(ValueError, match="triage role ARN"):
+        ci_bootstrap._payloads(
+            ci_bootstrap._BootstrapBuildContext(
+                parent=cast(pulumi.Resource, object()),
+                name="github-ci-bootstrap-test",
+                account_id="123456789012",
+                partition="aws",
+                region="eu-central-1",
+                settings=_ci_bootstrap_settings("test"),
+                provider_arn="arn:aws:iam::123456789012:oidc-provider/token",
+                pulumi_dir="pulumi",
+                protect_resources=True,
+            ),
+            ci_bootstrap._PayloadOverrides(
+                role_arns=role_arns,
+                operations_alert_triage_role_arn=None,
+                pulumi_backend_url=None,
+                pulumi_dir="pulumi",
+                pulumi_secrets_provider=None,
+            ),
+        )
+
+
+def test_github_ci_bootstrap_custom_stack_can_skip_secret_values(
+    pulumi_mocks,
+    monkeypatch,
+):  # noqa: ARG001
+    monkeypatch.setattr(ci_config, "_secret_import_id", lambda _name: None)
+    monkeypatch.setattr(ci_config, "_iam_role_exists", lambda _name: False)
+    monkeypatch.setattr(ci_bootstrap, "_iam_role_exists", lambda _name: False)
+    monkeypatch.setattr(
+        github_oidc,
+        "_existing_github_oidc_provider_arn",
+        lambda: None,
+    )
+    settings = _ci_bootstrap_settings("stage")
+
+    start = len(pulumi_mocks.resources)
+    component = GitHubCiBootstrap(
+        "github-ci-bootstrap-stage",
+        args=GitHubCiBootstrapArgs(
+            settings=settings,
+            write_secret_values=False,
+            protect_resources=True,
+        ),
+    )
+
+    _sync_await(future_output(component.role_arns["preview"]))
+    _sync_await(future_output(component.role_arns["apply"]))
+    _sync_await(future_output(component.role_arns["drift"]))
+    _sync_await(future_output(component.ci_configuration.read_role_arns["stage"]))
+
+    assert component.operations_alert_triage_role is None  # nosec B101
+    assert component.operations_alert_triage_policy is None  # nosec B101
+    assert component.secret_versions == {}  # nosec B101
+    assert component.github_variables == {  # nosec B101
+        "AWS_STAGE_REGION": "us-east-1",
+        "AWS_STAGE_ACCOUNT_ID": "123456789012",
+    }
+    assert component.secret_payload_keys["stage"] == [  # nosec B101
+        "AWS_ACCOUNT_ID",
+        "AWS_APPLY_ROLE_ARN",
+        "AWS_DRIFT_ROLE_ARN",
+        "AWS_PREVIEW_ROLE_ARN",
+        "AWS_REGION",
+        "PULUMI_BACKEND_URL",
+        "PULUMI_DIR",
+        "PULUMI_DRIFT_STACKS",
+        "PULUMI_PREVIEW_STACKS",
+        "PULUMI_SECRETS_PROVIDER",
+    ]
+    assert not any(  # nosec B101
+        resource_type == "aws:secretsmanager/secretVersion:SecretVersion"
+        for resource_type, _name, _state in pulumi_mocks.resources[start:]
     )
 
 
@@ -873,6 +1779,9 @@ def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypa
     assert "operationsAlertQueueSubscriptionArn" in bootstrap.outputs  # nosec B101
     assert "backupVaultArn" in bootstrap.outputs  # nosec B101
     assert "backupRoleArn" in bootstrap.outputs  # nosec B101
+    assert "ciConfigurationSecretIds" in bootstrap.outputs  # nosec B101
+    assert "ciConfigurationSecretArns" in bootstrap.outputs  # nosec B101
+    assert "githubCiConfigReadRoleArns" in bootstrap.outputs  # nosec B101
     assert "guardDutyDetectorId" in bootstrap.outputs  # nosec B101
     assert "securityHubAccountArn" in bootstrap.outputs  # nosec B101
     assert "awsConfigRecorderName" in bootstrap.outputs  # nosec B101
@@ -1044,6 +1953,7 @@ def test_github_oidc_roles_scope_state_and_kms_per_repository():
             "VilnaCRM-Org",
             "repo-one",
             "main",
+            environment="test",
         )
     )
     repo_two_trust = json.loads(
@@ -1052,28 +1962,25 @@ def test_github_oidc_roles_scope_state_and_kms_per_repository():
             "VilnaCRM-Org",
             "repo-two",
             "release",
+            environment="test",
         )
     )
-    assert repo_one_trust["Statement"][0]["Condition"] == {  # nosec B101
-        "StringEquals": {
-            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-            "token.actions.githubusercontent.com:sub": (
-                "repo:VilnaCRM-Org/repo-one:ref:refs/heads/main"
-            )
-        },
-    }
-    assert repo_two_trust["Statement"][0]["Condition"] == {  # nosec B101
-        "StringEquals": {
-            "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-            "token.actions.githubusercontent.com:sub": (
-                "repo:VilnaCRM-Org/repo-two:ref:refs/heads/release"
-            )
-        },
-    }
+    for trust, repo, branch in [
+        (repo_one_trust, "repo-one", "main"),
+        (repo_two_trust, "repo-two", "release"),
+    ]:
+        assert trust["Statement"][0]["Condition"] == {
+            "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:repository": (
+                    f"VilnaCRM-Org/{repo}"
+                ),
+                "token.actions.githubusercontent.com:ref": f"refs/heads/{branch}",
+                "token.actions.githubusercontent.com:sub": [
+                    f"repo:VilnaCRM-Org/{repo}:environment:test"
+                ],
+            }
+        }
 
 
 def test_github_oidc_existing_provider_lookup_handles_missing(monkeypatch):
@@ -1264,6 +2171,7 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     policy_names = [
         "github-automation-policy",
         "github-automation-iam-policy",
+        "github-automation-iam-boundary-policy",
         "github-automation-operations-policy",
         "github-automation-cost-policy",
         "github-automation-security-policy",
@@ -1291,18 +2199,31 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert repository_state["imageScanningConfiguration"]["scanOnPush"] is True  # nosec B101
     assert role_type == "aws:iam/role:Role"  # nosec B101
     assert triage_role_type == "aws:iam/role:Role"  # nosec B101
-    assert (
+    role_subjects = json.loads(role_state["assumeRolePolicy"])["Statement"][0][
+        "Condition"
+    ]["StringEquals"]["token.actions.githubusercontent.com:sub"]
+    assert role_subjects == [
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
-        in role_state["assumeRolePolicy"]
-    )  # nosec B101
+    ]
     assert (  # nosec B101
-        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
         in triage_role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/"
-        "operations-alert-triage.yml@refs/heads/main"
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test"
+        not in triage_role_state["assumeRolePolicy"]
+    )
+    assert (  # nosec B101
+        '"token.actions.githubusercontent.com:repository"'
+        in role_state["assumeRolePolicy"]
+    )
+    assert (  # nosec B101
+        '"token.actions.githubusercontent.com:repository"'
         in triage_role_state["assumeRolePolicy"]
+    )
+    assert "Pulumi PR Guardrails" not in role_state["assumeRolePolicy"]  # nosec B101
+    assert (  # nosec B101
+        "Operations Alert Issue Triage" in triage_role_state["assumeRolePolicy"]
     )
     assert (  # nosec B101
         len(policy_states[0]["policy"].encode("utf-8"))
@@ -1349,17 +2270,19 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "arn:aws:ecr:*:123456789012:repository/pulumi-runner/"
         "bootstrap-infrastructure-test"
     ]
-    assert (  # nosec B101
-        "arn:aws:iam::123456789012:role/PulumiAutomation-"
-        "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
+    assert "ecr:DescribeImages" in statements["ManageBootstrapEcr"]["Action"]  # nosec B101
+    assert "ManageBootstrapIam" not in statements
+    bounded = statements["ManageBoundedBackup"]
+    assert bounded["Resource"] == "arn:aws:iam::123456789012:role/s3-backup-role-test"
+    assert bounded["Condition"]["StringEquals"]["iam:PermissionsBoundary"] == (
+        "arn:aws:iam::123456789012:policy/PlatformBoundary-backup-test"
     )
-    assert (  # nosec B101
-        "arn:aws:iam::123456789012:role/OperationsAlertTriage-"
-        "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
-    )
+    assert statements["DenyControllerIamChanges"]["NotResource"] == [
+        bounded["Resource"]
+    ]
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
-        "arn:aws:s3:::pulumi-*-test-state",
-        "arn:aws:s3:::pulumi-*-test-state-*-replication",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure--c1194dce-eu-west-1-replication",
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-*-replication",
         "arn:aws:s3:::bootstrap-*-test-cloudtrail",
@@ -1378,15 +2301,18 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         if statement["Effect"] == "Allow"
         for action in statement["Action"]
     }
-    assert "kms:Decrypt" not in all_actions  # nosec B101
-    assert "kms:Encrypt" not in all_actions  # nosec B101
-    assert "kms:GenerateDataKey" not in all_actions  # nosec B101
-    assert "kms:ReEncryptFrom" not in all_actions  # nosec B101
+    assert "kms:Decrypt" not in all_allow_actions  # nosec B101
+    assert "kms:Encrypt" not in all_allow_actions  # nosec B101
+    assert "kms:GenerateDataKey" not in all_allow_actions  # nosec B101
+    assert "kms:ReEncryptFrom" not in all_allow_actions  # nosec B101
     assert "cloudtrail:*" not in all_actions  # nosec B101
     assert "cloudtrail:CreateTrail" in all_actions  # nosec B101
     assert "cloudtrail:DescribeTrails" in all_actions  # nosec B101
     assert "sqs:ReceiveMessage" not in all_allow_actions  # nosec B101
     assert "sqs:DeleteMessage" not in all_allow_actions  # nosec B101
+    assert "secretsmanager:GetSecretValue" not in all_allow_actions  # nosec B101
+    assert "secretsmanager:PutSecretValue" not in all_allow_actions  # nosec B101
+    assert "secretsmanager:UpdateSecret" not in all_allow_actions  # nosec B101
     assert statements["ManageBootstrapEventBridge"]["Resource"] == [  # nosec B101
         "arn:aws:events:*:123456789012:rule/bootstrap-test-*"
     ]
@@ -1407,6 +2333,15 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert statements["ManageBootstrapSnsSubscriptions"]["Action"] == [  # nosec B101
         "sns:GetSubscriptionAttributes",
         "sns:Unsubscribe",
+    ]
+    assert "CreateBootstrapCiSecrets" not in statements
+    assert "ManageBootstrapCiSecrets" not in statements
+    assert statements["ReadPlatformCiSecrets"]["Action"] == [
+        "secretsmanager:DescribeSecret"
+    ]
+    assert statements["ReadPlatformCiSecrets"]["Resource"] == [
+        "arn:aws:secretsmanager:*:123456789012:secret:/bootstrap-infrastructure/ci/test-pr-*",
+        "arn:aws:secretsmanager:*:123456789012:secret:/bootstrap-infrastructure/ci/test-*",
     ]
     assert statements["DenyBootstrapSqsConsumption"] == {  # nosec B101
         "Sid": "DenyBootstrapSqsConsumption",
@@ -1501,7 +2436,7 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         "ManageBootstrapCostAllocationTags" not in statements
     )
     assert "budgets:ModifyBudget" in statements["ManageBootstrapBudgets"]["Action"]  # nosec B101
-    assert "budgets:DescribeBudget" in statements["ManageBootstrapBudgets"]["Action"]  # nosec B101
+    assert "budgets:ViewBudget" in statements["ManageBootstrapBudgets"]["Action"]  # nosec B101
 
 
 def test_github_automation_requires_repo(monkeypatch):
@@ -1749,6 +2684,13 @@ def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
         )
 
         class FakeConfig:
+            def require(self, key):
+                return {
+                    "awsAccountId": "123456789012",
+                    "githubRepositoryId": "1098568429",
+                    "githubRepositoryOwnerId": "114362548",
+                }[key]
+
             def get(self, key, default=None):
                 values = {
                     "environment": "test",
@@ -1797,6 +2739,13 @@ def test_stack_main_executes_managed_repository_mode_without_automation(  # noqa
         )
 
         class FakeConfig:
+            def require(self, key):
+                return {
+                    "awsAccountId": "123456789012",
+                    "githubRepositoryId": "1098568429",
+                    "githubRepositoryOwnerId": "114362548",
+                }[key]
+
             def get(self, key, default=None):
                 values = {
                     "environment": "test",

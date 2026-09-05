@@ -23,6 +23,7 @@ COMPOSE_ENV_FLAG  = $(if $(COMPOSE_ENV_FILE),--env-file $(COMPOSE_ENV_FILE),)
 COMPOSE           = $(DOCKER_COMPOSE) $(COMPOSE_ENV_FLAG)
 COMPOSE_GITHUB_TOKEN = $(if $(GITHUB_TOKEN),-e GITHUB_TOKEN,)
 COMPOSE_PULUMI_ENV = -e PULUMI_DIR="$(PULUMI_DIR)" \
+	-e AWS_ACCOUNT_ID="$(AWS_ACCOUNT_ID)" \
 	-e PULUMI_SECRETS_PROVIDER="$(PULUMI_SECRETS_PROVIDER)" \
 	-e PULUMI_BACKEND_URL="$(PULUMI_BACKEND_URL)" \
 	-e PULUMI_STACK="$(PULUMI_STACK)" \
@@ -62,6 +63,7 @@ QUALITY_ARTIFACT_DIR     ?= .artifacts/quality
 SBOM_ARTIFACT_DIR        ?= .artifacts/sbom
 GITHUB_REPOSITORY_CONTROLS_REPO ?= VilnaCRM-Org/$(PROJECT)
 GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER ?= Kravalg
+GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID ?=
 GITHUB_REPOSITORY_CONTROLS_MODE ?= --dry-run
 DOCSTRING_PATHS          ?= pulumi/app policy scripts/pulumi_ci_guardrails.py
 WILY_TARGETS             ?= pulumi policy scripts
@@ -131,7 +133,7 @@ pulumi-plan: ## Save a reviewed Pulumi update plan for the selected stack.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
 		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py plan
 
-pulumi-up: ## Apply the current Pulumi infrastructure plan.
+pulumi-up: ## Apply directly for local/admin use only; GitHub Actions must use pulumi-up-plan.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
 		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py up
 
@@ -342,7 +344,7 @@ test-repo-hygiene: ## Lint GitHub Actions, YAML, and the Dockerfile.
 	$(MAKE) test-yaml
 	$(MAKE) test-dockerfile
 
-test-mutation: ## Run mutation testing suite against Pulumi components.
+test-mutation: ## Run component mutation and semantic security-boundary gates.
 	$(COMPOSE) run --rm \
 		$(if $(strip $(MUTATION_PATHS)),-e MUTATION_PATHS="$(MUTATION_PATHS)") \
 		-e MUTATION_TEST_TARGETS="$(MUTATION_TEST_TARGETS)" \
@@ -409,10 +411,12 @@ report-well-architected-closeout: ## Render owner/admin Well-Architected closeou
 		--question-verification "$${WELL_ARCHITECTED_QUESTION_VERIFICATION:-.artifacts/well-architected/question-verification.json}" \
 		--output "$${WELL_ARCHITECTED_CLOSEOUT_OUTPUT:-.artifacts/well-architected/owner-closeout-bundle.md}"
 
-configure-github-repository-controls: ## Print, apply, or verify GitHub ruleset and prod environment controls.
+configure-github-repository-controls: ## Print, apply, or verify GitHub ruleset and protected environment controls.
+	@test -n "$(GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID)" || { echo "Set GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID to the dedicated promotion App ID." >&2; exit 1; }
 	$(REPO_PYTHON) ./scripts/configure_github_repository_controls.py \
 		--repo "$(GITHUB_REPOSITORY_CONTROLS_REPO)" \
 		--prod-reviewer "$(GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER)" \
+		--promotion-app-id "$(GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID)" \
 		$(GITHUB_REPOSITORY_CONTROLS_MODE)
 
 report-dependabot-exception: ## Render Dependabot exception evidence.
