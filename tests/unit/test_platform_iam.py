@@ -298,3 +298,30 @@ def test_boundary_retains_scoped_budget_without_account_wide_budget_grant(monkey
     }
     assert f"arn:aws:budgets::{ACCOUNT}:budget/*" not in resources
     assert f"arn:aws:budgets::{ACCOUNT}:budget/bootstrap-test-*" in resources
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_backup_v5_bucket_tag_read_is_exact_and_account_bound(environment):
+    """AWS managed policy v5 needs tag reads only on this platform's selection."""
+    cfg = replace(settings(), environment=environment)
+    document = platform_iam.platform_workload_boundaries(
+        ACCOUNT, cfg, "eu-central-1", [REPO]
+    )["backup"]
+    grants = [
+        item
+        for item in json.loads(document)["Statement"]
+        if "s3:ListTagsForResource" in values(item["Action"])
+    ]
+    assert grants == [
+        {
+            "Effect": "Allow",
+            "Action": "s3:ListTagsForResource",
+            "Resource": [
+                f"arn:aws:s3:::{cfg.central_logging_bucket_name('eu-central-1')}",
+                f"arn:aws:s3:::{cfg.state_bucket_name_for_repo(REPO.name)}",
+            ],
+            "Condition": {"StringEquals": {"aws:ResourceAccount": ACCOUNT}},
+        }
+    ]
+    assert all("*" not in arn for arn in grants[0]["Resource"])
+    assert len(document) <= 6144

@@ -692,7 +692,7 @@ def platform_workload_boundaries(
         ]
     )
     buckets = [f"arn:aws:s3:::{bucket}" for bucket in [log_bucket, *state_buckets]]
-    backup = [
+    backup: list[dict[str, Any]] = [
         {
             "Effect": "Allow",
             "Action": [
@@ -731,6 +731,12 @@ def platform_workload_boundaries(
                 "s3:PutBucketNotification",
             ],
             "Resource": buckets,
+        },
+        {
+            "Effect": "Allow",
+            "Action": "s3:ListTagsForResource",
+            "Resource": buckets,
+            "Condition": {"StringEquals": {"aws:ResourceAccount": account_id}},
         },
         {
             "Effect": "Allow",

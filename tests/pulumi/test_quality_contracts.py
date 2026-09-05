@@ -61,6 +61,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "_github_evidence_environment",
         "_github_repository_controls",
         "_pulumi_command_support",
+        "_pulumi_stack_config",
         "governance_paths",
         "pulumi_command_preflight",
         "pulumi_pr_comment",

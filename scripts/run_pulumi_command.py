@@ -23,6 +23,11 @@ from _pulumi_command_support import (
     _select_or_init_stack,
     _uses_file_backend,
 )
+from _pulumi_stack_config import (
+    StackConfigError,
+    prepared_stack_configuration,
+    verify_provider_identity,
+)
 from _script_support import (
     discover_stacks,
     ensure_file_backend_directory,
@@ -221,18 +226,23 @@ def _plan_max_age_seconds(context: CommandContext) -> int:
 
 def _plan_manifest_entry(
     context: CommandContext, stack: str, plan_file: Path, preview_file: Path
-) -> dict[str, str]:
+) -> dict[str, Any]:
     return {
         "stack": stack,
         "planFile": _artifact_path(context, plan_file),
         "planSha256": _file_sha256(plan_file),
         "previewFile": _artifact_path(context, preview_file),
         "previewSha256": _file_sha256(preview_file),
+        **(
+            {"secretsProviderIdentity": context.provider_identity}
+            if context.provider_identity is not None
+            else {}
+        ),
     }
 
 
 def _write_plan_manifest(
-    context: CommandContext, stack_entries: list[dict[str, str]]
+    context: CommandContext, stack_entries: list[dict[str, Any]]
 ) -> Path:
     manifest_file = _plan_manifest_file(context)
     manifest = {
@@ -477,7 +487,7 @@ def _prepare_plan_artifacts(context: CommandContext) -> Path:
 def _run_plan_command(context: CommandContext, stacks: list[str]) -> int:
     summary_file = _prepare_plan_artifacts(context)
     plan_files: list[Path] = []
-    manifest_entries: list[dict[str, str]] = []
+    manifest_entries: list[dict[str, Any]] = []
 
     for stack in stacks:
         select_failure = _select_or_init_stack(context, stack)
@@ -487,11 +497,16 @@ def _run_plan_command(context: CommandContext, stacks: list[str]) -> int:
         plan_path = _plan_file(context.plan_dir, stack)
         plan_files.append(plan_path)
         preview_file = _preview_file(context.preview_artifact_dir, stack)
-        with preview_file.open("w", encoding="utf-8") as handle:
-            _run_stack_command(
-                context,
-                StackCommand("plan", stack, plan_path=plan_path, stdout=handle),
-            )
+        with prepared_stack_configuration(context, stack) as prepared:
+            with preview_file.open("w", encoding="utf-8") as handle:
+                _run_stack_command(
+                    prepared,
+                    StackCommand("plan", stack, plan_path=plan_path, stdout=handle),
+                )
+            if plan_path.is_file():
+                manifest_entries.append(
+                    _plan_manifest_entry(prepared, stack, plan_path, preview_file)
+                )
         if not plan_path.is_file():
             print(f"error: Pulumi plan file not created: {plan_path}", file=sys.stderr)
             return 1
@@ -500,9 +515,6 @@ def _run_plan_command(context: CommandContext, stacks: list[str]) -> int:
             preview_file,
             summary_file,
             env=context.env,
-        )
-        manifest_entries.append(
-            _plan_manifest_entry(context, stack, plan_path, preview_file)
         )
 
     manifest_file = _write_plan_manifest(context, manifest_entries)
@@ -652,7 +664,10 @@ def _run_validated_up_plan_stack(
     if status is None:
         status = _select_or_init_stack(context, stack)
     if status is None:
-        status = _run_up_plan_stack(context, stack, plan_path)
+        with prepared_stack_configuration(context, stack) as prepared:
+            entry = _manifest_stack_entry(manifest or {}, stack)
+            verify_provider_identity(prepared, entry or {})
+            status = _run_up_plan_stack(prepared, stack, plan_path)
     return manifest, status
 
 
@@ -663,12 +678,13 @@ def _run_regular_command(
         select_failure = _select_or_init_stack(context, stack)
         if select_failure is not None:
             return select_failure
-        if command == "up":
-            up_failure = _run_up_stack(context, stack)
-            if up_failure is not None:
-                return up_failure
-            continue
-        _run_stack_command(context, StackCommand(command, stack))
+        with prepared_stack_configuration(context, stack) as prepared:
+            if command == "up":
+                up_failure = _run_up_stack(prepared, stack)
+                if up_failure is not None:
+                    return up_failure
+                continue
+            _run_stack_command(prepared, StackCommand(command, stack))
     return 0
 
 
@@ -696,7 +712,11 @@ def _run_command(command: str) -> int:
         status = 1
 
     if status is None:
-        status = _dispatch_command(command, context, stacks)
+        try:
+            status = _dispatch_command(command, context, stacks)
+        except StackConfigError as error:
+            print(f"error: {error}", file=sys.stderr)
+            status = 1
     return status
 
 

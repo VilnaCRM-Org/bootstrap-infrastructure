@@ -20,6 +20,8 @@ class CommandContext:
     backend_url: str
     secrets_provider: str
     runner: Callable[..., Any] = run
+    config_file: Path | None = None
+    provider_identity: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -180,6 +182,8 @@ def _pulumi_command(context: CommandContext, request: StackCommand) -> list[str]
         command.extend(["--policy-pack", str(context.policy_pack_dir)])
     if invocation.plan_flag:
         command.extend([invocation.plan_flag, str(_required_plan_path(request))])
+    if context.config_file is not None:
+        command.extend(["--config-file", str(context.config_file)])
     return command
 
 

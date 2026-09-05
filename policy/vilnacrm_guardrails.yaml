@@ -30,9 +30,9 @@ reviewed_iam_documents:
   "aws:iam/policy:Policy|GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies":
     - b10d2ded1bfa7637071f177a01d07ebef8b9c83e027479a7067100f80a2e10dc
   "aws:iam/policy:Policy|PlatformBoundary-backup-prod":
-    - bef29b526cc24283fc7ceb1dc893a799ad68e00dbb5e4cbe223c0fd99ef3694a
+    - a0cef31fbac50c7b9594f6c2c3f84c54ebd5a6a6b474e8b028dc3729a788f5ba
   "aws:iam/policy:Policy|PlatformBoundary-backup-test":
-    - 5937b145d44f0525cfac9978260e8d808de5a85c41ced331785491cf4ee80f2b
+    - fd88c4dbc54b63344d698dfbfc46109355e9bb195ec6d006cdd7668a43e2c7a1
   "aws:iam/policy:Policy|PlatformBoundary-control-prod":
     - 425bc3ef2019817895137ba05146b2f21962022294ba7961438363311c02983f
   "aws:iam/policy:Policy|PlatformBoundary-control-test":

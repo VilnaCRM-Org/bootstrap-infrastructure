@@ -20,6 +20,7 @@ RUNTIME_FILES = (
     ".github/workflows/governance-promotion.yml",
     "scripts/_script_support.py",
     "scripts/_pulumi_command_support.py",
+    "scripts/_pulumi_stack_config.py",
     "scripts/_github_environment_controls.py",
     "scripts/_github_evidence_environment.py",
     "scripts/_github_repository_controls.py",
