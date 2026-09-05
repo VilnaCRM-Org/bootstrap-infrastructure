@@ -589,7 +589,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-config-delivery-channels", type=int, default=20)
     parser.add_argument("--max-governance-iam-roles", type=int, default=300)
     parser.add_argument("--max-governance-managed-policies", type=int, default=300)
-    parser.add_argument("--max-governance-secrets", type=int, default=300)
+    parser.add_argument(
+        "--max-governance-secrets",
+        dest="max_governance_configuration_objects",
+        metavar="MAX_GOVERNANCE_SECRETS",
+        type=int,
+        default=300,
+    )
     args = parser.parse_args(argv)
 
     catalog_paths = list(args.catalogs) or repository_catalog_paths(ROOT_DIR)
@@ -628,7 +634,8 @@ def _governance_fanout_thresholds(args: argparse.Namespace) -> dict[str, int]:
     return {
         "iamRoles": args.max_governance_iam_roles,
         "managedPolicies": args.max_governance_managed_policies,
-        "secrets": args.max_governance_secrets,
+        # This is a count of CI configuration objects, never their secret values.
+        "secrets": args.max_governance_configuration_objects,
     }
 
 

@@ -272,7 +272,39 @@ jobs:
         run: |
           export REPO_PYTHON="${HOME}/.local/bin/uv run python"
           set +e
-          make report-well-architected-evidence
+          # Controller installation retains the existing 24 required checks.
+          # Remove these explicit contexts after the main controller is installed
+          # and the App-issued Governance Promotion check is enrolled (25 total).
+          # See docs/ci-guardrails.md: Controller installation evidence.
+          mkdir -p .artifacts/well-architected
+          "${HOME}/.local/bin/uv" run python \
+            ./scripts/collect_well_architected_evidence.py \
+            --output .artifacts/well-architected/evidence.json \
+            --markdown-output .artifacts/well-architected/evidence.md \
+            --required-status-check "Ruff" \
+            --required-status-check "Ty" \
+            --required-status-check "Maintainability" \
+            --required-status-check "Architecture" \
+            --required-status-check "Structural" \
+            --required-status-check "Dependency Hygiene" \
+            --required-status-check "Coverage" \
+            --required-status-check "Local Battery" \
+            --required-status-check "Mutation" \
+            --required-status-check "Run Bats Tests" \
+            --required-status-check "Secrets Scan" \
+            --required-status-check "Dependency Audit" \
+            --required-status-check "Bandit" \
+            --required-status-check "Dependency Review" \
+            --required-status-check "Actionlint" \
+            --required-status-check "Yamllint" \
+            --required-status-check "Hadolint" \
+            --required-status-check "Preview" \
+            --required-status-check "Destructive Diff Gate" \
+            --required-status-check "IAM Validation" \
+            --required-status-check "Policy" \
+            --required-status-check "CodeQL (python)" \
+            --required-status-check "CodeQL (actions)" \
+            --required-status-check "Test Account Evidence"
           collector_status=$?
           set -e
           echo "exit_code=${collector_status}" >> "${GITHUB_OUTPUT}"

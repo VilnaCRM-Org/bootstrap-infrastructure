@@ -608,7 +608,9 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
     assert "uv==0.9.21" in " ".join(  # nosec B101
         step.get("run", "") for step in evidence_steps
     )
-    assert "make report-well-architected-evidence" in collector_step["run"]  # nosec B101
+    assert (  # nosec B101
+        "./scripts/collect_well_architected_evidence.py" in collector_step["run"]
+    )
     assert "make verify-well-architected-questions" in collector_step["run"]  # nosec B101
     assert "make report-well-architected-closeout" in collector_step["run"]  # nosec B101
     assert "owner-closeout-bundle.md" in collector_step["run"]  # nosec B101

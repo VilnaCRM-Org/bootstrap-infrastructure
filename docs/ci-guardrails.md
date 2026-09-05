@@ -38,7 +38,7 @@ These checks are intended to be marked as required in branch protection:
 | `Policy` | `make test-policy` | Enforces the custom Pulumi CrossGuard policy pack |
 | `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
 | `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |
-| `Test Account Evidence` | `make report-well-architected-evidence` | Fails trusted PR and main evidence runs when final Well-Architected readiness is below 5/5 |
+| `Test Account Evidence` | Collector CLI with explicit installation24; ordinary target: `make report-well-architected-evidence` | Fails trusted PR and main evidence runs when final Well-Architected readiness is below 5/5 |
 
 `make test-security` aggregates Gitleaks, dependency audit, and Bandit.
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
@@ -623,3 +623,31 @@ metadata fail verification.
   the Python/uv Docker image
 - IAM validation is only as complete as the preview artifact; policies that are
   created entirely outside Pulumi still need separate review
+
+
+### Controller installation evidence
+
+The first controller installation preserves the existing 24 required checks,
+three independent approving reviews, and successful `test`/`prod` deployment
+requirements. The `Test Account Evidence` workflow explicitly supplies those
+24 contexts to the collector during this installation phase. The CLI default,
+`REQUIRED_STATUS_CHECKS`, and repository control configurator still require the
+final 25 contexts, including the App-issued `Governance Promotion` check. There
+is no dispatch input, environment flag, automatic fallback, or alternate signer
+that can select a weaker contract. All other evidence checks, readiness scoring,
+exit handling, question verification and closeout reporting remain enforced.
+
+This narrow installation invocation avoids requiring a controller-generated
+check before its trusted code exists on main. After the corrected controller is
+installed, produce genuine promotion proof and enroll the 25th required check
+with its dedicated App issuer. In that explicit activation change, remove the
+workflow's 24 `--required-status-check` arguments and restore
+`make report-well-architected-evidence`; update the installation contract test
+at the same time. Keep all existing checks and stronger review/deployment rules
+throughout this sequence.
+
+Initial deployment records must describe actual completed operator executions,
+with exact commit/account/plan bindings and apply plus drift receipts. Publish
+success only after those executions succeed. Label their operator provenance;
+they do not prove GitHub OIDC execution or protected-environment approval. Do not
+fabricate check contexts or use an extra App key to satisfy installation gates.

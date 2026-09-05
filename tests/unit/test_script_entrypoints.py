@@ -4189,6 +4189,54 @@ def test_validate_repository_catalogs_governance_fanout_within_thresholds(
     assert '"managedPoliciesPerRole"' in output  # nosec B101
 
 
+@pytest.mark.parametrize("limit, expected_exit", [(3, 1), (4, 0)])
+def test_validate_repository_catalogs_governance_configuration_quota_cli(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    limit: int,
+    expected_exit: int,
+) -> None:
+    """Keep the public secret-object quota flag and its exact boundary behavior."""
+    module = load_script_module(monkeypatch, "validate_repository_catalogs")
+    catalog_path = _write_governance_catalog(
+        tmp_path / "pulumi",
+        [{"name": "alpha-infrastructure", "project": "alpha-infrastructure"}],
+    )
+    assert (
+        module.main(
+            [
+                "--fanout-report",
+                "--max-governance-secrets",
+                str(limit),
+                str(catalog_path),
+            ]
+        )
+        == expected_exit
+    )
+    output = capsys.readouterr()
+    prefix = f"governance fanout thresholds for {catalog_path}: "
+    report = json.loads(
+        next(
+            line.removeprefix(prefix)
+            for line in output.out.splitlines()
+            if line.startswith(prefix)
+        )
+    )
+    assert report["secrets"] == {
+        "current": 4,
+        "max": limit,
+        "overBy": max(4 - limit, 0),
+        "remaining": max(limit - 4, 0),
+        "status": "exceeded" if expected_exit else "ok",
+    }
+    assert output.err == (
+        f"error: {catalog_path}: secrets fanout 4 exceeds {limit}\n"
+        if expected_exit
+        else ""
+    )
+
+
 def test_validate_repository_catalogs_governance_single_repo_scales_linearly(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
