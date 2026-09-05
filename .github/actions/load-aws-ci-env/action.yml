@@ -16,6 +16,9 @@ inputs:
   config-role-arn:
     description: Non-secret AWS IAM role ARN trusted by GitHub OIDC to read this CI config secret.
     required: true
+  expected-account-id:
+    description: Independently configured AWS account ID for this deployment environment.
+    required: true
   aws-region:
     description: AWS region containing the AWS Secrets Manager CI config secret.
     required: true
@@ -53,6 +56,7 @@ runs:
       env:
         CI_CONFIG_ENVIRONMENT: ${{ inputs.environment }}
         CI_CONFIG_ROLE_ARN: ${{ inputs.config-role-arn }}
+        CI_CONFIG_EXPECTED_ACCOUNT_ID: ${{ inputs.expected-account-id }}
         CI_CONFIG_AWS_REGION: ${{ inputs.aws-region }}
       run: |
         set -euo pipefail
@@ -73,6 +77,14 @@ runs:
             print("config-role-arn must be an AWS IAM role ARN.", file=sys.stderr)
             sys.exit(1)
 
+        expected_account_id = os.environ["CI_CONFIG_EXPECTED_ACCOUNT_ID"].strip()
+        if not re.fullmatch(r"\d{12}", expected_account_id):
+            print("expected-account-id must be a twelve-digit AWS account ID.", file=sys.stderr)
+            sys.exit(1)
+        if role_match.group(1) != expected_account_id:
+            print("Config role does not belong to the expected AWS account.", file=sys.stderr)
+            sys.exit(1)
+
         region = os.environ["CI_CONFIG_AWS_REGION"].strip()
         if not re.fullmatch(r"[a-z]{2}-[a-z]+-\d", region):
             print("aws-region must look like an AWS region, for example us-east-1.", file=sys.stderr)
@@ -91,7 +103,7 @@ runs:
         secret_id = f"/{repo_slug}/ci/{suffix}"
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
             output.write(f"secret_id={secret_id}\n")
-            output.write(f"config_account_id={role_match.group(1)}\n")
+            output.write(f"config_account_id={expected_account_id}\n")
             output.write(f"aws_region={region}\n")
         PY
 
@@ -222,21 +234,16 @@ runs:
             output.write("loaded=true\n")
         PY
 
-    - name: Install uv for validation
-      uses: astral-sh/setup-uv@22695119d769bdb6f7032ad67b9bca0ef8c4a174
-      with:
-        version: "0.8.14"
-        enable-cache: true
-
     - name: Validate AWS Secrets Manager CI environment
       shell: bash
       env:
         CI_CONFIG_SECRET_ID: ${{ steps.aws-target.outputs.secret_id }}
         CI_CONFIG_PURPOSE: ${{ inputs.purpose }}
         REQUIRED_KEYS: ${{ inputs.required-keys }}
+        CI_CONFIG_ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
-        uv run python scripts/validate_ci_environment.py \
+        python3 "${CI_CONFIG_ACTION_PATH}/../../../scripts/validate_ci_environment.py" \
           --purpose "${CI_CONFIG_PURPOSE}" \
           --required-keys "${REQUIRED_KEYS}"
 

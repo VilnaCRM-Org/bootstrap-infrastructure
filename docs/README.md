@@ -38,14 +38,14 @@ We follow a docs-as-code workflow: every guide lives alongside the source and ev
    make start
    ```
 
-5. Configure your AWS credentials (for example via `aws configure`, environment variables, or GitHub Actions secrets).
+5. Authenticate through your approved short-lived local AWS profile and verify the target account. GitHub workflows use OIDC; follow the [bootstrap runbook](github-ci-bootstrap-stack.md) before privileged CI.
 6. Run a preview from inside the container to validate infrastructure changes:
 
    ```bash
    make pulumi-preview
    ```
 
-That is all you need to begin iterating on the sample AWS instance or adapting the stack to your own infrastructure.
+Use this setup to iterate on the bootstrap control-plane resources. Apply and new service onboarding require the reviewed account, state, role, and approval prerequisites in the [governance runbook](governance-stack.md).
 
 ## Local Tooling
 
@@ -152,8 +152,9 @@ Privileged issue 20 workflows use fixed AWS Secrets Manager CI secrets for accou
 separation: `test-pr` for trusted PR preview, IAM validation, and same-repo PR
 evidence, `test` for test apply, drift, operations alert triage, and main-branch
 evidence, `prod-preview` for production preview and drift, and `prod` for
-production apply. GitHub keeps only the protected `prod` Environment for
-approval. Configure account-local variables, OIDC roles, Pulumi backend URLs,
+production apply. The platform deployment path uses the protected `prod`
+Environment for approval. Governance uses separate protected `governance-preview`
+and `governance` environments and a dedicated evidence GitHub App. Configure account-local variables, OIDC roles, Pulumi backend URLs,
 and AWS KMS-backed Pulumi secrets providers in the
 [GitHub Actions Secrets guide](github-actions-secrets.md).
 Use the [AWS Secrets Manager CI cutover manual](aws-secrets-manager-ci-cutover.md)
@@ -227,6 +228,10 @@ controls, extension checklist, and guidance on secrets, token scope, and
 supply-chain hygiene.
 
 ## Pulumi Guardrails
+
+IAM wildcard exceptions bind exact policy identities to reviewed full-document
+digests. See [Reviewed IAM policies](reviewed-iam-policies.md) for the inventory,
+approval process and the separate account and permission checks.
 
 Use the [Pulumi guardrails guide](pulumi-guardrails.md) for the runtime
 identifier rules, policy-pack guardrails, and the local/CI commands that keep

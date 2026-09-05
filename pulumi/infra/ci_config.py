@@ -12,6 +12,7 @@ import pulumi
 
 from .bootstrap_settings import BootstrapSettings
 from .config import settings as default_settings
+from .github_identity import expand_subjects, identity_conditions
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
@@ -44,6 +45,8 @@ class CiConfigurationArgs:
     oidc_provider_arn: pulumi.Input[str] | None = None
     protect_resources: bool = False
     repo: str | None = None
+    permissions_boundary: str | None = None
+    manage_resources: bool = True
 
 
 # Secret-leaking reads denied on the config-read role (§5.3, FR22, D4). The
@@ -153,9 +156,15 @@ def _github_actions_subjects(
         return [
             f"repo:{repo_slug}:ref:refs/heads/{branch}",
             f"repo:{repo_slug}:environment:test",
+            f"repo:{repo_slug}:environment:test-preview",
         ]
     if suffix == "prod":
         return [f"repo:{repo_slug}:environment:prod"]
+    if suffix == "prod-preview":
+        return [
+            f"repo:{repo_slug}:ref:refs/heads/{branch}",
+            f"repo:{repo_slug}:environment:prod-preview",
+        ]
     return [f"repo:{repo_slug}:ref:refs/heads/{branch}"]
 
 
@@ -217,10 +226,28 @@ def _ci_config_read_assume_role_policy(
                                 "sts.amazonaws.com"
                             ),
                             "token.actions.githubusercontent.com:sub": (
-                                _github_actions_subjects(settings, suffix, repo)
+                                expand_subjects(
+                                    _github_actions_subjects(settings, suffix, repo),
+                                    f"{settings.org}/{resolved_repo}",
+                                    settings.github_repository_id,
+                                    settings.github_repository_owner_id,
+                                )
                             ),
                             "token.actions.githubusercontent.com:repository": (
                                 f"{settings.org}/{resolved_repo}"
+                            ),
+                            **identity_conditions(
+                                settings.github_repository_id,
+                                settings.github_repository_owner_id,
+                            ),
+                            **(
+                                {
+                                    "token.actions.githubusercontent.com:ref": (
+                                        f"refs/heads/{settings.github_branch or 'main'}"
+                                    )
+                                }
+                                if suffix != "test-pr"
+                                else {}
                             ),
                         },
                     },
@@ -303,6 +330,14 @@ def _secret_import_id(name: str) -> str | None:
     return str(arn) if arn else None
 
 
+def _required_secret_arn(name: str) -> str:
+    """Resolve metadata for a reference; absence never becomes a create decision."""
+    arn = _secret_import_id(name)
+    if arn is None:
+        raise ValueError(f"Required operator-managed CI secret is missing: {name}")
+    return arn
+
+
 def _iam_role_exists(name: str) -> bool:
     """Return True when the IAM role already exists."""
     try:
@@ -353,6 +388,23 @@ class CiConfiguration(pulumi.ComponentResource):
 
         for suffix in suffixes:
             secret_id = _ci_secret_id(self._settings, suffix, repo)
+            if not config.manage_resources:
+                secret = aws.secretsmanager.Secret.get(
+                    f"{name}-secret-{suffix}",
+                    _required_secret_arn(secret_id),
+                    opts=pulumi.ResourceOptions(parent=self),
+                )
+                role = aws.iam.Role.get(
+                    f"{name}-github-ci-config-read-role-{suffix}",
+                    _ci_config_read_role_name(self._settings, suffix, repo),
+                    opts=pulumi.ResourceOptions(parent=self),
+                )
+                self.secret_ids[suffix] = secret_id
+                self.secrets[suffix] = secret
+                self.secret_arns[suffix] = secret.arn
+                self.read_roles[suffix] = role
+                self.read_role_arns[suffix] = role.arn
+                continue
             secret = aws.secretsmanager.Secret(
                 f"{name}-secret-{suffix}",
                 name=secret_id,
@@ -383,6 +435,7 @@ class CiConfiguration(pulumi.ComponentResource):
             role = aws.iam.Role(
                 f"{name}-github-ci-config-read-role-{suffix}",
                 name=role_name,
+                permissions_boundary=config.permissions_boundary,
                 assume_role_policy=apply_output(
                     pulumi.Output.from_input(provider_arn),
                     lambda arn, ci_suffix=suffix: _ci_config_read_assume_role_policy(

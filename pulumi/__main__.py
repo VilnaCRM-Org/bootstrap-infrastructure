@@ -22,6 +22,7 @@ bootstrap_requested = bool(
 )
 
 if bootstrap_requested:
+    import pulumi_aws as aws
     from infra import (
         BootstrapInfrastructure,
         BootstrapInfrastructureDependencies,
@@ -29,6 +30,15 @@ if bootstrap_requested:
     )
     from infra import (
         config as bootstrap_config,
+    )
+    from infra.github_identity import normalize_identity
+    from infra.governance_automation import assert_bootstrap_account
+
+    normalize_identity(
+        cfg.require("githubRepositoryId"), cfg.require("githubRepositoryOwnerId")
+    )
+    assert_bootstrap_account(
+        cfg.require("awsAccountId"), aws.get_caller_identity().account_id
     )
 
     bootstrap_settings = bootstrap_config.settings
@@ -39,6 +49,7 @@ if bootstrap_requested:
         settings=bootstrap_settings,
         repository_catalog=repository_catalog,
         dependencies=dependencies,
+        manage_control_resources=False,
     )
 
     logging = bootstrap.logging

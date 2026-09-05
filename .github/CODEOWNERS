@@ -29,3 +29,13 @@
 /.github/workflows/pulumi-governance.yml         @Kravalg
 /.github/workflows/pulumi-pr-command-runner.yml  @Kravalg
 /.github/workflows/pulumi-pr-commands.yml        @Kravalg
+
+/scripts/                                       @Kravalg
+/Makefile                                       @Kravalg
+/Dockerfile                                     @Kravalg
+/docker-compose*.yml                            @Kravalg
+/pyproject.toml                                 @Kravalg
+/uv.lock                                        @Kravalg
+/.github/actions/                               @Kravalg
+/.github/workflows/governance-promotion.yml       @Kravalg
+/.github/workflows/                              @Kravalg

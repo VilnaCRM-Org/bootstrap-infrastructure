@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 
 import pulumi
 
+from .github_identity import normalize_identity
+
 if TYPE_CHECKING:
     from .managed_repository import ManagedRepository
 
@@ -50,6 +52,16 @@ class BootstrapSettings:
     cost_anomaly_monitor_arn: str | None = None
     manage_cost_allocation_tags: bool = False
     operations_cloudtrail_name: str | None = None
+    github_repository_id: str | None = None
+    github_repository_owner_id: str | None = None
+    platform_logging_replication_role_name: str | None = None
+    platform_backup_role_name: str | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize pinned GitHub IDs before any trust policy is constructed."""
+        self.github_repository_id, self.github_repository_owner_id = normalize_identity(
+            self.github_repository_id, self.github_repository_owner_id
+        )
 
     @classmethod
     def from_pulumi_config(
@@ -93,6 +105,12 @@ class BootstrapSettings:
             github_token=config.get_secret("githubToken"),
             github_oidc_provider_arn=config.get("githubOidcProviderArn"),
             repository_catalog_path=config.get("repositoryCatalogPath"),
+            github_repository_id=config.get("githubRepositoryId"),
+            github_repository_owner_id=config.get("githubRepositoryOwnerId"),
+            platform_logging_replication_role_name=config.get(
+                "platformLoggingReplicationRoleName"
+            ),
+            platform_backup_role_name=config.get("platformBackupRoleName"),
         )
 
     @staticmethod

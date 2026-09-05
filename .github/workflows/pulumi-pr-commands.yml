@@ -51,14 +51,14 @@ jobs:
           # comment author still cannot be trusted to have authored the diff.
           # The AUTHORITATIVE control is the governance runner's server-side
           # recompute (pulumi-governance.yml preflight), which re-resolves the
-          # comment author to the sole approver @Kravalg and recomputes this same
+          # comment author to a current writer distinct from approver @Kravalg and
           # predicate from the verified head SHA's changed files before any
           # credential-minting job runs. If this advisory intake flag and the
           # runner's recompute ever disagree, the runner's recompute wins.
           files="$(gh api \
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
             --paginate \
-            --jq '.[].filename')"
+            --jq '.[] | .filename, (.previous_filename // empty)')"
           python ./scripts/governance_paths.py --files-stdin <<< "${files}" \
             >> "${GITHUB_OUTPUT}"
 
@@ -86,7 +86,7 @@ jobs:
           steps.parse.outputs.authorized != 'true'
         run: |
           jq -n \
-            --arg body "Pulumi PR commands are restricted to repository owners, members, and collaborators." \
+            --arg body "Pulumi PR commands require repository membership. Apply requests must come from a maintainer other than sole approver Kravalg." \
             '{body: $body}' \
             | gh api \
               --method POST \
@@ -142,6 +142,40 @@ jobs:
               "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
               --input -
 
+      - name: Record immutable command request
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
+          steps.pr.outputs.head_repo == github.repository
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          TARGET_ENVIRONMENT: ${{ steps.parse.outputs.target_environment }}
+          PULUMI_COMMAND: ${{ steps.parse.outputs.command }}
+        run: |
+          mkdir -p .artifacts/pulumi-command-request
+          jq --arg sha "${HEAD_SHA}" --arg target "${TARGET_ENVIRONMENT}" \
+            --arg command "${PULUMI_COMMAND}" --arg run "${GITHUB_RUN_ID}" \
+            '{pull_request_number: (.issue.number | tostring), head_sha: $sha,
+              comment_id: (.comment.id | tostring), source_run_id: $run,
+              command: $command, target_environment: $target}' \
+            "${GITHUB_EVENT_PATH}" > .artifacts/pulumi-command-request/request.json
+
+      - name: Upload immutable command request
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
+          steps.pr.outputs.head_repo == github.repository
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pulumi-command-request
+          path: .artifacts/pulumi-command-request/request.json
+          if-no-files-found: error
+          retention-days: 1
+
       # Governance-touching PRs route to the dedicated, env-gated governance
       # runner via its own event type (architecture §7.2). The governance
       # runner re-resolves the author from client_payload.comment_id and
@@ -170,9 +204,10 @@ jobs:
             -f "client_payload[head_sha]=${HEAD_SHA}" \
             -f "client_payload[target_environment]=${TARGET_ENVIRONMENT}" \
             -f "client_payload[command]=${PULUMI_COMMAND}" \
-            -f "client_payload[comment_id]=${COMMENT_ID}"
+            -f "client_payload[comment_id]=${COMMENT_ID}" \
+            -f "client_payload[source_run_id]=${GITHUB_RUN_ID}"
 
-      # Non-governance PRs keep the existing monolithic runner unchanged.
+      # Non-governance PRs use the runner with its own authoritative scope check.
       - name: Dispatch trusted runner
         if: >-
           steps.parse.outputs.skip != 'true' &&
@@ -197,7 +232,8 @@ jobs:
             -f "client_payload[head_sha]=${HEAD_SHA}" \
             -f "client_payload[target_environment]=${TARGET_ENVIRONMENT}" \
             -f "client_payload[command]=${PULUMI_COMMAND}" \
-            -f "client_payload[comment_id]=${COMMENT_ID}"
+            -f "client_payload[comment_id]=${COMMENT_ID}" \
+            -f "client_payload[source_run_id]=${GITHUB_RUN_ID}"
 
       - name: Comment queued command
         if: >-

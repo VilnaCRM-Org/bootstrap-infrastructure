@@ -13,6 +13,7 @@ import pulumi
 
 from .bootstrap_settings import BootstrapSettings
 from .config import settings
+from .platform_iam import platform_boundary_arn, platform_role_name
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
@@ -179,7 +180,7 @@ def _log_bucket_policy_from_values(values: Sequence[str]) -> str:
     return _log_bucket_policy(values[0], values[1])
 
 
-def _replication_assume_role_policy(arn: str) -> str:
+def _replication_assume_role_policy(arn: str, account_id: str) -> str:
     """Build the S3 replication trust policy for the logging bucket."""
     return json.dumps(
         {
@@ -189,7 +190,12 @@ def _replication_assume_role_policy(arn: str) -> str:
                     "Effect": "Allow",
                     "Principal": {"Service": "s3.amazonaws.com"},
                     "Action": "sts:AssumeRole",
-                    "Condition": {"StringEquals": {"aws:SourceArn": arn}},
+                    "Condition": {
+                        "StringEquals": {
+                            "aws:SourceArn": arn,
+                            "aws:SourceAccount": account_id,
+                        }
+                    },
                 }
             ],
         }
@@ -239,6 +245,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         *,
         settings: BootstrapSettings | None = None,
         replication_region: str | None = None,
+        manage_replication_role: bool = True,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize the central logging buckets component."""
@@ -439,30 +446,46 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             opts=replica_resource_opts,
         )
 
-        replication_role = aws.iam.Role(
-            f"{name}-replication-role",
-            assume_role_policy=apply_output(
-                bucket.arn, _replication_assume_role_policy
-            ),
-            tags=base_tags(
-                {"Purpose": "central-logs-replication"},
-                settings=configured_settings,
-            ),
-            opts=primary_resource_opts,
-        )
-
-        replication_role_policy = aws.iam.RolePolicy(
-            f"{name}-replication-role-policy",
-            role=replication_role.id,
-            policy=apply_output(
-                cast(
-                    pulumi.Output[Sequence[str]],
-                    pulumi.Output.all(bucket.arn, replica_bucket.arn),
+        if manage_replication_role:
+            replication_role = aws.iam.Role(
+                f"{name}-replication-role",
+                name=platform_role_name(configured_settings, "log-replication"),
+                permissions_boundary=platform_boundary_arn(
+                    account.account_id, configured_settings, "log-replication"
                 ),
-                _replication_role_policy,
-            ),
-            opts=primary_resource_opts,
-        )
+                assume_role_policy=apply_output(
+                    bucket.arn,
+                    lambda arn: _replication_assume_role_policy(
+                        arn, account.account_id
+                    ),
+                ),
+                tags=base_tags(
+                    {"Purpose": "central-logs-replication"},
+                    settings=configured_settings,
+                ),
+                opts=primary_resource_opts,
+            )
+
+            replication_role_policy = aws.iam.RolePolicy(
+                f"{name}-replication-role-policy",
+                role=replication_role.id,
+                policy=apply_output(
+                    cast(
+                        pulumi.Output[Sequence[str]],
+                        pulumi.Output.all(bucket.arn, replica_bucket.arn),
+                    ),
+                    _replication_role_policy,
+                ),
+                opts=primary_resource_opts,
+            )
+
+        else:
+            replication_role = aws.iam.Role.get(
+                f"{name}-replication-role",
+                platform_role_name(configured_settings, "log-replication"),
+                opts=primary_resource_opts,
+            )
+            replication_role_policy = None
 
         aws.s3.BucketReplicationConfig(
             f"{name}-replication-config",
@@ -479,7 +502,10 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
                 )
             ],
             opts=pulumi.ResourceOptions(
-                parent=self, depends_on=[replication_role_policy]
+                parent=self,
+                depends_on=(
+                    [replication_role_policy] if replication_role_policy else []
+                ),
             ),
         )
 

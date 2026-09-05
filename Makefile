@@ -62,6 +62,7 @@ QUALITY_ARTIFACT_DIR     ?= .artifacts/quality
 SBOM_ARTIFACT_DIR        ?= .artifacts/sbom
 GITHUB_REPOSITORY_CONTROLS_REPO ?= VilnaCRM-Org/$(PROJECT)
 GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER ?= Kravalg
+GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID ?=
 GITHUB_REPOSITORY_CONTROLS_MODE ?= --dry-run
 DOCSTRING_PATHS          ?= pulumi/app policy scripts/pulumi_ci_guardrails.py
 WILY_TARGETS             ?= pulumi policy scripts
@@ -342,7 +343,7 @@ test-repo-hygiene: ## Lint GitHub Actions, YAML, and the Dockerfile.
 	$(MAKE) test-yaml
 	$(MAKE) test-dockerfile
 
-test-mutation: ## Run mutation testing suite against Pulumi components.
+test-mutation: ## Run component mutation and semantic security-boundary gates.
 	$(COMPOSE) run --rm \
 		$(if $(strip $(MUTATION_PATHS)),-e MUTATION_PATHS="$(MUTATION_PATHS)") \
 		-e MUTATION_TEST_TARGETS="$(MUTATION_TEST_TARGETS)" \
@@ -413,6 +414,7 @@ configure-github-repository-controls: ## Print, apply, or verify GitHub ruleset 
 	$(REPO_PYTHON) ./scripts/configure_github_repository_controls.py \
 		--repo "$(GITHUB_REPOSITORY_CONTROLS_REPO)" \
 		--prod-reviewer "$(GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER)" \
+		--promotion-app-id "$(GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID)" \
 		$(GITHUB_REPOSITORY_CONTROLS_MODE)
 
 report-dependabot-exception: ## Render Dependabot exception evidence.

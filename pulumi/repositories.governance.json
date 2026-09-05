@@ -8,7 +8,9 @@
       "owner": "team-user-service",
       "lifecycleState": "active",
       "lastReviewed": "2026-06-13",
-      "expectedEnvironments": 2
+      "expectedEnvironments": 2,
+      "repositoryId": "911736693",
+      "repositoryOwnerId": "114362548"
     }
   ]
 }

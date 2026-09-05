@@ -9,10 +9,12 @@ from typing import Any, cast
 
 try:
     from policy.config import PolicyConfig, load_policy_config
+    from policy.reviewed_iam import reviewed_iam_document_matches
 except ModuleNotFoundError as exc:  # pragma: no cover - direct policy startup.
     if exc.name not in {"policy", "policy.config"}:
         raise
     from config import PolicyConfig, load_policy_config
+    from reviewed_iam import reviewed_iam_document_matches
 
 CONFIG = load_policy_config()
 PUBLIC_S3_ACLS = {"public-read", "public-read-write"}
@@ -414,17 +416,10 @@ def wildcard_iam_violations(
     props: Mapping[str, Any],
     config: PolicyConfig = CONFIG,
 ) -> list[str]:
-    """Reject wildcard IAM permissions unless explicitly allowlisted."""
-    identifier = iam_policy_identifier(props)
-    if identifier and identifier in config.wildcard_iam_allowlist:
-        return []
-
-    tags = extract_tags(props) or {}
-    allow_tag = config.annotations.get("wildcard_iam_tag", "AllowWildcardIam")
-    reason_tag = config.annotations.get(
-        "wildcard_iam_reason_tag", "AllowWildcardIamReason"
-    )
-    if _truthy(tags.get(allow_tag)) and _string_value(tags.get(reason_tag)):
+    """Reject wildcard IAM unless its exact policy content has been reviewed."""
+    if reviewed_iam_document_matches(
+        resource_type, props, config.reviewed_iam_documents
+    ):
         return []
 
     documents = list(_policy_documents(resource_type, props))
@@ -579,6 +574,7 @@ def _wildcard_iam_document_exempt(resource_type: str, field_name: str) -> bool:
 
 _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
     {
+        "access-analyzer:validatepolicy",
         "billing:getbillingviewdata",
         "ce:createanomalymonitor",
         "ce:createanomalysubscription",

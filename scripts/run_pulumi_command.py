@@ -335,7 +335,11 @@ def _validate_plan_manifest_commit(
 ) -> int | None:
     expected_sha = _commit_sha(context)
     manifest_sha = manifest.get("commitSha", "")
-    if expected_sha and manifest_sha and expected_sha != manifest_sha:
+    requested_sha = context.env.get("PULUMI_EXPECTED_SHA")
+    if requested_sha and requested_sha != expected_sha:
+        print("error: Pulumi checkout SHA differs from requested SHA.", file=sys.stderr)
+        return 1
+    if not expected_sha or not manifest_sha or expected_sha != manifest_sha:
         print("error: Pulumi plan commit SHA does not match checkout.", file=sys.stderr)
         return 1
     return None
@@ -351,6 +355,26 @@ def _validate_plan_manifest_backend(
             file=sys.stderr,
         )
         return 1
+    return None
+
+
+def _validate_plan_manifest_project(
+    context: CommandContext,
+    manifest: dict[str, Any],
+) -> int | None:
+    for field_name, expected_path in (
+        ("pulumiDir", context.pulumi_dir),
+        ("policyPackDir", context.policy_pack_dir),
+    ):
+        recorded_path = _manifest_path(context, manifest.get(field_name), field_name)
+        if recorded_path is None:
+            return 1
+        if recorded_path.resolve() != expected_path.resolve():
+            print(
+                f"error: Pulumi plan {field_name} does not match apply project.",
+                file=sys.stderr,
+            )
+            return 1
     return None
 
 
@@ -386,6 +410,7 @@ def _validate_plan_manifest(
         lambda: _validate_plan_manifest_age(context, manifest),
         lambda: _validate_plan_manifest_commit(context, manifest),
         lambda: _validate_plan_manifest_backend(context, manifest),
+        lambda: _validate_plan_manifest_project(context, manifest),
     ):
         status = validator()
         if status is not None:
@@ -536,108 +561,6 @@ def _run_with_observable_output(
     )
 
 
-def _ci_saved_plan_recovery_enabled(
-    context: CommandContext, combined_output: str, error_signature: str
-) -> bool:
-    return (
-        error_signature in combined_output
-        and context.env.get("GITHUB_ACTIONS") == "true"
-        and bool(context.env.get("PULUMI_EXPECTED_SHA"))
-    )
-
-
-def _recover_failed_saved_prod_plan(
-    context: CommandContext,
-    stack: str,
-    plan_path: Path,
-    result: subprocess.CompletedProcess[str],
-) -> int | None:
-    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if _ci_saved_plan_recovery_enabled(context, combined_output, PLAN_DECRYPT_ERROR):
-        print(
-            "error: saved Pulumi plan failed with the known KMS plan-decrypt "
-            "error; refusing direct production apply because production must "
-            "use the reviewed saved plan artifact.",
-            file=sys.stderr,
-        )
-        return result.returncode or 1
-
-    if _ci_saved_plan_recovery_enabled(context, combined_output, STACK_LOCK_ERROR):
-        print(
-            "warning: Pulumi reported a stack lock while applying the saved "
-            "production plan; running pulumi cancel for the selected stack "
-            "and retrying the same saved plan once.",
-            file=sys.stderr,
-        )
-        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
-        retry = _run_with_observable_output(
-            context,
-            _pulumi_command(
-                context, StackCommand("up-plan", stack, plan_path=plan_path)
-            ),
-        )
-        return None if retry.returncode == 0 else retry.returncode or 1
-
-    return result.returncode or 1
-
-
-def _run_guarded_direct_nonprod_apply(
-    context: CommandContext, stack: str
-) -> subprocess.CompletedProcess[str]:
-    command = _pulumi_command(
-        context,
-        StackCommand("up", stack, include_policy_pack=False),
-    )
-    command.append("--refresh")
-    return _run_with_observable_output(
-        context,
-        command,
-    )
-
-
-def _recover_guarded_direct_nonprod_apply_lock(
-    context: CommandContext,
-    stack: str,
-    result: subprocess.CompletedProcess[str],
-) -> int | None:
-    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if STACK_LOCK_ERROR not in combined_output:
-        return result.returncode or 1
-
-    print(
-        "warning: Pulumi reported a stack lock during guarded direct "
-        "non-production apply; running pulumi cancel for the selected stack "
-        "and retrying the same guarded direct apply once.",
-        file=sys.stderr,
-    )
-    context.runner(_pulumi_cancel_command(context, stack), env=context.env)
-    retry = _run_guarded_direct_nonprod_apply(context, stack)
-    return None if retry.returncode == 0 else retry.returncode or 1
-
-
-def _recover_failed_saved_nonprod_plan(
-    context: CommandContext,
-    stack: str,
-    result: subprocess.CompletedProcess[str],
-) -> int | None:
-    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if not _ci_saved_plan_recovery_enabled(
-        context, combined_output, PLAN_DECRYPT_ERROR
-    ):
-        return result.returncode or 1
-
-    print(
-        "warning: saved Pulumi plan failed with the known KMS plan-decrypt "
-        f"error; retrying guarded direct non-production apply for stack {stack}.",
-        file=sys.stderr,
-    )
-    retry = _run_guarded_direct_nonprod_apply(context, stack)
-    if retry.returncode == 0:
-        return None
-
-    return _recover_guarded_direct_nonprod_apply_lock(context, stack, retry)
-
-
 def _run_up_plan_stack(
     context: CommandContext, stack: str, plan_path: Path
 ) -> int | None:
@@ -645,25 +568,9 @@ def _run_up_plan_stack(
         context,
         _pulumi_command(context, StackCommand("up-plan", stack, plan_path=plan_path)),
     )
-    if result.returncode == 0:
-        return None
-
-    if stack != "prod":
-        return _recover_failed_saved_nonprod_plan(context, stack, result)
-
-    return _recover_failed_saved_prod_plan(context, stack, plan_path, result)
-
-
-def _pulumi_cancel_command(context: CommandContext, stack: str) -> list[str]:
-    return [
-        "pulumi",
-        "-C",
-        str(context.pulumi_dir),
-        "cancel",
-        "--stack",
-        stack,
-        "--yes",
-    ]
+    # A failed saved plan never authorizes a different apply or cancellation of
+    # another update. Resolve the failure and generate a fresh reviewed plan.
+    return None if result.returncode == 0 else result.returncode
 
 
 def _run_up_stack(

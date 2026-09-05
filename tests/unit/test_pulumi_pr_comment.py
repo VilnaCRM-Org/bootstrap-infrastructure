@@ -56,7 +56,9 @@ def test_build_outputs_marks_skipped_and_actionable_comments() -> None:
     skipped = pulumi_pr_comment.build_outputs(None, "CONTRIBUTOR")
     authorized_skip = pulumi_pr_comment.build_outputs(None, "OWNER")
     command = pulumi_pr_comment.PulumiPrCommand("prod", "up")
-    actionable = pulumi_pr_comment.build_outputs(command, "MEMBER")
+    actionable = pulumi_pr_comment.build_outputs(
+        command, "MEMBER", author_login="dmytrocraft"
+    )
 
     assert skipped == {"authorized": "false", "skip": "true"}
     assert authorized_skip == {"authorized": "true", "skip": "true"}

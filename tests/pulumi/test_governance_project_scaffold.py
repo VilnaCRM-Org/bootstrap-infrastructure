@@ -139,7 +139,7 @@ def test_entrypoint_builds_governance_stack_and_exports_outputs() -> None:
 
     assert "GovernanceStack" in entrypoint  # nosec B101
     assert "GovernanceStackArgs" in entrypoint  # nosec B101
-    assert 'expected_account_id=cfg.get("awsAccountId")' in entrypoint  # nosec B101
+    assert 'expected_account_id=cfg.require("awsAccountId")' in entrypoint  # nosec B101
     assert (  # nosec B101
         'oidc_provider_arn=cfg.get("githubOidcProviderArn")' in entrypoint
     )

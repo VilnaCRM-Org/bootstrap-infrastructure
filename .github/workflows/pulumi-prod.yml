@@ -79,6 +79,7 @@ jobs:
         with:
           environment: prod-preview
           config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_PROD_REGION }}
           purpose: prod preview
           required-keys: >-
@@ -209,6 +210,7 @@ jobs:
         with:
           environment: prod-preview
           config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_PROD_REGION }}
           purpose: prod IAM validation
           required-keys: >-
@@ -272,6 +274,7 @@ jobs:
         with:
           environment: prod
           config-role-arn: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_PROD_REGION }}
           purpose: prod apply
           required-keys: >-
@@ -339,6 +342,7 @@ jobs:
         with:
           environment: prod-preview
           config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_PROD_REGION }}
           purpose: prod drift
           required-keys: >-

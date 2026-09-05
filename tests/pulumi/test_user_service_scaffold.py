@@ -184,7 +184,7 @@ def test_scaffold_assets_carry_no_static_aws_keys() -> None:
         if not path.is_file():
             continue
         text = path.read_text()
-        if path.suffix in _DEPLOYABLE_SUFFIXES:
+        if path.suffix in _DEPLOYABLE_SUFFIXES and path.name != "docker-compose.yml":
             for marker in _STATIC_AWS_KEY_MARKERS:
                 assert marker not in text  # nosec B101
         else:

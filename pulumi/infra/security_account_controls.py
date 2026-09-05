@@ -183,6 +183,7 @@ class SecurityAccountControls(pulumi.ComponentResource):
         *,
         settings: BootstrapSettings | None = None,
         resource_dependencies: Sequence[pulumi.Resource] | None = None,
+        manage_role: bool = True,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize GuardDuty, Security Hub, and AWS Config resources."""
@@ -279,42 +280,51 @@ class SecurityAccountControls(pulumi.ComponentResource):
             opts=base_opts,
         )
 
-        self.config_role = aws.iam.Role(
-            f"{name}-config-recorder-role",
-            name=_config_role_name(configured_settings),
-            assume_role_policy=_config_assume_role_policy(
-                account_id,
-                partition,
-                region,
-            ),
-            tags=base_tags(
-                {"Purpose": "aws-config-recorder"},
-                settings=configured_settings,
-            ),
-            opts=base_opts,
-        )
-        self.config_role_attachment = aws.iam.RolePolicyAttachment(
-            f"{name}-config-recorder-role-attachment",
-            role=self.config_role.name,
-            policy_arn=f"arn:{partition}:iam::aws:policy/{CONFIG_RECORDER_MANAGED_POLICY}",
-            opts=base_opts,
-        )
-        self.config_role_s3_policy = aws.iam.RolePolicy(
-            f"{name}-config-recorder-s3-policy",
-            role=self.config_role.name,
-            policy=self.config_bucket.arn.apply(
-                lambda bucket_arn: _config_role_s3_policy(bucket_arn, account_id)
-            ),
-            opts=pulumi.ResourceOptions(
-                parent=self,
-                depends_on=[
-                    self.config_bucket_public_access,
-                    self.config_bucket_encryption,
-                    self.config_bucket_versioning,
-                    self.config_bucket_lifecycle,
-                ],
-            ),
-        )
+        if manage_role:
+            self.config_role = aws.iam.Role(
+                f"{name}-config-recorder-role",
+                name=_config_role_name(configured_settings),
+                assume_role_policy=_config_assume_role_policy(
+                    account_id,
+                    partition,
+                    region,
+                ),
+                tags=base_tags(
+                    {"Purpose": "aws-config-recorder"},
+                    settings=configured_settings,
+                ),
+                opts=base_opts,
+            )
+            self.config_role_attachment = aws.iam.RolePolicyAttachment(
+                f"{name}-config-recorder-role-attachment",
+                role=self.config_role.name,
+                policy_arn=f"arn:{partition}:iam::aws:policy/{CONFIG_RECORDER_MANAGED_POLICY}",
+                opts=base_opts,
+            )
+            self.config_role_s3_policy = aws.iam.RolePolicy(
+                f"{name}-config-recorder-s3-policy",
+                role=self.config_role.name,
+                policy=self.config_bucket.arn.apply(
+                    lambda bucket_arn: _config_role_s3_policy(bucket_arn, account_id)
+                ),
+                opts=pulumi.ResourceOptions(
+                    parent=self,
+                    depends_on=[
+                        self.config_bucket_public_access,
+                        self.config_bucket_encryption,
+                        self.config_bucket_versioning,
+                        self.config_bucket_lifecycle,
+                    ],
+                ),
+            )
+        else:
+            self.config_role = aws.iam.Role.get(
+                f"{name}-config-recorder-role",
+                _config_role_name(configured_settings),
+                opts=base_opts,
+            )
+            self.config_role_attachment = None
+            self.config_role_s3_policy = None
         self.config_bucket_policy = aws.s3.BucketPolicy(
             f"{name}-config-bucket-policy",
             bucket=self.config_bucket.id,
@@ -351,8 +361,12 @@ class SecurityAccountControls(pulumi.ComponentResource):
             opts=pulumi.ResourceOptions(
                 parent=self,
                 depends_on=[
-                    self.config_role_attachment,
-                    self.config_role_s3_policy,
+                    resource
+                    for resource in (
+                        self.config_role_attachment,
+                        self.config_role_s3_policy,
+                    )
+                    if resource is not None
                 ],
             ),
         )
@@ -390,3 +404,70 @@ class SecurityAccountControls(pulumi.ComponentResource):
                 "config_delivery_channel_name": self.config_delivery_channel.name,
             }
         )
+
+
+class ConfigRecorderIam(pulumi.ComponentResource):
+    """Operator-owned Config identity, independent of platform bucket creation."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        settings: BootstrapSettings,
+        account_id: str,
+        partition: str,
+        region: str,
+        adopt_existing: bool = False,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
+        super().__init__("bootstrap:security:ConfigRecorderIam", name, None, opts)
+        from .automation import _iam_role_exists
+        from .iam.adoption import attachment_exists, inline_policy_name
+
+        role_name = _config_role_name(settings)
+        policy_arn = f"arn:{partition}:iam::aws:policy/{CONFIG_RECORDER_MANAGED_POLICY}"
+        existing_role = adopt_existing and _iam_role_exists(role_name)
+        existing_inline = (
+            inline_policy_name(
+                role_name, "security-account-controls-config-recorder-s3-policy"
+            )
+            if existing_role
+            else None
+        )
+        existing_attachment = existing_role and attachment_exists(role_name, policy_arn)
+        self.role = aws.iam.Role(
+            f"{name}-role",
+            name=role_name,
+            assume_role_policy=_config_assume_role_policy(
+                account_id, partition, region
+            ),
+            tags=base_tags({"Purpose": "aws-config-recorder"}, settings=settings),
+            opts=pulumi.ResourceOptions(
+                parent=self, protect=True, import_=role_name if existing_role else None
+            ),
+        )
+        self.role_attachment = aws.iam.RolePolicyAttachment(
+            f"{name}-attachment",
+            role=self.role.name,
+            policy_arn=policy_arn,
+            opts=pulumi.ResourceOptions(
+                parent=self,
+                protect=True,
+                import_=f"{role_name}/{policy_arn}" if existing_attachment else None,
+            ),
+        )
+        bucket_name = _config_bucket_name(settings, account_id, region)
+        self.role_s3_policy = aws.iam.RolePolicy(
+            f"{name}-s3-policy",
+            role=self.role.name,
+            name=existing_inline,
+            policy=_config_role_s3_policy(
+                f"arn:{partition}:s3:::{bucket_name}", account_id
+            ),
+            opts=pulumi.ResourceOptions(
+                parent=self,
+                protect=True,
+                import_=f"{role_name}:{existing_inline}" if existing_inline else None,
+            ),
+        )
+        self.register_outputs({"roleArn": self.role.arn})

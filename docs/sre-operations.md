@@ -58,11 +58,12 @@ the Pulumi plan is shown.
 When you want to reproduce the credential-free PR preview flow locally, use:
 
 ```bash
-make test-guardrails
+make test-guardrails-unprivileged
 ```
 
-That target generates the preview artifact and blocks destructive changes to
-critical resources without requiring live AWS credentials. Keep
+That target generates the unprivileged fallback artifact and exercises the
+guardrail parsers without live AWS credentials. It does not prove a real cloud
+preview; use `make test-guardrails` with the intended account for that evidence. Keep
 `make test-iam-validation` for the separate Access Analyzer check when you
 intentionally have AWS credentials configured.
 

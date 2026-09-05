@@ -724,11 +724,6 @@ def test_aws_ci_loader_reads_secrets_manager_without_pulumi_cloud() -> None:
         for step in action["runs"]["steps"]
         if step.get("name") == "Load AWS Secrets Manager CI values"
     )
-    install_uv_step = next(
-        step
-        for step in action["runs"]["steps"]
-        if step.get("name") == "Install uv for validation"
-    )
     validate_step = next(
         step
         for step in action["runs"]["steps"]
@@ -767,9 +762,16 @@ def test_aws_ci_loader_reads_secrets_manager_without_pulumi_cloud() -> None:
         "${{ steps.aws-target.outputs.config_account_id }}"
     )
     assert "GITHUB_STEP_SUMMARY" in boundary_step["run"]  # nosec B101
-    assert "version" in install_uv_step["with"]  # nosec B101
+    assert all(
+        "setup-uv" not in step.get("uses", "") for step in action["runs"]["steps"]
+    )
+    assert validate_step["env"]["CI_CONFIG_ACTION_PATH"] == "${{ github.action_path }}"
+    assert (
+        'python3 "${CI_CONFIG_ACTION_PATH}/../../../scripts/validate_ci_environment.py"'
+        in validate_step["run"]
+    )
     assert (  # nosec B101
-        "uv run python scripts/validate_ci_environment.py" in validate_step["run"]
+        "uv run" not in validate_step["run"]
     )
     assert "--purpose" in validate_step["run"]  # nosec B101
     assert (  # nosec B101
@@ -906,6 +908,18 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
         environment_name = _environment_name(job)
         if workflow_job in approval_only_environment_jobs:
             assert environment_name == "prod"  # nosec B101
+        elif workflow_job == ("pulumi-test-deploy.yml", "apply"):
+            assert environment_name == "test"
+        elif (
+            workflow_name == "pulumi-pr-command-runner.yml"
+            and workflow_job in expected_contracts_by_job
+        ):
+            expected_environment = (
+                "test"
+                if job_name == "test_apply"
+                else ("prod-preview" if job_name.startswith("prod") else "test-preview")
+            )
+            assert environment_name == expected_environment
         elif workflow_job in expected_contracts_by_job:
             assert environment_name is None  # nosec B101
 
@@ -919,7 +933,7 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
         ci_config_step = next(
             step
             for step in job.get("steps", [])
-            if step.get("uses") == "./.github/actions/load-aws-ci-env"
+            if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
         )
         if expected_ci_environment == test_pr_environment:
             ci_config_target_step = next(
@@ -977,9 +991,16 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
             assert (
                 step_with["aws-region"] == "${{ steps.ci_config.outputs.aws-region }}"
             )  # nosec B101
-            assert step_with["allowed-account-ids"] == (  # nosec B101
-                "${{ steps.ci_config.outputs.aws-account-id }}"
+            expected_account = (
+                (
+                    "${{ vars.AWS_PROD_ACCOUNT_ID }}"
+                    if job_name.startswith("prod")
+                    else "${{ vars.AWS_TEST_ACCOUNT_ID }}"
+                )
+                if workflow_name == "pulumi-pr-command-runner.yml"
+                else ("${{ steps.ci_config.outputs.aws-account-id }}")
             )
+            assert step_with["allowed-account-ids"] == expected_account
 
 
 def test_operations_alert_triage_uses_repo_python_runner() -> None:
@@ -1092,22 +1113,22 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     test_preview_ci_config = next(
         step
         for step in test_workflow["jobs"]["preview"]["steps"]
-        if step.get("uses") == "./.github/actions/load-aws-ci-env"
+        if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
     )
     test_iam_ci_config = next(
         step
         for step in test_workflow["jobs"]["iam_validation"]["steps"]
-        if step.get("uses") == "./.github/actions/load-aws-ci-env"
+        if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
     )
     test_apply_ci_config = next(
         step
         for step in test_workflow["jobs"]["apply"]["steps"]
-        if step.get("uses") == "./.github/actions/load-aws-ci-env"
+        if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
     )
     test_drift_ci_config = next(
         step
         for step in test_workflow["jobs"]["post_apply_drift"]["steps"]
-        if step.get("uses") == "./.github/actions/load-aws-ci-env"
+        if step.get("uses", "").endswith("/.github/actions/load-aws-ci-env")
     )
     prod_preview_lines = "\n".join(
         _run_lines(prod_workflow["jobs"]["preview"]["steps"])
@@ -1215,43 +1236,35 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
 
     triggers = _triggers(runner)
     assert triggers["repository_dispatch"]["types"] == ["pulumi-pr-command"]  # nosec B101
-    assert "workflow_dispatch" in triggers  # nosec B101
+    assert "workflow_dispatch" not in triggers  # nosec B101
     assert runner["concurrency"]["cancel-in-progress"] is False  # nosec B101
     assert runner["permissions"] == {  # nosec B101
         "contents": "read",
         "issues": "read",
         "pull-requests": "read",
     }
-    assert runner["jobs"]["preflight"]["permissions"] == {  # nosec B101
-        "issues": "write",
-        "pull-requests": "write",
+    assert runner["jobs"]["preflight"]["permissions"] == {
+        "contents": "read",
+        "actions": "read",
+        "issues": "read",
+        "pull-requests": "read",
+        "statuses": "write",
     }
     assert runner["jobs"]["comment_result"]["permissions"] == {  # nosec B101
         "issues": "write",
         "pull-requests": "write",
     }
 
-    assert "head_sha must be a full lowercase 40-character commit SHA" in (  # nosec B101
-        preflight_lines
-    )
-    assert "actual_head_sha" in preflight_lines  # nosec B101
-    assert "actual_head_repo" in preflight_lines  # nosec B101
-    assert "actual_pr_state" in preflight_lines  # nosec B101
-    assert (
-        preflight_lines.count(
-            'gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}"'
-        )
-        == 1
-    )  # nosec B101
-    assert "gh pr comment" not in preflight_lines  # nosec B101
-    assert "/issues/${pr_number}/comments" in preflight_lines  # nosec B101
-    assert "gh pr comment" not in comment_result_lines  # nosec B101
-    assert "/issues/${pr_number}/comments" in comment_result_lines  # nosec B101
-    assert "pull request is closed or merged" in preflight_lines  # nosec B101
-    assert "pull request head moved after the command was queued" in preflight_lines  # nosec B101
+    assert preflight_lines.strip() == "python3 scripts/pulumi_command_preflight.py"
+    assert "gh pr comment" not in comment_result_lines
+    assert "/issues/${pr_number}/comments" in comment_result_lines
 
     prod_preview = runner["jobs"]["prod_preview"]
-    assert prod_preview["needs"] == ["preflight", "test_post_apply_drift"]  # nosec B101
+    assert prod_preview["needs"] == [
+        "preflight",
+        "test_preview",
+        "test_post_apply_drift",
+    ]  # nosec B101
     assert (
         "needs.test_post_apply_drift.result == 'success'"
         in (  # nosec B101
@@ -1309,13 +1322,9 @@ def test_pr_command_runner_encodes_expected_plan_and_up_job_matrix() -> None:
     prod_apply_condition = jobs["prod_apply"]["if"]
     prod_drift_condition = jobs["prod_post_apply_drift"]["if"]
 
-    assert "needs.preflight.outputs.target_environment == 'test'" in (  # nosec B101
-        test_apply_condition
-    )
+    assert test_apply_condition.strip() == "needs.preflight.outputs.command == 'up'"
     assert "needs.preflight.outputs.command == 'up'" in test_apply_condition  # nosec B101
-    assert "needs.preflight.outputs.target_environment == 'prod'" in (  # nosec B101
-        test_apply_condition
-    )
+
     assert jobs["test_post_apply_drift"]["needs"] == [  # nosec B101
         "preflight",
         "test_apply",
@@ -1324,8 +1333,9 @@ def test_pr_command_runner_encodes_expected_plan_and_up_job_matrix() -> None:
     assert "needs.test_post_apply_drift.result == 'success'" in (  # nosec B101
         prod_preview_condition
     )
-    assert jobs["prod_preview"]["needs"] == [  # nosec B101
+    assert jobs["prod_preview"]["needs"] == [
         "preflight",
+        "test_preview",
         "test_post_apply_drift",
     ]
     assert "needs.preflight.outputs.command == 'up'" not in prod_preview_condition  # nosec B101
@@ -1339,6 +1349,7 @@ def test_pr_command_runner_encodes_expected_plan_and_up_job_matrix() -> None:
     assert jobs["comment_result"]["if"] == "always()"  # nosec B101
     assert set(jobs["comment_result"]["needs"]) == {  # nosec B101
         "preflight",
+        "platform_promotion",
         "test_preview",
         "test_destructive_diff",
         "test_iam_validation",
@@ -1379,34 +1390,23 @@ def test_pr_command_runner_privileged_jobs_checkout_preflight_sha() -> None:
 
 
 def test_pr_command_runner_dispatch_inputs_stay_narrow() -> None:
-    """Manual and repository dispatch must expose only supported PR commands."""
+    """Require a comment and immutable intake run, with no manual bypass."""
     runner = yaml.safe_load(
         (WORKFLOWS_DIR / "pulumi-pr-command-runner.yml").read_text(encoding="utf-8")
     )
-    triggers = _triggers(runner)
-    inputs = triggers["workflow_dispatch"]["inputs"]
-
-    assert triggers["repository_dispatch"]["types"] == ["pulumi-pr-command"]  # nosec B101
-    assert set(inputs) == {  # nosec B101
-        "pull_request_number",
-        "head_sha",
-        "target_environment",
-        "command",
+    assert _triggers(runner) == {
+        "repository_dispatch": {"types": ["pulumi-pr-command"]}
     }
-    assert all(input_spec["required"] is True for input_spec in inputs.values())  # nosec B101
-    assert inputs["pull_request_number"]["type"] == "string"  # nosec B101
-    assert inputs["head_sha"]["type"] == "string"  # nosec B101
-    assert inputs["target_environment"] == {  # nosec B101
-        "description": "Target environment",
-        "required": True,
-        "type": "choice",
-        "options": ["test", "prod"],
+    request_keys = {
+        key for key in runner["jobs"]["preflight"]["env"] if key.startswith("REQUEST_")
     }
-    assert inputs["command"] == {  # nosec B101
-        "description": "Pulumi command",
-        "required": True,
-        "type": "choice",
-        "options": ["plan", "up"],
+    assert request_keys == {
+        "REQUEST_PULL_REQUEST_NUMBER",
+        "REQUEST_HEAD_SHA",
+        "REQUEST_COMMAND",
+        "REQUEST_TARGET_ENVIRONMENT",
+        "REQUEST_COMMENT_ID",
+        "REQUEST_SOURCE_RUN_ID",
     }
 
 

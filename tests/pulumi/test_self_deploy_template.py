@@ -121,7 +121,7 @@ def test_credentials_come_only_from_oidc_role_assumption() -> None:
     # OIDC role assumption action is present.
     assert "aws-actions/configure-aws-credentials" in text  # nosec B101
     # The CI config secret is read through the shared OIDC config-read action.
-    assert "./.github/actions/load-aws-ci-env" in text  # nosec B101
+    assert "./.trusted/.github/actions/load-aws-ci-env" in text  # nosec B101
     # Role assumption is by ARN (role-to-assume), the OIDC mechanism.
     assert "role-to-assume:" in text  # nosec B101
 

@@ -61,9 +61,11 @@ def _governance_environment(reviewer_id: int = REVIEWER_ID) -> dict[str, object]
     return {
         "prevent_self_review": True,
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
+        "deployment_branch_policies": [{"name": "main", "type": "branch"}],
         "protection_rules": [
             {
                 "type": "required_reviewers",
@@ -81,7 +83,7 @@ def _governance_environment(reviewer_id: int = REVIEWER_ID) -> dict[str, object]
 def test_governance_environment_payload_single_kravalg_reviewer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The governance environment requires exactly @Kravalg, protected-branch only."""
+    """The governance environment requires exactly @Kravalg and explicit branches."""
     controls = load_script_module(monkeypatch, "_github_repository_controls")
 
     assert controls.GOVERNANCE_ENVIRONMENT == "governance"  # nosec B101
@@ -92,9 +94,10 @@ def test_governance_environment_payload_single_kravalg_reviewer(
         "prevent_self_review": True,
         "reviewers": [{"type": "User", "id": REVIEWER_ID}],
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
     }
     # Exactly one reviewer (sole @Kravalg).
     assert payload["reviewers"] == [{"type": "User", "id": REVIEWER_ID}]  # nosec B101
@@ -160,26 +163,26 @@ def test_governance_environment_verification_flags_extra_reviewer(
         environment, REVIEWER_ID
     )
     assert blockers == [  # nosec B101
-        "Governance environment does not require the configured reviewer."
+        "Governance environment does not require only the configured reviewer."
     ]
 
 
 def test_governance_environment_verification_flags_unrestricted_branches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A non-protected-branch governance environment raises a blocker."""
+    """An unrestricted governance environment raises a blocker."""
     controls = load_script_module(monkeypatch, "_github_repository_controls")
 
     environment = _governance_environment()
     environment["deployment_branch_policy"] = {
         "protected_branches": False,
-        "custom_branch_policies": True,
+        "custom_branch_policies": False,
     }
     blockers = controls.governance_environment_verification_blockers(
         environment, REVIEWER_ID
     )
     assert blockers == [  # nosec B101
-        "Governance environment does not restrict deployments to protected branches."
+        "Governance environment does not allow only the main branch."
     ]
 
 
@@ -208,7 +211,15 @@ def test_configure_emits_governance_environment_in_dry_run(
     monkeypatch.setattr(module, "_run_gh_api", _forbid_gh_api)
 
     assert (  # nosec B101
-        module.main(["--repo", "VilnaCRM-Org/bootstrap-infrastructure", "--dry-run"])
+        module.main(
+            [
+                "--promotion-app-id",
+                "12345",
+                "--repo",
+                "VilnaCRM-Org/bootstrap-infrastructure",
+                "--dry-run",
+            ]
+        )
         == 0
     )
     rendered = json.loads(capsys.readouterr().out)
@@ -217,9 +228,10 @@ def test_configure_emits_governance_environment_in_dry_run(
         "prevent_self_review": True,
         "reviewers": [{"type": "User", "id": REVIEWER_ID}],
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
     }
     assert rendered["governanceEnvironmentReviewerLogin"] == "Kravalg"  # nosec B101
 
@@ -243,11 +255,14 @@ def test_configure_emits_and_applies_governance_environment(
     monkeypatch.setattr(
         module,
         "_verify_applied_controls",
-        lambda repo, reviewer_id: {"governanceEnvironment": "governance"},
+        lambda repo, reviewer_id, **kwargs: {"governanceEnvironment": "governance"},
     )
 
     assert (  # nosec B101
-        module.main(["--repo", "example/repo", "--apply"]) == 0
+        module.main(
+            ["--promotion-app-id", "12345", "--repo", "example/repo", "--apply"]
+        )
+        == 0
     )
     rendered = json.loads(capsys.readouterr().out)
     assert rendered["governanceEnvironment"]["reviewers"][0]["id"] == (  # nosec B101
@@ -275,17 +290,22 @@ def test_verify_applied_controls_reports_governance_environment(
 ) -> None:
     """Applied-control verification reports the governance environment + reviewer."""
     module = load_script_module(monkeypatch, "configure_github_repository_controls")
-    ruleset = module.ruleset_payload()
+    ruleset = module.ruleset_payload(promotion_app_id=12345)
+    monkeypatch.setattr(module, "_evidence_environment_blockers", lambda repo: [])
 
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: ruleset)
     monkeypatch.setattr(
         module,
         "_run_gh_api",
-        lambda _args, **_kwargs: _governance_environment(),
+        lambda _args, **_kwargs: (
+            {"branch_policies": [{"name": "main", "type": "branch"}]}
+            if _args[0].endswith("/deployment-branch-policies")
+            else _governance_environment()
+        ),
     )
 
     verification = module._verify_applied_controls(  # noqa: SLF001
-        "example/repo", REVIEWER_ID
+        "example/repo", REVIEWER_ID, promotion_app_id=12345
     )
     assert verification["governanceEnvironment"] == "governance"  # nosec B101
     assert verification["governanceReviewerId"] == REVIEWER_ID  # nosec B101
@@ -296,7 +316,7 @@ def test_verify_applied_controls_blocks_on_weak_governance(
 ) -> None:
     """A self-review-allowed governance environment blocks applied verification."""
     module = load_script_module(monkeypatch, "configure_github_repository_controls")
-    ruleset = module.ruleset_payload()
+    ruleset = module.ruleset_payload(promotion_app_id=12345)
     weak = _governance_environment()
     weak["prevent_self_review"] = False
 
@@ -304,7 +324,9 @@ def test_verify_applied_controls_blocks_on_weak_governance(
     monkeypatch.setattr(module, "_run_gh_api", lambda _args, **_kwargs: weak)
 
     with pytest.raises(RuntimeError, match="Governance environment"):
-        module._verify_applied_controls("example/repo", REVIEWER_ID)  # noqa: SLF001
+        module._verify_applied_controls(
+            "example/repo", REVIEWER_ID, promotion_app_id=12345
+        )  # noqa: SLF001
 
 
 def _governance_status_run_text() -> str:
@@ -322,11 +344,9 @@ def test_required_status_checks_keep_existing_contexts(
 
     for context in LEGACY_REQUIRED_STATUS_CHECKS:
         assert context in controls.REQUIRED_STATUS_CHECKS  # nosec B101
-    # The required set is exactly the legacy contexts: the informational
-    # "Governance Apply" status is NOT a global required check (its merge gate is
-    # CODEOWNERS + the protected `governance` environment, not the ruleset).
-    assert set(controls.REQUIRED_STATUS_CHECKS) == set(  # nosec B101
-        LEGACY_REQUIRED_STATUS_CHECKS
+    # Command feedback stays informational; promotion is the new required proof.
+    assert set(controls.REQUIRED_STATUS_CHECKS) == (
+        set(LEGACY_REQUIRED_STATUS_CHECKS) | {"Governance Promotion"}
     )
 
 
@@ -345,3 +365,81 @@ def test_governance_runner_posts_governance_apply_status_context(
     assert "statuses/${HEAD_SHA}" in run_text  # nosec B101
     # The runner still posts the informational `Governance Apply` context.
     assert f'context="{GOVERNANCE_STATUS_CONTEXT}"' in run_text  # nosec B101
+
+
+def test_existing_weak_review_rules_are_hardened(monkeypatch):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    existing = {
+        "type": "pull_request",
+        "parameters": {
+            "required_approving_review_count": 3,
+            "required_reviewers": [{"reviewer_id": 123}],
+            "dismiss_stale_reviews_on_push": False,
+            "require_code_owner_review": False,
+            "require_last_push_approval": False,
+        },
+    }
+    payload = controls.ruleset_payload([existing], promotion_app_id=12345)
+    parameters = next(
+        rule["parameters"]
+        for rule in payload["rules"]
+        if rule["type"] == "pull_request"
+    )
+    assert parameters["required_approving_review_count"] == 3
+    assert parameters["required_reviewers"] == [{"reviewer_id": 123}]
+    for flag in (
+        "dismiss_stale_reviews_on_push",
+        "require_code_owner_review",
+        "require_last_push_approval",
+    ):
+        assert parameters[flag] is True
+        parameters[flag] = False
+        assert controls.ruleset_verification_blockers(payload, promotion_app_id=12345)
+        parameters[flag] = True
+
+
+def test_dry_run_provisions_disjoint_protected_command_environments(
+    monkeypatch, capsys
+):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    monkeypatch.setattr(module, "_github_user_id", lambda login: REVIEWER_ID)
+    monkeypatch.setattr(module, "_main_ruleset", lambda repo: None)
+    module.configure("example/repo", "Kravalg", apply=False, promotion_app_id=12345)
+    environments = json.loads(capsys.readouterr().out)[
+        "additionalProtectedEnvironments"
+    ]
+    assert set(environments) == {
+        "test",
+        "test-preview",
+        "prod-preview",
+        "governance-preview",
+    }
+    for payload in environments.values():
+        assert payload["prevent_self_review"] is True
+        assert payload["reviewers"] == [{"type": "User", "id": REVIEWER_ID}]
+
+
+def test_required_promotion_issuer_and_deployment_rules_are_preserved(monkeypatch):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    deployments = {
+        "type": "required_deployments",
+        "parameters": {
+            "required_deployment_environments": ["test", "prod"],
+        },
+    }
+    ruleset = controls.ruleset_payload([deployments], promotion_app_id=12345)
+    assert deployments in ruleset["rules"]
+    checks = next(
+        rule["parameters"]["required_status_checks"]
+        for rule in ruleset["rules"]
+        if rule["type"] == "required_status_checks"
+    )
+    promotion_check = next(
+        check for check in checks if check["context"] == "Governance Promotion"
+    )
+    assert promotion_check["integration_id"] == 12345
+    assert controls.ruleset_verification_blockers(ruleset, promotion_app_id=12345) == []
+    promotion_check.pop("integration_id")
+    assert "issuer" in " ".join(
+        controls.ruleset_verification_blockers(ruleset, promotion_app_id=12345)
+    )

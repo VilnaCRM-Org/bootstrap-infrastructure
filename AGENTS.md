@@ -48,56 +48,89 @@ in `eu-central-1`. `@Kravalg` is the sole approver (CODEOWNERS + the protected
 `plan`. Applies are IaC-only and saved-plan based — there is no human `pulumi up`
 in CI; the governance runner only replays a `make pulumi-up-plan` saved plan.
 
-Each step below is tagged **CODE** (a committable change a non-privileged agent
-makes, applied through the gated PR-comment flow) or **OPERATOR** (an action
-requiring live AWS/GitHub-admin credentials, performed by the operator per the
-runbook in `docs/governance-stack.md`). Onboarding a new service `X` that needs
-its `X-infrastructure` repo is config-only on the governance side: add the repo
-to `pulumi/repositories.governance.json` and run the multi-PR flow below. Never
-add `bootstrap-infrastructure` to `pulumi/repositories.governance.json` — it
-self-manages via the `github-ci-bootstrap` project, and listing it would
-double-manage the same IAM roles and CI secret.
+Each step below is tagged **CODE** (reviewed committable IaC/docs) or
+**OPERATOR** (an authorized live AWS/GitHub operation). The runbook is
+`docs/governance-stack.md`. Never add `bootstrap-infrastructure` to
+`pulumi/repositories.governance.json`: it self-manages through
+`github-ci-bootstrap`, and a catalog entry would double-manage its identities.
 
-1. **PR A — Grant deploy roles (governance) [CODE]:** add `X-infrastructure` to
-   `pulumi/repositories.governance.json` (config-only; `project` is the full repo
-   slug). `@Kravalg` reviews via CODEOWNERS, then comments `/pulumi test up`
-   followed by `/pulumi prod up` on the PR **[OPERATOR]**. Those `up` commands are
-   gated: the author must be `@Kravalg` and the apply jobs run under the protected
-   `environment: governance`. The governance stack provisions X's per-repo state
-   bucket, KMS key + alias, the preview/apply/drift trio, the config-read role,
-   and the repo-scoped OIDC trust. `@Kravalg` verifies the rendered roles, then
-   merges.
-2. **PR B — Bootstrap generic infra for `X-infrastructure` [CODE, gated apply]:**
-   stand up the generic baseline infrastructure for the repo using the deploy
-   roles created by PR A. It is applied through the same gated flow
-   (`/pulumi test up` then `/pulumi prod up`, `@Kravalg`-only, saved-plan).
-3. **Create `X-infrastructure` repo + push scaffold [OPERATOR]:** create
-   `VilnaCRM-Org/X-infrastructure` and push the scaffold modelled on
-   `pulumi/user-service-infrastructure/` (its `pulumi/` project plus
-   `.github/workflows/self-deploy.yml`). This is an org-admin action, not a
-   committable change in this repo.
-4. **PR C — Grant OIDC apply permissions [CODE, @Kravalg-gated]:** grant the
-   OIDC apply permissions that let `X-infrastructure`'s own GitHub Actions assume
-   its governance-provided apply role. Reviewed and merged by `@Kravalg` (gated
-   exactly like PR A/PR B).
+The real platform entrypoint uses `manage_control_resources=False`. Only
+`github-ci-bootstrap` owns platform CI secrets, the OIDC provider, CI deployment
+and configuration roles, legacy `PulumiAutomation`/`PulumiDeploy` roles, Config
+recorder IAM, and fixed platform state/log replication IAM. The platform reads
+those identities with `get()` and retains workload resources. Immutable control
+boundaries cap legacy role grants; platform apply cannot mutate these identities
+or their boundaries. Existing deployments require the reviewed ownership
+migration and encrypted state backups before the first operator apply; a code
+mode switch alone does not resolve existing duplicate state owners.
 
-After PR C merges, **X self-deploys** through its own
-`.github/workflows/self-deploy.yml`: maintainers comment `/pulumi test up` then
-`/pulumi prod up` on `X-infrastructure`'s PRs, and the workflow assumes only the
-governance-provided preview/apply/drift roles (no static or admin AWS keys) and
-applies via the saved-plan path. The roles, trust, buckets, and keys all live in
-`bootstrap-infrastructure`'s governance stack.
+First resolve the actual GitHub repository identity **[OPERATOR]**. Inspect an
+existing repository, or create the empty repository when absent, and record its
+immutable repository/owner identifiers and current OIDC subject contract. This
+precedes the catalog grant and boundary provisioning because trust must bind the
+real identity. Preserve existing content; do not guess IDs from a repository name.
 
-The governance merge gate is CODEOWNERS (`@Kravalg` review of every
-governance/IAM/policy path) plus the protected `governance` environment
-(`@Kravalg` approves the apply); `@Kravalg` merges after the gated test+prod
-apply succeeds. The governance apply runner triggers on `repository_dispatch`
-and posts a `Governance Apply` commit status to the PR head SHA as an
-informational signal of that gated-apply result — it is not a global required
-check. See `docs/governance-stack.md` for the full operator runbook
-(one-time bootstrap apply, protected-environment + branch-protection setup, repo
-variables, per-account OIDC-ARN pinning, repo create + push, gated real applies,
-and break-glass).
+Before a new repository's first governance apply, the operator must preview and
+apply the reviewed `github-ci-bootstrap` change that provisions its immutable
+service/replication boundaries and extends the dedicated governor's exact
+resource inventory. Those boundaries and runner policies are bootstrap-owned;
+the governor cannot widen them or modify its own roles. This is an explicit
+privileged prerequisite, including when a later repository is added by catalog
+configuration. Do not claim zero operator work for new delegation inventory.
+
+1. **PR A — Grant deploy roles (governance) [CODE]:** add `X-infrastructure`
+   to `pulumi/repositories.governance.json`; `project` is the full repo slug.
+   After the reviewed bootstrap boundary/inventory prerequisite **[OPERATOR]**,
+   A current write-permission maintainer other than `@Kravalg` requests
+   `/pulumi test up`, then `/pulumi prod up`; `@Kravalg` reviews and approves
+   the protected environment. Both apply jobs use `environment: governance` and replay
+   saved plans. The stack provisions X's state bucket, replica, KMS key/alias,
+   bounded preview/apply/drift roles, config-read roles and fixed CI secrets.
+   Merge only after current-head `Governance Promotion` proof and all required
+   reviews/checks pass.
+2. **PR B — Bootstrap generic infra for `X-infrastructure` [CODE, gated apply]:** prepare
+   the complete repository scaffold and reviewed baseline. Include its comment
+   intake, local CI action, Make/helper tooling, dependency files and deployment
+   workflow. The initial service boundary permits backend/configuration access
+   only; existing workload resources need explicit reviewed capability and
+   boundary extensions before they can be deployed. Do not apply a downstream
+   scaffold before its repo, variables and protected environments exist.
+3. **Publish scaffold to the identified repo [OPERATOR]:** use the repository
+   resolved before PR A and preserve any existing content. Push the reviewed,
+   complete scaffold modelled on
+   `pulumi/user-service-infrastructure/`. Configure the account-local variables
+   from governance outputs and the required protected environments. Prove all
+   local-action, helper and dependency references resolve in a clean checkout.
+4. **PR C — Grant OIDC apply permissions [CODE, @Kravalg-gated]:** review the
+   final service role capabilities and protected-environment OIDC subjects
+   against the actual service resource inventory. Apply the reviewed grants
+   through the same gated test-then-prod flow **[OPERATOR]**, then prove the
+   downstream comment intake, exact-SHA plan, saved-plan apply and drift path.
+
+After PR C, X may self-deploy through its own
+`.github/workflows/self-deploy.yml` only when the complete setup has passed the
+same-head test/prod smoke. Maintainers use `/pulumi test up` and
+`/pulumi prod up`; no static/admin credentials or platform IAM privileges are
+inherited. Service roles, state buckets and keys live in the governance stack;
+immutable boundaries and dedicated governance runners live in the operator
+bootstrap stack.
+
+The required **Governance Promotion** check enforces success before merge for
+governance-touching PRs. It is bound to the dedicated environment-protected GitHub App issuer and exact PR
+head, and requires successful test apply, test drift, prod apply and prod drift with an
+immutable proof artifact. Non-governance PRs receive a scope-based success.
+A test-only apply, plan, stale head or failed/skipped production cannot satisfy
+this promotion gate. CODEOWNERS review and protected environment approvals
+remain additional controls. Any informational `Governance Apply` status is not
+a substitute for the required promotion proof.
+
+The governance runner consumes only dedicated
+`AWS_GOVERNANCE_{TEST,PROD}_{PREVIEW,DRIFT,APPLY}_ROLE_ARN` variables and the
+matching account, region, backend and KMS metadata. Preview/drift run under
+`governance-preview`, apply under `governance`. Preview/drift can read the
+isolated governance backend but can write only Pulumi lock objects. Follow the
+operator runbook for provisioning, provider pinning, variables, real applies,
+metadata-only evidence and audited break-glass.
 
 ## Secret handling
 

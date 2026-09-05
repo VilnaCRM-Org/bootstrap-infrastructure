@@ -10,6 +10,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+import _github_evidence_environment as _evidence_environment
 import _github_repository_controls as _repository_controls
 
 REQUIRED_STATUS_CHECKS = _repository_controls.REQUIRED_STATUS_CHECKS
@@ -74,6 +75,12 @@ __all__ = (
 )
 
 DEFAULT_PROD_REVIEWER = "Kravalg"
+ADDITIONAL_PROTECTED_ENVIRONMENTS = (
+    "test",
+    "test-preview",
+    "prod-preview",
+    "governance-preview",
+)
 
 
 def _run_gh_api(
@@ -148,15 +155,71 @@ def _environment_verification_blockers(
         environment_payload = _run_gh_api(
             [f"repos/{repo}/environments/{environment_name}"]
         )
+        branch_response = _run_gh_api(
+            [f"repos/{repo}/environments/{environment_name}/deployment-branch-policies"]
+        )
     except RuntimeError as exc:
         return [f"{environment_name} environment was not readable: {exc}."]
     environment = (
-        environment_payload if isinstance(environment_payload, Mapping) else None
+        dict(environment_payload) if isinstance(environment_payload, Mapping) else None
     )
+    if environment is not None and isinstance(branch_response, Mapping):
+        environment["deployment_branch_policies"] = branch_response.get(
+            "branch_policies"
+        )
     return blocker_fn(environment, reviewer_id)
 
 
-def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
+def _configure_evidence_environment(repo: str) -> None:
+    """Converge the App-key environment to the main branch without wildcard access."""
+    endpoint = f"repos/{repo}/environments/{_evidence_environment.NAME}"
+    _run_gh_api(
+        [endpoint, "--method", "PUT"], input_payload=_evidence_environment.payload()
+    )
+    _configure_main_branch_policy(endpoint)
+
+
+def _configure_main_branch_policy(endpoint: str) -> None:
+    """Converge one environment to exactly main, removing wildcard and tag rules."""
+    response = _run_gh_api([f"{endpoint}/deployment-branch-policies"])
+    if not isinstance(response, dict):
+        raise ValueError("Environment branch-policy response must be an object.")
+    policies = response.get("branch_policies", [])
+    main_exists = False
+    for policy in policies:
+        if policy["name"] == "main" and policy["type"] == "branch":
+            main_exists = True
+        else:
+            _run_gh_api(
+                [
+                    f"{endpoint}/deployment-branch-policies/{policy['id']}",
+                    "--method",
+                    "DELETE",
+                ]
+            )
+    if not main_exists:
+        _run_gh_api(
+            [f"{endpoint}/deployment-branch-policies", "--method", "POST"],
+            input_payload={"name": "main", "type": "branch"},
+        )
+
+
+def _evidence_environment_blockers(repo: str) -> list[str]:
+    """Read back both the environment and its independently configured branch rules."""
+    endpoint = f"repos/{repo}/environments/{_evidence_environment.NAME}"
+    try:
+        environment = _run_gh_api([endpoint])
+        policies = _run_gh_api([f"{endpoint}/deployment-branch-policies"])
+    except RuntimeError as exc:
+        return [f"Evidence environment was not readable: {exc}"]
+    if not isinstance(environment, dict) or not isinstance(policies, dict):
+        return ["Evidence environment metadata must be JSON objects."]
+    return _evidence_environment.verification_blockers(environment, policies)
+
+
+def _verify_applied_controls(
+    repo: str, reviewer_id: int, *, promotion_app_id: int
+) -> dict[str, Any]:
     """Fetch and verify repository controls after an admin apply."""
     ruleset = _main_ruleset(repo)
     prod_environment_blockers = _environment_verification_blockers(
@@ -177,8 +240,24 @@ def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
         reviewer_id=reviewer_id,
         blocker_fn=_governance_environment_verification_blockers,
     )
+    additional_blockers = []
+    for environment_name in ADDITIONAL_PROTECTED_ENVIRONMENTS:
+        additional_blockers.extend(
+            _environment_verification_blockers(
+                repo,
+                environment_name=environment_name,
+                reviewer_id=reviewer_id,
+                blocker_fn=lambda payload, reviewer: (
+                    _protected_environment_verification_blockers(
+                        payload, reviewer, label="Command environment"
+                    )
+                ),
+            )
+        )
     blockers = [
-        *_ruleset_verification_blockers(ruleset),
+        *_evidence_environment_blockers(repo),
+        *additional_blockers,
+        *_ruleset_verification_blockers(ruleset, promotion_app_id=promotion_app_id),
         *prod_environment_blockers,
         *reconcile_environment_blockers,
         *governance_environment_blockers,
@@ -196,8 +275,30 @@ def _verify_applied_controls(repo: str, reviewer_id: int) -> dict[str, Any]:
     }
 
 
+def _existing_rules(existing: dict[str, Any] | None) -> list:
+    """Normalize the optional ruleset rules before preserving existing controls."""
+    rules = existing.get("rules", []) if existing else []
+    return rules if isinstance(rules, list) else []
+
+
+def _apply_ruleset(
+    repo: str, existing: dict[str, Any] | None, payload: dict[str, Any]
+) -> None:
+    """Update the discovered ruleset or create one when no identity exists."""
+    if existing and isinstance(existing.get("id"), int):
+        endpoint, method = f"repos/{repo}/rulesets/{existing['id']}", "PUT"
+    else:
+        endpoint, method = f"repos/{repo}/rulesets", "POST"
+    _run_gh_api([endpoint, "--method", method], input_payload=payload)
+
+
 def configure(
-    repo: str, reviewer: str, *, apply: bool, verify_only: bool = False
+    repo: str,
+    reviewer: str,
+    *,
+    apply: bool,
+    promotion_app_id: int,
+    verify_only: bool = False,
 ) -> None:
     """Print or apply the GitHub repository controls."""
     if apply and not _repo_admin_allowed(repo):
@@ -210,7 +311,11 @@ def configure(
     if verify_only:
         print(
             json.dumps(
-                {"verification": _verify_applied_controls(repo, reviewer_id)},
+                {
+                    "verification": _verify_applied_controls(
+                        repo, reviewer_id, promotion_app_id=promotion_app_id
+                    )
+                },
                 indent=2,
                 sort_keys=True,
             )
@@ -218,27 +323,18 @@ def configure(
         return
 
     existing = _main_ruleset(repo)
-    existing_rules = existing.get("rules", []) if existing else []
-    if not isinstance(existing_rules, list):
-        existing_rules = []
-
-    payloads: dict[str, Any] = {"ruleset": ruleset_payload(existing_rules)}
+    payloads: dict[str, Any] = {
+        "ruleset": ruleset_payload(
+            _existing_rules(existing), promotion_app_id=promotion_app_id
+        )
+    }
     if apply:
         payloads["prodEnvironment"] = prod_environment_payload(reviewer_id)
         payloads["operationsAlertReconcileEnvironment"] = (
             operations_alert_reconcile_environment_payload(reviewer_id)
         )
         payloads["governanceEnvironment"] = governance_environment_payload(reviewer_id)
-        if existing and isinstance(existing.get("id"), int):
-            _run_gh_api(
-                [f"repos/{repo}/rulesets/{existing['id']}", "--method", "PUT"],
-                input_payload=payloads["ruleset"],
-            )
-        else:
-            _run_gh_api(
-                [f"repos/{repo}/rulesets", "--method", "POST"],
-                input_payload=payloads["ruleset"],
-            )
+        _apply_ruleset(repo, existing, payloads["ruleset"])
         _run_gh_api(
             [f"repos/{repo}/environments/prod", "--method", "PUT"],
             input_payload=payloads["prodEnvironment"],
@@ -259,7 +355,22 @@ def configure(
             ],
             input_payload=payloads["governanceEnvironment"],
         )
-        payloads["verification"] = _verify_applied_controls(repo, reviewer_id)
+        for name in ADDITIONAL_PROTECTED_ENVIRONMENTS:
+            _run_gh_api(
+                [f"repos/{repo}/environments/{name}", "--method", "PUT"],
+                input_payload=protected_reviewer_environment_payload(reviewer_id),
+            )
+        for name in (
+            "prod",
+            OPERATIONS_ALERT_RECONCILE_ENVIRONMENT,
+            GOVERNANCE_ENVIRONMENT,
+            *ADDITIONAL_PROTECTED_ENVIRONMENTS,
+        ):
+            _configure_main_branch_policy(f"repos/{repo}/environments/{name}")
+        _configure_evidence_environment(repo)
+        payloads["verification"] = _verify_applied_controls(
+            repo, reviewer_id, promotion_app_id=promotion_app_id
+        )
     else:
         payloads["prodEnvironment"] = prod_environment_payload(reviewer_id)
         payloads["operationsAlertReconcileEnvironment"] = (
@@ -270,6 +381,22 @@ def configure(
         payloads["operationsAlertReconcileEnvironmentReviewerLogin"] = reviewer
         payloads["governanceEnvironmentReviewerLogin"] = reviewer
 
+    payloads["governanceEvidenceEnvironment"] = _evidence_environment.payload()
+    payloads["governanceEvidenceBranchPolicies"] = [{"name": "main", "type": "branch"}]
+    payloads["protectedEnvironmentBranchPolicies"] = {
+        name: [{"name": "main", "type": "branch"}]
+        for name in (
+            "prod",
+            OPERATIONS_ALERT_RECONCILE_ENVIRONMENT,
+            GOVERNANCE_ENVIRONMENT,
+            *ADDITIONAL_PROTECTED_ENVIRONMENTS,
+        )
+    }
+    payloads["promotionAppId"] = promotion_app_id
+    payloads["additionalProtectedEnvironments"] = {
+        name: protected_reviewer_environment_payload(reviewer_id)
+        for name in ADDITIONAL_PROTECTED_ENVIRONMENTS
+    }
     print(json.dumps(payloads, indent=2, sort_keys=True))
 
 
@@ -281,6 +408,12 @@ def build_parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument("--repo", required=True, help="Repository in owner/name form.")
+    parser.add_argument(
+        "--promotion-app-id",
+        required=True,
+        type=int,
+        help="Dedicated GitHub App ID allowed to publish promotion proof.",
+    )
     parser.add_argument(
         "--prod-reviewer",
         default=DEFAULT_PROD_REVIEWER,
@@ -316,6 +449,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.repo,
             args.prod_reviewer,
             apply=args.apply,
+            promotion_app_id=args.promotion_app_id,
             verify_only=args.verify_only,
         )
         return 0

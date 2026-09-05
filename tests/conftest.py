@@ -268,6 +268,13 @@ class TestMocks(pulumi.runtime.Mocks):
             }, []
         if token == "aws:iam/getRole:getRole":  # nosec B105
             return {"arn": f"arn:aws:iam::123456789012:role/{payload.get('name')}"}, []
+        if token == "aws:secretsmanager/getSecret:getSecret":  # nosec B105
+            return {
+                "arn": (
+                    "arn:aws:secretsmanager:us-east-1:123456789012:secret:"
+                    f"{payload.get('name')}-example"
+                )
+            }, []
         if token == "aws:s3/getBucket:getBucket":  # nosec B105
             return {"id": payload.get("bucket")}, []
         return {}, []

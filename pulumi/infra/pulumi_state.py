@@ -14,6 +14,7 @@ import pulumi
 from .bootstrap_settings import BootstrapSettings
 from .config import managed_repositories, settings
 from .managed_repository import ManagedRepository
+from .platform_iam import platform_boundary_arn
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
@@ -119,7 +120,7 @@ def _bucket_policy(arn: str) -> str:
 """
 
 
-def _replication_assume_role_policy(arn: str) -> str:
+def _replication_assume_role_policy(arn: str, account_id: str) -> str:
     """Build the S3 replication trust policy for a state bucket."""
     return json.dumps(
         {
@@ -129,7 +130,12 @@ def _replication_assume_role_policy(arn: str) -> str:
                     "Effect": "Allow",
                     "Principal": {"Service": "s3.amazonaws.com"},
                     "Action": "sts:AssumeRole",
-                    "Condition": {"StringEquals": {"aws:SourceArn": arn}},
+                    "Condition": {
+                        "StringEquals": {
+                            "aws:SourceArn": arn,
+                            "aws:SourceAccount": account_id,
+                        }
+                    },
                 }
             ],
         }
@@ -297,12 +303,16 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         log_delivery_dependencies: Sequence[pulumi.Resource] | None = None,
         settings: BootstrapSettings | None = None,
         replication_region: str | None = None,
+        replication_permissions_boundary: str | None = None,
+        manage_replication_role: bool = True,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize state buckets for all managed repositories."""
         super().__init__("bootstrap:pulumi:PulumiStateBuckets", name, None, opts)
 
         self._settings = settings or globals()["settings"]
+        self._replication_permissions_boundary = replication_permissions_boundary
+        self._manage_replication_role = manage_replication_role
         self.state_buckets: dict[str, pulumi.Output[str]] = {}
         self.backend_urls: dict[str, pulumi.Output[str]] = {}
         self.bucket_resources: dict[str, aws.s3.Bucket] = {}
@@ -414,7 +424,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             opts=_resource_options(
                 self,
                 depends_on=[
-                    replication_role_policy,
+                    *([replication_role_policy] if replication_role_policy else []),
                     bucket_versioning,
                     replica_bucket_versioning,
                 ],
@@ -563,13 +573,29 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         role_suffix: str,
         bucket: aws.s3.Bucket,
         replica_bucket: aws.s3.Bucket,
-    ) -> tuple[aws.iam.Role, aws.iam.RolePolicy]:
+    ) -> tuple[aws.iam.Role, aws.iam.RolePolicy | None]:
         """Create the replication IAM role and inline policy for one bucket pair."""
+        if not self._manage_replication_role:
+            return aws.iam.Role.get(
+                f"{component_name}-replication-role-{suffix}",
+                _replication_role_name(role_suffix),
+                opts=_resource_options(self),
+            ), None
+        account_id = aws.get_caller_identity().account_id
         replication_role = aws.iam.Role(
             f"{component_name}-replication-role-{suffix}",
             name=_replication_role_name(role_suffix),
+            permissions_boundary=(
+                self._replication_permissions_boundary
+                or platform_boundary_arn(
+                    account_id,
+                    self._settings,
+                    "state-replication",
+                )
+            ),
             assume_role_policy=apply_output(
-                bucket.arn, _replication_assume_role_policy
+                bucket.arn,
+                lambda arn: _replication_assume_role_policy(arn, account_id),
             ),
             tags=_state_bucket_tags(
                 "pulumi-state-replication",

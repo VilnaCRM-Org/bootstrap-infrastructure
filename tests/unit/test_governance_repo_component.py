@@ -5,8 +5,8 @@ the injectable ``region`` and ``oidc_provider_arn``), the ``RepoGovernance``
 component (state bucket + replica, KMS key + alias, CI-config secret +
 config-read role, the preview/apply/drift trio), the governance CI-config
 payload builder (no operations-triage requirement), and the
-``_governance_apply_subjects`` override (§5.1a, SECURITY-2): the governance
-apply role trusts ONLY ``environment:governance`` for BOTH the test and prod
+account-specific apply subjects: each service apply role trusts ONLY its
+protected test or prod environment, independently from central governance
 stacks.
 
 All resources render under the session Pulumi mocks (``tests/conftest.py``):
@@ -137,37 +137,6 @@ def _state_by_name(pulumi_mocks, name: str, *, start: int = 0) -> dict:
         if resource_name == name:
             return state
     raise AssertionError(f"resource {name!r} was not registered")
-
-
-# --- _governance_apply_subjects (§5.1a, SECURITY-2) -----------------------------
-
-
-def test_governance_apply_subjects_is_environment_governance_only_for_test():
-    """Test-stack governance apply trusts ONLY ``environment:governance``."""
-    subjects = governance._governance_apply_subjects("org/repo")
-
-    assert subjects == ["repo:org/repo:environment:governance"]  # nosec B101
-
-
-def test_governance_apply_subjects_is_environment_governance_only_for_prod():
-    """Prod-stack governance apply trusts ONLY ``environment:governance``.
-
-    The subject is independent of the stack/environment — it is fully
-    determined by the repository and the fixed governance environment, so the
-    same call shape covers both stacks.
-    """
-    subjects = governance._governance_apply_subjects("org/repo")
-
-    assert subjects == ["repo:org/repo:environment:governance"]  # nosec B101
-
-
-def test_governance_apply_subjects_excludes_branch_ref_and_environment_test():
-    """No bare branch-ref or ``environment:test`` subject leaks into apply trust."""
-    serialized = json.dumps(governance._governance_apply_subjects("org/repo"))
-
-    assert "ref:refs/heads/main" not in serialized  # nosec B101
-    assert "environment:test" not in serialized  # nosec B101
-    assert "pull_request" not in serialized  # nosec B101
 
 
 # --- _governance_payloads (no operations triage) --------------------------------
@@ -403,11 +372,48 @@ def test_repo_governance_renders_full_per_repo_surface(pulumi_mocks, monkeypatch
     }
 
 
+def test_all_governance_roles_require_bootstrap_owned_boundaries(
+    pulumi_mocks, monkeypatch
+):
+    """Deploy, config-read, and replica roles cannot exceed immutable ceilings."""
+    _no_existing_resources(monkeypatch)
+    for environment in ("test", "prod"):
+        start = len(pulumi_mocks.resources)
+        component = _build_repo_governance(
+            f"gov-boundary-{environment}",
+            repo=_synthetic_repo(),
+            settings=_governance_settings(environment),
+        )
+        _flush_component(component)
+        roles = [
+            (name, state)
+            for typ, name, state in _resources_created_since(pulumi_mocks, start)
+            if typ == "aws:iam/role:Role"
+        ]
+        assert len(roles) == 6  # trio, two config readers, one replication role
+        for name, state in roles:
+            family = (
+                "GovernanceReplicationBoundary"
+                if "replication-role" in name
+                else "GovernanceBoundary"
+            )
+            assert state["permissionsBoundary"] == (
+                f"arn:aws:iam::123456789012:policy/{family}-"
+                f"user-service-infrastructure-{environment}"
+            )
+        managed_policy_names = [
+            state["name"]
+            for typ, _, state in _resources_created_since(pulumi_mocks, start)
+            if typ == "aws:iam/policy:Policy"
+        ]
+        assert not any(name.startswith("Governance") for name in managed_policy_names)
+
+
 def test_repo_governance_apply_role_trust_is_environment_governance_only(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
-    """The rendered apply role trusts ONLY ``environment:governance`` (test)."""
+    """The rendered apply role trusts ONLY ``environment:test`` (test)."""
     _no_existing_resources(monkeypatch)
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
@@ -430,7 +436,7 @@ def test_repo_governance_apply_role_trust_is_environment_governance_only(
         "token.actions.githubusercontent.com:sub"
     ]
     assert subjects == [  # nosec B101
-        "repo:VilnaCRM-Org/user-service-infrastructure:environment:governance"
+        "repo:VilnaCRM-Org/user-service-infrastructure:environment:test"
     ]
 
 
@@ -438,7 +444,7 @@ def test_repo_governance_prod_apply_role_trust_is_environment_governance_only(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
-    """The rendered apply role trusts ONLY ``environment:governance`` (prod)."""
+    """The rendered apply role trusts ONLY ``environment:prod`` (prod)."""
     _no_existing_resources(monkeypatch)
     settings = _governance_settings("prod")
     repo = _synthetic_repo("user-service-infrastructure")
@@ -461,7 +467,7 @@ def test_repo_governance_prod_apply_role_trust_is_environment_governance_only(
         "token.actions.githubusercontent.com:sub"
     ]
     assert subjects == [  # nosec B101
-        "repo:VilnaCRM-Org/user-service-infrastructure:environment:governance"
+        "repo:VilnaCRM-Org/user-service-infrastructure:environment:prod"
     ]
 
 
@@ -495,6 +501,7 @@ def test_repo_governance_preview_role_keeps_existing_subjects(
         "repo:VilnaCRM-Org/user-service-infrastructure:ref:refs/heads/main",
         "repo:VilnaCRM-Org/user-service-infrastructure:pull_request",
         "repo:VilnaCRM-Org/user-service-infrastructure:environment:test",
+        "repo:VilnaCRM-Org/user-service-infrastructure:environment:test-preview",
     ]
 
 

@@ -80,7 +80,7 @@ def test_detect_governance_step_lists_changed_paths_via_script() -> None:
     assert "pulls/" in run_text  # nosec B101
     assert "/files" in run_text  # nosec B101
     assert "--paginate" in run_text  # nosec B101
-    assert ".[].filename" in run_text  # nosec B101
+    assert ".filename, (.previous_filename // empty)" in run_text  # nosec B101
     # Single source of truth for the governance path predicate.
     assert "scripts/governance_paths.py" in run_text  # nosec B101
     assert "--files-stdin" in run_text  # nosec B101

@@ -48,8 +48,9 @@ This repo **consumes, never creates** that infrastructure.
 - NEVER commit a static AWS access key id / secret access key (the long-lived
   IAM key pair), Pulumi access token, or passphrase. The committed stack files carry
   non-secret config only (`awskms://` secrets provider, no `secure:`/`encryptionsalt`).
-- NEVER request or attach `AdministratorAccess`. The governance apply role is already
-  least-privilege and scoped to this repo's resources.
+- NEVER request or attach `AdministratorAccess`. The service apply role is
+  backend-only and scoped to this repository. Workloads need a separate
+  reviewed capability and boundary change.
 
 ### 5. IaC-only apply (saved-plan path)
 - Applies go through the saved-plan path only: `make pulumi-up-plan`. Never
@@ -71,3 +72,16 @@ This repo **consumes, never creates** that infrastructure.
   into this repo, into stack config, or into workflow files.
 - Treat every value loaded from the CI-config secret as sensitive: never echo it,
   never write it to logs or PR comments.
+
+## Executable scaffold contract
+
+Generate this repository with scripts/scaffold_infrastructure_repository.py in the
+bootstrap source; never copy only the template directory. Initial permissions are
+backend-only. Real workloads require separately reviewed capability grants.
+Service apply environments are test/prod, distinct from test-preview/prod-preview.
+Initialize missing shared stacks only through trusted main Initialize Service Stack,
+never through a preview fallback or an unguarded local resource update.
+
+Apply comments and Initialize Service Stack dispatches must be requested by a
+maintainer other than sole environment reviewer Kravalg. Kravalg approves the
+protected environment; the original apply commenter cannot also be the approver.

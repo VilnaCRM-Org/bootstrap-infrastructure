@@ -1,12 +1,18 @@
 """Golden parity gate for the single-repo GitHub CI bootstrap render (NFR6).
 
-This module captures a frozen golden snapshot of the CURRENT single-repo
+This module captures a reviewed golden snapshot of the single-repo
 ``bootstrap-infrastructure`` render (role names, trust JSON, backend/read-only/
 apply policy JSON, ``Repository`` tag) and asserts the lifted per-repo helpers in
 ``ci_bootstrap`` reproduce it **byte-for-byte**. The fixture
 (``fixtures/github_ci_bootstrap_parity.json``) was captured BEFORE the
 ``_BootstrapBuildContext`` repo/project refactor (E1.S2, FEASIBILITY-4) and is the
 gating artifact for E1.S2-E1.S4b: any drift in the single-repo output fails here.
+The September 2026 security amendment changes trust and preview-state baselines:
+apply requires its environment; preview/drift accept separate preview environments.
+Branch and pull-request tokens must never authorize an apply. Resource names and
+apply policies now deny operator-owned IAM/config mutations and permit only
+bounded Backup IAM changes. Preview/drift can
+write backend locks only, protecting checkpoint integrity.
 
 It also pins the negative case (a second repo renders that repo's resources, never
 the first repo's) and the edge subject sets (apply+prod yields only
@@ -161,8 +167,7 @@ def test_other_repo_render_is_scoped_to_that_repo_not_the_first():
     statements = {statement["Sid"]: statement for statement in backend["Statement"]}
     assert statements["UsePulumiStateBucket"]["Resource"] == [  # nosec B101
         "arn:aws:s3:::pulumi-user-service-infrastructure-test-state",
-        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state/state/*",
-        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state/.pulumi/*",
+        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state/state/test/*",
     ]
     aliases = statements["UsePulumiSecretsProviderKey"]["Condition"][
         "ForAnyValue:StringLike"
@@ -179,6 +184,7 @@ def test_other_repo_render_is_scoped_to_that_repo_not_the_first():
         "repo:VilnaCRM-Org/user-service-infrastructure:ref:refs/heads/main",
         "repo:VilnaCRM-Org/user-service-infrastructure:pull_request",
         "repo:VilnaCRM-Org/user-service-infrastructure:environment:test",
+        "repo:VilnaCRM-Org/user-service-infrastructure:environment:test-preview",
     ]
     assert not any(_GOLDEN["repo"] in subject for subject in subjects)  # nosec B101
 
@@ -212,6 +218,7 @@ def test_non_prod_subject_set_is_branch_ref_and_environment_test():
         "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
         "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request",
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test-preview",
     ]
 
 

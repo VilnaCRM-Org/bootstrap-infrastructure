@@ -18,8 +18,13 @@ GovernanceStackArgs = infra.GovernanceStackArgs
 ManagedRepositoryCatalog = infra.ManagedRepositoryCatalog
 
 cfg = pulumi.Config()
+cfg.require("githubRepositoryId")
+cfg.require("githubRepositoryOwnerId")
 settings = BootstrapSettings.from_pulumi_config(cfg)
 catalog = ManagedRepositoryCatalog.from_settings(settings, cfg)
+for repository in catalog.repositories:
+    if repository.repository_id is None or repository.repository_owner_id is None:
+        raise ValueError("Governance catalog repositories require pinned GitHub IDs.")
 write_secret_values = cfg.get_bool("writeSecretValues")
 protect_resources = cfg.get_bool("protectResources")
 managed_secret_values = True if write_secret_values is None else write_secret_values
@@ -30,7 +35,7 @@ governance = GovernanceStack(
     args=GovernanceStackArgs(
         settings=settings,
         repository_catalog=catalog,
-        expected_account_id=cfg.get("awsAccountId"),
+        expected_account_id=cfg.require("awsAccountId"),
         oidc_provider_arn=cfg.get("githubOidcProviderArn"),
         region=cfg.get("region") or "eu-central-1",
         # PULUMI_DIR flows into each managed repo's generated CI-config payload

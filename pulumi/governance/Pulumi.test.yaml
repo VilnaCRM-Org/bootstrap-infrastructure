@@ -1,6 +1,8 @@
 # Initialize with:
 # pulumi -C pulumi/governance stack init test --secrets-provider "$PULUMI_SECRETS_PROVIDER"
 config:
+  governance:githubRepositoryId: "1098568429"
+  governance:githubRepositoryOwnerId: "114362548"
   aws:region: eu-central-1
   governance:awsAccountId: "891377212104"
   governance:costCenter: core

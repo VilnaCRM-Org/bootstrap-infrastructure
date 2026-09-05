@@ -57,8 +57,12 @@ extend_exclude = [".artifacts", ".pulumi-backend"]
 ignore_notebooks = true
 known_first_party = [
     "_github_environment_controls",
+    "_github_evidence_environment",
     "_github_repository_controls",
     "_pulumi_command_support",
+    "governance_paths",
+    "pulumi_command_preflight",
+    "pulumi_pr_comment",
     "_script_support",
     "_well_architected_alert_route_observation",
     "_well_architected_aws_alert_route",
@@ -85,6 +89,7 @@ known_first_party = [
     "app",
     "infra",
     "policy",
+    "reviewed_iam",
     "validate_repository_catalogs",
 ]
 
@@ -172,7 +177,7 @@ allowed_importers = ["policy.pack", "policy.guardrails"]
 name = "Policy layering remains one-way"
 type = "layers"
 containers = ["policy"]
-layers = ["pack", "guardrails", "config"]
+layers = ["pack", "guardrails", "reviewed_iam", "config"]
 
 [[tool.importlinter.contracts]]
 name = "Runtime guardrails stay free of Pulumi SDK bindings"

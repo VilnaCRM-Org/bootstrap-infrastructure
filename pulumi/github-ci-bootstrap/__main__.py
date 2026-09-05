@@ -17,11 +17,46 @@ GitHubCiBootstrap = infra.GitHubCiBootstrap
 GitHubCiBootstrapArgs = infra.GitHubCiBootstrapArgs
 
 cfg = pulumi.Config()
+cfg.require("githubRepositoryId")
+cfg.require("githubRepositoryOwnerId")
+expected_account_id = cfg.require("awsAccountId")
+aws = import_module("pulumi_aws")
+governance_module = import_module("infra.governance_automation")
+account_id = aws.get_caller_identity().account_id
+governance_module.assert_bootstrap_account(expected_account_id, account_id)
 settings = BootstrapSettings.from_pulumi_config(cfg)
 write_secret_values = cfg.get_bool("writeSecretValues")
 protect_resources = cfg.get_bool("protectResources")
 managed_secret_values = True if write_secret_values is None else write_secret_values
 protected_resources = True if protect_resources is None else protect_resources
+
+governance_catalog = infra.ManagedRepositoryCatalog.load_from_json_file(
+    cfg.get("governanceRepositoryCatalogPath")
+    or str(PULUMI_ROOT / "repositories.governance.json")
+)
+for repository in governance_catalog:
+    if repository.repository_id is None or repository.repository_owner_id is None:
+        raise ValueError("Governance catalog repositories require pinned GitHub IDs.")
+
+platform_catalog = infra.ManagedRepositoryCatalog.load_from_json_file(
+    cfg.get("repositoryCatalogPath") or str(PULUMI_ROOT / "repositories.bootstrap.json")
+)
+for repository in platform_catalog:
+    if repository.repository_id is None or repository.repository_owner_id is None:
+        raise ValueError("Platform catalog repositories require pinned GitHub IDs.")
+governance_region = aws.get_region().region
+partition = aws.get_partition().partition
+platform_iam = import_module("infra.platform_iam")
+platform_controls = import_module("infra.platform_control_iam")
+boundaries = platform_iam.PlatformIamBoundaries(
+    "platform-iam-boundaries",
+    settings=settings,
+    account_id=account_id,
+    region=governance_region,
+    repositories=platform_catalog,
+)
+boundary_arns = {purpose: policy.arn for purpose, policy in boundaries.policies.items()}
+control_boundary_arn = boundary_arns["control"]
 
 bootstrap = GitHubCiBootstrap(
     "github-ci-bootstrap",
@@ -32,8 +67,47 @@ bootstrap = GitHubCiBootstrap(
         pulumi_secrets_provider=cfg.get("pulumiSecretsProvider"),
         write_secret_values=managed_secret_values,
         protect_resources=protected_resources,
+        control_permissions_boundary=control_boundary_arn,
+        manage_oidc_provider=True,
+    ),
+    opts=pulumi.ResourceOptions(depends_on=[boundaries]),
+)
+
+platform_control_iam = platform_controls.PlatformControlIam(
+    "platform-control-iam",
+    settings=settings,
+    repositories=platform_catalog,
+    account_id=account_id,
+    partition=partition,
+    region=governance_region,
+    provider_arn=bootstrap.oidc_provider_arn,
+    boundary_arns=boundary_arns,
+    inline_policy_names=cfg.get_object("platformInlinePolicyNames"),
+    opts=pulumi.ResourceOptions(depends_on=[boundaries, bootstrap]),
+)
+
+# The operator bootstrap owns its own runner roles and immutable service
+# boundaries. The delegated governance stack cannot change these resources.
+governance_automation = governance_module.GovernanceAutomation(
+    "governance-automation",
+    args=governance_module.GovernanceAutomationArgs(
+        settings=settings,
+        repositories=governance_catalog,
+        account_id=account_id,
+        partition=aws.get_partition().partition,
+        region=governance_region,
+        provider_arn=bootstrap.oidc_provider_arn,
+        backend_url=cfg.get("governanceBackendUrl")
+        or f"s3://{settings.state_bucket_name()}/governance",
+        secrets_provider=cfg.get("governanceSecretsProvider")
+        or (
+            f"awskms://alias/pulumi-platform-bootstrap-{settings.environment}"
+            f"?region={governance_region}"
+        ),
+        protect_resources=protected_resources,
     ),
 )
+pulumi.export("governanceGithubVariables", governance_automation.github_variables)
 
 pulumi.export("environment", settings.environment)
 pulumi.export("oidcProviderArn", bootstrap.oidc_provider_arn)

@@ -14,6 +14,7 @@ These checks are intended to be marked as required in branch protection:
 
 | Check | Local command | Purpose |
 | --- | --- | --- |
+| `Governance Promotion` | Trusted GitHub evidence app | Governance changes require the same PR commit to pass test and prod apply plus drift; other changes pass scope verification |
 | `Ruff` | `make test-ruff` | Lint, import-order, formatting drift, and McCabe complexity |
 | `Ty` | `make test-ty` | Fast static typing diagnostics |
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
@@ -109,6 +110,13 @@ artifact, so apply jobs use a plan whose preview has already passed guardrails.
 selected stack, backend URL, commit SHA, plan hash, and preview hash. `make
 pulumi-up-plan` refuses to apply when the manifest is missing, stale, from a
 different commit or backend, or when the saved plan hash no longer matches.
+The commit identity must be nonempty, and the recorded Pulumi project and policy
+pack directories must match the apply job. Local saved-plan commands must set
+`PULUMI_COMMIT_SHA` to the reviewed commit, with `PULUMI_EXPECTED_SHA` set to that
+same commit when applying. A failed saved-plan apply never cancels a stack lock
+or retries as a direct apply. Investigate the owner of an existing lock and
+resolve it through the documented recovery procedure before generating a fresh
+plan; an error message alone does not prove that a lock is stale.
 Test and production applies remain saved-plan-only. If a saved plan cannot be
 applied, the workflow fails instead of switching to a direct apply path; rerun
 preview and plan generation after fixing the underlying backend, KMS, or plan
@@ -195,9 +203,12 @@ semantic validation for the rendered policy documents.
 The guardrail workflows are OIDC-first. They do not use long-lived
 `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` repository secrets.
 
-Privileged jobs read account-specific values directly from fixed AWS Secrets
-Manager JSON secrets, not from GitHub Environment variables, repository-wide
-variables, Pulumi Cloud, or Pulumi ESC. AWS Secrets Manager is the vault and
+Platform deployment jobs read account-specific runtime values directly from fixed
+AWS Secrets Manager JSON secrets, rather than GitHub Environment variables,
+Pulumi Cloud, or Pulumi ESC. Their repository variables identify the narrowly
+scoped configuration loader roles. The separate governance runner uses dedicated
+nonsecret repository variables and protected `governance-preview`/`governance`
+environments, as described in [the governance runbook](governance-stack.md). AWS Secrets Manager is the vault and
 source of truth for account-local values. The fixed CI suffixes are:
 
 | CI suffix | Use |
@@ -220,14 +231,18 @@ secret in the owning AWS account:
 | `prod` | `/bootstrap-infrastructure/ci/prod` |
 
 The Pulumi `test` and `prod` stacks manage these AWS Secrets Manager secret
-containers and the account-local `GitHubCiConfigRead-*` roles. Pulumi does not
-create a `SecretVersion` or own the JSON values. Maintainers populate and rotate
-the JSON values in AWS Secrets Manager after the stack creates the containers.
+containers and the account-local `GitHubCiConfigRead-*` roles. The isolated
+`github-ci-bootstrap` project creates encrypted `SecretVersion` payloads by
+default; maintainers populate values manually only when `writeSecretValues` is
+disabled or a repair is required.
 The workflow loader assumes the matching `GitHubCiConfigRead-*` role through
 GitHub OIDC, calls `aws secretsmanager get-secret-value`, parses JSON, validates
 the required keys, and exports only validated environment variables. Do not store
-AWS account IDs, role ARNs, backend URLs, stack lists, or secrets-provider URIs
-in Pulumi config, GitHub Environment variables, workflow logs, or docs.
+secret payloads, credentials, or decrypted values in tracked Pulumi config,
+workflow logs, or docs. Explicit nonsecret account IDs in bootstrap stack config
+are required to reject the wrong AWS identity before resource allocation.
+Nonsecret role/backend/provider metadata may be recorded in the documented
+bootstrap outputs and governance variables; this does not permit secret values.
 
 The required AWS CI config `environmentVariables` are:
 
@@ -484,8 +499,10 @@ trust fixed repository refs or pull requests plus fixed workflow names:
 }
 ```
 
-Production apply is the only privileged path that should include a GitHub
-Environment subject:
+For the platform deployment roles, production apply is the path that uses a
+GitHub Environment subject. The separate governance roles use their own protected
+`governance-preview` and `governance` subjects; do not reuse their trust policies
+for the platform roles. The platform production subject is:
 
 ```text
 repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod
@@ -588,8 +605,14 @@ manually or through another tool to re-read the active `main` ruleset plus the
 `GITHUB_REPOSITORY_CONTROLS_MODE=--apply`, the helper writes the desired
 controls and then runs the same verification. Verification exits non-zero unless
 the required checks, pull-request review/thread-resolution rules,
-protected-branch deployment policy, self-review prevention, and configured
-reviewer are visible in GitHub metadata for both protected environments.
+exactly one custom deployment rule for the `main` branch, disabled administrator
+bypass, self-review prevention, and the sole configured reviewer are visible in
+GitHub metadata for every protected command environment. The verifier reads
+deployment branch rules separately from the environment settings. Do not use
+"Protected branches only": GitHub allows every branch under that setting when
+the repository has no classic branch protection rules, even when a ruleset
+protects `main`. Tags, wildcard rules, extra branches, and missing branch-rule
+metadata fail verification.
 
 ## Current limitations
 

@@ -1,0 +1,30 @@
+services:
+  pulumi:
+    build:
+      context: .
+      target: dev
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AWS_REGION
+      - AWS_DEFAULT_REGION
+      - PULUMI_BACKEND_URL
+      - PULUMI_SECRETS_PROVIDER
+      - PULUMI_PREVIEW_STACKS
+      - PULUMI_DRIFT_STACKS
+      - PULUMI_COMMIT_SHA
+      - PULUMI_EXPECTED_SHA
+      - PULUMI_DIR
+      - PULUMI_SKIP_UPDATE_CHECK
+      - INIT_ENVIRONMENT
+      - INIT_ACCOUNT_ID
+      - GITHUB_ACTIONS
+      - GITHUB_REPOSITORY
+      - GITHUB_REF
+      - GITHUB_EVENT_NAME
+      - GITHUB_SHA
+      - PYTHONPATH=/workspace/pulumi

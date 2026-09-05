@@ -38,6 +38,7 @@ jobs:
         with:
           environment: test
           config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: test preview
           required-keys: >-
@@ -165,6 +166,7 @@ jobs:
         with:
           environment: test
           config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: test IAM validation
           required-keys: >-
@@ -193,6 +195,7 @@ jobs:
 
   apply:
     name: Test Apply
+    environment: test
     runs-on: ubuntu-latest
     needs:
       - destructive_diff
@@ -215,6 +218,7 @@ jobs:
         with:
           environment: test
           config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: test apply
           required-keys: >-
@@ -277,6 +281,7 @@ jobs:
         with:
           environment: test
           config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: test drift
           required-keys: >-

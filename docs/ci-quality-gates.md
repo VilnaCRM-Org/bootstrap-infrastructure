@@ -15,6 +15,7 @@ These checks should be required in branch protection:
 
 | Check | Local command | Purpose |
 | --- | --- | --- |
+| `Governance Promotion` | Trusted GitHub evidence app | Governance changes require the same PR commit to pass test and prod apply plus drift; other changes pass scope verification |
 | `Ruff` | `make test-ruff` | Lint, import-order, formatting drift, and McCabe complexity |
 | `Ty` | `make test-ty` | Fast static typing diagnostics |
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
@@ -23,7 +24,7 @@ These checks should be required in branch protection:
 | `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
 | `Coverage` | `make test-coverage` after unit, policy, and integration suites | Combined branch-coverage gate; uses `make test-integration-unprivileged` when AWS-backed automation tests are not enabled |
 | `Local Battery` | `make ci-pr` or `make ci-pr-unprivileged` | Dockerized PR battery including image build and local gate composition |
-| `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
+| `Mutation` | `make test-mutation` | Component mutmut plus mandatory semantic security-boundary mutation |
 | `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
 | `Secrets Scan` | `make test-secrets` | Gitleaks against tracked Git content |
 | `Dependency Audit` | `make test-deps-security` | `pip-audit --strict` for known Python vulnerabilities |
@@ -48,6 +49,18 @@ run `make ci-pr-unprivileged`, which swaps in
 `make test-iam-validation-unprivileged`. `make test-iam-validation` remains a
 separate privileged step and is intentionally excluded from `make ci-pr`;
 `make ci` adds the slower required mutation layer on top.
+
+`make test-mutation` preserves the existing `pulumi/app` mutmut gate and then
+runs `scripts/run_security_mutation_tests.py`. The second stage removes individual
+request provenance checks, immutable identity pins, promotion proof predicates,
+and IAM state/condition boundaries in an isolated source copy. Its baseline must
+pass, and every enumerated mutant must cause a behavioral test failure. Survivors,
+collection/setup errors, and timeouts fail the gate; the threshold is zero.
+The tests block unmocked network and subprocess access, including a mutant that
+would otherwise reach a real GitHub write. Reports and the exact mutation ledger
+are retained under `.artifacts/security-mutation/`. This is explicit semantic
+boundary mutation, not exhaustive mutation coverage of those modules or live
+OIDC proof. Run the helper directly with `uv run python` for the focused stage.
 
 ## Scheduled quality monitoring
 

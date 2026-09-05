@@ -52,8 +52,10 @@ def author_is_authorized(
     governance_touched: bool = False,
     action: str = "",
 ) -> bool:
-    if governance_touched and action == "up":
-        return author_login.strip().lower() == KRAVALG_LOGIN.lower()
+    if action == "up":
+        login = author_login.strip().lower()
+        if not login or login == KRAVALG_LOGIN.lower():
+            return False
     return author_association.strip().upper() in AUTHORIZED_ASSOCIATIONS
 
 

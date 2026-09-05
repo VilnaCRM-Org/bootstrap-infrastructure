@@ -1,6 +1,16 @@
 # Initialize with:
 # pulumi -C pulumi/github-ci-bootstrap stack init test --secrets-provider "$PULUMI_SECRETS_PROVIDER"
 config:
+  github-ci-bootstrap:platformInlinePolicyNames:
+    PulumiAutomation-bootstrap-infrastructure-test:
+      github-automation-policy: github-automation-policy
+    PulumiDeploy-bootstrap-infrastructure:
+      github-oidc-policy-bootstrap-infrastructure: github-oidc-policy-bootstrap-infrastructure-5646833
+  github-ci-bootstrap:platformLoggingReplicationRoleName: central-logging-replication-role-705bb42
+  github-ci-bootstrap:platformBackupRoleName: s3-backup-role-ac43c65
+  github-ci-bootstrap:githubRepositoryId: "1098568429"
+  github-ci-bootstrap:githubRepositoryOwnerId: "114362548"
+  github-ci-bootstrap:awsAccountId: "891377212104"
   aws:region: eu-central-1
   github-ci-bootstrap:costCenter: core
   github-ci-bootstrap:criticality: high
@@ -11,6 +21,7 @@ config:
   github-ci-bootstrap:loggingPrefix: company
   github-ci-bootstrap:manageCostAllocationTags: "true"
   github-ci-bootstrap:owner: platform
+  github-ci-bootstrap:pulumiBackendUrl: s3://pulumi-bootstrap-infrastructure-test-state/state/test
   github-ci-bootstrap:pulumiSecretsProvider: awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1
   github-ci-bootstrap:repoSlug: bootstrap-infrastructure
   github-ci-bootstrap:retentionClass: standard

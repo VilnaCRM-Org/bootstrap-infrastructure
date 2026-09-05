@@ -6,6 +6,8 @@ import datetime as dt
 import re
 from dataclasses import dataclass
 
+from .github_identity import normalize_identity
+
 _VALID_LIFECYCLE_STATES = frozenset({"active", "planned", "deprecated", "archived"})
 _LAST_REVIEWED_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}", re.ASCII)
 
@@ -87,6 +89,8 @@ class ManagedRepository:
     lifecycle_state: str = "active"
     last_reviewed: str | None = None
     expected_environments: int = 2
+    repository_id: str | None = None
+    repository_owner_id: str | None = None
 
     def __post_init__(self) -> None:
         normalized_name = _required_string(
@@ -108,6 +112,9 @@ class ManagedRepository:
         normalized_lifecycle_state = _lifecycle_state(self.lifecycle_state)
         normalized_last_reviewed = _last_reviewed(self.last_reviewed)
         expected_environments = _expected_environments(self.expected_environments)
+        repository_id, repository_owner_id = normalize_identity(
+            self.repository_id, self.repository_owner_id
+        )
 
         object.__setattr__(self, "name", normalized_name)
         object.__setattr__(self, "default_branch", normalized_branch)
@@ -116,6 +123,8 @@ class ManagedRepository:
         object.__setattr__(self, "lifecycle_state", normalized_lifecycle_state)
         object.__setattr__(self, "last_reviewed", normalized_last_reviewed)
         object.__setattr__(self, "expected_environments", expected_environments)
+        object.__setattr__(self, "repository_id", repository_id)
+        object.__setattr__(self, "repository_owner_id", repository_owner_id)
 
     @property
     def project_name(self) -> str:

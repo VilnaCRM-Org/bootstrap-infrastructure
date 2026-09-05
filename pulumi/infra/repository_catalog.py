@@ -121,6 +121,8 @@ class ManagedRepositoryCatalog:
                         name=settings.repo,
                         default_branch=settings.github_branch or "main",
                         project=settings.repo,
+                        repository_id=settings.github_repository_id,
+                        repository_owner_id=settings.github_repository_owner_id,
                     )
                 ]
             )
@@ -254,6 +256,8 @@ class ManagedRepositoryCatalog:
                 lifecycle_state=lifecycle_state,
                 last_reviewed=last_reviewed,
                 expected_environments=expected_environments,
+                repository_id=item.get("repositoryId"),
+                repository_owner_id=item.get("repositoryOwnerId"),
             )
         except ValueError as exc:
             raise _metadata_validation_error(name, exc) from exc

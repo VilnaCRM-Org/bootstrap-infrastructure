@@ -146,10 +146,10 @@ def test_runbook_step_six_repo_create_and_push_is_operator() -> None:
     runbook = _runbook()
 
     assert (  # nosec B101
-        "Step 6 — Create user-service-infrastructure + push the scaffold [OPERATOR]"
+        "Step 6 — Publish the scaffold to the identified repository [OPERATOR]"
         in runbook
     )
-    assert "gh repo create VilnaCRM-Org/user-service-infrastructure" in runbook  # nosec B101
+    assert "scripts/scaffold_infrastructure_repository.py" in runbook  # nosec B101
     assert "pulumi/user-service-infrastructure/" in runbook  # nosec B101
 
 
@@ -158,7 +158,8 @@ def test_runbook_step_seven_gated_real_applies_is_operator() -> None:
     runbook = _runbook()
 
     assert (  # nosec B101
-        "Step 7 — Gated real applies via @Kravalg PR comments [OPERATOR]" in runbook
+        "Step 7 — Maintainer request and separate @Kravalg approval [OPERATOR]"
+        in runbook
     )
     assert "/pulumi test up" in runbook  # nosec B101
     assert "/pulumi prod up" in runbook  # nosec B101
@@ -188,8 +189,8 @@ def test_runbook_enumerates_eight_operator_steps() -> None:
         "[OPERATOR]",
         "Step 5 — Set GitHub repo variables from the governance githubVariables "
         "output [OPERATOR]",
-        "Step 6 — Create user-service-infrastructure + push the scaffold [OPERATOR]",
-        "Step 7 — Gated real applies via @Kravalg PR comments [OPERATOR]",
+        "Step 6 — Publish the scaffold to the identified repository [OPERATOR]",
+        "Step 7 — Maintainer request and separate @Kravalg approval [OPERATOR]",
         "Step 8 — Audited break-glass if @Kravalg is unavailable [OPERATOR]",
     ]
 

@@ -13,25 +13,41 @@ account-local CI values. GitHub stores only non-secret metadata needed to find
 and read those values:
 
 - `AWS_TEST_REGION`
+- `AWS_TEST_ACCOUNT_ID`
 - `AWS_TEST_PR_CI_CONFIG_ROLE_ARN`
 - `AWS_TEST_CI_CONFIG_ROLE_ARN`
 - `AWS_PROD_REGION`
+- `AWS_PROD_ACCOUNT_ID`
 - `AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN`
 - `AWS_PROD_CI_CONFIG_ROLE_ARN`
 
-The role ARNs are not secret. Each role is trusted by GitHub OIDC and scoped to
-one fixed CI secret suffix.
+The role ARNs and account IDs are not secret. Each role is trusted by GitHub OIDC
+and scoped to one fixed CI secret suffix. The loader checks the independently
+configured account ID before assuming the role, then verifies the returned CI
+configuration belongs to that same account.
 
-The dedicated governance apply runner (`.github/workflows/pulumi-governance.yml`)
-reads its own non-secret repo variables, because its apply jobs run under
-`environment: governance` and cannot assume the `environment:test`/`prod`-trusted
-CI-config roles above (see `docs/governance-stack.md`, Step 1b/Step 5):
+The dedicated governance runner (`.github/workflows/pulumi-governance.yml`)
+uses its own nonsecret repository variables. Preview and drift use the protected
+`governance-preview` environment; apply uses protected `governance`. Dedicated
+roles in each account are provisioned by the operator-owned bootstrap stack.
+Platform CI-config roles keep their own fixed workflow/ref or production
+approval trust and are not interchangeable with these governance roles.
+See [the governance runbook](governance-stack.md) for provisioning order.
 
-- `AWS_GOVERNANCE_TEST_APPLY_ROLE_ARN` / `AWS_GOVERNANCE_PROD_APPLY_ROLE_ARN`
-  (per-account governance automation role ARNs, trust = `environment:governance`)
-- `AWS_GOVERNANCE_TEST_ACCOUNT_ID` / `AWS_GOVERNANCE_PROD_ACCOUNT_ID`
-- `AWS_GOVERNANCE_TEST_BACKEND_URL` / `AWS_GOVERNANCE_PROD_BACKEND_URL`
-- `AWS_GOVERNANCE_TEST_SECRETS_PROVIDER` / `AWS_GOVERNANCE_PROD_SECRETS_PROVIDER`
+Every command environment allows exactly the `main` branch through a custom
+deployment branch rule. Administrator bypass is disabled; the sole reviewer is
+`Kravalg`, with self-review prevented. The evidence signing-key environment also
+allows only `main`, with no reviewer gate because it publishes verified results
+after the protected apply jobs. Verify the actual deployment branch rules through
+the separate GitHub API endpoint; the environment mode alone is insufficient.
+
+For each account prefix `AWS_GOVERNANCE_TEST_` and `AWS_GOVERNANCE_PROD_`, set:
+
+- `PREVIEW_ROLE_ARN`, `DRIFT_ROLE_ARN`, and `APPLY_ROLE_ARN`
+- `ACCOUNT_ID` and `REGION`
+- `BACKEND_URL` and `SECRETS_PROVIDER`
+
+Use the bootstrap stack's `governanceGithubVariables` output for these values.
 
 ## Fixed Secret IDs
 

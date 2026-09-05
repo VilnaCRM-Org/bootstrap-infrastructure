@@ -8,7 +8,9 @@
       "owner": "platform",
       "lifecycleState": "active",
       "lastReviewed": "2026-04-27",
-      "expectedEnvironments": 2
+      "expectedEnvironments": 2,
+      "repositoryId": "1098568429",
+      "repositoryOwnerId": "114362548"
     }
   ]
 }

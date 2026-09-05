@@ -97,6 +97,7 @@ def test_mutation_target_ci_config_secret_contract():
     assert ci_config._github_actions_subjects(settings, "test") == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test-preview",
     ]
 
     policy = json.loads(
@@ -201,7 +202,10 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
     )
     assert trust_policy["Statement"][0]["Condition"]["StringEquals"][  # nosec B101
         "token.actions.githubusercontent.com:sub"
-    ] == ["repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"]
+    ] == [
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod-preview",
+    ]
     assert ci_config._is_missing_lookup_error(  # nosec B101
         "reading KMS Alias: empty result",
         (),
@@ -459,7 +463,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     )
 
     assert "s3:*" not in actions  # nosec B101
-    assert "kms:*" not in actions  # nosec B101
+    assert "kms:*" not in allow_actions  # nosec B101
     assert "backup:*" not in actions  # nosec B101
     assert "ecr:*" not in actions  # nosec B101
     assert "events:*" not in actions  # nosec B101
@@ -472,9 +476,9 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "s3:CreateBucket" in actions  # nosec B101
     assert "s3:GetAccelerateConfiguration" in actions  # nosec B101
     assert "kms:CreateKey" in actions  # nosec B101
-    assert "kms:Decrypt" not in actions  # nosec B101
-    assert "kms:Encrypt" not in actions  # nosec B101
-    assert "kms:GenerateDataKey" not in actions  # nosec B101
+    assert "kms:Decrypt" not in allow_actions  # nosec B101
+    assert "kms:Encrypt" not in allow_actions  # nosec B101
+    assert "kms:GenerateDataKey" not in allow_actions  # nosec B101
     assert "backup:CreateBackupPlan" in actions  # nosec B101
     assert "ecr:CreateRepository" in actions  # nosec B101
     assert "ecr:DescribeImages" in actions  # nosec B101
@@ -482,23 +486,22 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "cloudtrail:CreateTrail" in actions  # nosec B101
     assert "sns:CreateTopic" in actions  # nosec B101
     assert "sqs:CreateQueue" in actions  # nosec B101
-    assert "secretsmanager:CreateSecret" in actions  # nosec B101
+    assert "secretsmanager:CreateSecret" not in allow_actions  # nosec B101
     assert "secretsmanager:GetSecretValue" not in allow_actions  # nosec B101
     assert "secretsmanager:PutSecretValue" not in allow_actions  # nosec B101
     assert "secretsmanager:UpdateSecret" not in allow_actions  # nosec B101
     assert "sqs:ReceiveMessage" not in allow_actions  # nosec B101
     assert "sqs:DeleteMessage" not in allow_actions  # nosec B101
     assert "budgets:ModifyBudget" in actions  # nosec B101
-    assert "budgets:DescribeBudget" in actions  # nosec B101
+    assert "budgets:ViewBudget" in actions  # nosec B101
     assert "ce:CreateAnomalyMonitor" in actions  # nosec B101
     assert "billing:GetBillingViewData" in actions  # nosec B101
     assert "guardduty:CreateDetector" in actions  # nosec B101
     assert "securityhub:EnableSecurityHub" in actions  # nosec B101
     assert "config:PutConfigurationRecorder" in actions  # nosec B101
     assert statements["ManageBootstrapS3"]["Resource"] == [  # nosec B101
-        "arn:aws:s3:::pulumi-*-test-state",
-        "arn:aws:s3:::pulumi-*-test-state-*-replication",
-        "arn:aws:s3:::pulumi-*-*-replication",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure--c1194dce-eu-west-1-replication",
         "arn:aws:s3:::company-central-logs-*-test",
         "arn:aws:s3:::company-central-logs-*-test-*-replication",
         "arn:aws:s3:::bootstrap-*-test-cloudtrail",
@@ -509,15 +512,15 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "Effect": "Allow",
         "Action": ["iam:PassRole"],
         "Resource": [
-            "arn:aws:iam::123456789012:role/PulumiStateRepl-*",
-            "arn:aws:iam::123456789012:role/central-logging-replication-role-*",
+            "arn:aws:iam::123456789012:role/PulumiStateRepl-bootstrap-infrastructure-test",
+            "arn:aws:iam::123456789012:role/central-logging-replication-role-test",
         ],
         "Condition": {"StringEquals": {"iam:PassedToService": "s3.amazonaws.com"}},
     }
     pass_role_statements = [
         statement
         for statement in statements.values()
-        if statement["Action"] == ["iam:PassRole"]
+        if statement["Action"] == ["iam:PassRole"] and statement["Effect"] == "Allow"
     ]
     assert {statement["Sid"] for statement in pass_role_statements} == {  # nosec B101
         "PassBootstrapRolesToBackup",
@@ -550,51 +553,11 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert statements["ManageBootstrapSqs"]["Resource"] == [  # nosec B101
         "arn:aws:sqs:*:123456789012:bootstrap-test-operations-alerts"
     ]
-    assert statements["CreateBootstrapCiSecrets"] == {  # nosec B101
-        "Sid": "CreateBootstrapCiSecrets",
-        "Effect": "Allow",
-        "Action": ["secretsmanager:CreateSecret", "secretsmanager:TagResource"],
-        "Resource": [
-            (
-                "arn:aws:secretsmanager:*:123456789012:secret:"
-                "/bootstrap-infrastructure/ci/test-pr-*"
-            ),
-            (
-                "arn:aws:secretsmanager:*:123456789012:secret:"
-                "/bootstrap-infrastructure/ci/test-*"
-            ),
-        ],
-        "Condition": {
-            "StringEquals": {
-                "aws:RequestTag/Environment": "test",
-                "aws:RequestTag/Purpose": "ci-configuration",
-            }
-        },
-    }
-    assert (
-        statements["ManageBootstrapCiSecrets"]["Resource"]
-        == (  # nosec B101
-            statements["CreateBootstrapCiSecrets"]["Resource"]
-        )
-    )
-    assert statements["ManageBootstrapCiSecrets"]["Condition"] == {  # nosec B101
-        "StringEquals": {
-            "aws:ResourceTag/Environment": "test",
-            "aws:ResourceTag/Purpose": "ci-configuration",
-        }
-    }
-    assert (
-        "secretsmanager:GetResourcePolicy"
-        in statements["ManageBootstrapCiSecrets"][  # nosec B101
-            "Action"
-        ]
-    )
-    assert (
-        "secretsmanager:GetSecretValue"
-        not in statements["ManageBootstrapCiSecrets"][  # nosec B101
-            "Action"
-        ]
-    )
+    assert "CreateBootstrapCiSecrets" not in statements
+    assert "ManageBootstrapCiSecrets" not in statements
+    assert statements["ReadPlatformCiSecrets"]["Action"] == [
+        "secretsmanager:DescribeSecret"
+    ]
     assert statements["DenyBootstrapSqsConsumption"] == {  # nosec B101
         "Sid": "DenyBootstrapSqsConsumption",
         "Effect": "Deny",
@@ -649,10 +612,14 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
             "aws:ResourceTag/Purpose": "cost-anomaly-subscription",
         }
     }
-    assert (  # nosec B101
-        "arn:aws:iam::123456789012:role/PulumiAutomation-"
-        "bootstrap-infrastructure-test" in statements["ManageBootstrapIam"]["Resource"]
-    )
+    assert "ManageBootstrapIam" not in statements
+    assert statements["ManageBoundedBackup"]["Condition"] == {
+        "StringEquals": {
+            "iam:PermissionsBoundary": (
+                "arn:aws:iam::123456789012:policy/PlatformBoundary-backup-test"
+            )
+        }
+    }
     assert (  # nosec B101
         statements["ManageBootstrapKmsKeys"]["Condition"]["StringEquals"]
         == {
@@ -701,14 +668,12 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert {
         statement["Sid"]
         for statement in policy["Statement"]
-        if statement["Resource"] == "*"
+        if statement.get("Resource") == "*" and statement["Effect"] == "Allow"
     } == {
         "CreateBootstrapKmsKeys",
         "CreateBootstrapCostAnomalyMonitor",
         "CreateBootstrapCostAnomalySubscription",
-        "CreateBootstrapOidcProvider",
         "CreateBootstrapGuardDutyDetector",
-        "ListBootstrapOidcProviders",
         "ListBootstrapKmsAliases",
         "ManageBootstrapSnsSubscriptions",
         "ManageAwsConfigDeliveryChannel",
@@ -716,6 +681,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
         "ReadCloudTrailTrailsForRefresh",
         "ReadGuardDutyDetectors",
         "ReadIdentity",
+        "ReadPlatformIam",
     }  # nosec B101
 
 

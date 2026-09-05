@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import pulumi_aws as aws
@@ -13,6 +13,8 @@ import pulumi
 
 from .bootstrap_settings import BootstrapSettings
 from .config import settings as default_settings
+from .github_identity import expand_subjects, identity_conditions
+from .platform_iam import _role_families, platform_iam_statements
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
@@ -41,16 +43,28 @@ _AUTOMATION_MANAGED_POLICY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
         "iam-policy",
         frozenset(
             {
-                "ManageBootstrapIam",
-                "CreateBootstrapOidcProvider",
-                "ListBootstrapOidcProviders",
-                "CreateBootstrapCiSecrets",
-                "ManageBootstrapCiSecrets",
                 "PassBootstrapRolesToBackup",
                 "PassBootstrapRolesToConfig",
                 "PassBootstrapRolesToS3Replication",
+                "ReadPlatformCiSecrets",
                 "ManageBootstrapBackup",
                 "ManageBootstrapEcr",
+            }
+        ),
+    ),
+    (
+        "iam-boundary-policy",
+        frozenset(
+            {
+                "ReadPlatformIam",
+                "TagPlatformServiceRoles",
+                "ManageBoundedBackup",
+                "DenyControllerIamChanges",
+                "DenyPolicyAndIdentityProviderChanges",
+                "DenyAdministratorAttachments",
+                "DenyControllerPassRole",
+                "DenyRuntimeSecrets",
+                "DenyForeignRepositoryKms",
             }
         ),
     ),
@@ -286,7 +300,6 @@ _AUTOMATION_SECRETS_MANAGER_RESOURCE_ACTIONS = (
 )
 _AUTOMATION_BUDGETS_ACTIONS = (
     "budgets:ModifyBudget",
-    "budgets:DescribeBudget",
     "budgets:ViewBudget",
     "budgets:ListTagsForResource",
     "budgets:TagResource",
@@ -448,10 +461,15 @@ def _automation_s3_resources(settings: BootstrapSettings) -> list[str]:
         settings.logging_prefix,
         "loggingPrefix",
     )
+    from .pulumi_state import _replica_bucket_name
+
+    state_bucket = settings.state_bucket_name()
+    replica_bucket = _replica_bucket_name(
+        state_bucket, settings.replication_region or "eu-west-1"
+    )
     bucket_names = (
-        f"pulumi-*-{environment}-state",
-        f"pulumi-*-{environment}-state-*-replication",
-        "pulumi-*-*-replication",
+        state_bucket,
+        replica_bucket,
         f"{logging_prefix}-central-logs-*-{environment}",
         f"{logging_prefix}-central-logs-*-{environment}-*-replication",
         f"bootstrap-*-{environment}-cloudtrail",
@@ -466,7 +484,7 @@ def _automation_kms_alias_resources(
     """Scope KMS alias management to Pulumi secrets aliases for this environment."""
     environment = _environment_resource_part(settings).replace(".", "-")
     return [
-        f"arn:aws:kms:*:{account_id}:alias/pulumi-*-{environment}-secrets",
+        f"arn:aws:kms:*:{account_id}:alias/pulumi-{settings.repo}-{environment}-secrets",
         f"arn:aws:kms:*:{account_id}:alias/bootstrap-{environment}-operations-alerting",
         f"arn:aws:kms:*:{account_id}:alias/bootstrap-{environment}-operations-cloudtrail",
     ]
@@ -483,49 +501,6 @@ def _automation_ecr_resources(
     """Scope ECR management to this repository's runner image repository."""
     repository_name = settings.runner_ecr_repository_name(repo_name)
     return [f"arn:aws:ecr:*:{account_id}:repository/{repository_name}"]
-
-
-def _automation_iam_role_resources(
-    account_id: str, settings: BootstrapSettings, repo_name: str
-) -> list[str]:
-    """Scope IAM management to deterministic bootstrap role families."""
-    automation_role_name = settings.automation_role_name(repo_name)
-    operations_alert_triage_role_name = _operations_alert_triage_role_name(
-        settings,
-        repo_name,
-    )
-    repo_part = settings.sanitize_bucket_component(repo_name, "repoSlug").replace(
-        ".",
-        "-",
-    )
-    ci_config_read_role_resources = []
-    for suffix in _automation_ci_secret_suffixes(settings.environment):
-        safe_suffix = settings.sanitize_bucket_component(
-            suffix,
-            "ciConfigSuffix",
-        ).replace(".", "-")
-        ci_config_read_role_resources.append(
-            f"arn:aws:iam::{account_id}:role/GitHubCiConfigRead-"
-            f"{repo_part}-{safe_suffix}"
-        )
-    return [
-        f"arn:aws:iam::{account_id}:role/{automation_role_name}",
-        f"arn:aws:iam::{account_id}:role/{operations_alert_triage_role_name}",
-        *ci_config_read_role_resources,
-        f"arn:aws:iam::{account_id}:role/PulumiDeploy-*",
-        f"arn:aws:iam::{account_id}:role/PulumiStateRepl-*",
-        f"arn:aws:iam::{account_id}:role/central-logging-replication-role-*",
-        f"arn:aws:iam::{account_id}:role/s3-backup-role-*",
-        f"arn:aws:iam::{account_id}:role/aws-config-recorder-role-*",
-    ]
-
-
-def _automation_s3_replication_role_resources(account_id: str) -> list[str]:
-    """Scope PassRole to deterministic S3 replication role families."""
-    return [
-        f"arn:aws:iam::{account_id}:role/PulumiStateRepl-*",
-        f"arn:aws:iam::{account_id}:role/central-logging-replication-role-*",
-    ]
 
 
 def _automation_backup_resources(account_id: str) -> list[str]:
@@ -661,15 +636,12 @@ def _automation_assume_role_policy(
     repo_name: str,
     production_environment: str,
     branch_name: str,
+    *,
+    repository_id: str | None = None,
+    owner_id: str | None = None,
 ) -> str:
     """Build the GitHub OIDC trust policy for fixed workflow automation."""
-    if production_environment == "prod":
-        subjects = [f"repo:{org}/{repo_name}:environment:{production_environment}"]
-    else:
-        subjects = [
-            f"repo:{org}/{repo_name}:ref:refs/heads/{branch_name}",
-            f"repo:{org}/{repo_name}:pull_request",
-        ]
+    subjects = [f"repo:{org}/{repo_name}:environment:{production_environment}"]
     return json.dumps(
         {
             "Version": "2012-10-17",
@@ -683,7 +655,13 @@ def _automation_assume_role_policy(
                             "token.actions.githubusercontent.com:aud": (
                                 "sts.amazonaws.com"
                             ),
-                            "token.actions.githubusercontent.com:sub": subjects,
+                            "token.actions.githubusercontent.com:sub": expand_subjects(
+                                subjects, f"{org}/{repo_name}", repository_id, owner_id
+                            ),
+                            **identity_conditions(repository_id, owner_id),
+                            "token.actions.githubusercontent.com:ref": (
+                                f"refs/heads/{branch_name}"
+                            ),
                             "token.actions.githubusercontent.com:repository": (
                                 f"{org}/{repo_name}"
                             ),
@@ -722,6 +700,9 @@ def _operations_alert_triage_assume_role_policy(
     org: str,
     repo_name: str,
     branch_name: str,
+    *,
+    repository_id: str | None = None,
+    owner_id: str | None = None,
 ) -> str:
     """Build the OIDC trust policy for the alert triage workflow only."""
     return json.dumps(
@@ -737,8 +718,17 @@ def _operations_alert_triage_assume_role_policy(
                             "token.actions.githubusercontent.com:aud": (
                                 "sts.amazonaws.com"
                             ),
-                            "token.actions.githubusercontent.com:sub": (
-                                f"repo:{org}/{repo_name}:ref:refs/heads/{branch_name}"
+                            "token.actions.githubusercontent.com:sub": expand_subjects(
+                                [
+                                    f"repo:{org}/{repo_name}:ref:refs/heads/{branch_name}"
+                                ],
+                                f"{org}/{repo_name}",
+                                repository_id,
+                                owner_id,
+                            ),
+                            **identity_conditions(repository_id, owner_id),
+                            "token.actions.githubusercontent.com:ref": (
+                                f"refs/heads/{branch_name}"
                             ),
                             "token.actions.githubusercontent.com:repository": (
                                 f"{org}/{repo_name}"
@@ -775,15 +765,8 @@ def _automation_policy(
     account_id: str, settings: BootstrapSettings, repo_name: str
 ) -> str:
     """Return the policy used by GitHub automation for bootstrap operations."""
-    github_oidc_provider_arn = (
-        f"arn:aws:iam::{account_id}:oidc-provider/token.actions.githubusercontent.com"
-    )
-    iam_role_resources = _automation_iam_role_resources(account_id, settings, repo_name)
-    ci_secret_resources = _automation_ci_secret_resources(
-        account_id,
-        settings,
-        repo_name,
-    )
+    if settings.repo != repo_name:
+        settings = replace(settings, repo=repo_name)
     kms_purposes = ["pulumi-secrets", "operations-alerting", "operations-cloudtrail"]
     kms_tag_condition = {
         "StringEquals": {
@@ -795,18 +778,6 @@ def _automation_policy(
         "StringEquals": {
             AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
             AWS_REQUEST_TAG_PURPOSE_KEY: kms_purposes,
-        }
-    }
-    ci_secret_request_tag_condition = {
-        "StringEquals": {
-            AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
-            AWS_REQUEST_TAG_PURPOSE_KEY: "ci-configuration",
-        }
-    }
-    ci_secret_resource_tag_condition = {
-        "StringEquals": {
-            AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
-            AWS_RESOURCE_TAG_PURPOSE_KEY: "ci-configuration",
         }
     }
     kms_alias_condition = {
@@ -901,66 +872,20 @@ def _automation_policy(
                     "Resource": _automation_kms_key_resources(account_id),
                     "Condition": kms_tag_condition,
                 },
+                *platform_iam_statements(account_id, settings, repo_name),
                 {
-                    "Sid": "ManageBootstrapIam",
+                    "Sid": "ReadPlatformCiSecrets",
                     "Effect": "Allow",
-                    "Action": [
-                        "iam:AttachRolePolicy",
-                        "iam:CreateRole",
-                        "iam:DeleteOpenIDConnectProvider",
-                        "iam:DeleteRole",
-                        "iam:DeleteRolePolicy",
-                        "iam:DetachRolePolicy",
-                        "iam:GetOpenIDConnectProvider",
-                        "iam:GetRole",
-                        "iam:GetRolePolicy",
-                        "iam:ListAttachedRolePolicies",
-                        "iam:ListRolePolicies",
-                        "iam:ListRoleTags",
-                        "iam:PutRolePolicy",
-                        "iam:TagOpenIDConnectProvider",
-                        "iam:TagRole",
-                        "iam:UntagOpenIDConnectProvider",
-                        "iam:UntagRole",
-                        "iam:UpdateAssumeRolePolicy",
-                        "iam:UpdateOpenIDConnectProviderThumbprint",
-                    ],
-                    "Resource": [
-                        *iam_role_resources,
-                        github_oidc_provider_arn,
-                    ],
-                },
-                {
-                    "Sid": "CreateBootstrapOidcProvider",
-                    "Effect": "Allow",
-                    "Action": ["iam:CreateOpenIDConnectProvider"],
-                    "Resource": "*",
-                },
-                {
-                    "Sid": "ListBootstrapOidcProviders",
-                    "Effect": "Allow",
-                    "Action": ["iam:ListOpenIDConnectProviders"],
-                    "Resource": "*",
-                },
-                {
-                    "Sid": "CreateBootstrapCiSecrets",
-                    "Effect": "Allow",
-                    "Action": list(_AUTOMATION_SECRETS_MANAGER_CREATE_ACTIONS),
-                    "Resource": ci_secret_resources,
-                    "Condition": ci_secret_request_tag_condition,
-                },
-                {
-                    "Sid": "ManageBootstrapCiSecrets",
-                    "Effect": "Allow",
-                    "Action": list(_AUTOMATION_SECRETS_MANAGER_RESOURCE_ACTIONS),
-                    "Resource": ci_secret_resources,
-                    "Condition": ci_secret_resource_tag_condition,
+                    "Action": ["secretsmanager:DescribeSecret"],
+                    "Resource": _automation_ci_secret_resources(
+                        account_id, settings, repo_name
+                    ),
                 },
                 {
                     "Sid": "PassBootstrapRolesToBackup",
                     "Effect": "Allow",
                     "Action": ["iam:PassRole"],
-                    "Resource": [f"arn:aws:iam::{account_id}:role/s3-backup-role-*"],
+                    "Resource": [_role_families(account_id, settings)["backup"]],
                     "Condition": {
                         "StringEquals": {"iam:PassedToService": "backup.amazonaws.com"}
                     },
@@ -970,7 +895,8 @@ def _automation_policy(
                     "Effect": "Allow",
                     "Action": ["iam:PassRole"],
                     "Resource": [
-                        f"arn:aws:iam::{account_id}:role/aws-config-recorder-role-*"
+                        f"arn:aws:iam::{account_id}:role/aws-config-recorder-role-"
+                        f"{settings.environment}"
                     ],
                     "Condition": {
                         "StringEquals": {"iam:PassedToService": "config.amazonaws.com"}
@@ -980,7 +906,10 @@ def _automation_policy(
                     "Sid": "PassBootstrapRolesToS3Replication",
                     "Effect": "Allow",
                     "Action": ["iam:PassRole"],
-                    "Resource": _automation_s3_replication_role_resources(account_id),
+                    "Resource": [
+                        _role_families(account_id, settings)["state-replication"],
+                        _role_families(account_id, settings)["log-replication"],
+                    ],
                     "Condition": {
                         "StringEquals": {"iam:PassedToService": "s3.amazonaws.com"}
                     },
@@ -1383,12 +1312,14 @@ def _create_automation_lifecycle_policy(
 def _create_automation_role(
     context: AutomationResourceContext,
     provider_arn: pulumi.Input[str],
+    permissions_boundary: pulumi.Input[str] | None = None,
 ) -> aws.iam.Role:
     """Create or adopt the GitHub Actions automation role."""
     role_name = context.settings.automation_role_name(context.repo_name)
     return aws.iam.Role(
         f"{context.name}-role",
         name=role_name,
+        permissions_boundary=permissions_boundary,
         assume_role_policy=apply_output(
             pulumi.Output.from_input(provider_arn),
             lambda arn: _automation_assume_role_policy(
@@ -1397,6 +1328,8 @@ def _create_automation_role(
                 context.repo_name,
                 context.settings.environment,
                 context.settings.github_branch or "main",
+                repository_id=context.settings.github_repository_id,
+                owner_id=context.settings.github_repository_owner_id,
             ),
         ),
         tags=_automation_tags(
@@ -1416,8 +1349,20 @@ def _create_automation_managed_policy(
     context: AutomationResourceContext,
     policy_name: str,
     policy_document: str,
+    *,
+    adopt_existing: bool = False,
 ) -> aws.iam.Policy:
     """Create one customer-managed policy for automation permissions."""
+    import_id = None
+    if adopt_existing:
+        arn = (
+            f"arn:{aws.get_partition().partition}:iam::"
+            f"{aws.get_caller_identity().account_id}:policy/{policy_name}"
+        )
+        if _aws_lookup_exists(
+            lambda: aws.iam.get_policy(arn=arn), missing_markers=("NoSuchEntity",)
+        ):
+            import_id = arn
     return aws.iam.Policy(
         policy_name,
         name=policy_name,
@@ -1428,7 +1373,9 @@ def _create_automation_managed_policy(
             context.repo_project,
             "pulumi-automation-policy",
         ),
-        opts=context.opts,
+        opts=pulumi.ResourceOptions.merge(
+            context.opts, pulumi.ResourceOptions(import_=import_id)
+        ),
     )
 
 
@@ -1437,13 +1384,17 @@ def _attach_automation_managed_policy(
     policy_name: str,
     role: aws.iam.Role,
     policy: aws.iam.Policy,
+    *,
+    import_id: str | None = None,
 ) -> aws.iam.RolePolicyAttachment:
     """Attach a managed automation policy to the automation role."""
     return aws.iam.RolePolicyAttachment(
         f"{policy_name}-attachment",
         role=role.name,
         policy_arn=policy.arn,
-        opts=pulumi.ResourceOptions(parent=parent, depends_on=[policy]),
+        opts=pulumi.ResourceOptions(
+            parent=parent, depends_on=[policy], import_=import_id
+        ),
     )
 
 
@@ -1453,19 +1404,26 @@ def _manage_automation_role_policy_attachments_exclusively(
     role: aws.iam.Role,
     managed_policies: list[aws.iam.Policy],
     policy_attachments: list[aws.iam.RolePolicyAttachment],
+    *,
+    import_id: str | None = None,
 ) -> aws.iam.RolePolicyAttachmentsExclusive:
     """Remove unmanaged managed policies from the automation role."""
     return aws.iam.RolePolicyAttachmentsExclusive(
         f"{resource_name}-managed-policy-attachments-exclusive",
         role_name=role.name,
         policy_arns=[policy.arn for policy in managed_policies],
-        opts=pulumi.ResourceOptions(parent=parent, depends_on=policy_attachments),
+        opts=pulumi.ResourceOptions(
+            parent=parent, depends_on=policy_attachments, import_=import_id
+        ),
     )
 
 
 def _create_automation_role_policies(
     context: AutomationResourceContext,
     role: aws.iam.Role,
+    *,
+    adopt_existing: bool = False,
+    preferred_inline_policy_name: str | None = None,
 ) -> tuple[
     aws.iam.RolePolicy,
     list[aws.iam.Policy],
@@ -1480,12 +1438,31 @@ def _create_automation_role_policies(
     )
     inline_policy_suffix, inline_policy_document = policy_documents[0]
     inline_policy_name = f"{context.name}-{inline_policy_suffix}"
+    role_name = context.settings.automation_role_name(context.repo_name)
+    existing_inline = None
+    if adopt_existing:
+        from .iam.adoption import inline_policy_name as existing_inline_name
+
+        existing_inline = existing_inline_name(
+            role_name,
+            inline_policy_name,
+            **(
+                {"preferred_name": preferred_inline_policy_name}
+                if preferred_inline_policy_name is not None
+                else {}
+            ),
+        )
     inline_policy = aws.iam.RolePolicy(
         inline_policy_name,
-        name=inline_policy_name,
+        name=existing_inline or inline_policy_name,
         role=role.id,
         policy=inline_policy_document,
-        opts=context.opts,
+        opts=pulumi.ResourceOptions.merge(
+            context.opts,
+            pulumi.ResourceOptions(
+                import_=f"{role_name}:{existing_inline}" if existing_inline else None
+            ),
+        ),
     )
 
     managed_policies: list[aws.iam.Policy] = []
@@ -1496,14 +1473,26 @@ def _create_automation_role_policies(
             context,
             policy_name,
             policy_document,
+            adopt_existing=adopt_existing,
         )
         managed_policies.append(policy)
+        attachment_import = None
+        if adopt_existing:
+            from .iam.adoption import attachment_exists
+
+            policy_arn = (
+                f"arn:{aws.get_partition().partition}:iam::"
+                f"{aws.get_caller_identity().account_id}:policy/{policy_name}"
+            )
+            if attachment_exists(role_name, policy_arn):
+                attachment_import = f"{role_name}/{policy_arn}"
         policy_attachments.append(
             _attach_automation_managed_policy(
                 context.parent,
                 policy_name,
                 role,
                 policy,
+                import_id=attachment_import,
             )
         )
 
@@ -1514,6 +1503,9 @@ def _create_automation_role_policies(
             role,
             managed_policies,
             policy_attachments,
+            import_id=(
+                role_name if adopt_existing and _iam_role_exists(role_name) else None
+            ),
         )
     )
 
@@ -1530,6 +1522,7 @@ def _create_operations_alert_triage_role(
     provider_arn: pulumi.Input[str],
     *,
     depends_on: list[pulumi.Resource],
+    adopt_existing: bool = False,
 ) -> tuple[aws.iam.Role, aws.iam.RolePolicy]:
     """Create the dedicated GitHub Actions role that drains alert messages."""
     role_name = _operations_alert_triage_role_name(context.settings, context.repo_name)
@@ -1544,6 +1537,8 @@ def _create_operations_alert_triage_role(
                 context.settings.org,
                 context.repo_name,
                 branch_name,
+                repository_id=context.settings.github_repository_id,
+                owner_id=context.settings.github_repository_owner_id,
             ),
         ),
         tags=_automation_tags(
@@ -1559,17 +1554,39 @@ def _create_operations_alert_triage_role(
         ),
     )
     policy_name = f"{context.name}-operations-alert-triage-policy"
+    existing_policy = None
+    if adopt_existing:
+        from .iam.adoption import inline_policy_name
+
+        existing_policy = inline_policy_name(role_name, policy_name)
     role_policy = aws.iam.RolePolicy(
         policy_name,
-        name=policy_name,
+        name=existing_policy or policy_name,
         role=role.id,
         policy=_operations_alert_triage_policy(
             aws.get_caller_identity().account_id,
             context.settings,
         ),
-        opts=pulumi.ResourceOptions(parent=context.parent),
+        opts=pulumi.ResourceOptions(
+            parent=context.parent,
+            import_=f"{role_name}:{existing_policy}" if existing_policy else None,
+        ),
     )
     return role, role_policy
+
+
+def _automation_configuration(settings, oidc_provider_arn):
+    """Resolve and validate configuration before constructing control resources."""
+    configured_settings = settings or default_settings
+    if not configured_settings.repo:
+        raise ValueError("repoSlug config is required for GitHub automation.")
+    provider_arn = oidc_provider_arn or configured_settings.github_oidc_provider_arn
+    if provider_arn is None:
+        raise ValueError(
+            "githubOidcProviderArn config is required for GitHub automation."
+        )
+
+    return configured_settings, provider_arn
 
 
 class GitHubAutomation(pulumi.ComponentResource):
@@ -1582,19 +1599,20 @@ class GitHubAutomation(pulumi.ComponentResource):
         settings: BootstrapSettings | None = None,
         repository_project: str | None = None,
         oidc_provider_arn: pulumi.Input[str] | None = None,
+        manage_roles: bool = True,
+        manage_repository: bool = True,
+        manage_triage: bool = True,
+        permissions_boundary: pulumi.Input[str] | None = None,
+        adopt_existing_policies: bool = False,
+        preferred_inline_policy_name: str | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize automation resources for this repository/environment."""
         super().__init__("bootstrap:github:Automation", name, None, opts)
 
-        configured_settings = settings or default_settings
-        if not configured_settings.repo:
-            raise ValueError("repoSlug config is required for GitHub automation.")
-        provider_arn = oidc_provider_arn or configured_settings.github_oidc_provider_arn
-        if provider_arn is None:
-            raise ValueError(
-                "githubOidcProviderArn config is required for GitHub automation."
-            )
+        configured_settings, provider_arn = _automation_configuration(
+            settings, oidc_provider_arn
+        )
 
         repo_name = configured_settings.repo
         repo_project = repository_project or repo_name
@@ -1608,30 +1626,57 @@ class GitHubAutomation(pulumi.ComponentResource):
             opts=base_opts,
         )
 
-        repository = _create_automation_repository(resource_context)
-        _create_automation_lifecycle_policy(name, repository, base_opts)
-        role = _create_automation_role(resource_context, provider_arn)
-        (
-            inline_policy,
-            managed_policies,
-            policy_attachments,
-            exclusive_policy_attachments,
-        ) = _create_automation_role_policies(
-            resource_context,
-            role,
-        )
-        policy_dependencies = [
-            inline_policy,
-            *policy_attachments,
-            exclusive_policy_attachments,
-        ]
-        operations_alert_triage_role, operations_alert_triage_policy = (
-            _create_operations_alert_triage_role(
-                resource_context,
-                provider_arn,
-                depends_on=policy_dependencies,
+        repository = None
+        if manage_repository:
+            repository = _create_automation_repository(resource_context)
+            _create_automation_lifecycle_policy(name, repository, base_opts)
+        inline_policy = None
+        managed_policies = []
+        policy_attachments = []
+        exclusive_policy_attachments = None
+        policy_dependencies = []
+        operations_alert_triage_policy = None
+        if manage_roles:
+            role = _create_automation_role(
+                resource_context, provider_arn, permissions_boundary
             )
-        )
+            (
+                inline_policy,
+                managed_policies,
+                policy_attachments,
+                exclusive_policy_attachments,
+            ) = _create_automation_role_policies(
+                resource_context,
+                role,
+                adopt_existing=adopt_existing_policies,
+                preferred_inline_policy_name=preferred_inline_policy_name,
+            )
+            policy_dependencies = [
+                inline_policy,
+                *policy_attachments,
+                exclusive_policy_attachments,
+            ]
+        else:
+            role = aws.iam.Role.get(
+                f"{name}-role",
+                configured_settings.automation_role_name(repo_name),
+                opts=base_opts,
+            )
+        if manage_roles and manage_triage:
+            operations_alert_triage_role, operations_alert_triage_policy = (
+                _create_operations_alert_triage_role(
+                    resource_context,
+                    provider_arn,
+                    depends_on=policy_dependencies,
+                    adopt_existing=adopt_existing_policies,
+                )
+            )
+        else:
+            operations_alert_triage_role = aws.iam.Role.get(
+                f"{name}-operations-alert-triage-role",
+                _operations_alert_triage_role_name(configured_settings, repo_name),
+                opts=base_opts,
+            )
 
         self.repository = repository
         self.role = role
@@ -1639,19 +1684,33 @@ class GitHubAutomation(pulumi.ComponentResource):
         self.policy = inline_policy
         self.operations_alert_triage_policy = operations_alert_triage_policy
         self.managed_policies = managed_policies
-        self.policies = [inline_policy, *managed_policies]
+        self.policies = (
+            [inline_policy] if inline_policy is not None else []
+        ) + managed_policies
         self.policy_attachments = policy_attachments
         self.exclusive_policy_attachments = exclusive_policy_attachments
         self.policy_dependencies = policy_dependencies
 
+        self._register_automation_outputs()
+
+    def _register_automation_outputs(self) -> None:
+        """Expose metadata from the managed or reference-only resource graph."""
         self.register_outputs(
             {
-                "repository_name": repository.name,
-                "repository_url": repository.repository_url,
-                "role_arn": role.arn,
-                "operations_alert_triage_role_arn": (operations_alert_triage_role.arn),
-                "policy_name": self.policy.name,
+                "repository_name": (
+                    self.repository.name if self.repository is not None else None
+                ),
+                "repository_url": (
+                    self.repository.repository_url
+                    if self.repository is not None
+                    else None
+                ),
+                "role_arn": self.role.arn,
+                "operations_alert_triage_role_arn": (
+                    self.operations_alert_triage_role.arn
+                ),
+                "policy_name": self.policy.name if self.policy is not None else None,
                 "policy_names": [policy.name for policy in self.policies],
-                "managed_policy_arns": [policy.arn for policy in managed_policies],
+                "managed_policy_arns": [policy.arn for policy in self.managed_policies],
             }
         )

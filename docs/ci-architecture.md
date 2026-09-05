@@ -51,13 +51,18 @@ The workflows pass only fixed suffixes such as `test`, `prod-preview`, or
 `AWS_ACCOUNT_ID`, OIDC role ARNs, `PULUMI_BACKEND_URL`,
 `PULUMI_SECRETS_PROVIDER`, region, and stack lists, then exports only validated
 keys to the job environment. The Pulumi stacks manage the Secrets Manager secret
-containers and the `GitHubCiConfigRead-*` roles, but humans populate the JSON
-values in AWS Secrets Manager. Shared Pulumi backends must use AWS KMS secrets
+containers and the `GitHubCiConfigRead-*` roles. The isolated
+`github-ci-bootstrap` project writes encrypted CI JSON values by default; manual
+population is needed only when its `writeSecretValues` option is disabled or a
+payload needs repair. Shared Pulumi backends must use AWS KMS secrets
 providers via `PULUMI_SECRETS_PROVIDER`, and stack initialization or migration
 must pass
-`--secrets-provider "$PULUMI_SECRETS_PROVIDER"`. GitHub keeps only the protected
-`prod` Environment for approval; `test` and `prod-preview` are not GitHub
-deployment environments.
+`--secrets-provider "$PULUMI_SECRETS_PROVIDER"`. The platform deployment path uses the protected `prod` Environment for approval;
+`test` and `prod-preview` are fixed CI configuration suffixes, not GitHub
+deployment environments. The separate governance runner uses protected
+`governance-preview` and `governance` environments and dedicated bootstrap-owned
+roles. Its nonsecret account, role, backend, region, and KMS provider variables
+are documented in [the governance runbook](governance-stack.md).
 
 Production apply is intentionally split from production preview. The preview job
 loads `prod-preview`, verifies that the requested commit already has a
@@ -165,3 +170,15 @@ CodeQL, GitHub Dependency Review, artifact attestations, and Scorecard remain
 GitHub-native workflows. The repository keeps their definitions under
 structural test coverage, but they are not reproduced inside the local Docker
 battery.
+
+
+The platform PR-comment runner also projects verified account deployments onto the
+actual PR head through the dedicated main-only evidence App. Its final job requires
+the authenticated preflight, successful test apply and drift, and successful prod
+apply and drift. Both publishers download saved-plan artifacts from their own run,
+verify manifest commit SHA and plan hashes, and record the original comment/source
+run and immutable base/head. A moved base or head, missing artifact or skipped stage
+cannot publish success. Scope and promotion reporters share a per-PR concurrency
+group, preventing a pending scope update from racing a completed proof. The required
+status retains the name `Governance Promotion`; non-governance scope success alone
+never creates successful test/prod deployment records.

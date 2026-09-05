@@ -2950,7 +2950,8 @@ def test_configure_github_repository_controls_payloads(
             existing_code_quality_rule,
             existing_code_scanning_rule,
             {"type": "ignored_rule"},
-        ]
+        ],
+        promotion_app_id=12345,
     )
     rules = {rule["type"]: rule for rule in payload["rules"]}
     contexts = [
@@ -2961,7 +2962,11 @@ def test_configure_github_repository_controls_payloads(
     ]
 
     assert contexts == list(module.REQUIRED_STATUS_CHECKS)  # nosec B101
-    assert rules["pull_request"] == existing_pull_request_rule  # nosec B101
+    review_parameters = rules["pull_request"]["parameters"]
+    assert review_parameters["required_approving_review_count"] == 2
+    assert review_parameters["dismiss_stale_reviews_on_push"] is True
+    assert review_parameters["require_code_owner_review"] is True
+    assert review_parameters["require_last_push_approval"] is True
     assert rules["code_quality"] == existing_code_quality_rule  # nosec B101
     assert rules["code_scanning"] == existing_code_scanning_rule  # nosec B101
     assert module.prod_environment_payload(9444106) == {  # nosec B101
@@ -2969,9 +2974,10 @@ def test_configure_github_repository_controls_payloads(
         "prevent_self_review": True,
         "reviewers": [{"type": "User", "id": 9444106}],
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
     }
     assert module.operations_alert_reconcile_environment_payload(  # nosec B101
         9444106
@@ -2980,7 +2986,15 @@ def test_configure_github_repository_controls_payloads(
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
     monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: 9444106)
     assert (  # nosec B101
-        module.main(["--repo", "VilnaCRM-Org/bootstrap-infrastructure"]) == 0
+        module.main(
+            [
+                "--promotion-app-id",
+                "12345",
+                "--repo",
+                "VilnaCRM-Org/bootstrap-infrastructure",
+            ]
+        )
+        == 0
     )
     rendered = json.loads(capsys.readouterr().out)
     assert rendered["prodEnvironment"]["reviewers"][0]["id"] == 9444106  # nosec B101
@@ -2993,7 +3007,15 @@ def test_configure_github_repository_controls_payloads(
     )
 
     assert (  # nosec B101
-        module.main(["--repo", "VilnaCRM-Org/bootstrap-infrastructure", "--dry-run"])
+        module.main(
+            [
+                "--promotion-app-id",
+                "12345",
+                "--repo",
+                "VilnaCRM-Org/bootstrap-infrastructure",
+                "--dry-run",
+            ]
+        )
         == 0
     )
     dry_run_rendered = json.loads(capsys.readouterr().out)
@@ -3010,13 +3032,40 @@ def test_configure_github_repository_controls_payloads(
     )
 
     with pytest.raises(SystemExit):
-        module.main(["--repo", "example/repo", "--apply", "--dry-run"])
+        module.main(
+            [
+                "--promotion-app-id",
+                "12345",
+                "--repo",
+                "example/repo",
+                "--apply",
+                "--dry-run",
+            ]
+        )
     with pytest.raises(SystemExit):
-        module.main(["--repo", "example/repo", "--apply", "--verify-only"])
+        module.main(
+            [
+                "--promotion-app-id",
+                "12345",
+                "--repo",
+                "example/repo",
+                "--apply",
+                "--verify-only",
+            ]
+        )
     with pytest.raises(SystemExit):
-        module.main(["--repo", "example/repo", "--dry-run", "--verify-only"])
+        module.main(
+            [
+                "--promotion-app-id",
+                "12345",
+                "--repo",
+                "example/repo",
+                "--dry-run",
+                "--verify-only",
+            ]
+        )
     with pytest.raises(SystemExit) as help_exit:
-        module.main(["--help"])
+        module.main(["--promotion-app-id", "12345", "--help"])
     assert help_exit.value.code == 0  # nosec B101
     help_text = capsys.readouterr().out
     assert "protected environment payloads" in help_text  # nosec B101
@@ -3028,13 +3077,16 @@ def test_configure_github_repository_controls_verification_helpers(
 ) -> None:
     """Verify applied GitHub controls before reporting admin success."""
     module = load_script_module(monkeypatch, "configure_github_repository_controls")
-    ruleset = module.ruleset_payload()
+    ruleset = module.ruleset_payload(promotion_app_id=12345)
+    monkeypatch.setattr(module, "_evidence_environment_blockers", lambda repo: [])
     environment = {
         "prevent_self_review": True,
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
+        "deployment_branch_policies": [{"name": "main", "type": "branch"}],
         "protection_rules": [
             {
                 "type": "required_reviewers",
@@ -3048,7 +3100,7 @@ def test_configure_github_repository_controls_verification_helpers(
         ],
     }
 
-    assert module._ruleset_verification_blockers(ruleset) == []  # noqa: SLF001  # nosec B101
+    assert module._ruleset_verification_blockers(ruleset, promotion_app_id=12345) == []  # noqa: SLF001  # nosec B101
     assert (
         module._prod_environment_verification_blockers(  # noqa: SLF001  # nosec B101
             environment, 9444106
@@ -3063,9 +3115,11 @@ def test_configure_github_repository_controls_verification_helpers(
     )
     missing_self_review_environment = {
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
+        "deployment_branch_policies": [{"name": "main", "type": "branch"}],
         "reviewers": [{"type": "User", "id": 9444106}],
     }
     assert module._prod_environment_verification_blockers(  # noqa: SLF001
@@ -3073,9 +3127,11 @@ def test_configure_github_repository_controls_verification_helpers(
     ) == ["Production environment does not prevent self-review."]  # nosec B101
     nested_self_review_environment = {
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
+        "deployment_branch_policies": [{"name": "main", "type": "branch"}],
         "protection_rules": [
             {
                 "type": "required_reviewers",
@@ -3140,10 +3196,10 @@ def test_configure_github_repository_controls_verification_helpers(
 
     bad_ruleset = {"rules": [{"type": "deletion"}]}
     ruleset_blockers = module._ruleset_verification_blockers(  # noqa: SLF001
-        bad_ruleset
+        bad_ruleset, promotion_app_id=12345
     )
     assert "missing required status checks" in ruleset_blockers[0]  # nosec B101
-    assert "pull request reviews" in ruleset_blockers[1]  # nosec B101
+    assert "pull request reviews" in " ".join(ruleset_blockers)  # nosec B101
     environment_blockers = module._prod_environment_verification_blockers(  # noqa: SLF001
         {
             "prevent_self_review": False,
@@ -3156,14 +3212,14 @@ def test_configure_github_repository_controls_verification_helpers(
         9444106,
     )
     assert "prevent self-review" in environment_blockers[0]  # nosec B101
-    assert "protected branches" in environment_blockers[1]  # nosec B101
-    assert "configured reviewer" in environment_blockers[2]  # nosec B101
+    assert "main branch" in environment_blockers[1]  # nosec B101
+    assert "configured reviewer" in " ".join(environment_blockers)  # nosec B101
     missing_policy_blockers = module._prod_environment_verification_blockers(  # noqa: SLF001
         {"prevent_self_review": True, "protection_rules": []},
         9444106,
     )
-    assert "branch policy" in missing_policy_blockers[0]  # nosec B101
-    assert module._ruleset_verification_blockers(None) == [  # noqa: SLF001  # nosec B101
+    assert "main branch" in missing_policy_blockers[0]  # nosec B101
+    assert module._ruleset_verification_blockers(None, promotion_app_id=12345) == [  # noqa: SLF001  # nosec B101
         "Active main branch ruleset was not found after apply."
     ]
     assert module._prod_environment_verification_blockers(  # noqa: SLF001  # nosec B101
@@ -3177,10 +3233,14 @@ def test_configure_github_repository_controls_verification_helpers(
     monkeypatch.setattr(
         module,
         "_run_gh_api",
-        lambda _args, **_kwargs: environment,
+        lambda _args, **_kwargs: (
+            {"branch_policies": [{"name": "main", "type": "branch"}]}
+            if _args[0].endswith("/deployment-branch-policies")
+            else environment
+        ),
     )
     assert module._verify_applied_controls(  # noqa: SLF001  # nosec B101
-        "example/repo", 9444106
+        "example/repo", 9444106, promotion_app_id=12345
     ) == {
         "requiredStatusChecks": sorted(module.REQUIRED_STATUS_CHECKS),
         "prodReviewerId": 9444106,
@@ -3193,14 +3253,14 @@ def test_configure_github_repository_controls_verification_helpers(
 
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: bad_ruleset)
     with pytest.raises(RuntimeError, match="missing required status checks"):
-        module._verify_applied_controls("example/repo", 9444106)  # noqa: SLF001
+        module._verify_applied_controls("example/repo", 9444106, promotion_app_id=12345)  # noqa: SLF001
 
     def fail_environment_read(_args, **_kwargs):
         raise RuntimeError("gh: Not Found")
 
     monkeypatch.setattr(module, "_run_gh_api", fail_environment_read)
     with pytest.raises(RuntimeError) as exc_info:
-        module._verify_applied_controls("example/repo", 9444106)  # noqa: SLF001
+        module._verify_applied_controls("example/repo", 9444106, promotion_app_id=12345)  # noqa: SLF001
     combined_error = str(exc_info.value)
     assert "missing required status checks" in combined_error  # nosec B101
     assert "prod environment was not readable" in combined_error  # nosec B101
@@ -3212,7 +3272,7 @@ def test_configure_github_repository_controls_verification_helpers(
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: ruleset)
     monkeypatch.setattr(module, "_run_gh_api", lambda _args, **_kwargs: [])
     with pytest.raises(RuntimeError, match="not readable"):
-        module._verify_applied_controls("example/repo", 9444106)  # noqa: SLF001
+        module._verify_applied_controls("example/repo", 9444106, promotion_app_id=12345)  # noqa: SLF001
 
 
 def test_configure_github_repository_controls_verify_only(
@@ -3236,7 +3296,7 @@ def test_configure_github_repository_controls_verify_only(
     monkeypatch.setattr(
         module,
         "_verify_applied_controls",
-        lambda repo, reviewer_id: (
+        lambda repo, reviewer_id, **kwargs: (
             verifications.append((repo, reviewer_id))
             or {
                 "prodEnvironment": "prod",
@@ -3247,7 +3307,9 @@ def test_configure_github_repository_controls_verify_only(
         ),
     )
 
-    module.configure("example/repo", "Kravalg", apply=False, verify_only=True)
+    module.configure(
+        "example/repo", "Kravalg", apply=False, verify_only=True, promotion_app_id=12345
+    )
     rendered = json.loads(capsys.readouterr().out)
     assert rendered == {  # nosec B101
         "verification": {
@@ -3259,7 +3321,10 @@ def test_configure_github_repository_controls_verify_only(
     }
 
     assert (  # nosec B101
-        module.main(["--repo", "example/repo", "--verify-only"]) == 0
+        module.main(
+            ["--promotion-app-id", "12345", "--repo", "example/repo", "--verify-only"]
+        )
+        == 0
     )
     rendered = json.loads(capsys.readouterr().out)
     assert rendered["verification"]["prodReviewerId"] == 9444106  # nosec B101
@@ -3329,9 +3394,14 @@ def test_required_status_check_contract_matches_collector_and_docs(
     assert quality_documented_checks == list(  # nosec B101
         collector_module.DEFAULT_REQUIRED_STATUS_CHECKS
     )
+    # Archived June evidence records the checks enforced at that time.
+    historical_checks = tuple(
+        context
+        for context in collector_module.DEFAULT_REQUIRED_STATUS_CHECKS
+        if context != "Governance Promotion"
+    )
     required_check_text = (
-        ", ".join(collector_module.DEFAULT_REQUIRED_STATUS_CHECKS[:-1])
-        + f", and {collector_module.DEFAULT_REQUIRED_STATUS_CHECKS[-1]}"
+        ", ".join(historical_checks[:-1]) + f", and {historical_checks[-1]}"
     )
     branch_protection_control = next(
         control
@@ -3391,6 +3461,21 @@ def test_well_architected_question_source_contract_matches_docs(
         )
     )
     source_verification = question_evidence["frameworkSourceVerification"]
+    # This is a historical fixture contract test; retain the live freshness gate.
+    import datetime as dt
+
+    checked_at = dt.datetime.fromisoformat(
+        source_verification["checkedAt"].replace("Z", "+00:00")
+    )
+
+    class HistoricalDateTime(dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return checked_at
+
+    monkeypatch.setattr(
+        collector_module._structured_evidence.dt, "datetime", HistoricalDateTime
+    )
 
     assert toc_url in source_verification["sourceUrls"]  # nosec B101
     assert (  # noqa: SLF001  # nosec B101
@@ -3479,7 +3564,7 @@ def test_configure_github_repository_controls_apply_paths(
     monkeypatch.setattr(
         module,
         "_verify_applied_controls",
-        lambda repo, reviewer_id: (
+        lambda repo, reviewer_id, **kwargs: (
             verifications.append((repo, reviewer_id)) or {"verified": True}
         ),
     )
@@ -3504,7 +3589,7 @@ def test_configure_github_repository_controls_apply_paths(
     monkeypatch.setattr(module, "_run_gh_api", fake_run_gh_api)
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: existing)
 
-    module.configure("example/repo", "Kravalg", apply=True)
+    module.configure("example/repo", "Kravalg", apply=True, promotion_app_id=12345)
     assert calls[0][0] == [  # nosec B101
         "repos/example/repo/rulesets/123",
         "--method",
@@ -3536,7 +3621,7 @@ def test_configure_github_repository_controls_apply_paths(
     calls.clear()
     verifications.clear()
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: None)
-    module.configure("example/repo", "Kravalg", apply=True)
+    module.configure("example/repo", "Kravalg", apply=True, promotion_app_id=12345)
     assert calls[0][0] == ["repos/example/repo/rulesets", "--method", "POST"]  # nosec B101
     assert calls[1][0] == [  # nosec B101
         "repos/example/repo/environments/prod",
@@ -3582,7 +3667,7 @@ def test_configure_github_repository_controls_apply_requires_admin(
     monkeypatch.setattr(module, "_run_gh_api", fake_run_gh_api)
 
     with pytest.raises(RuntimeError, match="repository admin rights"):
-        module.configure("example/repo", "Kravalg", apply=True)
+        module.configure("example/repo", "Kravalg", apply=True, promotion_app_id=12345)
     assert calls == []  # nosec B101
 
 
@@ -3597,7 +3682,12 @@ def test_configure_github_repository_controls_main_reports_errors(
 
     monkeypatch.setattr(module, "configure", fail_configure)
 
-    assert module.main(["--repo", "example/repo", "--apply"]) == 1  # nosec B101
+    assert (
+        module.main(
+            ["--promotion-app-id", "12345", "--repo", "example/repo", "--apply"]
+        )
+        == 1
+    )  # nosec B101
     assert "error:" in capsys.readouterr().err  # nosec B101
 
 
@@ -5056,6 +5146,12 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
             ),
             (_last_arg_contains("/dependabot/alerts?"), _json_response([])),
             (
+                _last_arg_endswith("/deployment-branch-policies"),
+                _json_response(
+                    {"branch_policies": [{"name": "main", "type": "branch"}]}
+                ),
+            ),
+            (
                 _last_arg_endswith("/environments/prod"),
                 _json_response(
                     {
@@ -5073,9 +5169,13 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                             }
                         ],
                         "deployment_branch_policy": {
-                            "protected_branches": True,
-                            "custom_branch_policies": False,
+                            "protected_branches": False,
+                            "custom_branch_policies": True,
                         },
+                        "can_admins_bypass": False,
+                        "deployment_branch_policies": [
+                            {"name": "main", "type": "branch"}
+                        ],
                     }
                 ),
             ),
@@ -5368,6 +5468,12 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
                             },
                         }
                     ]
+                ),
+            ),
+            (
+                _last_arg_endswith("/deployment-branch-policies"),
+                _json_response(
+                    {"branch_policies": [{"name": "main", "type": "branch"}]}
                 ),
             ),
             (
@@ -7538,9 +7644,11 @@ def test_collect_well_architected_evidence_reads_production_environment(
             },
         ],
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
+        "deployment_branch_policies": [{"name": "main", "type": "branch"}],
     }
 
     evidence = module.github_production_environment(
@@ -7548,18 +7656,26 @@ def test_collect_well_architected_evidence_reads_production_environment(
         "prod",
         "Kravalg",
         runner=lambda command, **_kwargs: subprocess.CompletedProcess(
-            command, 0, json.dumps(payload), ""
+            command,
+            0,
+            json.dumps(
+                {"branch_policies": payload["deployment_branch_policies"]}
+                if command[-1].endswith("/deployment-branch-policies")
+                else payload
+            ),
+            "",
         ),
     )
 
-    assert evidence["status"] == "passed"  # nosec B101
+    assert evidence["status"] == "failed"  # nosec B101
     assert evidence["evidence"]["requiredReviewerCount"] == 2  # nosec B101
     assert evidence["evidence"]["requiredReviewerLogins"] == [  # nosec B101
         "Kravalg",
         "platform-admins",
     ]
     assert evidence["evidence"]["preventSelfReview"] is True  # nosec B101
-    assert evidence["evidence"]["protectedBranchesOnly"] is True  # nosec B101
+    assert evidence["evidence"]["mainBranchOnly"] is True
+    assert "contain only Kravalg" in " ".join(evidence["blockers"])  # nosec B101
 
 
 def test_collect_well_architected_evidence_reports_production_environment_gaps(
@@ -7583,9 +7699,11 @@ def test_collect_well_architected_evidence_reports_production_environment_gaps(
         "prevent_self_review": True,
         "protection_rules": [],
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
+        "deployment_branch_policies": [{"name": "main", "type": "branch"}],
     }
     no_reviewers = module.github_production_environment(
         "VilnaCRM-Org/bootstrap-infrastructure",
@@ -7604,9 +7722,11 @@ def test_collect_well_architected_evidence_reports_production_environment_gaps(
         "name": "prod",
         "prevent_self_review": True,
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
+        "can_admins_bypass": False,
+        "deployment_branch_policies": [{"name": "main", "type": "branch"}],
     }
     no_shape = module.github_production_environment(
         "VilnaCRM-Org/bootstrap-infrastructure",
@@ -7644,7 +7764,7 @@ def test_collect_well_architected_evidence_reports_production_environment_gaps(
     blockers = " ".join(weak["blockers"])
     assert "Kravalg" in blockers  # nosec B101
     assert "self-review" in blockers  # nosec B101
-    assert "protected branches" in blockers  # nosec B101
+    assert "main branch" in blockers  # nosec B101
 
 
 def test_collect_well_architected_evidence_reads_iam_access_metadata(
@@ -8474,6 +8594,8 @@ def test_run_pulumi_command_validates_plan_manifest_error_paths(
         "createdAtEpoch": 1000,
         "commitSha": "sha-a",
         "backendUrl": "file:///tmp/backend",
+        "pulumiDir": "pulumi",
+        "policyPackDir": "policy",
         "stacks": [
             {"stack": "skip", "planFile": "unused", "planSha256": "unused"},
             valid_entry,
@@ -8492,6 +8614,30 @@ def test_run_pulumi_command_validates_plan_manifest_error_paths(
     context.env.pop("PULUMI_PLAN_MAX_AGE_SECONDS")
     wrong_sha = {**valid_manifest, "commitSha": "sha-b"}
     assert module._validate_plan_manifest(context, wrong_sha, "test", plan_file) == 1
+    context.env["PULUMI_COMMIT_SHA"] = "sha-b"
+    assert module._validate_plan_manifest(context, wrong_sha, "test", plan_file) == 1
+    context.env.pop("PULUMI_COMMIT_SHA")
+    for absent_sha in (None, "", 123):
+        assert (
+            module._validate_plan_manifest(
+                context, {**valid_manifest, "commitSha": absent_sha}, "test", plan_file
+            )
+            == 1
+        )
+    for field in ("pulumiDir", "policyPackDir"):
+        for path in (None, "", "other-project", "../outside", "/absolute"):
+            assert (
+                module._validate_plan_manifest(
+                    context, {**valid_manifest, field: path}, "test", plan_file
+                )
+                == 1
+            )
+    context.env["PULUMI_EXPECTED_SHA"] = ""
+    monkeypatch.setattr(module, "_commit_sha", lambda _context: "")
+    assert (
+        module._validate_plan_manifest(context, valid_manifest, "test", plan_file) == 1
+    )
+    monkeypatch.setattr(module, "_commit_sha", lambda _context: "sha-a")
     wrong_backend = {**valid_manifest, "backendUrl": "s3://other"}
     assert (  # nosec B101
         module._validate_plan_manifest(context, wrong_backend, "test", plan_file) == 1
@@ -8557,6 +8703,8 @@ def test_run_pulumi_command_rejects_malformed_plan_manifest(
         "createdAtEpoch": 1000,
         "commitSha": "sha-a",
         "backendUrl": "file:///tmp/backend",
+        "pulumiDir": "pulumi",
+        "policyPackDir": "policy",
         "stacks": [valid_entry],
     }
 
@@ -8644,7 +8792,7 @@ def test_run_pulumi_command_reuses_manifest_for_multiple_plan_applications(
     plan_dir.mkdir(parents=True)
     context = module.CommandContext(
         root_dir=repo_dir,
-        env={"PULUMI_PLAN_NOW_EPOCH": "1000"},
+        env={"PULUMI_PLAN_NOW_EPOCH": "1000", "PULUMI_EXPECTED_SHA": "sha-a"},
         pulumi_dir=repo_dir / "pulumi",
         policy_pack_dir=repo_dir / "policy",
         plan_dir=plan_dir,
@@ -8670,8 +8818,10 @@ def test_run_pulumi_command_reuses_manifest_for_multiple_plan_applications(
             {
                 "schemaVersion": 1,
                 "createdAtEpoch": 1000,
-                "commitSha": "",
+                "commitSha": "sha-a",
                 "backendUrl": "file:///tmp/backend",
+                "pulumiDir": "pulumi",
+                "policyPackDir": "policy",
                 "stacks": entries,
             }
         ),
@@ -8964,14 +9114,17 @@ def test_run_pulumi_command_handles_error_paths_and_plan_application(
 
     selected_plan = plan_dir / "single.plan"
     selected_plan.write_text("plan", encoding="utf-8")
+    monkeypatch.setenv("PULUMI_EXPECTED_SHA", "sha-a")
     monkeypatch.setenv("PULUMI_PLAN_NOW_EPOCH", "1000")
     (plan_dir / "manifest.json").write_text(
         json.dumps(
             {
                 "schemaVersion": 1,
                 "createdAtEpoch": 1000,
-                "commitSha": "",
+                "commitSha": "sha-a",
                 "backendUrl": "file:///tmp/backend",
+                "pulumiDir": "pulumi",
+                "policyPackDir": "policy",
                 "stacks": [
                     {
                         "stack": "test",
@@ -9039,325 +9192,49 @@ def test_run_up_plan_stack_uses_saved_prod_plan_by_default_in_ci(
     )
 
 
-def test_run_up_plan_stack_rejects_plan_decrypt_without_direct_apply(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("stack", ["test", "prod", "service/test"])
+@pytest.mark.parametrize(
+    "error,code",
+    [
+        ("decrypting secret value: cipher: message authentication failed", 255),
+        ("the stack is currently locked", 42),
+        ("provider denied", 17),
+    ],
+)
+def test_run_up_plan_stack_fails_closed_without_apply_or_lock_recovery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    stack: str,
+    error: str,
+    code: int,
 ) -> None:
-    """Known saved-plan decrypt failures should not bypass the saved plan."""
+    """No saved-plan failure authorizes direct apply or lock cancellation."""
     module = load_script_module(monkeypatch, "run_pulumi_command")
-    context_dir = tmp_path / "repo"
     applied: list[list[str]] = []
 
     def fake_runner(command, **kwargs):
         applied.append(command)
-        if len(command) > 3 and command[3] == "up" and "--plan" in command:
-            return subprocess.CompletedProcess(
-                command,
-                255,
-                stdout="",
-                stderr=module.PLAN_DECRYPT_ERROR,
-            )
-        return subprocess.CompletedProcess(command, 0, stdout="")
+        return subprocess.CompletedProcess(command, code, stdout="", stderr=error)
 
     context = module.CommandContext(
-        root_dir=context_dir,
-        env={
-            "GITHUB_ACTIONS": "true",
-            "PULUMI_EXPECTED_SHA": "a" * 40,
-        },
-        pulumi_dir=context_dir / "pulumi",
-        policy_pack_dir=context_dir / "policy",
-        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
-        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
+        root_dir=tmp_path,
+        env={"GITHUB_ACTIONS": "true", "PULUMI_EXPECTED_SHA": "a" * 40},
+        pulumi_dir=tmp_path / "pulumi",
+        policy_pack_dir=tmp_path / "policy",
+        plan_dir=tmp_path / ".artifacts" / "pulumi-plan",
+        preview_artifact_dir=tmp_path / ".artifacts" / "pulumi-preview",
         backend_url="file:///tmp/backend",
         secrets_provider="awskms://alias/example?region=eu-central-1",
         runner=fake_runner,
     )
-
-    assert module._run_up_plan_stack(context, "prod", tmp_path / "prod.plan") == 255
-    assert "refusing direct production apply" in capsys.readouterr().err  # nosec B101
-    assert any(  # nosec B101
-        len(command) > 3 and command[3] == "up" and "--plan" in command
-        for command in applied
-    )
-    assert not any(  # nosec B101
-        len(command) > 3 and command[3] == "up" and "--plan" not in command
-        for command in applied
-    )
-
-
-def test_run_up_plan_stack_returns_test_plan_failure_without_decrypt_recovery(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Test CI should only use direct recovery for the known decrypt failure."""
-    module = load_script_module(monkeypatch, "run_pulumi_command")
-    context_dir = tmp_path / "repo"
-    applied: list[list[str]] = []
-
-    def fake_runner(command, **kwargs):
-        applied.append(command)
-        if len(command) > 3 and command[3] == "up" and "--plan" in command:
-            return subprocess.CompletedProcess(
-                command,
-                42,
-                stdout="",
-                stderr="provider denied\n",
-            )
-        return subprocess.CompletedProcess(command, 0, stdout="")
-
-    context = module.CommandContext(
-        root_dir=context_dir,
-        env={
-            "GITHUB_ACTIONS": "true",
-            "PULUMI_EXPECTED_SHA": "a" * 40,
-        },
-        pulumi_dir=context_dir / "pulumi",
-        policy_pack_dir=context_dir / "policy",
-        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
-        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
-        backend_url="file:///tmp/backend",
-        secrets_provider="awskms://alias/example?region=eu-central-1",
-        runner=fake_runner,
-    )
-
-    assert module._run_up_plan_stack(context, "test", tmp_path / "test.plan") == 42
-    captured = capsys.readouterr()
-    assert "provider denied" in captured.err  # nosec B101
-    assert "guarded direct non-production apply" not in captured.err  # nosec B101
-    assert any(  # nosec B101
-        len(command) > 3 and command[3] == "up" and "--plan" in command
-        for command in applied
-    )
-    assert not any(  # nosec B101
-        len(command) > 3 and command[3] == "up" and "--plan" not in command
-        for command in applied
-    )
-
-
-def test_run_up_plan_stack_recovers_test_plan_decrypt_with_direct_apply(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Test CI may recover known saved-plan decrypt failures after gates pass."""
-    module = load_script_module(monkeypatch, "run_pulumi_command")
-    context_dir = tmp_path / "repo"
-    applied: list[list[str]] = []
-
-    def fake_runner(command, **kwargs):
-        applied.append(command)
-        if len(command) > 3 and command[3] == "up" and "--plan" in command:
-            return subprocess.CompletedProcess(
-                command,
-                255,
-                stdout=module.PLAN_DECRYPT_ERROR,
-                stderr="",
-            )
-        return subprocess.CompletedProcess(command, 0, stdout="")
-
-    context = module.CommandContext(
-        root_dir=context_dir,
-        env={
-            "GITHUB_ACTIONS": "true",
-            "PULUMI_EXPECTED_SHA": "a" * 40,
-        },
-        pulumi_dir=context_dir / "pulumi",
-        policy_pack_dir=context_dir / "policy",
-        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
-        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
-        backend_url="file:///tmp/backend",
-        secrets_provider="awskms://alias/example?region=eu-central-1",
-        runner=fake_runner,
-    )
-
-    assert module._run_up_plan_stack(context, "test", tmp_path / "test.plan") is None
-    assert "guarded direct non-production apply" in capsys.readouterr().err  # nosec B101
-    assert any(  # nosec B101
-        len(command) > 3 and command[3] == "up" and "--plan" in command
-        for command in applied
-    )
-    assert any(  # nosec B101
-        len(command) > 3
-        and command[3] == "up"
-        and "--plan" not in command
-        and "--policy-pack" not in command
-        and "--refresh" in command
-        for command in applied
-    )
-
-
-def test_run_up_plan_stack_returns_failed_direct_recovery_without_lock(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Direct decrypt recovery should not cancel when Pulumi reports no lock."""
-    module = load_script_module(monkeypatch, "run_pulumi_command")
-    context_dir = tmp_path / "repo"
-    applied: list[list[str]] = []
-
-    def fake_runner(command, **kwargs):
-        applied.append(command)
-        if len(command) > 3 and command[3] == "up" and "--plan" in command:
-            return subprocess.CompletedProcess(
-                command,
-                255,
-                stdout=module.PLAN_DECRYPT_ERROR,
-                stderr="",
-            )
-        if len(command) > 3 and command[3] == "up" and "--plan" not in command:
-            return subprocess.CompletedProcess(
-                command,
-                17,
-                stdout="plugin failed\n",
-                stderr="",
-            )
-        return subprocess.CompletedProcess(command, 0, stdout="")
-
-    context = module.CommandContext(
-        root_dir=context_dir,
-        env={
-            "GITHUB_ACTIONS": "true",
-            "PULUMI_EXPECTED_SHA": "a" * 40,
-        },
-        pulumi_dir=context_dir / "pulumi",
-        policy_pack_dir=context_dir / "policy",
-        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
-        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
-        backend_url="file:///tmp/backend",
-        secrets_provider="awskms://alias/example?region=eu-central-1",
-        runner=fake_runner,
-    )
-
-    assert module._run_up_plan_stack(context, "test", tmp_path / "test.plan") == 17
-    assert "guarded direct non-production apply" in capsys.readouterr().err  # nosec B101
-    assert not any(  # nosec B101
-        len(command) > 3 and command[3] == "cancel" for command in applied
-    )
-    assert (
-        sum(  # nosec B101
-            1
-            for command in applied
-            if len(command) > 3 and command[3] == "up" and "--plan" not in command
-        )
-        == 1
-    )
-    assert all(  # nosec B101
-        "--refresh" in command
-        for command in applied
-        if len(command) > 3 and command[3] == "up" and "--plan" not in command
-    )
-
-
-def test_run_up_plan_stack_recovers_test_plan_decrypt_with_stale_lock(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Test CI may clear a stale lock during guarded decrypt recovery."""
-    module = load_script_module(monkeypatch, "run_pulumi_command")
-    context_dir = tmp_path / "repo"
-    applied: list[list[str]] = []
-    direct_attempts = 0
-
-    def fake_runner(command, **kwargs):
-        nonlocal direct_attempts
-        applied.append(command)
-        if len(command) > 3 and command[3] == "up" and "--plan" in command:
-            return subprocess.CompletedProcess(
-                command,
-                255,
-                stdout=module.PLAN_DECRYPT_ERROR,
-                stderr="",
-            )
-        if len(command) > 3 and command[3] == "up" and "--plan" not in command:
-            direct_attempts += 1
-            if direct_attempts == 1:
-                return subprocess.CompletedProcess(
-                    command,
-                    255,
-                    stdout="",
-                    stderr=module.STACK_LOCK_ERROR,
-                )
-        return subprocess.CompletedProcess(command, 0, stdout="")
-
-    context = module.CommandContext(
-        root_dir=context_dir,
-        env={
-            "GITHUB_ACTIONS": "true",
-            "PULUMI_EXPECTED_SHA": "a" * 40,
-        },
-        pulumi_dir=context_dir / "pulumi",
-        policy_pack_dir=context_dir / "policy",
-        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
-        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
-        backend_url="file:///tmp/backend",
-        secrets_provider="awskms://alias/example?region=eu-central-1",
-        runner=fake_runner,
-    )
-
-    assert module._run_up_plan_stack(context, "test", tmp_path / "test.plan") is None
-    captured = capsys.readouterr()
-    assert "guarded direct non-production apply" in captured.err  # nosec B101
-    assert "stack lock during guarded direct" in captured.err  # nosec B101
-    assert any(  # nosec B101
-        len(command) > 3 and command[3] == "cancel" for command in applied
-    )
-    assert direct_attempts == 2  # nosec B101
-    assert all(  # nosec B101
-        "--policy-pack" not in command
-        for command in applied
-        if len(command) > 3 and command[3] == "up" and "--plan" not in command
-    )
-    assert all(  # nosec B101
-        "--refresh" in command
-        for command in applied
-        if len(command) > 3 and command[3] == "up" and "--plan" not in command
-    )
-
-
-def test_run_up_plan_stack_recovers_from_saved_plan_lock(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Saved-plan lock failures should retry the same plan after cancellation."""
-    module = load_script_module(monkeypatch, "run_pulumi_command")
-    context_dir = tmp_path / "repo"
-    applied: list[list[str]] = []
-    plan_attempts = 0
-
-    def fake_runner(command, **kwargs):
-        nonlocal plan_attempts
-        applied.append(command)
-        if len(command) > 3 and command[3] == "up" and "--plan" in command:
-            plan_attempts += 1
-            if plan_attempts > 1:
-                return subprocess.CompletedProcess(command, 0, stdout="")
-            return subprocess.CompletedProcess(
-                command,
-                255,
-                stdout="",
-                stderr=module.STACK_LOCK_ERROR,
-            )
-        return subprocess.CompletedProcess(command, 0, stdout="")
-
-    context = module.CommandContext(
-        root_dir=context_dir,
-        env={
-            "GITHUB_ACTIONS": "true",
-            "PULUMI_EXPECTED_SHA": "c" * 40,
-        },
-        pulumi_dir=context_dir / "pulumi",
-        policy_pack_dir=context_dir / "policy",
-        plan_dir=context_dir / ".artifacts" / "pulumi-plan",
-        preview_artifact_dir=context_dir / ".artifacts" / "pulumi-preview",
-        backend_url="file:///tmp/backend",
-        secrets_provider="awskms://alias/example?region=eu-central-1",
-        runner=fake_runner,
-    )
-
-    assert module._run_up_plan_stack(context, "prod", tmp_path / "prod.plan") is None
-    assert "stack lock while applying the saved" in capsys.readouterr().err  # nosec B101
-    assert any(  # nosec B101
-        len(command) > 3 and command[3] == "cancel" for command in applied
-    )
-    assert plan_attempts == 2  # nosec B101
-    assert not any(  # nosec B101
-        len(command) > 3 and command[3] == "up" and "--plan" not in command
-        for command in applied
-    )
+    plan = tmp_path / "reviewed.plan"
+    assert module._run_up_plan_stack(context, stack, plan) == code
+    assert error in capsys.readouterr().err
+    assert len(applied) == 1
+    assert applied[0][3] == "up"
+    assert applied[0][applied[0].index("--plan") + 1] == str(plan)
+    assert "cancel" not in applied[0]
 
 
 def test_run_up_stack_does_not_retry_after_lock(
@@ -9619,8 +9496,10 @@ def test_run_pulumi_command_dispatch_propagates_apply_failures(
             {
                 "schemaVersion": 1,
                 "createdAtEpoch": 1000,
-                "commitSha": "",
+                "commitSha": "sha-a",
                 "backendUrl": "file:///tmp/backend",
+                "pulumiDir": "pulumi",
+                "policyPackDir": "policy",
                 "stacks": [
                     {
                         "stack": "test",
@@ -9634,7 +9513,7 @@ def test_run_pulumi_command_dispatch_propagates_apply_failures(
     )
     context = module.CommandContext(
         root_dir=context_dir,
-        env={"PULUMI_PLAN_NOW_EPOCH": "1000"},
+        env={"PULUMI_PLAN_NOW_EPOCH": "1000", "PULUMI_EXPECTED_SHA": "sha-a"},
         pulumi_dir=context_dir / "pulumi",
         policy_pack_dir=context_dir / "policy",
         plan_dir=plan_dir,

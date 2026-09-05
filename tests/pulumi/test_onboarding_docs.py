@@ -1,7 +1,7 @@
 """Doc-presence tests for the multi-repo governance onboarding flow (E4.S1).
 
-These assert that ``AGENTS.md`` documents the PR-A / PR-B / create-repo / PR-C
-onboarding sequence for a new ``X-infrastructure`` service, that every step is
+These assert that ``AGENTS.md`` documents identity resolution before the
+PR-A / PR-B / publish-scaffold / PR-C sequence for a new service. Every step is
 tagged ``CODE`` or ``OPERATOR``, that the gated ``/pulumi`` commands and the
 ``repositories.governance.json`` config-only contract are referenced, and that
 the required ``specs/`` BMAD/BMALPH planning phrases are preserved.
@@ -21,12 +21,13 @@ def test_onboarding_section_header_present() -> None:
 
 
 def test_onboarding_four_step_sequence_present() -> None:
-    """PR-A / PR-B / create-repo / PR-C are documented, in order."""
+    """identity / PR-A / PR-B / publish-scaffold / PR-C are documented, in order."""
     agents = _agents_md()
     markers = (
+        "First resolve the actual GitHub repository identity",
         "PR A — Grant deploy roles",
         "PR B — Bootstrap generic infra",
-        "Create `X-infrastructure` repo + push scaffold",
+        "Publish scaffold to the identified repo",
         "PR C — Grant OIDC apply permissions",
     )
 
@@ -47,7 +48,7 @@ def test_each_onboarding_step_is_labeled_code_or_operator() -> None:
     assert "PR A — Grant deploy roles (governance) [CODE]" in agents  # nosec B101
     assert "**[OPERATOR]**" in agents  # nosec B101
     assert pr_b in agents  # nosec B101
-    assert "Create `X-infrastructure` repo + push scaffold [OPERATOR]" in agents  # nosec B101
+    assert "Publish scaffold to the identified repo [OPERATOR]" in agents  # nosec B101
     assert "PR C — Grant OIDC apply permissions [CODE, @Kravalg-gated]" in agents  # nosec B101
 
 
@@ -72,11 +73,11 @@ def test_onboarding_states_two_account_isolation_and_sole_approver() -> None:
 
 
 def test_onboarding_describes_self_deploy_and_governance_apply_check() -> None:
-    """Self-deploy hand-off and the Governance Apply required check are documented."""
+    """Self-deploy hand-off and required Governance Promotion are documented."""
     agents = _agents_md()
 
     assert "self-deploy.yml" in agents  # nosec B101
-    assert "Governance Apply" in agents  # nosec B101
+    assert "Governance Promotion" in agents  # nosec B101
     assert "docs/governance-stack.md" in agents  # nosec B101
 
 

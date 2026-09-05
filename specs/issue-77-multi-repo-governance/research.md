@@ -1,5 +1,37 @@
 # Research — Multi-Repo IAM/OIDC Governance Stack (GitHub issue #77)
 
+## Security completion amendment — 2026-09-05
+
+This document preserves the original planning decisions and historical evidence.
+Where its requirements, design, acceptance criteria, or completion statements
+conflict with the security completion amendment, use the amended
+[PRD](../security-completion/prd.md),
+[architecture](../security-completion/architecture.md), and
+[verification ledger](../security-completion/verification.md) as the current
+contract. Historical scores and successful runs do not prove current closure.
+
+The amended contract requires current-head `Governance Promotion` evidence for
+governance changes, issued by the dedicated environment-protected GitHub App,
+with test apply, test drift, production apply, and production drift evidence tied to the same
+revision. The earlier informational-only `Governance Apply` interpretation is
+superseded. Dedicated governance roles and immutable per-repository permission
+boundaries are provisioned through the operator-owned bootstrap stack before
+onboarding. Governance consumes the existing account OIDC provider and platform
+state key; it cannot widen its own permissions or those boundaries. New service
+catalog entries therefore first require the real repository to exist so its
+immutable GitHub identity can be pinned, followed by reviewed bootstrap boundary
+inventory, complete scaffold, explicit account and backend configuration, and
+subsequent workload capability review. Preview and drift can write only Pulumi
+locks; initializing new backend state is a separate trusted operation. Apply
+must retain its own backend access while explicit secret-read denial targets the
+intended CI secret resources. Platform and service trust rules must follow their
+amended workflow/environment contracts rather than be copied interchangeably.
+
+Reconcile each original FR, NFR, story, risk acceptance, and readiness assertion
+against the amendment and current evidence. Outstanding validation, operational
+requirements, and unexecuted checks remain open in the verification ledger;
+this notice does not mark them complete.
+
 **Phase:** 1 — Analysis (BMAD Analyst)
 **Scope of this document:** Current-state mapping + gap analysis ONLY. No design proposals.
 Every claim is grounded with `file:line` citations. Where the codebase contradicts the
@@ -383,9 +415,10 @@ fan-out, parameterized by a governance repo list.
   (`_UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS:580-601`) and some require tag conditions
   (`_RESOURCE_WILDCARD_ACTION_REQUIRED_CONDITION_KEYS:604-...`). S3-bucket-policy and KMS-key
   resource policies are document-exempt (`_wildcard_iam_document_exempt:567-577`).
-- Escape hatches: per-policy allowlist (`config.wildcard_iam_allowlist`, `:419`) or
-  `AllowWildcardIam` + reason tags (`:423-428`) — avoid using these for governance roles to keep
-  least-privilege evidence clean.
+- The former name-only allowlist and `AllowWildcardIam` tag bypasses have been removed.
+  Platform exceptions require exact identity and reviewed full-document SHA256 pins
+  (`docs/reviewed-iam-policies.md`). Governance and service roles use no such exceptions,
+  preserving NFR5 through scoped permissions and AWS-required unscopable actions.
 
 ### 5.3 Test mocks available (for TDD parity) — `tests/conftest.py`
 - Session-scoped Pulumi mocks cover S3 bucket, IAM role/policy, OIDC provider, ECR repo, KMS

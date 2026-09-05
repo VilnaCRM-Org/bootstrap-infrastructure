@@ -124,3 +124,101 @@ def test_governance_up_is_owned_by_dedicated_governance_runner() -> None:
     runner_jobs = _workflow(RUNNER_WORKFLOW)["jobs"]
     assert "governance_test_apply" not in runner_jobs  # nosec B101
     assert "governance_prod_apply" not in runner_jobs  # nosec B101
+
+
+def test_all_credentials_wait_for_a_protected_environment_and_sha_recheck():
+    """No PR code or AWS credentials run before the matching environment gate."""
+    for filename in (RUNNER_WORKFLOW, GOVERNANCE_WORKFLOW):
+        for job in _workflow(filename)["jobs"].values():
+            if job.get("permissions", {}).get("id-token") != "write":
+                continue
+            assert job["environment"] in {
+                "test",
+                "test-preview",
+                "prod",
+                "prod-preview",
+                "governance",
+                "governance-preview",
+            }
+            steps = job["steps"]
+            recheck = next(
+                i
+                for i, step in enumerate(steps)
+                if step.get("name") == "Recheck current PR head before credentials"
+            )
+            credentials = next(
+                i
+                for i, step in enumerate(steps)
+                if "configure-aws-credentials@" in step.get("uses", "")
+                or "load-aws-ci-env" in step.get("uses", "")
+            )
+            assert recheck < credentials
+            if filename == RUNNER_WORKFLOW:
+                action = next(
+                    step for step in steps if "load-aws-ci-env" in step.get("uses", "")
+                )
+                assert action["uses"] == "./.trusted/.github/actions/load-aws-ci-env"
+
+
+def test_dispatch_runners_share_single_use_claim_serialization():
+    runners = [
+        _workflow(filename) for filename in (RUNNER_WORKFLOW, GOVERNANCE_WORKFLOW)
+    ]
+    assert runners[0]["concurrency"] == runners[1]["concurrency"]
+    for runner in runners:
+        assert "workflow_dispatch" not in _triggers(runner)
+        assert "pulumi_command_preflight.py" in str(runner["jobs"]["preflight"])
+
+
+def test_plan_commands_never_apply_test_or_prod():
+    for filename, prefix in (
+        (RUNNER_WORKFLOW, ""),
+        (GOVERNANCE_WORKFLOW, "governance_"),
+    ):
+        jobs = _workflow(filename)["jobs"]
+        for target in ("test", "prod"):
+            assert "command == 'up'" in jobs[f"{prefix}{target}_apply"]["if"]
+        prod_preview = jobs[f"{prefix}prod_plan" if prefix else "prod_preview"]
+        assert "command == 'plan'" in prod_preview["if"]
+        assert (
+            f"needs.{prefix}test_post_apply_drift.result == 'success'"
+            in prod_preview["if"]
+        )
+
+
+def test_platform_promotion_uses_trusted_credential_free_same_run_final_job():
+    document = yaml.safe_load(
+        (PROJECT_ROOT / ".github/workflows/pulumi-pr-command-runner.yml").read_text()
+    )
+    job = document["jobs"]["platform_promotion"]
+    assert set(job["needs"]) == {
+        "preflight",
+        "test_apply",
+        "test_post_apply_drift",
+        "prod_apply",
+        "prod_post_apply_drift",
+    }
+    assert job["environment"] == "governance-evidence"
+    assert job["permissions"] == {
+        "contents": "read",
+        "pull-requests": "read",
+    }
+    assert job["env"]["PROMOTION_KIND"] == "platform"
+    assert (
+        job["concurrency"]["group"]
+        == "promotion-status-${{ needs.preflight.outputs.pull_request_number }}"
+    )
+    downloads = []
+    for step in job["steps"]:
+        action = step.get("uses", "")
+        if "checkout@" in action:
+            assert step["with"]["ref"] == "${{ github.sha }}"
+        if "download-artifact@" in action:
+            downloads.append(step["with"])
+            assert "run-id" not in step["with"]
+            assert "${{ needs.preflight.outputs.head_sha }}" in step["with"]["name"]
+        assert "configure-aws-credentials" not in action
+    assert {item["path"] for item in downloads} == {
+        ".artifacts/promotion-inputs/test",
+        ".artifacts/promotion-inputs/prod",
+    }

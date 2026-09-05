@@ -106,10 +106,8 @@ def test_unrelated_paths_have_no_owner() -> None:
         "README.md",
         "pulumi/app/main.py",
         "pulumi/user-service-infrastructure/pulumi/__main__.py",
-        "scripts/some_unrelated_helper.py",
         "tests/x.py",
         "tests/unit/test_codeowners.py",
-        ".github/workflows/ci.yml",
     ):
         assert _resolve_owner(unrelated) is None, (
             f"unrelated path {unrelated!r} is unexpectedly owned "

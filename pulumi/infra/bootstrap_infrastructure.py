@@ -40,6 +40,7 @@ def _create_ci_config(
         args=CiConfigurationArgs(
             settings=settings,
             oidc_provider_arn=bootstrap.oidc.provider.arn,
+            manage_resources=getattr(bootstrap, "manage_control_resources", True),
         ),
         opts=opts,
     )
@@ -60,6 +61,7 @@ def _create_automation(
         settings=settings,
         repository_project=_repository_project(repositories, settings.repo),
         oidc_provider_arn=bootstrap.oidc.provider.arn,
+        manage_roles=getattr(bootstrap, "manage_control_resources", True),
         opts=opts,
     )
 
@@ -169,12 +171,14 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
         *,
         settings: BootstrapSettings,
         repository_catalog: ManagedRepositoryCatalog,
+        manage_control_resources: bool = True,
         dependencies: BootstrapInfrastructureDependencies | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("bootstrap:infra:BootstrapInfrastructure", name, None, opts)
 
         self.settings = settings
+        self.manage_control_resources = manage_control_resources
         self.repository_catalog = repository_catalog
         self.dependencies = dependencies or BootstrapInfrastructureDependencies()
 
@@ -184,12 +188,14 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
         self.logging = self.dependencies.logging_buckets_cls(
             "central-logging",
             settings=settings,
+            manage_replication_role=manage_control_resources,
             opts=child_opts,
         )
         self.state = self.dependencies.state_buckets_cls(
             "pulumi-state",
             settings=settings,
             repositories=repositories,
+            manage_replication_role=manage_control_resources,
             log_delivery_dependencies=[
                 self.logging.bucket,
                 self.logging.replica_bucket,
@@ -207,6 +213,8 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
             settings=settings,
             repositories=repositories,
             secrets_key_arns=self.secrets.key_arns,
+            manage_provider=None if manage_control_resources else False,
+            manage_roles=manage_control_resources,
             opts=child_opts,
         )
         self.ci_config = _create_ci_config(
@@ -252,6 +260,7 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
                 "security-account-controls",
                 resource_dependencies=automation_policy_dependencies,
                 settings=settings,
+                manage_role=manage_control_resources,
                 opts=child_opts,
             )
         )

@@ -1,62 +1,79 @@
-# user-service-infrastructure (scaffold template)
+# Service infrastructure scaffold
 
-Template assets for the managed `user-service-infrastructure` service repo. The
-operator copies/pushes these into the real `user-service-infrastructure` GitHub
-repository; they live here in `bootstrap-infrastructure` so they are versioned and
-reviewed alongside the governance stack that backs them.
+Generate a complete repository from the bootstrap repository root:
 
-## What's here
-
-```
-pulumi/user-service-infrastructure/
-  pulumi/
-    Pulumi.yaml            # project name: user-service-infrastructure
-    Pulumi.test.yaml       # test stack  -> account 891377212104, eu-central-1
-    Pulumi.prod.yaml       # prod stack  -> account 933245420672, eu-central-1
-    Pulumi.example.yaml    # non-discovered example (structural parity)
-    __main__.py            # thin baseline; consumes governance resources, creates no IAM
-  AGENTS.md                # repo-local agent rules (gating + secret posture)
-  README.md                # this file
+```sh
+uv run python scripts/scaffold_infrastructure_repository.py \
+  --repository user-service-infrastructure \
+  --destination /tmp/new-user-service-infrastructure
 ```
 
-The self-deploy workflow (`.github/workflows/self-deploy.yml`) is added by Story 5.2.
+The destination must not exist. The generator never merges into or overwrites an
+existing service repository. Review the generated files before publishing them.
+Copying this template directory alone is insufficient: the generator includes the
+pinned Docker runtime, frozen `uv.lock`, shared Python helper closure, local CI
+configuration action, policy pack, Make targets, authenticated comment intake,
+and saved-plan runner. `scaffold-manifest.json` records every generated file hash,
+the project name, CLI pin and initial capability limit. Keep the manifest with the
+reviewed onboarding artifact; it records generation, not future repository edits.
 
-## Consumes, never creates
+The baseline exports configuration metadata only. Governance owns its S3 backend,
+KMS key, config secrets and OIDC roles. Operator-owned `github-ci-bootstrap`
+provisions the immutable permission boundary. Deploying
+actual service workloads requires separately reviewed capability and boundary
+changes. Catalog membership grants no general AWS infrastructure authority.
 
-This repo runs Pulumi against **governance-provided** infrastructure that the central
-`bootstrap-infrastructure` governance stack creates for this repo:
+Before granting privileges, create or inspect the actual service GitHub repository
+and pin its immutable repository ID and owner ID in the governance catalog. Never
+replace these identities with name-only trust. Then provision the catalog entry and bootstrap
+boundary inventory in both accounts. Configure the service repository variables
+from governance `githubVariables`, including independent `AWS_TEST_ACCOUNT_ID`
+and `AWS_PROD_ACCOUNT_ID` pins. Create protected `test`, `prod`, `test-preview`
+and `prod-preview` environments with Kravalg as sole reviewer, self-review
+prevention, administrator bypass disabled, and exactly one custom deployment
+rule for the `main` branch. Verify the separate deployment branch-policy API;
+"Protected branches only" can allow every branch. CODEOWNERS covers every file.
+Service applies trust `test` or `prod`; the central governor's `governance`
+environment belongs to the bootstrap repository.
 
-| Resource | Name | Owner |
-|---|---|---|
-| Pulumi state bucket | `s3://pulumi-user-service-infrastructure-{env}-state` | governance stack |
-| Pulumi secrets key | `alias/pulumi-user-service-infrastructure-{env}-secrets` | governance stack |
-| Deploy roles | `GitHubCiPreview/Apply/Drift-user-service-infrastructure-{env}` | governance stack |
-| Config-read roles | `GitHubCiConfigRead-user-service-infrastructure-{suffix}` | governance stack |
-| CI-config secret | `/user-service-infrastructure/ci/{suffix}` (AWS Secrets Manager) | governance stack |
+Provision a dedicated evidence GitHub App installed only on this service
+repository. Grant statuses/deployments write and actions/contents/pull-requests
+read, with no AWS or repository-administration permission. Store its signing key
+as `GOVERNANCE_PROMOTION_APP_PRIVATE_KEY` only in the `governance-evidence`
+environment, restricted to exactly the `main` branch with no tags or administrator
+bypass. This environment needs no reviewer gate; it only publishes results from
+the protected jobs. Set `GOVERNANCE_PROMOTION_APP_ID` and
+`GOVERNANCE_PROMOTION_APP_SLUG`, and bind the required `Governance Promotion`
+status to that App ID. Preserve code-owner review, current-push approval, stale
+review dismissal, all required CI checks, and test/prod deployment requirements.
+Use a separate App key per repository to keep signing authority isolated.
 
-The scaffold creates **no IAM roles, no OIDC trust, no state bucket, and no KMS key**
-of its own. See `AGENTS.md` for the full rule set.
+Publish the reviewed scaffold to trusted `main`, then dispatch **Initialize
+Service Stack** once for `test` and once for `prod`, approving the corresponding
+protected environment. It verifies the pinned project, CLI, account, backend and
+KMS provider. A successful project-scoped stack listing must confirm absence
+before `stack init`; existing stacks are selected, and API/authorization errors
+fail closed. Initialization never runs the Pulumi program or any resource update.
+Its receipt records the trusted SHA and whether it created backend stack metadata.
 
-## Accounts and region
+After initialization, open a same-repository PR and comment `/pulumi test plan`,
+`/pulumi test up`, `/pulumi prod plan` or `/pulumi prod up`. Maintainers can request
+plans; protected environment approval remains required before credentials are
+issued. Commands bind the original unedited comment, intake run, current PR SHA,
+current permissions and immutable request artifact. A prod plan does not apply
+test. Prod up requires the same-run successful test saved-plan apply and drift,
+then a production saved-plan apply and drift. The service runtime has no IAM
+Access Analyzer grant; local policy and destructive-diff gates still run.
+The trusted final publisher validates both saved-plan artifacts and all apply
+and drift results before recording deployments on the exact PR head. It carries
+the original comment, intake run and base SHA in the evidence. Failed, skipped,
+test-only and plan-only runs cannot publish promotion success.
 
-- `test` -> AWS account `891377212104`
-- `prod` -> AWS account `933245420672`
-- region `eu-central-1`
+`make start` builds the pinned local runtime. Every workflow Make target exists
+in the generated checkout; OIDC session variables are forwarded only to the
+container at execution time. No static credential file or value is generated.
+The test account is 891377212104, production is 933245420672, in eu-central-1.
 
-Each stack pins only its own account (account literals live in the stack config,
-never in Python).
-
-## Credentials and apply path
-
-- AWS credentials come **only** from GitHub OIDC role assumption (no static AWS keys,
-  no `AdministratorAccess`).
-- Applies use the saved-plan IaC-only path (`make pulumi-up-plan`), PR-comment driven,
-  test then prod.
-
-## Preview is blocked until the operator applies governance
-
-The consumed backend bucket, KMS key, deploy roles, and the GitHub repo-variables the
-workflow reads only exist after the operator runs the one-time governance apply for
-this repo and sets the variables. Until then `pulumi preview` cannot resolve its
-backend/secrets provider, so this template is validated by **structure only** (asset
-presence, referenced names, no secrets) — never by running `pulumi preview`/`up`.
+Apply comments and Initialize Service Stack dispatches must be requested by a
+maintainer other than sole environment reviewer Kravalg. Kravalg approves the
+protected environment; the original apply commenter cannot also be the approver.

@@ -9,11 +9,10 @@ resources a governed repo needs to run its own Pulumi CI against its account:
 - a per-repo KMS key + alias for Pulumi secrets (``PulumiSecretsKeys``, FR6),
 - per-repo CI-config secret(s) + config-read role(s) (``CiConfiguration`` with
   the ``repo`` override, FR4),
-- the preview/apply/drift deploy trio via the lifted ``_create_roles`` /
-  ``_role_specs`` from ``ci_bootstrap`` (FR2/FR3), with the governance
-  apply-subject override (``_governance_apply_subjects``, §5.1a, SECURITY-2):
-  the apply role trusts ONLY ``environment:governance`` for BOTH the test and
-  prod stacks, binding the IAM trust to the @Kravalg-gated GitHub environment.
+- the preview/apply/drift deploy trio via the shared ``_create_roles`` resource
+  builder with explicit backend-only service permissions. Apply trusts only
+  the account-specific protected test/prod environment; preview and drift
+  have separate subjects and cannot mint apply credentials.
 
 The ``GovernanceStack`` loop (part 2, Story 1.5 / E1.S4b) consumes the
 per-account OIDC provider by pinned ARN and instantiates one ``RepoGovernance``
@@ -29,7 +28,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import pulumi_aws as aws
@@ -40,18 +39,19 @@ from .bootstrap_settings import BootstrapSettings
 from .ci_bootstrap import (
     _PULUMI_BACKEND_S3_ACTIONS,
     _PULUMI_KMS_ACTIONS,
+    _READ_ONLY_SECRET_DENY_ACTIONS,
+    _apply_secret_deny_document,
     _BootstrapBuildContext,
+    _ci_role_name,
     _ci_secret_suffixes,
     _CiRoleSpec,
     _create_roles,
-    _default_backend_url,
+    _deployment_role_subjects,
     _environment_part,
     _github_variables,
     _iam_role_exists,  # re-exported so tests can stub role existence here
     _pulumi_secrets_alias_conditions,
-    _role_specs,
     _secret_string,
-    _state_bucket_resources,
 )
 from .ci_config import CiConfiguration, CiConfigurationArgs, _ci_config_project
 from .iam.github_oidc import _repo_suffix
@@ -65,12 +65,9 @@ __all__ = [
     "GovernanceStack",
     "GovernanceStackArgs",
     "RepoGovernance",
-    "_governance_apply_subjects",
     "_governance_payloads",
     "_iam_role_exists",
 ]
-
-_GOVERNANCE_ENVIRONMENT = "governance"
 
 
 @dataclass(frozen=True)
@@ -98,21 +95,18 @@ class GovernanceStackArgs:
     protect_resources: bool = True
 
 
-def _governance_apply_subjects(repository: str) -> list[str]:
-    """Return the governance apply-role trust subjects (§5.1a, SECURITY-2).
-
-    The governance ``apply`` role does NOT reuse ``_deployment_role_subjects``:
-    that helper emits a bare branch-ref subject for the ``test`` apply, which
-    would let an OIDC token assume the apply role without passing the
-    @Kravalg-gated ``environment: governance`` reviewer. Both the test-stack and
-    prod-stack governance applies therefore trust ONLY
-    ``repo:{org}/{repo}:environment:governance`` — satisfiable only through the
-    env-gated apply job, never a push or a raw ``repository_dispatch``.
-
-    The subject is fully determined by ``repository`` and the fixed governance
-    environment, so no ``settings`` argument is required.
-    """
-    return [f"repo:{repository}:environment:{_GOVERNANCE_ENVIRONMENT}"]
+def _governance_boundary_arn(
+    *,
+    account_id: str,
+    partition: str,
+    settings: BootstrapSettings,
+    project: str,
+    replication: bool = False,
+) -> str:
+    """Reference an immutable permission ceiling owned by the bootstrap stack."""
+    family = "GovernanceReplicationBoundary" if replication else "GovernanceBoundary"
+    name = f"{family}-{project}-{_environment_part(settings)}"
+    return f"arn:{partition}:iam::{account_id}:policy/{name}"
 
 
 def _governance_backend_policy_document(
@@ -121,6 +115,8 @@ def _governance_backend_policy_document(
     settings: BootstrapSettings,
     repo: str,
     region: str,
+    *,
+    purpose: str = "apply",
 ) -> str:
     """Return the repo-scoped Pulumi backend policy for a governed repo (§5.2).
 
@@ -131,8 +127,15 @@ def _governance_backend_policy_document(
     ``alias/pulumi-{repo}-{env}-secrets`` — the platform-bootstrap alias is gone,
     so a governed repo can never decrypt the platform master key or another
     repo's secrets. ARNs interpolate ``{account_id}``/``{region}`` (FEAS-3).
+
+    Preview/drift read checkpoints and only create/delete lock objects under
+    ``.pulumi/locks/`` in this repo's bucket. Pulumi's DIY backend documents that
+    layout and its lock.go uses WriteAll/Delete, not object-version deletion:
+    https://www.pulumi.com/docs/iac/operations/stack-management/using-a-diy-backend/
+    Only apply receives checkpoint/history write access.
     """
-    bucket_arn, object_arns = _state_bucket_resources(settings, repo)
+    bucket_arn = f"arn:aws:s3:::{settings.state_bucket_name_for_repo(repo)}"
+    object_arns = (bucket_arn + "/state/*", bucket_arn + "/.pulumi/*")
     alias_conditions = _pulumi_secrets_alias_conditions(
         settings,
         repo,
@@ -152,9 +155,18 @@ def _governance_backend_policy_document(
                 {
                     "Sid": "UsePulumiStateBucket",
                     "Effect": "Allow",
-                    "Action": list(_PULUMI_BACKEND_S3_ACTIONS),
+                    "Action": (
+                        list(_PULUMI_BACKEND_S3_ACTIONS)
+                        if purpose == "apply"
+                        else ["s3:ListBucket", "s3:GetObject", "s3:GetObjectVersion"]
+                    ),
                     "Resource": [bucket_arn, *object_arns],
                 },
+                *(
+                    _governance_read_state_guardrails(bucket_arn)
+                    if purpose != "apply"
+                    else []
+                ),
                 {
                     "Sid": "UsePulumiSecretsProviderKey",
                     "Effect": "Allow",
@@ -172,15 +184,141 @@ def _governance_backend_policy_document(
     )
 
 
-def _governance_policy_documents(
-    spec_documents: Sequence[tuple[str, str]],
-    backend_policy: str,
-) -> list[tuple[str, str]]:
-    """Return spec policy docs with the governance backend policy swapped in."""
+def _governance_read_state_guardrails(bucket_arn: str) -> list[dict[str, object]]:
+    """Allow read-role lock management while explicitly denying checkpoint writes."""
+    lock_objects = f"{bucket_arn}/.pulumi/locks/*"
     return [
-        (suffix, backend_policy if suffix == "pulumi-backend" else document)
-        for suffix, document in spec_documents
+        {
+            "Sid": "ManagePulumiLocks",
+            "Effect": "Allow",
+            "Action": ["s3:PutObject", "s3:DeleteObject"],
+            "Resource": lock_objects,
+        },
+        {
+            "Sid": "DenyWritesOutsidePulumiLocks",
+            "Effect": "Deny",
+            "Action": ["s3:PutObject", "s3:DeleteObject"],
+            "NotResource": lock_objects,
+        },
+        {
+            "Sid": "DenyStateVersionDeletion",
+            "Effect": "Deny",
+            "Action": ["s3:DeleteObjectVersion"],
+            "Resource": "*",
+        },
     ]
+
+
+def _governance_read_only_policy_document(
+    account_id: str,
+    partition: str,
+    settings: BootstrapSettings,
+    repo: str,
+    region: str,
+    project: str,
+) -> str:
+    """Read only metadata already permitted by the service backend boundary.
+
+    Service membership never inherits platform-wide inventory permissions. CI
+    secret values remain explicitly denied; the separate configuration role
+    supplies runner configuration before deployment credentials are assumed.
+    """
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "ReadOwnStateBucketMetadata",
+                    "Effect": "Allow",
+                    "Action": ["s3:GetBucketLocation"],
+                    "Resource": (
+                        f"arn:{partition}:s3:::"
+                        f"{settings.state_bucket_name_for_repo(repo)}"
+                    ),
+                },
+                {
+                    "Sid": "ReadOwnPulumiKeyMetadata",
+                    "Effect": "Allow",
+                    "Action": ["kms:DescribeKey"],
+                    "Resource": f"arn:{partition}:kms:{region}:{account_id}:key/*",
+                    "Condition": {
+                        "ForAnyValue:StringEquals": {
+                            "kms:ResourceAliases": [
+                                settings.pulumi_secrets_alias_name_for_repo(repo)
+                            ]
+                        }
+                    },
+                },
+                {
+                    "Sid": "ReadOwnCiConfigurationMetadata",
+                    "Effect": "Allow",
+                    "Action": [
+                        "secretsmanager:DescribeSecret",
+                        "secretsmanager:GetResourcePolicy",
+                        "secretsmanager:ListSecretVersionIds",
+                    ],
+                    "Resource": [
+                        f"arn:{partition}:secretsmanager:{region}:{account_id}:"
+                        f"secret:/{project}/ci/{suffix}-??????"
+                        for suffix in _ci_secret_suffixes(settings)
+                    ],
+                },
+                {
+                    "Sid": "DenySecretLeakingReads",
+                    "Effect": "Deny",
+                    "Action": list(_READ_ONLY_SECRET_DENY_ACTIONS),
+                    "Resource": "*",
+                },
+            ],
+        },
+        sort_keys=True,
+    )
+
+
+def _governance_policy_documents(
+    *,
+    purpose: str,
+    backend_policy: str,
+    account_id: str,
+    partition: str,
+    settings: BootstrapSettings,
+    region: str,
+    project: str,
+    repo: str,
+) -> list[tuple[str, str]]:
+    """Return service permissions without delegating platform administration.
+
+    New service repositories initially receive only their Pulumi backend access.
+    Preview and drift additionally read their own backend metadata; apply retains
+    its explicit secret-read deny. In particular, an apply role cannot modify IAM roles,
+    policies, OIDC providers, state bucket policies, or KMS key policies. Reusing
+    the platform automation policy here would let a service grant itself admin
+    through an assumable role, bypassing every repo-scoped backend restriction.
+
+    Real service resources require additional, explicitly reviewed capabilities
+    in governance IaC. Catalog membership alone must never grant the platform
+    bootstrap policy, and this initial permission set does not deploy an existing
+    application's resources. Any later IAM delegation must use an operator-owned
+    boundary that the service cannot replace or edit.
+    """
+    documents = [("pulumi-backend", backend_policy)]
+    if purpose == "apply":
+        documents.append(
+            (
+                "secret-read-deny",
+                _apply_secret_deny_document(account_id, partition, region, project),
+            )
+        )
+    else:
+        documents.append(
+            (
+                "read-only",
+                _governance_read_only_policy_document(
+                    account_id, partition, settings, repo, region, project
+                ),
+            )
+        )
+    return documents
 
 
 def _governance_role_specs(
@@ -193,36 +331,32 @@ def _governance_role_specs(
     project: str,
     repository: str,
 ) -> list[_CiRoleSpec]:
-    """Return the deploy trio specs with the governance apply-subject override.
-
-    Reuses the lifted ``_role_specs`` (so the preview/drift subjects and all
-    policy documents stay identical to the repo-scoped bootstrap path) and
-    replaces ONLY the ``apply`` spec's subjects with the env-gated governance
-    subject set (§5.1a).
-    """
-    specs = _role_specs(
-        account_id=account_id,
-        partition=partition,
-        settings=settings,
-        region=region,
-        repo=repo,
-        project=project,
-    )
-    governance_subjects = _governance_apply_subjects(repository)
-    backend_policy = _governance_backend_policy_document(
-        account_id, partition, settings, repo, region
-    )
+    """Build service role specs independently of platform bootstrap policies."""
     return [
-        dataclasses.replace(
-            spec,
-            subjects=(
-                governance_subjects if spec.purpose == "apply" else spec.subjects
+        _CiRoleSpec(
+            purpose=purpose,
+            role_name=_ci_role_name(settings, purpose, project),
+            permissions_boundary=_governance_boundary_arn(
+                account_id=account_id,
+                partition=partition,
+                settings=settings,
+                project=project,
             ),
+            subjects=_deployment_role_subjects(settings, purpose, repo),
             policy_documents=_governance_policy_documents(
-                spec.policy_documents, backend_policy
+                purpose=purpose,
+                backend_policy=_governance_backend_policy_document(
+                    account_id, partition, settings, repo, region, purpose=purpose
+                ),
+                account_id=account_id,
+                partition=partition,
+                settings=settings,
+                region=region,
+                project=project,
+                repo=repo,
             ),
         )
-        for spec in specs
+        for purpose in ("preview", "apply", "drift")
     ]
 
 
@@ -234,11 +368,7 @@ def _governance_backend_url(
     """Return the repo-scoped Pulumi backend URL for governance payloads."""
     if override is not None:
         return override
-    return _default_backend_url(
-        dataclasses.replace(settings, repo=repo.name)
-        if settings.repo != repo.name
-        else settings
-    )
+    return f"s3://{settings.state_bucket_name_for_repo(repo.name)}"
 
 
 def _governance_secrets_provider(
@@ -354,7 +484,16 @@ class RepoGovernance(pulumi.ComponentResource):
         project = _ci_config_project(repo_settings, repo.name)
 
         state_buckets, secrets_keys = self._create_state_and_secrets(
-            name, repo=repo, settings=repo_settings
+            name,
+            repo=repo,
+            settings=repo_settings,
+            replication_permissions_boundary=_governance_boundary_arn(
+                account_id=account_id,
+                partition=partition,
+                settings=repo_settings,
+                project=project,
+                replication=True,
+            ),
         )
         ci_configuration = self._create_ci_configuration(
             name,
@@ -362,6 +501,12 @@ class RepoGovernance(pulumi.ComponentResource):
             repo=repo,
             provider_arn=provider_arn,
             protect=protect_resources,
+            permissions_boundary=_governance_boundary_arn(
+                account_id=account_id,
+                partition=partition,
+                settings=repo_settings,
+                project=project,
+            ),
         )
         context = _BootstrapBuildContext(
             parent=self,
@@ -418,9 +563,14 @@ class RepoGovernance(pulumi.ComponentResource):
         settings: BootstrapSettings, repo: ManagedRepository
     ) -> BootstrapSettings:
         """Return settings pinned to this repo so derived helpers stay scoped."""
-        if settings.repo == repo.name:
+        if settings.repo == repo.name and repo.repository_id is None:
             return settings
-        rescoped: BootstrapSettings = dataclasses.replace(settings, repo=repo.name)
+        rescoped: BootstrapSettings = dataclasses.replace(
+            settings,
+            repo=repo.name,
+            github_repository_id=repo.repository_id,
+            github_repository_owner_id=repo.repository_owner_id,
+        )
         return rescoped
 
     def _create_state_and_secrets(
@@ -429,6 +579,7 @@ class RepoGovernance(pulumi.ComponentResource):
         *,
         repo: ManagedRepository,
         settings: BootstrapSettings,
+        replication_permissions_boundary: str,
     ) -> tuple[PulumiStateBuckets, PulumiSecretsKeys]:
         """Create the per-repo state bucket+replica and KMS key+alias."""
         catalog = _single_repo_catalog(repo)
@@ -436,6 +587,7 @@ class RepoGovernance(pulumi.ComponentResource):
             f"{name}-state",
             repositories=catalog.repositories,
             settings=settings,
+            replication_permissions_boundary=replication_permissions_boundary,
             opts=pulumi.ResourceOptions(parent=self),
         )
         secrets_keys = PulumiSecretsKeys(
@@ -454,6 +606,7 @@ class RepoGovernance(pulumi.ComponentResource):
         repo: ManagedRepository,
         provider_arn: pulumi.Input[str],
         protect: bool,
+        permissions_boundary: str,
     ) -> CiConfiguration:
         """Create the per-repo CI-config secrets and config-read roles."""
         return CiConfiguration(
@@ -463,6 +616,7 @@ class RepoGovernance(pulumi.ComponentResource):
                 oidc_provider_arn=provider_arn,
                 protect_resources=protect,
                 repo=repo.name,
+                permissions_boundary=permissions_boundary,
             ),
             opts=pulumi.ResourceOptions(parent=self),
         )
@@ -569,6 +723,7 @@ def _governance_github_variables(
     settings: BootstrapSettings,
     *,
     region: str,
+    account_id: str,
     ci_configuration: CiConfiguration,
 ) -> dict[str, pulumi.Input[str]]:
     """Return per-env GitHub variables for a governed repo (reuse §3.4).
@@ -577,7 +732,12 @@ def _governance_github_variables(
     stays identical to the single-repo path, with the injectable governance
     region threaded through (never a hardcoded ``eu-central-1``).
     """
-    return _github_variables(settings, region=region, ci_configuration=ci_configuration)
+    return _github_variables(
+        settings,
+        region=region,
+        account_id=account_id,
+        ci_configuration=ci_configuration,
+    )
 
 
 def _repo_outputs(
@@ -585,6 +745,7 @@ def _repo_outputs(
     settings: BootstrapSettings,
     repo: ManagedRepository,
     region: str,
+    account_id: str,
     component: RepoGovernance,
 ) -> dict[str, pulumi.Input[object]]:
     """Return the §3.4 per-repo output entry for one governed repo."""
@@ -606,6 +767,7 @@ def _repo_outputs(
         "githubVariables": _governance_github_variables(
             repo_settings,
             region=region,
+            account_id=account_id,
             ci_configuration=component.ci_configuration,
         ),
     }
@@ -666,6 +828,7 @@ class GovernanceStack(pulumi.ComponentResource):
                 settings=settings,
                 repo=repo,
                 region=region,
+                account_id=account_id,
                 component=self.repo_components[repo.name],
             )
             for repo in catalog.repositories

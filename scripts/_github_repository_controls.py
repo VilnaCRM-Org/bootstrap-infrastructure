@@ -3,9 +3,15 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from _github_environment_controls import environment_prevents_self_review
+from _github_environment_controls import (
+    environment_is_main_only,
+    environment_prevents_self_review,
+)
+
+GOVERNANCE_PROMOTION_CONTEXT = "Governance Promotion"
 
 REQUIRED_STATUS_CHECKS = (
+    GOVERNANCE_PROMOTION_CONTEXT,
     "Ruff",
     "Ty",
     "Maintainability",
@@ -36,14 +42,19 @@ OPERATIONS_ALERT_RECONCILE_ENVIRONMENT = "operations-alert-reconcile"
 GOVERNANCE_ENVIRONMENT = "governance"
 
 
-def required_status_checks_rule() -> dict[str, object]:
+def required_status_checks_rule(*, promotion_app_id: int) -> dict[str, object]:
     """Return the ruleset rule that enforces the documented PR gates."""
     return {
         "type": "required_status_checks",
         "parameters": {
             "strict_required_status_checks_policy": True,
             "required_status_checks": [
-                {"context": context} for context in REQUIRED_STATUS_CHECKS
+                (
+                    {"context": context, "integration_id": promotion_app_id}
+                    if context == GOVERNANCE_PROMOTION_CONTEXT
+                    else {"context": context}
+                )
+                for context in REQUIRED_STATUS_CHECKS
             ],
         },
     }
@@ -65,8 +76,25 @@ def default_pull_request_rule() -> dict[str, object]:
     }
 
 
-def ruleset_payload(existing_rules: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+def harden_pull_request_rule(existing: Mapping[str, Any]) -> dict[str, Any]:
+    """Preserve stronger review counts while enforcing all current safety gates."""
+    rule = default_pull_request_rule()
+    parameters = {**existing.get("parameters", {}), **rule["parameters"]}
+    parameters["required_reviewers"] = existing.get("parameters", {}).get(
+        "required_reviewers", []
+    )
+    parameters["required_approving_review_count"] = max(
+        1, existing.get("parameters", {}).get("required_approving_review_count", 1)
+    )
+    return {**existing, **rule, "parameters": parameters}
+
+
+def ruleset_payload(
+    existing_rules: Sequence[Mapping[str, Any]] = (), *, promotion_app_id: int
+) -> dict[str, Any]:
     """Build the branch ruleset payload while preserving known stronger rules."""
+    if promotion_app_id <= 0 or promotion_app_id == 15368:
+        raise ValueError("A dedicated promotion GitHub App ID is required.")
     rules_by_type = {
         rule.get("type"): dict(rule)
         for rule in existing_rules
@@ -75,10 +103,10 @@ def ruleset_payload(existing_rules: Sequence[Mapping[str, Any]] = ()) -> dict[st
     rules = [
         rules_by_type.get("deletion", {"type": "deletion"}),
         rules_by_type.get("non_fast_forward", {"type": "non_fast_forward"}),
-        rules_by_type.get("pull_request", default_pull_request_rule()),
-        required_status_checks_rule(),
+        harden_pull_request_rule(rules_by_type.get("pull_request", {})),
+        required_status_checks_rule(promotion_app_id=promotion_app_id),
     ]
-    for optional_rule_type in ("code_quality", "code_scanning"):
+    for optional_rule_type in ("code_quality", "code_scanning", "required_deployments"):
         rule = rules_by_type.get(optional_rule_type)
         if rule is not None:
             rules.append(rule)
@@ -97,10 +125,11 @@ def protected_reviewer_environment_payload(reviewer_id: int) -> dict[str, Any]:
     return {
         "wait_timer": 0,
         "prevent_self_review": True,
+        "can_admins_bypass": False,
         "reviewers": [{"type": "User", "id": reviewer_id}],
         "deployment_branch_policy": {
-            "protected_branches": True,
-            "custom_branch_policies": False,
+            "protected_branches": False,
+            "custom_branch_policies": True,
         },
     }
 
@@ -209,12 +238,22 @@ def ruleset_has_pull_request_reviews(ruleset: Mapping[str, Any]) -> bool:
         return (
             isinstance(review_count, int)
             and review_count >= 1
-            and parameters.get("required_review_thread_resolution") is True
+            and all(
+                parameters.get(flag) is True
+                for flag in (
+                    "required_review_thread_resolution",
+                    "dismiss_stale_reviews_on_push",
+                    "require_code_owner_review",
+                    "require_last_push_approval",
+                )
+            )
         )
     return False
 
 
-def ruleset_verification_blockers(ruleset: Mapping[str, Any] | None) -> list[str]:
+def ruleset_verification_blockers(
+    ruleset: Mapping[str, Any] | None, *, promotion_app_id: int
+) -> list[str]:
     """Return blockers when the active main ruleset does not match expectations."""
     if ruleset is None:
         return ["Active main branch ruleset was not found after apply."]
@@ -225,6 +264,19 @@ def ruleset_verification_blockers(ruleset: Mapping[str, Any] | None) -> list[str
         blockers.append(
             "Active main branch ruleset is missing required status checks: "
             f"{', '.join(missing_contexts)}."
+        )
+    promotion_checks = [
+        item
+        for rule in ruleset.get("rules", [])
+        for item in required_status_check_items(rule)
+        if isinstance(item, Mapping)
+        and status_check_context(item) == GOVERNANCE_PROMOTION_CONTEXT
+    ]
+    if not any(
+        item.get("integration_id") == promotion_app_id for item in promotion_checks
+    ):
+        blockers.append(
+            "Governance Promotion must require the dedicated GitHub App issuer."
         )
     if not ruleset_has_pull_request_reviews(ruleset):
         blockers.append(
@@ -281,16 +333,12 @@ def protected_environment_verification_blockers(
     blockers: list[str] = []
     if not environment_prevents_self_review(environment):
         blockers.append(f"{label} does not prevent self-review.")
-    branch_policy = environment.get("deployment_branch_policy")
-    if not isinstance(branch_policy, Mapping):
-        blockers.append(f"{label} does not report a branch policy.")
-    elif (
-        branch_policy.get("protected_branches") is not True
-        or branch_policy.get("custom_branch_policies") is not False
-    ):
-        blockers.append(f"{label} does not restrict deployments to protected branches.")
-    if reviewer_id not in environment_reviewer_ids(environment):
-        blockers.append(f"{label} does not require the configured reviewer.")
+    if not environment_is_main_only(environment):
+        blockers.append(f"{label} does not allow only the main branch.")
+    if environment.get("can_admins_bypass") is not False:
+        blockers.append(f"{label} allows administrator bypass.")
+    if environment_reviewer_ids(environment) != {reviewer_id}:
+        blockers.append(f"{label} does not require only the configured reviewer.")
     return blockers
 
 

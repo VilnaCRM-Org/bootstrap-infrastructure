@@ -16,9 +16,9 @@ infrastructure:
   are referenced by name/ARN, never created here.
 
 This scaffold therefore creates **no IAM roles, no OIDC trust, and no Pulumi state
-bucket / KMS key** of its own. The service team adds real resources (the service's
-own AWS infrastructure) on top of this baseline; those resources are deployed using
-the governance-provided apply role, so they never need new trust.
+bucket / KMS key** of its own. Its initial apply role is backend-only. Real
+workload resources require separately reviewed capabilities and immutable boundary
+extensions before they can be deployed.
 
 **Preview-blocked until operator governance apply (FEASIBILITY-6).** The consumed
 backend bucket, KMS key, deploy roles, and the GitHub repo-variables the workflow
@@ -44,8 +44,8 @@ pulumi_secrets_provider = config.require("pulumiSecretsProvider")
 
 # NOTE: do NOT create IAM roles, OIDC providers, the state bucket, or the KMS key
 # here. They are owned by the governance stack (see pulumi/infra/governance.py)
-# and consumed via the backend URL + secrets provider above. Add the service's
-# real AWS resources below this line; they deploy under the governance apply role.
+# and consumed via the backend URL + secrets provider above. Real workloads
+# require a separate reviewed capability grant before resources are added.
 
 pulumi.export("repoSlug", repo_slug)
 pulumi.export("environment", environment)

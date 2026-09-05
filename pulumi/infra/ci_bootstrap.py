@@ -18,6 +18,7 @@ from .automation import (
 from .bootstrap_settings import BootstrapSettings
 from .ci_config import CiConfiguration, CiConfigurationArgs, _ci_config_project
 from .config import settings as default_settings
+from .github_identity import expand_subjects, identity_conditions
 from .iam import GitHubOidcRoles
 from .operations_monitoring import _queue_name, _topic_name, _trail_name
 from .utils.outputs import apply_output
@@ -176,6 +177,7 @@ class _CiRoleSpec:
     role_name: str
     subjects: Sequence[str]
     policy_documents: Sequence[tuple[str, str]]
+    permissions_boundary: pulumi.Input[str] | None = None
 
 
 @dataclass(frozen=True)
@@ -245,6 +247,8 @@ class GitHubCiBootstrapArgs:
     pulumi_secrets_provider: str | None = None
     write_secret_values: bool = True
     protect_resources: bool = True
+    control_permissions_boundary: pulumi.Input[str] | None = None
+    manage_oidc_provider: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -326,23 +330,35 @@ def _deployment_role_subjects(
 ) -> list[str]:
     """Return trusted GitHub OIDC subjects for a CI deployment role."""
     branch_subject = _repo_subject(settings, f"ref:{_branch_ref(settings)}", repo)
+    if purpose == "apply":
+        return [_repo_subject(settings, f"environment:{settings.environment}", repo)]
     if purpose == "preview" and settings.environment == "test":
         return [
             branch_subject,
             _repo_subject(settings, "pull_request", repo),
             _repo_subject(settings, "environment:test", repo),
+            _repo_subject(settings, "environment:test-preview", repo),
         ]
     if settings.environment == "test":
-        return [branch_subject, _repo_subject(settings, "environment:test", repo)]
-    if purpose == "apply" and settings.environment == "prod":
-        return [_repo_subject(settings, "environment:prod", repo)]
-    return [branch_subject]
+        return [
+            branch_subject,
+            _repo_subject(settings, "environment:test", repo),
+            _repo_subject(settings, "environment:test-preview", repo),
+        ]
+    return [
+        branch_subject,
+        _repo_subject(settings, f"environment:{settings.environment}-preview", repo),
+    ]
 
 
 def _deployment_assume_role_policy(
     oidc_provider_arn: str,
     repository: str,
     subjects: Sequence[str],
+    *,
+    repository_id: str | None = None,
+    owner_id: str | None = None,
+    branch_ref: str | None = None,
 ) -> str:
     """Build the trust policy for one GitHub OIDC CI role."""
     return json.dumps(
@@ -358,7 +374,15 @@ def _deployment_assume_role_policy(
                             "token.actions.githubusercontent.com:aud": (
                                 "sts.amazonaws.com"
                             ),
-                            "token.actions.githubusercontent.com:sub": list(subjects),
+                            "token.actions.githubusercontent.com:sub": expand_subjects(
+                                subjects, repository, repository_id, owner_id
+                            ),
+                            **identity_conditions(repository_id, owner_id),
+                            **(
+                                {"token.actions.githubusercontent.com:ref": branch_ref}
+                                if branch_ref is not None
+                                else {}
+                            ),
                             "token.actions.githubusercontent.com:repository": (
                                 repository
                             ),
@@ -374,7 +398,7 @@ def _deployment_assume_role_policy(
 def _state_bucket_resources(
     settings: BootstrapSettings,
     repo: str | None = None,
-) -> tuple[str, tuple[str, str]]:
+) -> tuple[str, tuple[str, ...]]:
     """Return the Pulumi backend bucket and state-object ARN patterns."""
     bucket_name = (
         settings.state_bucket_name_for_repo(repo)
@@ -383,10 +407,7 @@ def _state_bucket_resources(
     )
     return (
         f"arn:aws:s3:::{bucket_name}",
-        (
-            f"arn:aws:s3:::{bucket_name}/state/*",
-            f"arn:aws:s3:::{bucket_name}/.pulumi/*",
-        ),
+        (f"arn:aws:s3:::{bucket_name}/state/{settings.environment}/*",),
     )
 
 
@@ -418,6 +439,8 @@ def _pulumi_backend_policy_document(
     partition: str,
     settings: BootstrapSettings,
     repo: str | None = None,
+    *,
+    read_only: bool = False,
 ) -> str:
     """Return S3 backend and KMS secrets-provider access for Pulumi CLI."""
     resolved_repo = repo if repo is not None else (_require_repo(settings).repo or "")
@@ -438,12 +461,7 @@ def _pulumi_backend_policy_document(
                     "Action": ["sts:GetCallerIdentity"],
                     "Resource": "*",
                 },
-                {
-                    "Sid": "UsePulumiStateBucket",
-                    "Effect": "Allow",
-                    "Action": list(_PULUMI_BACKEND_S3_ACTIONS),
-                    "Resource": [bucket_arn, *object_arns],
-                },
+                *_pulumi_backend_s3_statements(bucket_arn, object_arns, read_only),
                 {
                     "Sid": "UsePulumiSecretsProviderKey",
                     "Effect": "Allow",
@@ -459,6 +477,35 @@ def _pulumi_backend_policy_document(
         },
         sort_keys=True,
     )
+
+
+def _pulumi_backend_s3_statements(
+    bucket_arn: str, object_arns: Sequence[str], read_only: bool
+) -> list[dict[str, object]]:
+    """Allow previews to lock the DIY backend without changing saved state."""
+    if not read_only:
+        return [
+            {
+                "Sid": "UsePulumiStateBucket",
+                "Effect": "Allow",
+                "Action": list(_PULUMI_BACKEND_S3_ACTIONS),
+                "Resource": [bucket_arn, *object_arns],
+            }
+        ]
+    return [
+        {
+            "Sid": "ReadPulumiStateBucket",
+            "Effect": "Allow",
+            "Action": ["s3:ListBucket", "s3:GetObject", "s3:GetObjectVersion"],
+            "Resource": [bucket_arn, *object_arns],
+        },
+        {
+            "Sid": "LockPulumiStateBucket",
+            "Effect": "Allow",
+            "Action": ["s3:PutObject", "s3:DeleteObject"],
+            "Resource": [f"{arn[:-1]}.pulumi/locks/*" for arn in object_arns],
+        },
+    ]
 
 
 def _read_only_policy_document(
@@ -575,7 +622,11 @@ def _role_policy_documents(
     """Return policy documents for one GitHub CI role purpose."""
     resolved_repo = repo if repo is not None else settings.repo
     backend_policy = _pulumi_backend_policy_document(
-        account_id, partition, settings, resolved_repo
+        account_id,
+        partition,
+        settings,
+        resolved_repo,
+        read_only=purpose in {"preview", "drift"},
     )
     if purpose in {"preview", "drift"}:
         return [
@@ -608,6 +659,7 @@ def _role_specs(
     region: str = "eu-central-1",
     repo: str | None = None,
     project: str | None = None,
+    control_permissions_boundary: pulumi.Input[str] | None = None,
 ) -> list[_CiRoleSpec]:
     """Return deterministic role specs for the three deployment role purposes."""
     resolved_repo = repo if repo is not None else settings.repo
@@ -615,6 +667,9 @@ def _role_specs(
     return [
         _CiRoleSpec(
             purpose=purpose,
+            permissions_boundary=(
+                control_permissions_boundary if purpose == "apply" else None
+            ),
             role_name=_ci_role_name(settings, purpose, resolved_project),
             subjects=_deployment_role_subjects(settings, purpose, resolved_repo),
             policy_documents=_role_policy_documents(
@@ -641,12 +696,18 @@ def _create_role(
     role = aws.iam.Role(
         f"{context.name}-{spec.purpose}-role",
         name=spec.role_name,
+        permissions_boundary=spec.permissions_boundary,
         assume_role_policy=apply_output(
             pulumi.Output.from_input(context.provider_arn),
             lambda arn: _deployment_assume_role_policy(
                 arn,
                 repository,
                 spec.subjects,
+                repository_id=context.settings.github_repository_id,
+                owner_id=context.settings.github_repository_owner_id,
+                branch_ref=(
+                    None if spec.purpose == "preview" else _branch_ref(context.settings)
+                ),
             ),
         ),
         tags=base_tags(
@@ -693,10 +754,11 @@ def _create_role(
             aws.iam.RolePolicy(
                 f"{context.name}-{spec.purpose}-{policy_suffix}",
                 name=f"{spec.role_name}-{policy_suffix}",
-                role=role.id,
+                role=spec.role_name,
                 policy=policy_document,
                 opts=pulumi.ResourceOptions(
                     parent=context.parent,
+                    depends_on=[role],
                     protect=context.protect_resources,
                 ),
             )
@@ -731,7 +793,7 @@ def _secret_string(payload: Mapping[str, pulumi.Input[str]]) -> pulumi.Output[st
 
 def _default_backend_url(settings: BootstrapSettings) -> str:
     """Return the default S3 backend URL used by the main Pulumi stack."""
-    return f"s3://{settings.state_bucket_name()}"
+    return f"s3://{settings.state_bucket_name()}/state/{settings.environment}"
 
 
 def _default_secrets_provider(settings: BootstrapSettings, region: str) -> str:
@@ -777,6 +839,9 @@ def _create_operations_alert_triage(
                         f"ref:{_branch_ref(context.settings)}",
                     )
                 ],
+                repository_id=context.settings.github_repository_id,
+                owner_id=context.settings.github_repository_owner_id,
+                branch_ref=_branch_ref(context.settings),
             ),
         ),
         tags=base_tags(
@@ -925,11 +990,13 @@ def _github_variables(
     settings: BootstrapSettings,
     *,
     region: str,
+    account_id: str,
     ci_configuration: CiConfiguration,
 ) -> dict[str, pulumi.Input[str]]:
     """Return GitHub repository variables that point workflows at AWS config."""
     if settings.environment == "test":
         return {
+            "AWS_TEST_ACCOUNT_ID": account_id,
             "AWS_TEST_REGION": region,
             "AWS_TEST_PR_CI_CONFIG_ROLE_ARN": (
                 ci_configuration.read_role_arns["test-pr"]
@@ -938,13 +1005,17 @@ def _github_variables(
         }
     if settings.environment == "prod":
         return {
+            "AWS_PROD_ACCOUNT_ID": account_id,
             "AWS_PROD_REGION": region,
             "AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN": (
                 ci_configuration.read_role_arns["prod-preview"]
             ),
             "AWS_PROD_CI_CONFIG_ROLE_ARN": ci_configuration.read_role_arns["prod"],
         }
-    return {f"AWS_{settings.environment.upper()}_REGION": region}
+    return {
+        f"AWS_{settings.environment.upper()}_REGION": region,
+        f"AWS_{settings.environment.upper()}_ACCOUNT_ID": account_id,
+    }
 
 
 def _secret_payload_keys(
@@ -1000,6 +1071,7 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
             f"{name}-oidc",
             settings=configured_settings,
             repositories=[],
+            manage_provider=config.manage_oidc_provider,
             opts=pulumi.ResourceOptions(parent=self),
         )
         ci_configuration = CiConfiguration(
@@ -1032,8 +1104,28 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
                 region=region,
                 repo=context.repo,
                 project=context.project,
+                control_permissions_boundary=config.control_permissions_boundary,
             ),
         )
+        from .platform_iam import platform_control_state_guard
+
+        self.state_guards = {
+            purpose: aws.iam.RolePolicy(
+                f"{name}-{purpose}-state-guard",
+                name=(
+                    f"{_ci_role_name(configured_settings, purpose, context.project)}"
+                    "-state-guard"
+                ),
+                role=role.name,
+                policy=platform_control_state_guard(
+                    account_id, configured_settings, purpose=purpose
+                ),
+                opts=pulumi.ResourceOptions(
+                    parent=self, protect=config.protect_resources
+                ),
+            )
+            for purpose, role in self.roles.items()
+        }
         self.role_arns = {purpose: role.arn for purpose, role in self.roles.items()}
 
         triage_resources = _create_operations_alert_triage(context)
@@ -1062,6 +1154,7 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
         self.github_variables = _github_variables(
             configured_settings,
             region=region,
+            account_id=context.account_id,
             ci_configuration=ci_configuration,
         )
         self.secret_payload_keys = _secret_payload_keys(self.secret_payloads)

@@ -72,39 +72,37 @@ def test_preflight_has_no_id_token_permission() -> None:
 
 
 def test_preflight_revalidates_pr_head_open_and_same_repo() -> None:
-    """Preflight re-checks PR number, head SHA, open-not-merged, same-repo head."""
+    """Authentication executes from the trusted default-branch checkout."""
     preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
-    run_text = _step_run_text(preflight)
-
-    assert "pulls/" in run_text  # nosec B101
-    assert ".head.sha" in run_text  # nosec B101
-    assert ".head.repo.full_name" in run_text  # nosec B101
-    assert ".state" in run_text  # nosec B101
-    assert ".merged" in run_text  # nosec B101
-    assert "^[0-9a-f]{40}$" in run_text  # nosec B101
+    assert "scripts/pulumi_command_preflight.py --governance" in _step_run_text(
+        preflight
+    )
+    checkout = preflight["steps"][0]
+    assert "ref" not in checkout["with"]
+    assert checkout["with"]["persist-credentials"] is False
 
 
 def test_preflight_resolves_comment_author_and_asserts_kravalg() -> None:
-    """Preflight resolves comment_id -> author and asserts login == Kravalg."""
+    """The shared verifier receives the immutable intake and original comment IDs."""
     preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
-    run_text = _step_run_text(preflight)
-
-    assert "issues/comments/" in run_text  # nosec B101
-    assert ".user.login" in run_text  # nosec B101
-    # Case-insensitive compare against the sole approver login.
-    assert "kravalg" in run_text.lower()  # nosec B101
-    # The untrusted comment_id arrives via client_payload, never trusted inputs.
-    assert "client_payload.comment_id" in yaml.safe_dump(preflight)  # nosec B101
+    assert (
+        preflight["env"]["REQUEST_COMMENT_ID"]
+        == "${{ github.event.client_payload.comment_id }}"
+    )
+    assert (
+        preflight["env"]["REQUEST_SOURCE_RUN_ID"]
+        == "${{ github.event.client_payload.source_run_id }}"
+    )
+    assert preflight["permissions"]["actions"] == "read"
 
 
 def test_preflight_recomputes_governance_scope_server_side() -> None:
-    """Preflight recomputes governance_touched from head SHA via governance_paths."""
+    """The governance runner enables the shared verifier's fail-closed scope mode."""
     preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
-    run_text = _step_run_text(preflight)
-
-    assert "scripts/governance_paths.py" in run_text  # nosec B101
-    assert "/files" in run_text  # nosec B101
-    assert "governance_touched" in run_text  # nosec B101
+    assert (
+        _step_run_text(preflight).strip()
+        == "python3 scripts/pulumi_command_preflight.py --governance"
+    )
 
 
 def test_preflight_does_not_trust_client_payload_governance_flag() -> None:
@@ -202,30 +200,10 @@ def test_status_post_state_derives_from_prod_apply_outcome() -> None:
 
 
 def test_preflight_emits_outputs_before_auth_and_scope_checks() -> None:
-    """Preflight writes head_sha/pull_request_number BEFORE the auth/scope/head
-    rejections so a rejected governance PR still leaves the status job able to
-    post a terminal failure (FEASIBILITY-1)."""
+    """No shell step publishes unverified payload outputs or arbitrary SHA statuses."""
     preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
-    run_text = _step_run_text(preflight)
-
-    emit_index = run_text.index('echo "head_sha=${REQUEST_HEAD_SHA}"')
-
-    # Each authorization / scope / head-moved rejection must come AFTER the
-    # outputs have already been emitted.
-    for rejection_marker in (
-        ".head.repo.full_name",  # same-repo head re-check
-        "the pull request head moved",  # head-moved rejection
-        "restricted to the sole approver",  # @Kravalg author rejection
-        "the recomputed scope is not governance",  # server-side scope rejection
-    ):
-        assert emit_index < run_text.index(rejection_marker), (  # nosec B101
-            f"head_sha output must be emitted before the {rejection_marker!r} "
-            "rejection so the status job can post a terminal failure"
-        )
-
-    # The format-validation gates (which legitimately exit before any status
-    # can be posted to a bad SHA) must precede the emission.
-    assert run_text.index("^[0-9a-f]{40}$") < emit_index  # nosec B101
+    assert "GITHUB_OUTPUT" not in _step_run_text(preflight)
+    assert preflight["outputs"]["head_sha"] == "${{ steps.resolve.outputs.head_sha }}"
 
 
 def test_status_post_is_always_terminal_never_pending() -> None:
@@ -284,11 +262,7 @@ def test_governance_runner_pins_actions_to_full_shas() -> None:
 # --- F1: command/target threading + apply-job gating ----------------------------
 
 # The test-apply / test-drift gate: an apply request only (test up OR any prod).
-_TEST_APPLY_GUARD = (
-    "needs.preflight.outputs.target_environment == 'prod' || "
-    "(needs.preflight.outputs.target_environment == 'test' && "
-    "needs.preflight.outputs.command == 'up')"
-)
+_TEST_APPLY_GUARD = "needs.preflight.outputs.command == 'up'"
 
 
 def _normalize_if(expr: str) -> str:
@@ -297,21 +271,17 @@ def _normalize_if(expr: str) -> str:
 
 
 def test_preflight_validates_command_and_target_server_side() -> None:
-    """Preflight re-derives command (plan|up) + target (test|prod) from an allowlist."""
+    """Payload command/target reach the verifier only via environment variables."""
     preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
-    run_text = _step_run_text(preflight)
-    dumped = yaml.safe_dump(preflight)
-
-    # Both inputs arrive via client_payload (untrusted) and are re-validated.
-    assert "client_payload.command" in dumped  # nosec B101
-    assert "client_payload.target_environment" in dumped  # nosec B101
-    assert "command must be plan or up" in run_text  # nosec B101
-    assert "target_environment must be test or prod" in run_text  # nosec B101
-    # The validated values are emitted as preflight outputs that gate the jobs.
-    assert "command=${REQUEST_COMMAND}" in run_text  # nosec B101
-    assert (  # nosec B101
-        "target_environment=${REQUEST_TARGET_ENVIRONMENT}" in run_text
+    assert (
+        preflight["env"]["REQUEST_COMMAND"]
+        == "${{ github.event.client_payload.command }}"
     )
+    assert (
+        preflight["env"]["REQUEST_TARGET_ENVIRONMENT"]
+        == "${{ github.event.client_payload.target_environment }}"
+    )
+    assert "client_payload" not in _step_run_text(preflight)
 
 
 def test_preflight_exposes_command_and_target_outputs() -> None:
@@ -327,15 +297,14 @@ def test_preflight_exposes_command_and_target_outputs() -> None:
 
 
 def test_command_target_validated_before_outputs_emitted() -> None:
-    """command/target allowlist checks precede the output emission (terminal status)."""
+    """A durable one-use claim is owned by trusted preflight, never PR code."""
     preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
-    run_text = _step_run_text(preflight)
-
-    emit_index = run_text.index("command=${REQUEST_COMMAND}")
-    assert run_text.index("command must be plan or up") < emit_index  # nosec B101
-    assert (  # nosec B101
-        run_text.index("target_environment must be test or prod") < emit_index
-    )
+    assert preflight["permissions"]["statuses"] == "write"
+    for job_id in APPLY_JOBS:
+        assert (
+            "statuses"
+            not in _workflow(GOVERNANCE_WORKFLOW)["jobs"][job_id]["permissions"]
+        )
 
 
 def test_test_plan_job_is_unconditional() -> None:
@@ -454,7 +423,8 @@ def test_plan_request_never_reaches_an_apply_job() -> None:
     # test plan: no apply anywhere.
     assert not _guard_holds(test_apply_guard, target="test", command="plan")  # nosec B101
     assert not _guard_holds(prod_apply_guard, target="test", command="plan")  # nosec B101
-    # prod plan: prod apply must NOT run (test apply does, by test-then-prod design).
+    # prod plan must not mutate either account.
+    assert not _guard_holds(test_apply_guard, target="prod", command="plan")
     assert not _guard_holds(prod_apply_guard, target="prod", command="plan")  # nosec B101
     # test up: prod apply must NOT run.
     assert not _guard_holds(prod_apply_guard, target="test", command="up")  # nosec B101
@@ -490,7 +460,7 @@ def test_prod_up_runs_test_then_prod() -> None:
 
     # Test apply runs for a prod request (target == 'prod' branch of the guard).
     test_apply_guard = _normalize_if(jobs["governance_test_apply"]["if"])
-    assert "target_environment == 'prod'" in test_apply_guard  # nosec B101
+    assert "command == 'up'" in test_apply_guard  # nosec B101
 
     # Prod apply depends on the test apply + drift completing first.
     prod_apply_needs = jobs["governance_prod_apply"]["needs"]
@@ -559,23 +529,22 @@ def test_apply_jobs_do_not_load_test_or_prod_ci_config() -> None:
 
 
 def test_plan_and_drift_jobs_still_use_ci_config_under_branch_ref() -> None:
-    """Plan/drift jobs (no environment) keep the CI-config path (branch-ref token).
-
-    These jobs do NOT declare `environment: governance`, so their OIDC subject is
-    the branch-ref / pull_request claim that the existing config-read + preview/
-    drift roles trust — so the CI-config load still works for them.
-    """
+    """Preview/drift have separate protected subjects and governance-only config."""
     jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
-    non_apply_credentialed = (
+    for job_id in (
         "governance_test_plan",
         "governance_test_post_apply_drift",
         "governance_prod_plan",
-    )
-    for job_id in non_apply_credentialed:
+    ):
         job = jobs[job_id]
-        assert "environment" not in job, job_id  # nosec B101
-        uses = {step.get("uses") for step in _job_steps(job)}
-        assert "./.github/actions/load-aws-ci-env" in uses, job_id  # nosec B101
+        assert job["environment"] == "governance-preview"
+        assert all(
+            "load-aws-ci-env" not in step.get("uses", "") for step in job["steps"]
+        )
+        role = _aws_credentials_step(job)["with"]["role-to-assume"]
+        assert "AWS_GOVERNANCE_" in role
+        assert "APPLY_ROLE" not in role
+        assert "AWS_GOVERNANCE_" in job["env"]["PULUMI_BACKEND_URL"]
 
 
 def test_status_state_is_command_target_aware() -> None:
@@ -593,3 +562,31 @@ def test_status_state_is_command_target_aware() -> None:
     assert 'success) status_state="success" ;;' in run_text  # nosec B101
     assert '*) status_state="failure" ;;' in run_text  # nosec B101
     assert 'status_state="pending"' not in run_text  # nosec B101
+
+
+def test_promotion_proof_job_uses_only_trusted_code_and_complete_stage_results():
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+    job = jobs["governance_promotion"]
+    assert set(job["needs"]) == {
+        "preflight",
+        "governance_test_apply",
+        "governance_test_post_apply_drift",
+        "governance_prod_apply",
+        "governance_prod_post_apply_drift",
+    }
+    assert "id-token" not in job["permissions"]
+    assert "deployments" not in job["permissions"]
+    assert "statuses" not in job["permissions"]
+    assert job["environment"] == "governance-evidence"
+    app = next(step for step in job["steps"] if step.get("id") == "promotion_app")
+    assert app["with"]["permission-statuses"] == "write"
+    assert app["with"]["permission-deployments"] == "write"
+    assert job["steps"][0]["with"]["ref"] == "${{ github.sha }}"
+    assert job["env"]["PROMOTION_NEEDS"] == "${{ toJSON(needs) }}"
+    assert "make " not in _step_run_text(job)
+    scope = _workflow("governance-promotion.yml")
+    assert "pull_request_target" in _triggers(scope)
+    assert (
+        scope["jobs"]["scope"]["steps"][0]["with"]["ref"]
+        == "${{ github.event.repository.default_branch }}"
+    )

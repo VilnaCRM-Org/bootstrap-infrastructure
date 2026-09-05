@@ -1,0 +1,206 @@
+name: Pulumi PR Commands
+
+on:
+  issue_comment:
+    types:
+      - created
+
+concurrency:
+  group: pulumi-pr-command-intake-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: read
+
+jobs:
+  dispatch:
+    name: Dispatch PR Command
+    if: >-
+      github.event.issue.pull_request != null &&
+      github.event.issue.state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      # GitHub returns 403 for PR conversation comments from this workflow
+      # without pull-requests: write, even when issues: write is present.
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Route managed service commands
+        id: scope
+        run: echo "governance_touched=false" >> "${GITHUB_OUTPUT}"
+
+      - name: Parse Pulumi command
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_ASSOCIATION: ${{ github.event.comment.author_association }}
+          COMMENT_LOGIN: ${{ github.event.comment.user.login }}
+          GOVERNANCE_TOUCHED: ${{ steps.scope.outputs.governance_touched }}
+        run: |
+          python ./scripts/pulumi_pr_comment.py \
+            "${COMMENT_BODY}" \
+            --author-association "${COMMENT_ASSOCIATION}" \
+            --author-login "${COMMENT_LOGIN}" \
+            --governance-touched "${GOVERNANCE_TOUCHED}"
+
+      - name: Ignore non-Pulumi comments
+        if: steps.parse.outputs.skip == 'true'
+        run: echo "Skipping non-Pulumi PR comment."
+
+      - name: Reject unauthorized requester
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized != 'true'
+        run: |
+          jq -n \
+            --arg body "Pulumi PR commands require repository membership. Apply requests must come from a maintainer other than sole approver Kravalg." \
+            '{body: $body}' \
+            | gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
+              --input -
+
+      - name: Resolve pull request metadata
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true'
+        id: pr
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          {
+            echo "head_sha=$(jq -r '.head.sha' <<< "${pr_json}")"
+            echo "head_repo=$(jq -r '.head.repo.full_name' <<< "${pr_json}")"
+            echo "state=$(jq -r '.state' <<< "${pr_json}")"
+            echo "merged=$(jq -r '.merged' <<< "${pr_json}")"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Reject closed or merged pull requests
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          (steps.pr.outputs.state != 'open' || steps.pr.outputs.merged == 'true')
+        run: |
+          jq -n \
+            --arg body "Pulumi PR commands are only accepted while the pull request is open and unmerged." \
+            '{body: $body}' \
+            | gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
+              --input -
+
+      - name: Reject forked pull requests
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
+          steps.pr.outputs.head_repo != github.repository
+        run: |
+          body_file="$(mktemp)"
+          cat > "${body_file}" <<'EOF'
+          Pulumi PR commands are only enabled for branches in this repository.
+          Forked pull requests are rejected to avoid exposing AWS credentials.
+          EOF
+          jq -Rs '{body: .}' < "${body_file}" \
+            | gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
+              --input -
+
+      - name: Record immutable command request
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
+          steps.pr.outputs.head_repo == github.repository
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          TARGET_ENVIRONMENT: ${{ steps.parse.outputs.target_environment }}
+          PULUMI_COMMAND: ${{ steps.parse.outputs.command }}
+        run: |
+          mkdir -p .artifacts/pulumi-command-request
+          jq --arg sha "${HEAD_SHA}" --arg target "${TARGET_ENVIRONMENT}" \
+            --arg command "${PULUMI_COMMAND}" --arg run "${GITHUB_RUN_ID}" \
+            '{pull_request_number: (.issue.number | tostring), head_sha: $sha,
+              comment_id: (.comment.id | tostring), source_run_id: $run,
+              command: $command, target_environment: $target}' \
+            "${GITHUB_EVENT_PATH}" > .artifacts/pulumi-command-request/request.json
+
+      - name: Upload immutable command request
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
+          steps.pr.outputs.head_repo == github.repository
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pulumi-command-request
+          path: .artifacts/pulumi-command-request/request.json
+          if-no-files-found: error
+          retention-days: 1
+
+      # Non-governance PRs use the runner with its own authoritative scope check.
+      - name: Dispatch trusted runner
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
+          steps.pr.outputs.head_repo == github.repository &&
+          steps.scope.outputs.governance_touched != 'true'
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          TARGET_ENVIRONMENT: ${{ steps.parse.outputs.target_environment }}
+          PULUMI_COMMAND: ${{ steps.parse.outputs.command }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/dispatches" \
+            -f event_type='pulumi-pr-command' \
+            -f "client_payload[pull_request_number]=${PR_NUMBER}" \
+            -f "client_payload[head_sha]=${HEAD_SHA}" \
+            -f "client_payload[target_environment]=${TARGET_ENVIRONMENT}" \
+            -f "client_payload[command]=${PULUMI_COMMAND}" \
+            -f "client_payload[comment_id]=${COMMENT_ID}" \
+            -f "client_payload[source_run_id]=${GITHUB_RUN_ID}"
+
+      - name: Comment queued command
+        if: >-
+          steps.parse.outputs.skip != 'true' &&
+          steps.parse.outputs.authorized == 'true' &&
+          steps.pr.outputs.state == 'open' &&
+          steps.pr.outputs.merged == 'false' &&
+          steps.pr.outputs.head_repo == github.repository
+        run: |
+          body_file="$(mktemp)"
+          {
+            echo "Queued \`${{ steps.parse.outputs.display_command }}\` for \`${{ steps.pr.outputs.head_sha }}\`."
+            echo
+            echo "A trusted runner workflow will re-check the PR head SHA before using AWS credentials."
+          } > "${body_file}"
+          jq -Rs '{body: .}' < "${body_file}" \
+            | gh api \
+              --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/comments" \
+              --input -
