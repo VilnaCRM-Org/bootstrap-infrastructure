@@ -417,8 +417,10 @@ class GovernanceStack(pulumi.ComponentResource):
 - **The preview/apply/drift trio** via the lifted `_create_roles(_role_specs(...))` from
   `ci_bootstrap.py`, passing a `_RepoCiContext` for this repo (FR2, FR3).
   - Deploy/backend policy scoped to **this repo's** bucket ARN + this repo's KMS alias only.
-  - `apply` role gets `_automation_policy_documents(account_id, settings, repo.name)`
-    (`automation.py:1285`) — ARN-scoped, tag-conditioned, no wildcard `Allow` (FR23).
+  - Service `apply` receives only `pulumi-backend` and `secret-read-deny` from
+    `_governance_policy_documents`; it inherits no platform automation or IAM
+    administration grants. Additional workload capabilities need explicit reviewed
+    permissions and operator-owned boundary extensions (FR3, FR23).
 - **No `OperationsAlertTriage-*`** here. That role is bootstrap-only and tied to the platform
   account's operations pipeline; governance repos do not own operations triage. (The
   `_payloads` test-environment branch that *requires* the triage ARN is replaced by a

@@ -305,14 +305,19 @@ only GitHub OIDC Actions may apply. The governance project SHALL be wired into C
 
 ### FR17 — Documented 3-PR onboarding flow in `AGENTS.md`
 **[CODE]** `AGENTS.md` SHALL document the end-to-end onboarding flow for a new service `X` needing
-`X-infrastructure`: **PR A** (grant deploy roles in the governance project; `@Kravalg` reviews,
-`/pulumi test up` then `/pulumi prod up`, verify, merge) → **PR B** (bootstrap generic infra using
-PR-A roles) → **create the `X-infrastructure` repo** + scaffold → **PR C** (grant OIDC apply
-permissions; same gated flow) → repo can self-deploy. Each step SHALL state whether it is operator
-(AWS/GitHub-admin) or pure code/IaC.
+`X-infrastructure`: first resolve or create the real repository and verify its
+immutable identity, then provision the reviewed operator-owned boundaries and
+delegation inventory. **PR A** grants the governed roles: a current-write maintainer
+other than `@Kravalg` requests `/pulumi test up` then `/pulumi prod up`; `@Kravalg`
+reviews and separately approves the protected environment. Verify promotion and
+merge. **PR B** prepares the complete scaffold using PR-A roles; publish it while
+preserving existing repository content and configuring its protected environments.
+**PR C** grants reviewed workload capabilities through the same gated flow. Prove
+same-head TEST/PROD self-deployment before accepting onboarding. Each step SHALL
+distinguish live operator setup from reviewed code/IaC.
 - **AC↔:** AC-6 (flow), supports AC-3/AC-4/AC-5
-- **Foundation:** issue #77 "Target onboarding flow"; `AGENTS.md` has no onboarding section today
-  (research §4 inventory).
+- **Foundation:** issue #77 "Target onboarding flow" and the installed
+  `AGENTS.md` multi-repo governance onboarding contract.
 - **Verify:** Doc test asserts `AGENTS.md` contains the PR-A/PR-B/create-repo/PR-C sequence with
   the operator-vs-code labeling and references to the governance commands.
 

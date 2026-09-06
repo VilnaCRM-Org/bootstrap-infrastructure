@@ -67,8 +67,8 @@ this notice does not mark them complete.
 
 ```
 E1.S1 → E1.S2 → E1.S3 → E1.S4a → E1.S4b → E1.S5 → E1.S6 → E1.S7        (generic component, bottom-up)
-E2.S1 → E2.S2 → E2.S3                                                  (Kravalg gating: CODEOWNERS, env+stale-review, required-check+status-post)
-E1.S8                                                                  (governance runner workflow — scheduled AFTER E2.S2: needs `governance` env)
+E2.S1 → E2.S2 → E2.S3                                                  (Kravalg gating: CODEOWNERS, env+stale-review, App-issued Governance Promotion requirement)
+E1.S8                                                                  (governance runner and informational Governance Apply status — AFTER E2.S2: needs `governance` env)
 E3.S1 → E3.S2 → E3.S3                                                  (PR-comment author/path gate + dedicated-event dispatch)
 E5.S1 → E5.S2                                                          (user-service scaffold templates — preview-blocked until operator apply)
 E4.S1 → E4.S2                                                          (AGENTS.md flow + operator runbook + docs + cost-anomaly note)
