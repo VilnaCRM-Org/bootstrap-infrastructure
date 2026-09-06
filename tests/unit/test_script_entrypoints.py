@@ -3568,7 +3568,7 @@ def test_configure_github_repository_controls_apply_paths(
 
     def fake_run_gh_api(args, *, input_payload=None):
         calls.append((list(args), dict(input_payload or {})))
-        return {}
+        return {"branch_policies": []} if len(args) == 1 else {}
 
     monkeypatch.setattr(module, "_run_gh_api", fake_run_gh_api)
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: existing)
@@ -9337,6 +9337,18 @@ def test_run_up_stack_rejects_direct_apply_in_github_actions(
         runner=fake_runner,
     )
 
+    monkeypatch.setattr(module, "_context_from_environment", lambda: context)
+
+    def forbidden_preparation(*args, **kwargs):
+        raise AssertionError("Direct CI up must fail before any metadata preparation")
+
+    for name in (
+        "_validate_secrets_provider",
+        "_configured_stack_names",
+        "_dispatch_command",
+    ):
+        monkeypatch.setattr(module, name, forbidden_preparation)
+    assert module.main(["up"]) == 1
     assert module._run_up_stack(context, "test") == 1  # nosec B101
     assert "direct Pulumi up is disabled in GitHub Actions" in (  # nosec B101
         capsys.readouterr().err

@@ -9,7 +9,11 @@ import pulumi_aws as aws
 import pulumi
 
 from . import platform_iam
-from .automation import GitHubAutomation
+from .automation import (
+    GitHubAutomation,
+    _automation_policy_documents,
+    _validate_automation_policy_documents,
+)
 from .bootstrap_infrastructure import _repository_project
 from .bootstrap_settings import BootstrapSettings
 from .iam.github_oidc import GitHubOidcRoles, _repo_suffix, _role_name_for_suffix
@@ -103,6 +107,11 @@ class PlatformControlIam(pulumi.ComponentResource):
         self.state_guards = {}
         state_guard = platform_iam.platform_control_state_guard(
             account_id, settings, purpose="apply"
+        )
+        # The operator adds this guard alongside Automation's own inline policy.
+        _validate_automation_policy_documents(
+            _automation_policy_documents(account_id, settings, settings.repo or ""),
+            additional_inline_documents=(state_guard,),
         )
 
         def create_guard(repository, role):

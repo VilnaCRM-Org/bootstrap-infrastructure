@@ -86,7 +86,8 @@ jobs:
 
       - name: Load test PR AWS CI configuration
         id: ci_config
-        uses: ./.github/actions/load-aws-ci-env
+        # Reviewed immutable loader; PR program still receives bounded preview credentials.
+        uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@a6496ad72285878db3c6b74b7a2b489249969e70
         with:
           environment: ${{ steps.ci_config_target.outputs.environment }}
           config-role-arn: ${{ steps.ci_config_target.outputs.config-role-arn }}
@@ -275,7 +276,8 @@ jobs:
 
       - name: Load test PR AWS CI configuration
         id: ci_config
-        uses: ./.github/actions/load-aws-ci-env
+        # Reviewed immutable loader; PR program still receives bounded preview credentials.
+        uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@a6496ad72285878db3c6b74b7a2b489249969e70
         with:
           environment: ${{ steps.ci_config_target.outputs.environment }}
           config-role-arn: ${{ steps.ci_config_target.outputs.config-role-arn }}

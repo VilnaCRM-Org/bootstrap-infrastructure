@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate AWS Secrets Manager-derived CI configuration without printing values."""
+"""Validate commercial-AWS CI configuration without printing derived values."""
 
 from __future__ import annotations
 
@@ -8,11 +8,14 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from urllib.parse import parse_qs, unquote, urlsplit
 
-AWS_ACCOUNT_ID_PATTERN = re.compile(r"^\d{12}$")
-AWS_REGION_PATTERN = re.compile(r"^[a-z]{2}-[a-z]+-\d+$")
-AWS_ROLE_ARN_PATTERN = re.compile(r"^arn:aws:iam::\d{12}:role/[A-Za-z0-9+=,.@_/-]+$")
-SNS_TOPIC_ARN_PATTERN = re.compile(r"^arn:aws:sns:[a-z0-9-]+:\d{12}:[A-Za-z0-9_.-]+$")
+AWS_ACCOUNT_ID_PATTERN = re.compile(r"^[0-9]{12}$")
+AWS_REGION_PATTERN = re.compile(r"^(?!cn-)[a-z]{2}-[a-z]+-[0-9]+$")
+AWS_ROLE_ARN_PATTERN = re.compile(r"^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$")
+SNS_TOPIC_ARN_PATTERN = re.compile(
+    r"^arn:aws:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_.-]+$"
+)
 
 
 @dataclass(frozen=True)
@@ -24,8 +27,13 @@ class ValidationIssue:
 
 
 def parse_required_keys(raw_value: str) -> tuple[str, ...]:
-    """Parse a comma-separated key list from the composite action input."""
-    return tuple(key.strip() for key in raw_value.split(",") if key.strip())
+    """Parse the action's newline/comma-delimited required environment keys."""
+    return tuple(
+        key.strip()
+        for line in raw_value.splitlines()
+        for key in line.split(",")
+        if key.strip()
+    )
 
 
 def missing_or_blank(keys: tuple[str, ...], environ: Mapping[str, str]) -> list[str]:
@@ -53,7 +61,9 @@ def validate_environment(
         "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN": _validate_role_arn,
         "PULUMI_BACKEND_URL": _validate_backend_url,
         "PULUMI_DIR": _validate_pulumi_dir,
-        "PULUMI_SECRETS_PROVIDER": _validate_secrets_provider,
+        "PULUMI_SECRETS_PROVIDER": lambda value: _validate_secrets_provider(
+            value, environ
+        ),
         "PULUMI_PREVIEW_STACKS": _validate_stack_list,
         "PULUMI_DRIFT_STACKS": _validate_stack_list,
         "OPERATIONS_TOPIC_ARN": _validate_sns_topic_arn,
@@ -64,7 +74,10 @@ def validate_environment(
         validator = validators.get(key)
         if validator is None:
             continue
-        message = validator(environ[key].strip())
+        value = environ[key]
+        if key not in {"PULUMI_BACKEND_URL", "PULUMI_SECRETS_PROVIDER"}:
+            value = value.strip()
+        message = validator(value)
         if message:
             issues.append(ValidationIssue(key, message))
     return issues
@@ -79,19 +92,39 @@ def _validate_account_id(value: str) -> str | None:
 def _validate_region(value: str) -> str | None:
     if AWS_REGION_PATTERN.fullmatch(value):
         return None
-    return "must be an AWS region code"
+    return "must be a commercial AWS region code"
 
 
 def _validate_role_arn(value: str) -> str | None:
     if AWS_ROLE_ARN_PATTERN.fullmatch(value):
         return None
-    return "must be an IAM role ARN"
+    return "must be an IAM role ARN in the commercial aws partition"
 
 
 def _validate_backend_url(value: str) -> str | None:
-    if value.startswith("s3://"):
+    """Mirror the frozen stack parser's exact S3 bucket/path contract."""
+    invalid = (
+        "must be an exact s3:// bucket/backend path without escapes, query or fragment"
+    )
+    if re.search(r"[%\\\x00-\x20]", value):
+        return invalid
+    try:
+        backend = urlsplit(value)
+    except ValueError:
+        return invalid
+    if (
+        backend.scheme == "s3"
+        and re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", backend.netloc)
+        and not backend.query
+        and not backend.fragment
+        and all(
+            part not in {".", "..", ""}
+            for part in backend.path.removeprefix("/").split("/")
+            if backend.path.removeprefix("/")
+        )
+    ):
         return None
-    return "must use an s3:// Pulumi backend"
+    return invalid
 
 
 def _validate_pulumi_dir(value: str) -> str | None:
@@ -100,10 +133,39 @@ def _validate_pulumi_dir(value: str) -> str | None:
     return "must be a safe Pulumi project path"
 
 
-def _validate_secrets_provider(value: str) -> str | None:
-    if value.startswith("awskms://"):
-        return None
-    return "must use an awskms:// Pulumi secrets provider"
+def _validate_secrets_provider(value: str, environ: Mapping[str, str]) -> str | None:
+    """Check KMS URI and explicit ARN pins before any Pulumi metadata access."""
+    invalid = (
+        "must use an existing KMS identifier and exact pinned "
+        "commercial AWS account/region"
+    )
+    try:
+        provider = urlsplit(value)
+    except ValueError:
+        return invalid
+    region = environ.get("AWS_REGION") or environ.get("AWS_DEFAULT_REGION", "")
+    account = environ.get("AWS_ACCOUNT_ID", "")
+    identifier = unquote(provider.netloc + provider.path)
+    if (
+        not value.startswith("awskms://")
+        or provider.fragment
+        or not identifier
+        or re.search(r"[\x00-\x20]", value + identifier)
+        or not AWS_REGION_PATTERN.fullmatch(region)
+        or not AWS_ACCOUNT_ID_PATTERN.fullmatch(account)
+        or parse_qs(provider.query, keep_blank_values=True) != {"region": [region]}
+    ):
+        return invalid
+    if identifier.lower().startswith("arn:"):
+        arn = re.fullmatch(
+            r"arn:aws:kms:([^:]+):([0-9]{12}):(?:key|alias)/[A-Za-z0-9/_-]+",
+            identifier,
+        )
+        if not arn or arn.group(1) != region or arn.group(2) != account:
+            return invalid
+    # Aliases and bare key IDs need the existing describe-key check to establish
+    # their actual account, region and Enabled state; URI syntax cannot prove it.
+    return None
 
 
 def _validate_stack_list(value: str) -> str | None:
@@ -116,7 +178,7 @@ def _validate_stack_list(value: str) -> str | None:
 def _validate_sns_topic_arn(value: str) -> str | None:
     if SNS_TOPIC_ARN_PATTERN.fullmatch(value):
         return None
-    return "must be an SNS topic ARN"
+    return "must be an SNS topic ARN in the commercial aws partition"
 
 
 def _validate_resource_name(value: str) -> str | None:

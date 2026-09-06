@@ -640,9 +640,7 @@ def platform_control_boundary(
             "Resource": f"arn:aws:kms:*:{account_id}:key/*",
             "Condition": {
                 "ForAnyValue:StringEquals": {
-                    "kms:ResourceAliases": (
-                        f"alias/pulumi-platform-bootstrap-{settings.environment}"
-                    )
+                    "kms:ResourceAliases": _platform_secrets_alias(settings)
                 }
             },
         }
@@ -656,6 +654,14 @@ def platform_control_boundary(
         }
     )
     return _compact_policy(statements)
+
+
+def _platform_secrets_alias(settings: BootstrapSettings) -> str:
+    """Match the canonical provider's environment normalization."""
+    environment = settings.sanitize_bucket_component(
+        settings.environment, "environment"
+    ).replace(".", "-")
+    return f"alias/pulumi-platform-bootstrap-{environment}"
 
 
 def platform_workload_boundaries(
@@ -763,7 +769,7 @@ def platform_workload_boundaries(
                 settings.pulumi_secrets_alias_name_for_repo(repo.name)
                 for repo in repositories
             ] + [
-                f"alias/pulumi-platform-bootstrap-{settings.environment}",
+                _platform_secrets_alias(settings),
                 f"alias/bootstrap-{settings.environment}-operations-cloudtrail",
             ]
     return {

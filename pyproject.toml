@@ -129,14 +129,14 @@ include_external_packages = true
 [[tool.importlinter.contracts]]
 name = "Pulumi runtime does not depend on the policy pack"
 type = "forbidden"
-source_modules = ["app"]
+source_modules = ["app", "infra"]
 forbidden_modules = ["policy"]
 
 [[tool.importlinter.contracts]]
 name = "Policy pack stays isolated from Pulumi runtime modules"
 type = "forbidden"
 source_modules = ["policy"]
-forbidden_modules = ["app"]
+forbidden_modules = ["app", "infra"]
 
 [[tool.importlinter.contracts]]
 name = "Runtime guardrails stay behind the environment component"

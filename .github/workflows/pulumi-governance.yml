@@ -38,6 +38,11 @@ jobs:
       statuses: write
     outputs:
       head_sha: ${{ steps.resolve.outputs.head_sha }}
+      feedback_head_sha: ${{ steps.resolve.outputs.feedback_head_sha }}
+      feedback_pull_request_number: ${{ steps.resolve.outputs.feedback_pull_request_number }}
+      feedback_command: ${{ steps.resolve.outputs.feedback_command }}
+      feedback_target_environment: ${{ steps.resolve.outputs.feedback_target_environment }}
+      feedback_display_command: ${{ steps.resolve.outputs.feedback_display_command }}
       base_sha: ${{ steps.resolve.outputs.base_sha }}
       source_run_id: ${{ steps.resolve.outputs.source_run_id }}
       comment_id: ${{ steps.resolve.outputs.comment_id }}
@@ -76,6 +81,7 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       PULUMI_DIR: pulumi/governance
       PULUMI_STACK: test
+      AWS_ACCOUNT_ID: ${{ vars.AWS_GOVERNANCE_TEST_ACCOUNT_ID }}
       PULUMI_BACKEND_URL: ${{ vars.AWS_GOVERNANCE_TEST_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.AWS_GOVERNANCE_TEST_SECRETS_PROVIDER }}
       PULUMI_PREVIEW_STACKS: test
@@ -153,6 +159,7 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       PULUMI_DIR: pulumi/governance
       PULUMI_STACK: test
+      AWS_ACCOUNT_ID: ${{ vars.AWS_GOVERNANCE_TEST_ACCOUNT_ID }}
       # The governance program's OWN backend + secrets provider (the platform
       # bootstrap state, NOT a managed repo's CI config). These are fixed,
       # account-level values set as repo variables by the operator (runbook).
@@ -243,6 +250,7 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       PULUMI_DIR: pulumi/governance
       PULUMI_STACK: test
+      AWS_ACCOUNT_ID: ${{ vars.AWS_GOVERNANCE_TEST_ACCOUNT_ID }}
       PULUMI_BACKEND_URL: ${{ vars.AWS_GOVERNANCE_TEST_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.AWS_GOVERNANCE_TEST_SECRETS_PROVIDER }}
       PULUMI_PREVIEW_STACKS: test
@@ -315,6 +323,7 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       PULUMI_DIR: pulumi/governance
       PULUMI_STACK: prod
+      AWS_ACCOUNT_ID: ${{ vars.AWS_GOVERNANCE_PROD_ACCOUNT_ID }}
       PULUMI_BACKEND_URL: ${{ vars.AWS_GOVERNANCE_PROD_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.AWS_GOVERNANCE_PROD_SECRETS_PROVIDER }}
       PULUMI_PREVIEW_STACKS: prod
@@ -395,6 +404,7 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       PULUMI_DIR: pulumi/governance
       PULUMI_STACK: prod
+      AWS_ACCOUNT_ID: ${{ vars.AWS_GOVERNANCE_PROD_ACCOUNT_ID }}
       # The governance program's OWN prod backend + secrets provider (platform
       # bootstrap state), set as repo variables by the operator (runbook).
       PULUMI_BACKEND_URL: ${{ vars.AWS_GOVERNANCE_PROD_BACKEND_URL }}
@@ -486,6 +496,7 @@ jobs:
       PULUMI_SKIP_UPDATE_CHECK: "true"
       PULUMI_DIR: pulumi/governance
       PULUMI_STACK: prod
+      AWS_ACCOUNT_ID: ${{ vars.AWS_GOVERNANCE_PROD_ACCOUNT_ID }}
       PULUMI_BACKEND_URL: ${{ vars.AWS_GOVERNANCE_PROD_BACKEND_URL }}
       PULUMI_SECRETS_PROVIDER: ${{ vars.AWS_GOVERNANCE_PROD_SECRETS_PROVIDER }}
       PULUMI_PREVIEW_STACKS: prod
@@ -625,10 +636,10 @@ jobs:
       pull-requests: write
     env:
       GH_TOKEN: ${{ github.token }}
-      HEAD_SHA: ${{ needs.preflight.outputs.head_sha }}
-      PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
-      REQUEST_COMMAND: ${{ needs.preflight.outputs.command }}
-      REQUEST_TARGET_ENVIRONMENT: ${{ needs.preflight.outputs.target_environment }}
+      HEAD_SHA: ${{ needs.preflight.outputs.head_sha || needs.preflight.outputs.feedback_head_sha }}
+      PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number || needs.preflight.outputs.feedback_pull_request_number }}
+      REQUEST_COMMAND: ${{ needs.preflight.outputs.command || needs.preflight.outputs.feedback_command }}
+      REQUEST_TARGET_ENVIRONMENT: ${{ needs.preflight.outputs.target_environment || needs.preflight.outputs.feedback_target_environment }}
       TEST_PLAN_RESULT: ${{ needs.governance_test_plan.result }}
       TEST_APPLY_RESULT: ${{ needs.governance_test_apply.result }}
       PROD_PLAN_RESULT: ${{ needs.governance_prod_plan.result }}
@@ -636,12 +647,9 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Post Governance Apply commit status
-        # Guard ONLY on a genuinely empty head_sha: a malformed request that
-        # failed format validation never emitted an output and a status cannot
-        # be posted to a missing SHA. Every other outcome (including a preflight
-        # auth/scope/head-moved rejection) DID emit head_sha and must post a
-        # TERMINAL status so the required check never strands pending.
-        if: needs.preflight.outputs.head_sha != ''
+        # Only an authenticated intake may identify the feedback commit.
+        # Rejected requests never emit the separate execution guard outputs.
+        if: needs.preflight.outputs.feedback_head_sha != ''
         run: |
           # The "Governance Apply" status resolves only because this runner
           # explicitly posts that exact context to the approved head SHA (FR15,
@@ -680,7 +688,7 @@ jobs:
             -f description="${status_description}"
 
       - name: Post governance result comment
-        if: needs.preflight.outputs.pull_request_number != ''
+        if: always() && needs.preflight.outputs.feedback_pull_request_number != ''
         run: |
           body_file="$(mktemp)"
           {

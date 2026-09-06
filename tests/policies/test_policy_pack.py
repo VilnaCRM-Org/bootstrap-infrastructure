@@ -307,6 +307,18 @@ def test_reviewed_policy_config_rejects_invalid_hashes(
         policy_runtime.load_policy_config(path)
 
 
+@pytest.mark.parametrize("value", ["[]", "null", ""])
+def test_empty_review_pins_are_rejected(policy_runtime, tmp_path, value):
+    """An explicit identity must include at least one reviewed document digest."""
+    path = tmp_path / "guardrails.yaml"
+    path.write_text(
+        "required_tags: []\nallowed_regions: []\nproduction_environments: []\n"
+        f"reviewed_iam_documents:\n  approved-policy: {value}\n"
+    )
+    with pytest.raises(ValueError, match="must not be empty"):
+        policy_runtime.load_policy_config(path)
+
+
 def test_reviewed_policy_config_cannot_mutate_or_use_legacy_name_bypass(
     policy_runtime: SimpleNamespace, tmp_path: Path
 ) -> None:

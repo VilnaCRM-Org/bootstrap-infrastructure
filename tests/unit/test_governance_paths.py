@@ -4,6 +4,8 @@ import importlib
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = REPO_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -198,3 +200,24 @@ def test_files_stdin_cli_empty_prints_false(capsys) -> None:
         sys.stdin = sys.__stdin__
     assert exit_code == 0
     assert capsys.readouterr().out == "governance_touched=false\n"
+
+
+def test_root_file_glob_does_not_cross_directory_separators() -> None:
+    assert governance_paths.paths_touch_governance(["docker-compose.prod.yml"])
+    assert not governance_paths.paths_touch_governance(
+        ["docker-compose.extra/nested.yml"]
+    )
+    assert not governance_paths.paths_touch_governance(["nested/docker-compose.yml"])
+    assert governance_paths.paths_touch_governance([".github/workflows/nested/job.yml"])
+    assert governance_paths._matches_path_pattern("a/test.py", "a/*.py")
+    assert not governance_paths._matches_path_pattern("a/nested/test.py", "a/*.py")
+
+
+def test_cli_without_stdin_flag_fails_before_reading(monkeypatch) -> None:
+    def unexpected_read():
+        raise AssertionError("Missing flag must not block waiting on standard input")
+
+    monkeypatch.setattr(governance_paths, "_read_stdin_files", unexpected_read)
+    with pytest.raises(SystemExit) as error:
+        governance_paths.main([])
+    assert error.value.code == 2

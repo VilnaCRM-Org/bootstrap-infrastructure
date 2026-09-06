@@ -246,7 +246,7 @@ def test_configure_emits_and_applies_governance_environment(
 
     def _record_gh_api(args, *, input_payload=None):
         calls.append((tuple(args), input_payload))
-        return {}
+        return {"branch_policies": []} if len(args) == 1 else {}
 
     monkeypatch.setattr(module, "_repo_admin_allowed", lambda _repo: True)
     monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: REVIEWER_ID)

@@ -14,11 +14,16 @@ from .automation import (
     _automation_policy_documents,
     _operations_alert_triage_policy,
     _operations_alert_triage_role_name,
+    _validate_automation_managed_policy_documents,
 )
 from .bootstrap_settings import BootstrapSettings
 from .ci_config import CiConfiguration, CiConfigurationArgs, _ci_config_project
 from .config import settings as default_settings
-from .github_identity import expand_subjects, identity_conditions
+from .github_identity import (
+    expand_subjects,
+    identity_conditions,
+    validate_trust_policy_size,
+)
 from .iam import GitHubOidcRoles
 from .operations_monitoring import _queue_name, _topic_name, _trail_name
 from .utils.outputs import apply_output
@@ -363,7 +368,7 @@ def _deployment_assume_role_policy(
     branch_ref: str | None = None,
 ) -> str:
     """Build the trust policy for one GitHub OIDC CI role."""
-    return json.dumps(
+    document = json.dumps(
         {
             "Version": "2012-10-17",
             "Statement": [
@@ -395,6 +400,7 @@ def _deployment_assume_role_policy(
         },
         sort_keys=True,
     )
+    return validate_trust_policy_size(document)
 
 
 def _state_bucket_resources(
@@ -451,7 +457,7 @@ def _pulumi_backend_policy_document(
         settings,
         resolved_repo,
         _environment_part(settings),
-        include_platform_bootstrap=True,
+        include_platform_bootstrap=resolved_repo == settings.repo,
     )
     return json.dumps(
         {
@@ -714,6 +720,10 @@ def _create_role(
     spec: _CiRoleSpec,
 ) -> aws.iam.Role:
     """Create or import one GitHub OIDC CI role and its inline policies."""
+    if spec.purpose == "apply":
+        # This consumer attaches every document as customer-managed, including
+        # Automation's otherwise-inline first document.
+        _validate_automation_managed_policy_documents(list(spec.policy_documents))
     repository = f"{context.settings.org}/{context.repo}"
     repository_tag = context.project or _ci_config_project(context.settings)
     role = aws.iam.Role(

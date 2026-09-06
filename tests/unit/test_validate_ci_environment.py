@@ -274,3 +274,178 @@ def test_main_rejects_multiline_github_env_write(tmp_path: Path, capsys) -> None
 
     assert "AWS_REGION must not contain newline" in capsys.readouterr().out
     assert not github_env.exists()
+
+
+def test_required_keys_accept_newlines_commas_and_mixed_blank_delimiters() -> None:
+    assert validator.parse_required_keys(
+        "AWS_ACCOUNT_ID\r\n AWS_REGION,\n,,PULUMI_BACKEND_URL\n"
+    ) == ("AWS_ACCOUNT_ID", "AWS_REGION", "PULUMI_BACKEND_URL")
+
+
+def test_all_published_key_validators_accept_commercial_metadata() -> None:
+    environment = _valid_environment()
+    assert validator.validate_environment(tuple(environment), environment) == []
+
+
+def test_s3_validation_matches_frozen_stack_coordinates(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    import _pulumi_stack_config as stack_config
+    import pytest
+
+    (tmp_path / "Pulumi.yaml").write_text("name: exact-project\n")
+    valid = ["s3://abc", "s3://abc/", "s3://a.b-c/state/test", "s3://" + "a" * 63]
+    invalid = [
+        "s3://",
+        "s3://ab",
+        "s3://" + "a" * 64,
+        "s3://UPPER",
+        "s3://-abc",
+        "s3://abc-",
+        "s3://user@abc",
+        "s3://abc:443",
+        "s3://[",
+        "s3://abc//test",
+        "s3://abc/state/",
+        "s3://abc/.",
+        "s3://abc/..",
+        "s3://abc/state/../test",
+        "s3://abc?region=x",
+        "s3://abc#fragment",
+        "s3://abc/%2e",
+        "s3://abc\\test",
+        "s3://abc/with space",
+        " s3://abc",
+        "s3://abc\n",
+        "https://abc",
+    ]
+    for value in valid + invalid:
+        context = SimpleNamespace(
+            backend_url=value,
+            env={"AWS_ACCOUNT_ID": "123456789012"},
+            pulumi_dir=tmp_path,
+        )
+        if value in valid:
+            assert validator._validate_backend_url(value) is None
+            assert stack_config._coordinates(context, "test")["backendUrl"] == value
+        else:
+            assert validator._validate_backend_url(value) is not None
+            with pytest.raises(ValueError):
+                stack_config._coordinates(context, "test")
+
+
+def test_kms_syntax_and_explicit_arn_pins_match_frozen_key_contract() -> None:
+    import json
+    from types import SimpleNamespace
+
+    import _pulumi_stack_config as stack_config
+
+    environment = _valid_environment()
+    arn = (
+        "arn:aws:kms:eu-central-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+    )
+    valid = [
+        "awskms://alias/example?region=eu-central-1",
+        "awskms://12345678-1234-1234-1234-123456789012?region=eu-central-1",
+        f"awskms://{arn}?region=eu-central-1",
+        "awskms://arn%3Aaws%3Akms%3Aeu-central-1%3A123456789012%3Aalias/example?region=eu-central-1",
+    ]
+    for value in valid:
+        calls = []
+
+        def read(command, **kwargs):
+            calls.append(command)
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"KeyMetadata": {"Arn": arn, "KeyState": "Enabled"}}),
+            )
+
+        context = SimpleNamespace(
+            secrets_provider=value,
+            env=environment,
+            backend_url=environment["PULUMI_BACKEND_URL"],
+            runner=read,
+        )
+        assert validator._validate_secrets_provider(value, environment) is None
+        assert stack_config._key_identity(context, environment["AWS_ACCOUNT_ID"]) == arn
+        assert calls[0][:3] == ["aws", "kms", "describe-key"]
+
+
+def test_kms_rejects_malformed_missing_cross_region_and_foreign_account_values() -> (
+    None
+):
+    environment = _valid_environment()
+    invalid = [
+        "awskms://",
+        "awskms://?region=eu-central-1",
+        "awskms://alias/example",
+        "awskms:alias/example?region=eu-central-1",
+        "awskms://[",
+        "awskms://alias/example?region=",
+        "awskms://alias/example?region=us-east-1",
+        "awskms://alias/example?region=eu-central-1&region=eu-central-1",
+        "awskms://alias/example?region=eu-central-1&profile=other",
+        "awskms://alias/example?region=eu-central-1#fragment",
+        "awskms://alias/%00?region=eu-central-1",
+        "awskms://alias/with space?region=eu-central-1",
+        "awskms://alias/example?region=eu-central-1\n",
+        "awskms://arn:aws:kms:us-east-1:123456789012:key/existing?region=eu-central-1",
+        "awskms://arn:aws:kms:eu-central-1:999999999999:key/existing?region=eu-central-1",
+        "awskms://arn:aws-cn:kms:eu-central-1:123456789012:key/existing?region=eu-central-1",
+        "awskms://arn:aws:kms:eu-central-1:123456789012:other/existing?region=eu-central-1",
+        "awskms://ARN:aws:kms:eu-central-1:123456789012:key/existing?region=eu-central-1",
+        "file://alias/example?region=eu-central-1",
+    ]
+    for value in invalid:
+        assert validator.validate_environment(
+            ("PULUMI_SECRETS_PROVIDER",),
+            {**environment, "PULUMI_SECRETS_PROVIDER": value},
+        )
+    for field, value in [
+        ("AWS_ACCOUNT_ID", ""),
+        ("AWS_ACCOUNT_ID", "١٢٣٤٥٦٧٨٩٠١٢"),
+        ("AWS_REGION", ""),
+        ("AWS_REGION", "cn-north-1"),
+        ("AWS_REGION", "us-gov-west-1"),
+    ]:
+        assert validator._validate_secrets_provider(
+            environment["PULUMI_SECRETS_PROVIDER"], {**environment, field: value}
+        )
+    fallback = {key: value for key, value in environment.items() if key != "AWS_REGION"}
+    fallback["AWS_DEFAULT_REGION"] = "eu-central-1"
+    assert (
+        validator._validate_secrets_provider(
+            environment["PULUMI_SECRETS_PROVIDER"], fallback
+        )
+        is None
+    )
+
+
+def test_partition_scope_is_explicitly_commercial_only() -> None:
+    for partition in ("aws-us-gov", "aws-cn", "aws-iso"):
+        assert "commercial" in validator._validate_role_arn(
+            f"arn:{partition}:iam::123456789012:role/Example"
+        )
+        assert "commercial" in validator._validate_sns_topic_arn(
+            f"arn:{partition}:sns:us-east-1:123456789012:Example"
+        )
+    for region in ("us-gov-west-1", "us-iso-east-1", "cn-north-1"):
+        assert "commercial" in validator._validate_region(region)
+    assert validator._validate_account_id("١٢٣٤٥٦٧٨٩٠١٢")
+
+
+def test_invalid_uris_are_not_printed_or_exported(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    for key, value in [
+        ("PULUMI_BACKEND_URL", "s3://private-fragment#DO-NOT-LOG"),
+        ("PULUMI_SECRETS_PROVIDER", "awskms://PRIVATE?region=wrong"),
+    ]:
+        for name, setting in _valid_environment().items():
+            monkeypatch.setenv(name, setting)
+        monkeypatch.setenv(key, value)
+        env_file = tmp_path / "env"
+        monkeypatch.setenv("GITHUB_ENV", str(env_file))
+        assert validator.main(["--purpose", "test", "--required-keys", key]) == 1
+        assert value not in capsys.readouterr().out
+        assert not env_file.exists()

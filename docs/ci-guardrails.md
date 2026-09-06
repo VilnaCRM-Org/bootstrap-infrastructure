@@ -520,6 +520,7 @@ gh api graphql \
 
 GITHUB_REPOSITORY_CONTROLS_REPO=VilnaCRM-Org/bootstrap-infrastructure \
 GITHUB_REPOSITORY_CONTROLS_PROD_REVIEWER=Kravalg \
+GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID="${PROMOTION_APP_ID:?Set the dedicated App ID}" \
 GITHUB_REPOSITORY_CONTROLS_MODE=--apply \
 make configure-github-repository-controls
 ```
@@ -551,3 +552,13 @@ production reviewer are visible in GitHub metadata.
   the Python/uv Docker image
 - IAM validation is only as complete as the preview artifact; policies that are
   created entirely outside Pulumi still need separate review
+
+## Controller scope limits
+
+The controller's compare-based scope check supports at most 300 changed files. Both authenticated execution preflight and promotion scope reject incomplete file lists. Split larger changes into independently reviewed PRs; a truncated comparison never authorizes execution or success. Expanding this limit requires an exact-head/base-bound file-list contract in both paths.
+
+The current platform supports the commercial AWS partition and the fixed TEST/PROD account contracts. A partition-shaped library argument or ARN does not establish GovCloud, China or isolated-region support. Those environments require a separately reviewed end-to-end credential, endpoint, IAM, backend and workflow contract.
+
+The configuration helper requires the dedicated promotion App ID for apply, dry-run and verification. Set `PROMOTION_APP_ID` to the actual configured App's numeric ID before using the example; never use a guessed identity.
+
+The CI loader trims surrounding whitespace from scalar configuration values before exporting them. Backend and KMS validation checks that effective environment value; it does not certify the original secret as byte-for-byte canonical. Embedded whitespace, control characters and malformed provider/backend structure remain rejected.

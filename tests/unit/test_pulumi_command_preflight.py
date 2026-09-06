@@ -238,7 +238,10 @@ def test_main_exposes_outputs_only_after_claim(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_EVENT_NAME", "repository_dispatch")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
     monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "output"))
-    monkeypatch.setattr(preflight, "collect_evidence", lambda request: evidence)
+    monkeypatch.setattr(preflight, "collect_intake_evidence", lambda request: evidence)
+    monkeypatch.setattr(
+        preflight, "collect_evidence", lambda request, **kwargs: evidence
+    )
     monkeypatch.setattr(preflight, "verify_environments", lambda *args, **kwargs: None)
     claimed = []
     monkeypatch.setattr(
@@ -323,3 +326,174 @@ def test_up_rejects_same_human_requester_and_sole_approver(governance, login):
     evidence["comment"]["user"]["login"] = login
     with pytest.raises(ValueError, match="requester must differ"):
         preflight.validate_request(request, evidence, governance=governance)
+
+
+def _feedback_runtime(monkeypatch, tmp_path, evidence, request):
+    """Configure an offline preflight with observable output and claim boundaries."""
+    set_request_env(monkeypatch, request)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "repository_dispatch")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+    output = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    monkeypatch.setattr(preflight, "collect_intake_evidence", lambda _: evidence)
+    monkeypatch.setattr(preflight, "collect_evidence", lambda *args, **kw: evidence)
+    monkeypatch.setattr(preflight, "verify_environments", lambda *args, **kw: None)
+    monkeypatch.setattr(preflight, "claim_request", lambda _: None)
+    return output
+
+
+def _feedback_values(output):
+    """Read the exact Actions output keys, avoiding substring-based assertions."""
+    return dict(line.split("=", 1) for line in output.read_text().splitlines())
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("permission",), "read"),
+        (("pr", "head", "sha"), "c" * 40),
+        (("pr", "base", "ref"), "release"),
+        (("pr", "state"), "closed"),
+        (("now",), datetime(2026, 9, 5, 12, 16, tzinfo=UTC)),
+        (("files",), ["README.md"]),
+        (("comment", "user", "login"), "Kravalg"),
+    ],
+)
+def test_rejection_keeps_feedback_only(monkeypatch, tmp_path, path, value):
+    """Mutable authorization failure cannot turn feedback into execution outputs."""
+    request, evidence = fixture_data()
+    node = evidence
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    output = _feedback_runtime(monkeypatch, tmp_path, evidence, request)
+    claims = []
+    monkeypatch.setattr(preflight, "claim_request", lambda args: claims.append(args))
+    with pytest.raises(ValueError):
+        preflight.main(["--governance"])
+    assert _feedback_values(output) == {
+        "feedback_head_sha": request["head_sha"],
+        "feedback_pull_request_number": "78",
+        "feedback_command": "up",
+        "feedback_target_environment": "test",
+        "feedback_display_command": "/pulumi test up",
+    }
+    assert claims == []
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("run", "event"), "workflow_dispatch"),
+        (("run", "path"), "attacker.yml"),
+        (("run", "head_repository", "full_name"), "foreign/repo"),
+        (("run", "run_attempt"), 2),
+        (("run", "id"), 13),
+        (("artifact", "head_sha"), "c" * 40),
+        (("pr", "head", "repo", "full_name"), "foreign/repo"),
+        (("pr", "base", "repo", "full_name"), "foreign/repo"),
+        (("comment", "issue_url"), "https://api.github.com/repos/org/repo/issues/99"),
+        (("comment", "id"), 99),
+        (("comment", "updated_at"), "2026-09-05T12:00:01Z"),
+        (("run", "actor", "id"), 99),
+        (("comment", "body"), "/pulumi prod up"),
+    ],
+)
+def test_untrusted_origin_has_no_target(monkeypatch, tmp_path, path, value):
+    """Forged source, artifact, repository or comment cannot select a victim SHA."""
+    request, evidence = fixture_data()
+    node = evidence
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    output = _feedback_runtime(monkeypatch, tmp_path, evidence, request)
+    current_reads = []
+    monkeypatch.setattr(
+        preflight,
+        "collect_evidence",
+        lambda *args, **kw: current_reads.append(args) or evidence,
+    )
+    with pytest.raises(ValueError):
+        preflight.main(["--governance"])
+    assert not output.exists()
+    assert current_reads == []
+
+
+@pytest.mark.parametrize("missing", ["artifact", "run", "comment", "pr"])
+def test_missing_origin_has_no_feedback(monkeypatch, tmp_path, missing):
+    """Incomplete intake evidence never yields a feedback commit or PR number."""
+    request, evidence = fixture_data()
+    del evidence[missing]
+    output = _feedback_runtime(monkeypatch, tmp_path, evidence, request)
+    with pytest.raises(KeyError):
+        preflight.main(["--governance"])
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("failure", ["duplicate", "claim-api", "environment"])
+def test_claim_failure_has_no_exec_keys(monkeypatch, tmp_path, failure):
+    """Known origin remains visible when actual claim/protection checks fail."""
+    request, evidence = fixture_data()
+    claim = preflight.claim_request
+    output = _feedback_runtime(monkeypatch, tmp_path, evidence, request)
+
+    def reject(*args, **kwargs):
+        values = _feedback_values(output)
+        assert values and all(key.startswith("feedback_") for key in values)
+        raise ValueError("environment")
+
+    def api(*args):
+        assert all(key.startswith("feedback_") for key in _feedback_values(output))
+        if "--method" in args:
+            raise preflight.subprocess.CalledProcessError(1, ["gh", "api"])
+        if failure == "duplicate":
+            return [[], [{"context": "Pulumi command claim/9"}]]
+        return [[]]
+
+    if failure == "environment":
+        monkeypatch.setattr(preflight, "verify_environments", reject)
+    else:
+        monkeypatch.setattr(preflight, "claim_request", claim)
+        monkeypatch.setattr(preflight, "gh", api)
+    exception = (
+        preflight.subprocess.CalledProcessError
+        if failure == "claim-api"
+        else ValueError
+    )
+    with pytest.raises(exception):
+        preflight.main(["--governance"])
+    assert all(key.startswith("feedback_") for key in _feedback_values(output))
+
+
+def test_success_emits_exec_after_claim(monkeypatch, tmp_path):
+    """Only a successful final claim exposes the original execution contract."""
+    request, evidence = fixture_data()
+    output = _feedback_runtime(monkeypatch, tmp_path, evidence, request)
+    observed = []
+    monkeypatch.setattr(
+        preflight, "claim_request", lambda _: observed.append(_feedback_values(output))
+    )
+    assert preflight.main(["--governance"]) == 0
+    assert all(key.startswith("feedback_") for key in observed[0])
+    result = _feedback_values(output)
+    assert result["head_sha"] == request["head_sha"]
+    assert result["command"] == "up"
+    assert result["base_sha"] == "b" * 40
+
+
+def test_early_stale_head_keeps_feedback(monkeypatch, tmp_path):
+    """Real current-evidence collection can reject before scope and still report."""
+    request, evidence = fixture_data()
+    collector = preflight.collect_evidence
+    output = _feedback_runtime(monkeypatch, tmp_path, evidence, request)
+    monkeypatch.setattr(preflight, "collect_evidence", collector)
+    changed_pr = {**evidence["pr"], "head": {"sha": "c" * 40}}
+    calls = []
+    monkeypatch.setattr(preflight, "gh", lambda *args: calls.append(args) or changed_pr)
+    with pytest.raises(ValueError, match="head moved before scope scan"):
+        preflight.main(["--governance"])
+    assert _feedback_values(output)["feedback_head_sha"] == request["head_sha"]
+    assert len(calls) == 1
+    assert "head_sha" not in _feedback_values(output)

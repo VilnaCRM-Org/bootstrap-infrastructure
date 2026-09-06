@@ -585,9 +585,7 @@ def _run_up_plan_stack(
     return None if result.returncode == 0 else result.returncode
 
 
-def _run_up_stack(
-    context: CommandContext, stack: str, *, include_policy_pack: bool = True
-) -> int | None:
+def _direct_ci_up_forbidden(context: CommandContext) -> bool:
     if context.env.get("GITHUB_ACTIONS") == "true":
         print(
             "error: direct Pulumi up is disabled in GitHub Actions; "
@@ -595,8 +593,15 @@ def _run_up_stack(
             "pulumi-up-plan.",
             file=sys.stderr,
         )
-        return 1
+        return True
+    return False
 
+
+def _run_up_stack(
+    context: CommandContext, stack: str, *, include_policy_pack: bool = True
+) -> int | None:
+    if _direct_ci_up_forbidden(context):
+        return 1
     result = _run_with_observable_output(
         context,
         _pulumi_command(
@@ -699,6 +704,8 @@ def _dispatch_command(command: str, context: CommandContext, stacks: list[str]) 
 
 def _run_command(command: str) -> int:
     context = _context_from_environment()
+    if command == "up" and _direct_ci_up_forbidden(context):
+        return 1
     provider_failure = _validate_secrets_provider(context.secrets_provider)
     stacks = _configured_stack_names(command, context.pulumi_dir, context.env)
     status = provider_failure

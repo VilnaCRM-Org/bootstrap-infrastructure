@@ -394,6 +394,10 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
         "token.actions.githubusercontent.com:sub": [
             "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
         ],
+        "token.actions.githubusercontent.com:workflow": [
+            "Pulumi PR Guardrails",
+            "Well-Architected Evidence",
+        ],
     }
     assert "StringLike" not in test_pr_condition  # nosec B101
     assert test_condition["StringEquals"] == {  # nosec B101
@@ -406,6 +410,14 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
             "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
             "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
             "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test-preview",
+        ],
+        "token.actions.githubusercontent.com:workflow": [
+            "Pulumi PR Guardrails",
+            "Pulumi Test Deploy",
+            "Nightly Guardrails",
+            "Pulumi PR Command Runner",
+            "Operations Alert Issue Triage",
+            "Well-Architected Evidence",
         ],
     }
     assert "StringLike" not in test_condition  # nosec B101

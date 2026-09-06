@@ -33,6 +33,11 @@ jobs:
       command: ${{ steps.resolve.outputs.command }}
       display_command: ${{ steps.resolve.outputs.display_command }}
       head_sha: ${{ steps.resolve.outputs.head_sha }}
+      feedback_head_sha: ${{ steps.resolve.outputs.feedback_head_sha }}
+      feedback_pull_request_number: ${{ steps.resolve.outputs.feedback_pull_request_number }}
+      feedback_command: ${{ steps.resolve.outputs.feedback_command }}
+      feedback_target_environment: ${{ steps.resolve.outputs.feedback_target_environment }}
+      feedback_display_command: ${{ steps.resolve.outputs.feedback_display_command }}
       base_sha: ${{ steps.resolve.outputs.base_sha }}
       source_run_id: ${{ steps.resolve.outputs.source_run_id }}
       comment_id: ${{ steps.resolve.outputs.comment_id }}
@@ -985,8 +990,8 @@ jobs:
           {
             echo "## Pulumi PR command result"
             echo
-            echo "- Command: \`${{ needs.preflight.outputs.display_command || 'preflight' }}\`"
-            echo "- Commit: \`${{ needs.preflight.outputs.head_sha || 'unknown' }}\`"
+            echo "- Command: \`${{ needs.preflight.outputs.display_command || needs.preflight.outputs.feedback_display_command || 'preflight' }}\`"
+            echo "- Commit: \`${{ needs.preflight.outputs.head_sha || needs.preflight.outputs.feedback_head_sha || 'unknown' }}\`"
             echo "- Workflow run: ${RUN_URL}"
             echo
             echo "| Stage | Result |"
@@ -1007,7 +1012,7 @@ jobs:
             echo "Production stages are gated behind a successful test apply and test post-apply drift check for the same PR head SHA."
           } > "${body_file}"
 
-          pr_number="${{ needs.preflight.outputs.pull_request_number }}"
+          pr_number="${{ needs.preflight.outputs.pull_request_number || needs.preflight.outputs.feedback_pull_request_number }}"
           if [[ -n "${pr_number}" ]]; then
             jq -Rs '{body: .}' < "${body_file}" \
               | gh api \

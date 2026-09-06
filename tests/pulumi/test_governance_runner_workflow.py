@@ -182,7 +182,10 @@ def test_status_post_job_targets_head_sha_with_governance_context() -> None:
 
     # The commit status is posted to the verified head SHA exposed via env.
     assert "statuses/${HEAD_SHA}" in run_text  # nosec B101
-    assert job_env["HEAD_SHA"] == "${{ needs.preflight.outputs.head_sha }}"  # nosec B101
+    assert job_env["HEAD_SHA"] == (  # nosec B101
+        "${{ needs.preflight.outputs.head_sha || "
+        "needs.preflight.outputs.feedback_head_sha }}"
+    )
     # The context string must be byte-identical to the required-check tuple entry.
     assert f'context="{GOVERNANCE_STATUS_CONTEXT}"' in run_text  # nosec B101
     assert GOVERNANCE_STATUS_CONTEXT in run_text  # nosec B101
@@ -199,7 +202,7 @@ def test_status_post_state_derives_from_prod_apply_outcome() -> None:
     assert "needs.governance_prod_apply.result" in dumped  # nosec B101
 
 
-def test_preflight_emits_outputs_before_auth_and_scope_checks() -> None:
+def test_preflight_keeps_exec_outputs_gated() -> None:
     """No shell step publishes unverified payload outputs or arbitrary SHA statuses."""
     preflight = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["preflight"]
     assert "GITHUB_OUTPUT" not in _step_run_text(preflight)
@@ -225,9 +228,8 @@ def test_status_post_is_always_terminal_never_pending() -> None:
     assert "skipped|cancelled" not in run_text  # nosec B101
 
 
-def test_status_post_guard_is_only_empty_head_sha() -> None:
-    """The terminal status post is skipped ONLY when head_sha is genuinely empty
-    (a malformed request that never emitted a postable SHA)."""
+def test_status_guard_needs_trusted_head() -> None:
+    """Only authenticated feedback metadata can select a rejection status target."""
     status_job = _workflow(GOVERNANCE_WORKFLOW)["jobs"]["governance_status"]
     post_step = next(
         step
@@ -235,7 +237,7 @@ def test_status_post_guard_is_only_empty_head_sha() -> None:
         if "statuses/${HEAD_SHA}" in step.get("run", "")
     )
 
-    assert post_step["if"] == "needs.preflight.outputs.head_sha != ''"  # nosec B101
+    assert post_step["if"] == "needs.preflight.outputs.feedback_head_sha != ''"  # nosec B101
     # The rejected/did-not-complete failure description is posted on the
     # non-success path (the command verb is interpolated, defaulting to "apply"
     # when the request was malformed and emitted no command).
@@ -355,7 +357,6 @@ def _guard_holds(guard: str, *, target: str, command: str) -> bool:
     """
     expr = _normalize_if(guard)
     substitutions = {
-        f"needs.preflight.outputs.target_environment == '{target}'": "True",
         "needs.preflight.outputs.target_environment == 'prod'": str(target == "prod"),
         "needs.preflight.outputs.target_environment == 'test'": str(target == "test"),
         "needs.preflight.outputs.command == 'up'": str(command == "up"),
@@ -590,3 +591,14 @@ def test_promotion_proof_job_uses_only_trusted_code_and_complete_stage_results()
         scope["jobs"]["scope"]["steps"][0]["with"]["ref"]
         == "${{ github.event.repository.default_branch }}"
     )
+
+
+def test_governance_jobs_export_the_account_used_by_oidc() -> None:
+    """The downstream S3 provider guard requires the same account as OIDC."""
+    jobs = _workflow(GOVERNANCE_WORKFLOW)["jobs"]
+    for target in ("test", "prod"):
+        for purpose in ("plan", "apply", "post_apply_drift"):
+            job = jobs[f"governance_{target}_{purpose}"]
+            account = "${{ vars.AWS_GOVERNANCE_" + target.upper() + "_ACCOUNT_ID }}"
+            assert job["env"]["AWS_ACCOUNT_ID"] == account
+            assert _aws_credentials_step(job)["with"]["allowed-account-ids"] == account

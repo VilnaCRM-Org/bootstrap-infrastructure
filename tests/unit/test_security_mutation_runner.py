@@ -38,6 +38,7 @@ def test_inventory_produces_valid_single_expression_security_mutants():
 def test_missing_target_or_empty_inventory_fails_closed(monkeypatch, tmp_path):
     monkeypatch.setattr(gate, "GUARDS", {"sample.py": {"missing"}})
     monkeypatch.setattr(gate, "REQUIREMENTS", {})
+    monkeypatch.setattr(gate, "SEMANTIC_TARGETS", {})
     (tmp_path / "sample.py").write_text("def other():\n    return True\n")
     with pytest.raises(ValueError, match="disappeared"):
         gate.inventory(tmp_path)
@@ -199,3 +200,26 @@ def test_component_default_runner_stops_at_failure_but_baseline_runs_all(
         "uv run pytest -q -x " + " ".join(targets)
     )
     assert commands[1][commands[1].index("--test-time-multiplier") + 1] == "3"
+
+
+def test_feedback_predicates_stay_targeted():
+    """Refactoring authentication cannot silently remove its rejection mutants."""
+    mutants = gate.inventory(ROOT)
+    intake = [item for item in mutants if item.function == "authenticate_intake"]
+    assert len(intake) == 14
+    assert {item.operator for item in intake} == {"bypass-required-evidence"}
+    assert {
+        "bypass-feedback-authentication",
+        "expose-feedback-as-execution",
+        "misclassify-repository-scope",
+    } <= {item.operator for item in mutants}
+
+
+def test_missing_semantic_target_is_error(monkeypatch, tmp_path):
+    """A missing implementation cannot silently become a zero-mutant operator."""
+    monkeypatch.setattr(gate, "GUARDS", {})
+    monkeypatch.setattr(gate, "REQUIREMENTS", {})
+    monkeypatch.setattr(gate, "SEMANTIC_TARGETS", {"sample.py": {"expected"}})
+    (tmp_path / "sample.py").write_text("def other():\n    return True\n")
+    with pytest.raises(ValueError, match="disappeared"):
+        gate.inventory(tmp_path)

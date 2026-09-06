@@ -24,6 +24,7 @@ returns ``False`` for any non-Allow effect), so ``make test-policy`` stays green
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from typing import Any
 
 from infra import ci_bootstrap, ci_config, config
@@ -176,8 +177,8 @@ def test_ci_config_project_honours_repo_override() -> None:
 
 
 def test_config_read_trust_subjects_follow_repo_override() -> None:
-    """Repo-scoped trust subjects use the override repo (governance loop path)."""
-    settings = _settings()
+    """Governance supplies settings scoped to its explicit repository override."""
+    settings = replace(_settings(), repo="user-service-infrastructure")
     subjects = ci_config._github_actions_subjects(
         settings, "prod", "user-service-infrastructure"
     )

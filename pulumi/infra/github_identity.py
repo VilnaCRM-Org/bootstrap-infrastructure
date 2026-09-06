@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Sequence
 
@@ -65,3 +66,20 @@ def expand_subjects(
                 f"{subject[len(prefix) :]}"
             )
     return list(dict.fromkeys(expanded))
+
+
+def validate_trust_policy_size(document: str) -> str:
+    """Keep exact subjects within the default, unraised IAM trust quota.
+
+    AWS excludes insignificant JSON whitespace. Return the original serialization
+    so supported existing roles retain their exact policy documents.
+    """
+    size = len(json.dumps(json.loads(document), separators=(",", ":")))
+    if size > 2048:
+        raise ValueError(
+            f"GitHub OIDC trust policy is {size} characters; supported default IAM "
+            "quota is 2048. Shorten configured identity/context names or review "
+            "an explicit account trust-quota increase (AWS maximum 8192) and "
+            "update the supported contract; do not remove identity claims."
+        )
+    return document

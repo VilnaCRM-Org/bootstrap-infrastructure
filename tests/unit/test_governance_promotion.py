@@ -42,6 +42,7 @@ def runtime(monkeypatch, tmp_path):
     event_path.write_text('{"number":78}')
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
     monkeypatch.setattr(promotion, "PROOF_PATH", tmp_path / "artifact" / "proof.json")
+    monkeypatch.setattr(promotion, "TRUSTED_SOURCE_ROOT", tmp_path / "trusted")
     inputs = tmp_path / "plans"
     monkeypatch.setattr(promotion, "PLAN_INPUT_PATH", inputs)
     for environment in ("test", "prod"):
@@ -94,8 +95,8 @@ def test_prepare_and_publish_project_exact_proof(runtime, monkeypatch):
         lambda *args: {
             "state": "open",
             "merged": False,
-            "head": {"sha": SHA},
-            "base": {"sha": "b" * 40},
+            "head": {"sha": SHA, "repo": {"full_name": "org/repo"}},
+            "base": {"sha": "b" * 40, "ref": "main", "repo": {"full_name": "org/repo"}},
         },
     )
     monkeypatch.setattr(
@@ -192,8 +193,8 @@ def test_missing_artifact_or_wrong_deployment_sha_rejected(runtime, monkeypatch)
         lambda *args: {
             "state": "open",
             "merged": False,
-            "head": {"sha": SHA},
-            "base": {"sha": "b" * 40},
+            "head": {"sha": SHA, "repo": {"full_name": "org/repo"}},
+            "base": {"sha": "b" * 40, "ref": "main", "repo": {"full_name": "org/repo"}},
         },
     )
     monkeypatch.setenv("PROMOTION_ARTIFACT_ID", "")
@@ -389,8 +390,8 @@ def test_platform_publishes_current_head_deployments_with_bound_origin(
         lambda *_args: {
             "state": "open",
             "merged": False,
-            "head": {"sha": SHA},
-            "base": {"sha": "b" * 40},
+            "head": {"sha": SHA, "repo": {"full_name": "org/repo"}},
+            "base": {"sha": "b" * 40, "ref": "main", "repo": {"full_name": "org/repo"}},
         },
     )
     writes = []
@@ -408,3 +409,122 @@ def test_platform_publishes_current_head_deployments_with_bound_origin(
         assert value["payload"]["base_sha"] == "b" * 40
         assert value["payload"]["comment_id"] == "42"
         assert value["required_contexts"] == []
+
+
+@pytest.mark.parametrize("side", ["base", "head"])
+@pytest.mark.parametrize("repository", ["other/repo", "org/fork", None, {}])
+def test_foreign_pr_repo_blocks_writes(runtime, monkeypatch, side, repository):
+    """Unchanged commit IDs cannot authorize a different repository identity."""
+    pr = {
+        "state": "open",
+        "merged": False,
+        "head": {"sha": SHA, "repo": {"full_name": "org/repo"}},
+        "base": {
+            "sha": "b" * 40,
+            "ref": "main",
+            "repo": {"full_name": "org/repo"},
+        },
+    }
+    pr[side]["repo"] = (
+        {"full_name": repository} if isinstance(repository, str) else repository
+    )
+    monkeypatch.setattr(promotion, "gh", lambda *_args: pr)
+    writes = []
+    monkeypatch.setattr(promotion, "api_write", lambda *args: writes.append(args))
+    with pytest.raises(ValueError, match="repository identity"):
+        promotion.publish_proof(promotion.build_proof(needs_fixture()))
+    assert writes == []
+
+
+def test_same_sha_retarget_blocks_writes(runtime, monkeypatch):
+    """A branch retarget remains invalid even when both commits are unchanged."""
+    monkeypatch.setattr(
+        promotion,
+        "gh",
+        lambda *_args: {
+            "state": "open",
+            "merged": False,
+            "head": {"sha": SHA, "repo": {"full_name": "org/repo"}},
+            "base": {
+                "sha": "b" * 40,
+                "ref": "release",
+                "repo": {"full_name": "org/repo"},
+            },
+        },
+    )
+    writes = []
+    monkeypatch.setattr(promotion, "api_write", lambda *args: writes.append(args))
+    with pytest.raises(ValueError, match="no longer targets main"):
+        promotion.publish_proof(promotion.build_proof(needs_fixture()))
+    assert writes == []
+
+
+def test_foreign_proof_stops_before_api(runtime, monkeypatch):
+    """A proof cannot select its own external API repository."""
+    proof = promotion.build_proof(needs_fixture())
+    proof["repository"] = "foreign/repository"
+    calls = []
+    monkeypatch.setattr(promotion, "gh", lambda *args: calls.append(args))
+    monkeypatch.setattr(promotion, "api_write", lambda *args: calls.append(args))
+    with pytest.raises(ValueError, match="another repository"):
+        promotion.publish_proof(proof)
+    assert calls == []
+
+
+@pytest.mark.parametrize("filename", ["README.md", "Makefile"])
+@pytest.mark.parametrize("mismatch", [None, "kind", "creator", "base", "pr"])
+def test_service_preserves_exact_proof(runtime, monkeypatch, filename, mismatch):
+    """Trusted service controllers preserve only their own current App proof."""
+    marker = promotion.TRUSTED_SOURCE_ROOT / promotion.PROMOTION_WORKFLOWS["service"]
+    marker.parent.mkdir(parents=True)
+    marker.write_text("name: Self Deploy\n")
+    status = {
+        "context": promotion.CONTEXT,
+        "state": "success",
+        "description": promotion.promotion_description(78, "b" * 40, "service"),
+        "creator": {"login": "promotion-evidence[bot]"},
+    }
+    if mismatch == "kind":
+        status["description"] = promotion.promotion_description(
+            78, "b" * 40, "platform"
+        )
+    elif mismatch == "creator":
+        status["creator"]["login"] = "foreign-evidence[bot]"
+    elif mismatch == "base":
+        status["description"] = promotion.promotion_description(78, "c" * 40, "service")
+    elif mismatch == "pr":
+        status["description"] = promotion.promotion_description(79, "b" * 40, "service")
+
+    def api(path, *args):
+        if "/compare/" in path:
+            return {"files": [{"filename": filename}]}
+        if "/statuses?" in path:
+            assert path == f"repos/org/repo/commits/{SHA}/statuses?per_page=100"
+            return [[status]]
+        return {
+            "head": {"sha": SHA},
+            "changed_files": 1,
+            "base": {"ref": "main", "sha": "b" * 40},
+        }
+
+    writes = []
+    monkeypatch.setattr(promotion, "gh", api)
+    monkeypatch.setattr(promotion, "api_write", lambda *args: writes.append(args))
+    promotion.report_scope()
+    if mismatch is None:
+        assert writes == []
+    else:
+        assert len(writes) == 1
+        assert writes[0][1]["state"] == "pending"
+        assert writes[0][1]["description"].startswith("Service requires")
+
+
+def test_pr_marker_cannot_select_service(runtime, monkeypatch, tmp_path):
+    """Ambient PR/artifact files cannot influence trusted repository scope."""
+    untrusted = tmp_path / "pr-checkout"
+    marker = untrusted / promotion.PROMOTION_WORKFLOWS["service"]
+    marker.parent.mkdir(parents=True)
+    marker.write_text("name: Attacker supplied marker\n")
+    monkeypatch.chdir(untrusted)
+    assert promotion.scope_promotion_kind(False) == "platform"
+    assert promotion.scope_promotion_kind(True) == "governance"
