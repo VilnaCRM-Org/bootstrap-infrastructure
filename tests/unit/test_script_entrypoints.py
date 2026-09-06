@@ -5108,6 +5108,12 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
     runner = _runner_from_cases(
         [
             (
+                _starts_with(["aws", "iam", "get-login-profile"]),
+                _text_response(
+                    returncode=254, stderr="An error occurred (NoSuchEntity)"
+                ),
+            ),
+            (
                 _starts_with(["git", "-C", str(PROJECT_ROOT), "rev-parse"]),
                 _text_response("abc123\n"),
             ),
@@ -5395,6 +5401,10 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
         == 345600
     )
     assert checks["aws_iam_account_access"]["evidence"] == {  # nosec B101
+        "humanAccessScope": "direct_iam_console_only",
+        "consoleUserCount": 0,
+        "consoleUsersWithoutMfa": 0,
+        "unreadableConsoleUserCount": 0,
         "accountAccessKeysPresent": 0,
         "accountMfaEnabled": 1,
         "activeUserAccessKeyCreateDateUnknownCount": 0,
@@ -5424,6 +5434,12 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
 
     runner = _runner_from_cases(
         [
+            (
+                _starts_with(["aws", "iam", "get-login-profile"]),
+                _text_response(
+                    returncode=254, stderr="An error occurred (NoSuchEntity)"
+                ),
+            ),
             (
                 lambda command: (
                     command[0] == "git" and command[3:5] == ["rev-parse", "HEAD"]
@@ -7856,6 +7872,12 @@ def test_collect_well_architected_evidence_reads_iam_access_metadata(
     runner = _runner_from_cases(
         [
             (
+                _starts_with(["aws", "iam", "get-login-profile"]),
+                _text_response(
+                    returncode=254, stderr="An error occurred (NoSuchEntity)"
+                ),
+            ),
+            (
                 _starts_with(["aws", "iam", "get-account-summary"]),
                 _json_response(
                     {
@@ -7883,6 +7905,10 @@ def test_collect_well_architected_evidence_reads_iam_access_metadata(
 
     assert evidence["status"] == "failed"  # nosec B101
     assert evidence["evidence"] == {  # nosec B101
+        "humanAccessScope": "direct_iam_console_only",
+        "consoleUserCount": 0,
+        "consoleUsersWithoutMfa": 0,
+        "unreadableConsoleUserCount": 0,
         "accountAccessKeysPresent": 1,
         "accountMfaEnabled": 0,
         "activeUserAccessKeyCreateDateUnknownCount": 0,
@@ -7914,7 +7940,7 @@ def test_collect_well_architected_evidence_reads_iam_access_metadata(
 def test_collect_well_architected_evidence_accepts_security_attestation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Current owner attestation should cover human and active-key IAM blockers."""
+    """An active-key exception does not replace observed console posture."""
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
     old_timestamp = (
         module.dt.datetime.now(module.dt.timezone.utc) - module.dt.timedelta(days=120)
@@ -7924,6 +7950,10 @@ def test_collect_well_architected_evidence_accepts_security_attestation(
     ).isoformat()
 
     def runner(command, **_kwargs):
+        if command[:3] == ["aws", "iam", "get-login-profile"]:
+            return subprocess.CompletedProcess(
+                command, 254, "", "An error occurred (NoSuchEntity)"
+            )
         if command[:3] == ["aws", "iam", "get-account-summary"]:
             payload = {
                 "AccountAccessKeysPresent": 0,

@@ -1,4 +1,4 @@
-"""Pin PR credential loading and execute its reviewed closure beside hostile code."""
+"""Check the installed loader pin and local candidate isolation beside hostile code."""
 
 from __future__ import annotations
 
@@ -16,12 +16,12 @@ PIN = (
     "VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env"
     "@d1297f1f00658c351dd6b94e510b394835b13ede"
 )
-CLOSURE = {
+LOCAL_CANDIDATE_CLOSURE = {
     ".github/actions/load-aws-ci-env/action.yml": (
-        "cff9b9474e512a806fb6a07af571045553322c090055b3a966a1cf2f88c6098b"
+        "0a56fbd02fc6c06dbf88b1821abf9db5272a19311b0baf0fd03852587e491644"
     ),
     "scripts/validate_ci_environment.py": (
-        "57ebb5d6ab65393b22936046b05eeb84d2be4fa4577b13616b73429d81a0579a"
+        "598cce5370e9132c935c919f1b256debaa19744af988e7a61e1bd24e0ddc2d93"
     ),
 }
 
@@ -49,12 +49,12 @@ def test_guardrails_loader_is_reviewed_and_keeps_pr_role_contract(job_id: str) -
     assert jobs["iam_validation_unprivileged"]["permissions"] == {"contents": "read"}
 
 
-def test_reviewed_loader_rejects_local_composite_and_validator_substitution(
+def test_local_candidate_loader_rejects_composite_and_validator_substitution(
     tmp_path: Path,
 ) -> None:
-    """Reproduce old local code execution, then run the selected isolated steps."""
+    """Exercise the local candidate; the installed PIN above is a separate contract."""
     remote = tmp_path / "reviewed-action-checkout"
-    for relative, digest in CLOSURE.items():
+    for relative, digest in LOCAL_CANDIDATE_CLOSURE.items():
         data = (ROOT / relative).read_bytes()
         assert hashlib.sha256(data).hexdigest() == digest
         destination = remote / relative
@@ -101,6 +101,7 @@ def test_reviewed_loader_rejects_local_composite_and_validator_substitution(
         "RUNNER_TEMP": str(tmp_path),
         "CI_CONFIG_SECRET_ID": "/example/ci/test-pr",
         "CI_CONFIG_ACCOUNT_ID": "123456789012",
+        "CI_CONFIG_EXPECTED_REGION": "eu-central-1",
         "CI_CONFIG_PURPOSE": "offline pinned loader regression",
         "CI_CONFIG_ACTION_PATH": str(remote / ".github/actions/load-aws-ci-env"),
         "REQUIRED_KEYS": "AWS_ACCOUNT_ID,AWS_REGION",

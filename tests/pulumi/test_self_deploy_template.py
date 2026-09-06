@@ -302,3 +302,66 @@ def test_template_carries_no_static_aws_keys_via_file_scan() -> None:
 
     # No access-key-id value prefix anywhere in the deployable workflow file.
     assert "AKIA" not in text  # nosec B101
+
+
+def test_scheduled_drift_uses_only_protected_main_read_roles():
+    """Scheduled runs cannot enter comment apply or promotion jobs."""
+    workflow = _workflow_document()
+    assert workflow[True]["schedule"]
+    assert (
+        workflow["jobs"]["preflight"]["if"]
+        == "github.event_name == 'repository_dispatch'"
+    )
+    for environment in ("test", "prod"):
+        job = workflow["jobs"][f"scheduled_{environment}_drift"]
+        assert (
+            job["if"]
+            == "github.event_name == 'schedule' && github.ref == 'refs/heads/main'"
+        )
+        assert job["environment"] == f"{environment}-preview"
+        assert "needs" not in job
+        assert job["permissions"]["id-token"] == "write"
+        steps = job["steps"]
+        checkouts = [
+            step
+            for step in steps
+            if step.get("uses", "").startswith("actions/checkout@")
+        ]
+        assert all(step["with"]["ref"] == "${{ github.sha }}" for step in checkouts)
+        guard_index = next(
+            i
+            for i, step in enumerate(steps)
+            if step.get("name")
+            == "Verify trusted scheduled revision before credentials"
+        )
+        loader_index = next(
+            i for i, step in enumerate(steps) if step.get("id") == "ci_config"
+        )
+        assert guard_index < loader_index
+        loader = steps[loader_index]["with"]
+        assert loader["environment"] == (
+            "prod-preview" if environment == "prod" else "test"
+        )
+        role_variable = (
+            "AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN"
+            if environment == "prod"
+            else "AWS_TEST_CI_CONFIG_ROLE_ARN"
+        )
+        assert loader["config-role-arn"] == "${{ vars." + role_variable + " }}"
+        assert "AWS_DRIFT_ROLE_ARN" in loader["required-keys"]
+        assert "AWS_APPLY_ROLE_ARN" not in loader["required-keys"]
+        role = next(
+            step
+            for step in steps
+            if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+        )
+        assert (
+            role["with"]["role-to-assume"]
+            == "${{ steps.ci_config.outputs.aws-drift-role-arn }}"
+        )
+        assert (
+            role["with"]["allowed-account-ids"]
+            == "${{ vars.AWS_" + environment.upper() + "_ACCOUNT_ID }}"
+        )
+        assert steps[-1]["run"] == "make test-drift"
+        assert "pulumi-up" not in str(job) and "deployments: write" not in str(job)

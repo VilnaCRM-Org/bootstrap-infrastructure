@@ -585,10 +585,10 @@ def _run_up_plan_stack(
     return None if result.returncode == 0 else result.returncode
 
 
-def _direct_ci_up_forbidden(context: CommandContext) -> bool:
+def _direct_ci_up_forbidden(context: CommandContext, command: str = "up") -> bool:
     if context.env.get("GITHUB_ACTIONS") == "true":
         print(
-            "error: direct Pulumi up is disabled in GitHub Actions; "
+            f"error: direct Pulumi {command} is disabled in GitHub Actions; "
             "generate and apply a reviewed saved plan with pulumi-plan and "
             "pulumi-up-plan.",
             file=sys.stderr,
@@ -704,7 +704,7 @@ def _dispatch_command(command: str, context: CommandContext, stacks: list[str]) 
 
 def _run_command(command: str) -> int:
     context = _context_from_environment()
-    if command == "up" and _direct_ci_up_forbidden(context):
+    if command in {"up", "destroy"} and _direct_ci_up_forbidden(context, command):
         return 1
     provider_failure = _validate_secrets_provider(context.secrets_provider)
     stacks = _configured_stack_names(command, context.pulumi_dir, context.env)

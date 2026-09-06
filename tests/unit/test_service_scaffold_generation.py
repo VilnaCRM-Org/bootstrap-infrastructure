@@ -816,3 +816,84 @@ def test_prod_initialization_emits_exact_public_receipt(initialization, monkeypa
         "awskms://alias/pulumi-user-service-infrastructure-prod-secrets?region=eu-central-1",
     )
     assert all("up" not in call and "preview" not in call for call in calls)
+
+
+@pytest.mark.parametrize("job_name", ["preflight", "initialize"])
+@pytest.mark.parametrize(
+    "attempt,actor,triggering,permission,passes",
+    [
+        ("1", "dmytrocraft", "dmytrocraft", "write", True),
+        ("1", "dmytrocraft", "dmytrocraft", "admin", True),
+        ("2", "dmytrocraft", "dmytrocraft", "write", False),
+        ("", "dmytrocraft", "dmytrocraft", "write", False),
+        ("1", "Kravalg", "Kravalg", "admin", False),
+        ("1", "dmytrocraft", "other", "write", False),
+        ("1", "dmytrocraft", "dmytrocraft", "read", False),
+        ("1", "dmytrocraft", "dmytrocraft", None, False),
+    ],
+)
+def test_each_initialization_job_verifies_before_credentials(
+    initialization,
+    monkeypatch,
+    job_name,
+    attempt,
+    actor,
+    triggering,
+    permission,
+    passes,
+):
+    """A job-only rerun must hit the actual workflow command before either OIDC step."""
+    workflow = yaml.safe_load(
+        (TEMPLATE / ".github/workflows/initialize-stack.yml").read_text()
+    )
+    job = workflow["jobs"][job_name]
+    steps = job["steps"]
+    verification = [
+        (index, step)
+        for index, step in enumerate(steps)
+        if step.get("run") == "python3 scripts/initialize_service_stack.py verify"
+    ]
+    assert len(verification) == 1
+    index, step = verification[0]
+    assert "if" not in step and "continue-on-error" not in step
+    assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
+    assert job["permissions"]["actions"] == "read"
+    credential_steps = [
+        offset
+        for offset, candidate in enumerate(steps)
+        if "load-aws-ci-env" in candidate.get("uses", "")
+        or "configure-aws-credentials" in candidate.get("uses", "")
+    ]
+    if job_name == "initialize":
+        assert len(credential_steps) == 2
+        assert all(index < offset for offset in credential_steps)
+        assert job["env"]["INIT_ACCOUNT_ID"] == (
+            "${{ needs.preflight.outputs.account_id }}"
+        )
+    else:
+        assert credential_steps == []
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", attempt)
+    monkeypatch.setenv("GITHUB_ACTOR", actor)
+    monkeypatch.setenv("GITHUB_TRIGGERING_ACTOR", triggering)
+    monkeypatch.setattr(
+        initializer,
+        "gh",
+        lambda path: (
+            {"permission": permission}
+            if "/collaborators/" in path
+            else {"default_branch": "main"}
+        ),
+    )
+    protected = []
+    monkeypatch.setattr(
+        initializer, "verify_environments", lambda *a, **k: protected.append(True)
+    )
+    arguments = shlex.split(step["run"])[2:]
+    if passes:
+        assert initializer.main(arguments) == 0
+        assert protected == [True]
+    else:
+        with pytest.raises(ValueError):
+            initializer.main(arguments)
+        assert protected == []
+    assert initialization[0] == []

@@ -630,7 +630,7 @@
   },
   "limitations": [
     "No account-wide zero-key claim for PROD; unrelated codex/MCP active key remains outside bootstrap auth path.",
-    "Three MFA summary devices do not equal three IAM users: all five users lack console/active direct credentials; two virtual devices bind root and third is unclassified.",
+    "The account summary reports three MFA devices. The separate virtual-device inventory reports two bound to root, zero bound to IAM users and zero unclassified virtual devices. One aggregate device is not explained by that virtual inventory; its type and owner are not established by these observations. All five IAM users lack console and active direct credentials. The inventories are not interchangeable and no additional virtual device is inferred.",
     "Source-bound local apply/drift is not protected PR-comment promotion.",
     "No successful R3 Backup restore yet; delivered canary event proof pending at parent status.",
     "PROD governance reviewed plan is not yet an apply/drift receipt here; service initialization and true downstream TEST/PROD promotion remain separate.",

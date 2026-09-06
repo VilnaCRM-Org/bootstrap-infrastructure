@@ -173,9 +173,10 @@
       ".github/workflows/pulumi-prod.yml:178",
       ".github/workflows/pulumi-prod.yml:187"
     ],
-    "sourceAssessment": "Both steps are in destructive_diff, which needs preview. Preview validates full40hex SHA and requires an actual successful Pulumi Test Deploy workflow run at that SHA with head_branch=main before any target code execution. That upstream gate prevents the reported arbitrary PR SHA path; absence of cache actions alone is not the justification. This is a source-backed false-positive recommendation, not a changed alert state or formal acceptance.",
-    "action": "Parent independently reviews/disposes alerts or applies a narrow correction if another path is demonstrated; preserve detector. SEC11 remains unresolved until formal disposition/current final CI.",
-    "dependabotOpen": 0
+    "sourceAssessment": "Historical source at 5c873f86fa956f6b96a09e2887297905467b8562 places both cited steps in destructive_diff, which needs preview. The successful TEST run and head_branch=main checks alone do not independently prove protected-main ancestry. The initial false-positive recommendation is superseded by the separately reviewed source correction below. Absence of cache actions alone is not a security justification.",
+    "action": "Preserve the detector. The current source correction requires refs/heads/main and independently verifies that the requested exact commit is an ancestor of the trusted workflow SHA before checkout. Hosted analysis and alert disposition remain separate evidence; no alert dismissal or full acceptance is asserted here.",
+    "dependabotOpen": 0,
+    "pathsSourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562"
   },
   "remainingRuntimeLimits": [
     "No successful R3 Backup restore yet; delivered canary event proof pending at parent status.",
@@ -187,5 +188,127 @@
     "pulumi/repositories.bootstrap.json": "cc87f64b1b1005bd2a2a447ce695c8d1fca236f2280ed03b112afdf930b814ad",
     "pulumi/repositories.governance.json": "1c375faf18edbd3de08ccf7c94b57afd0af0059f5ccad23f792a13a646286a7b",
     "pulumi/user-service-infrastructure/pulumi/__main__.py": "9b22896a655477803baf7eb98c605a3610c2273ff3b56e0554687e1902f3adf3"
+  },
+  "sourceBindingsScope": "Historical content hashes at sourceCommit 5c873f86fa956f6b96a09e2887297905467b8562, observed at reviewedAt. Later reviewed source corrections are recorded separately below; these hashes are not assertions about the PR head.",
+  "reviewedSourceCorrection": {
+    "reviewedRevision": "ffae8ec17ef7e2c4610fd699f4a2aa2f30734654",
+    "scope": "Source correction to the historical assessment; does not change observation dates, historical source hashes or runtime outcomes.",
+    "sourceBindings": {
+      ".github/workflows/pulumi-prod.yml": "feac18921725b055810b6e3c155264cf3c0a55d3eced6d2d824f7771fc3bec6c",
+      "pulumi/user-service-infrastructure/pulumi/__main__.py": "a867486d9e47d9bc1b96809e67f55a13cc6b82e6ca29132d80c5b1abd005a2db"
+    },
+    "productionSourceGuard": "Before target checkout, require the workflow main ref and exact 40-character lowercase commit IDs; GitHub compare must return one object with base_commit and merge_base equal to the requested SHA, behind_by=0 and status ahead or identical. API failure, malformed/multiple responses and foreign or divergent history fail closed. Existing successful TEST and protected PROD gates remain.",
+    "serviceAccountGuard": "Shared TEST/PROD entrypoint compares selected stack with configured environment and actual AWS caller with configured account before exporting service metadata. No change to the historical main hash above.",
+    "limitations": "Source checks do not constitute current protected TEST/PROD deployment, resolved CodeQL alert state or successful restore."
+  },
+  "subsequentDeploymentProgress": {
+    "observedAt": "2026-09-06T22:20:33.376376+00:00",
+    "baselineSourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+    "baselineSnapshotAt": "2026-09-06T22:04:15.718180+00:00",
+    "baselineApplyPassCount": 8,
+    "baselineDriftPassCount": 8,
+    "baselineMeaning": "Operator, platform, governance and backend-only service stack in TEST and PROD. These local AWS KMS/S3 operations are not downstream workload or protected PR-comment promotion acceptance.",
+    "inventoryReceipt": {
+      "path": "outputs/bootstrap-all-stack-deployment-progress.json",
+      "sha256": "292e8ba876dd6ea10295cf3549b1780a0b2d0879edf0d355a9683e886ed5f460"
+    },
+    "executionReceipts": [
+      {
+        "path": "outputs/test-operator-apply-execution.json",
+        "sha256": "bb17980c381d0b433d37197ccca68904bf58794a13e1731fcb52a81828cc81f2",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-operator-drift-execution.json",
+        "sha256": "12e890f01addcc824b2be05e16982e289a6f706f1c44bede2eb16f203618fcda",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-platform-apply-execution.json",
+        "sha256": "2b03d96ffff5c0d47767348f72b08708b3bf9b5cc2a96d61830adf05399f4df2",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-platform-drift-execution.json",
+        "sha256": "c656df5a5831e06d15d9fd4410a922236dbaf265fa6acdd24bb67444a5b6acba",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-governance-apply-execution.json",
+        "sha256": "366ce25344c144915f7603cafaa7870628e86e564c631f3e1e5e51204478e9d2",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-governance-drift-execution.json",
+        "sha256": "71f6153b6950dbeea48cf0606c5b14f37cb378d08d72ea658c2ecc9a1e4b73c8",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-service-apply-execution.json",
+        "sha256": "b54bff8de113babf7754215de0d85e17c3feb1987b5dcdf14d51287a4c6798d7",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-service-drift-execution.json",
+        "sha256": "7c7a64ee5578f99e5245d968d00edb73abb71c76245ac3cb3582405d12b85463",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-operator-apply-execution.json",
+        "sha256": "75bfec873628f327c1ff1c79dca57fc1c063b0e5eff4e60d55a5822e82458fe4",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-operator-drift-execution.json",
+        "sha256": "d97a2289fcdc3fa1515e88dce832bc3792650ea7ffd0f385a1a7288eadbbfbbc",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-platform-apply-execution.json",
+        "sha256": "be730f07f2f318f77160f5dfccf36f5b851a0c96ddac96fef0817c58fa0fcbd9",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-platform-drift-execution.json",
+        "sha256": "c02cef9def822f3fe2ee8b8e69285b7f319e29c5a27df35775684c10be3d88a5",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-governance-apply-execution.json",
+        "sha256": "0a24944e9b854599ca7e9a12a3b97ca921718f060a94144d521b211140a6a7fa",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-governance-drift-execution.json",
+        "sha256": "a6882dccc83f02fe2c4757c3a388115c760732dd8ef9affe414b97a6d04254f8",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-service-apply-execution.json",
+        "sha256": "5a3cae76886e0f1499a5286dbd575a5ba64345abe560cbb05bf30f276d1d7d93",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-service-drift-execution.json",
+        "sha256": "32b144fd2b756fcddf64597096bb72797f0dfb1bbca8e8d23e9307f993481038",
+        "status": "PASS"
+      }
+    ],
+    "testGovernanceComment": {
+      "head": "ffae8ec17ef7e2c4610fd699f4a2aa2f30734654",
+      "runUrl": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/runs/34062796631",
+      "command": "/pulumi test up",
+      "triggerCommentId": 5562475017,
+      "plan": "SUCCESS",
+      "apply": "SUCCESS",
+      "postApplyDrift": "SUCCESS",
+      "prod": "SKIPPED",
+      "promotionProof": "SKIPPED",
+      "receipt": {
+        "path": "outputs/pr204-test-comment-deployment.json",
+        "sha256": "f576dd6d96f4a087665c5b185e1dd87852f4cbcbacc7eaf9c33e059822bfaaed"
+      }
+    },
+    "remaining": "The new initializer correction still requires a frozen source review and current-head validation. Final same-revision PROD comment promotion, downstream live acceptance, successful restore and unresolved WA requirements remain. Prior snapshot observations and historical receipt hashes above are preserved."
   }
 }

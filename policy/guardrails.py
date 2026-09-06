@@ -160,7 +160,9 @@ def storage_encryption_violations(
 
     if _matches_resource_type(resource_type, S3_BUCKET_TYPE_SUFFIX):
         encryption = props.get("serverSideEncryptionConfiguration")
-        if not isinstance(encryption, Mapping):
+        if not isinstance(encryption, Mapping) or not _has_default_s3_encryption_rule(
+            encryption
+        ):
             violations.append("S3 buckets must enable default server-side encryption.")
 
     if _matches_resource_type(resource_type, EBS_VOLUME_TYPE_SUFFIX) and not _truthy(
@@ -257,15 +259,12 @@ def logging_stack_violations(resources: Sequence[Any]) -> list[tuple[str | None,
 
 
 def _resource_dependencies(resource: Any, property_name: str) -> Sequence[Any]:
-    """Return resource dependencies for one property, falling back to general deps."""
+    """Return only dependencies that affect the specific protected property."""
     property_dependencies = cast(
         Mapping[str, Sequence[Any]],
         getattr(resource, "property_dependencies", {}) or {},
     )
-    dependencies = list(property_dependencies.get(property_name, []))
-    if dependencies:
-        return dependencies
-    return cast(Sequence[Any], getattr(resource, "dependencies", []) or [])
+    return list(property_dependencies.get(property_name, []))
 
 
 def _s3_encryption_rule_items(props: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -338,7 +337,7 @@ def _s3_bucket_is_covered(
         return False
 
     encryption = props.get("serverSideEncryptionConfiguration")
-    if isinstance(encryption, Mapping):
+    if isinstance(encryption, Mapping) and _has_default_s3_encryption_rule(encryption):
         return True
 
     bucket_name = _string_value(props.get("bucket"))
@@ -757,7 +756,14 @@ def _condition_has_concrete_keys(
         return False
 
     found: set[str] = set()
-    for condition_value in condition.values():
+    for operator, condition_value in condition.items():
+        # Required request-tag keys are single-valued. Set qualifiers can make
+        # absent keys match, so only bare positive operators establish presence.
+        if (
+            not isinstance(operator, str)
+            or operator not in POSITIVE_PUBLIC_ACCESS_OPERATORS
+        ):
+            continue
         if not isinstance(condition_value, Mapping):
             continue
         for key, value in condition_value.items():

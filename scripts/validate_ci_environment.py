@@ -177,7 +177,7 @@ def _provider_uri_matches_context(
 
 def _validate_stack_list(value: str) -> str | None:
     stacks = [stack.strip() for stack in value.split(",") if stack.strip()]
-    if stacks and all(re.fullmatch(r"[A-Za-z0-9_.:-]+", stack) for stack in stacks):
+    if stacks and all(re.fullmatch(r"[A-Za-z0-9_.-]+", stack) for stack in stacks):
         return None
     return "must be a comma-separated list of stack names"
 

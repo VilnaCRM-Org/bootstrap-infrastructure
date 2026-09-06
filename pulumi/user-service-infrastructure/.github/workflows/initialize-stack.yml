@@ -74,12 +74,17 @@ jobs:
       INIT_ACCOUNT_ID: ${{ needs.preflight.outputs.account_id }}
     permissions:
       contents: read
+      actions: read
       id-token: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Revalidate requester and protection before AWS credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/initialize_service_stack.py verify
       - name: Load account-local governed configuration
         id: config
         uses: ./.github/actions/load-aws-ci-env

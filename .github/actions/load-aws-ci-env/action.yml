@@ -155,6 +155,7 @@ runs:
       env:
         CI_CONFIG_SECRET_ID: ${{ steps.aws-target.outputs.secret_id }}
         CI_CONFIG_ACCOUNT_ID: ${{ steps.aws-target.outputs.config_account_id }}
+        CI_CONFIG_EXPECTED_REGION: ${{ steps.aws-target.outputs.aws_region }}
         REQUIRED_KEYS: ${{ inputs.required-keys }}
       run: |
         set -euo pipefail
@@ -197,6 +198,8 @@ runs:
             for key in line.split(",")
             if key.strip()
         ]
+        # Identity and region are mandatory even when a caller omits them.
+        required = list(dict.fromkeys(["AWS_ACCOUNT_ID", "AWS_REGION", *required]))
         missing = [key for key in required if key not in payload or str(payload[key]).strip() == ""]
         if missing:
             print("CI config secret is missing required keys: " + ", ".join(sorted(missing)), file=sys.stderr)
@@ -234,10 +237,18 @@ runs:
             exports[key] = text
 
         expected_account_id = os.environ["CI_CONFIG_ACCOUNT_ID"]
-        actual_account_id = exports.get("AWS_ACCOUNT_ID")
-        if actual_account_id and actual_account_id != expected_account_id:
+        actual_account_id = exports["AWS_ACCOUNT_ID"]
+        if actual_account_id != expected_account_id:
             print(
                 "AWS_ACCOUNT_ID in CI config secret does not match config-read role account.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        expected_region = os.environ["CI_CONFIG_EXPECTED_REGION"]
+        if exports["AWS_REGION"] != expected_region:
+            print(
+                "AWS_REGION in CI config secret does not match the validated config-read region.",
                 file=sys.stderr,
             )
             sys.exit(1)

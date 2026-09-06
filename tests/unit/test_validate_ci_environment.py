@@ -5,6 +5,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -449,3 +451,10 @@ def test_invalid_uris_are_not_printed_or_exported(
         assert validator.main(["--purpose", "test", "--required-keys", key]) == 1
         assert value not in capsys.readouterr().out
         assert not env_file.exists()
+
+
+@pytest.mark.parametrize(
+    "value", ["org:stack", "test,org:prod", "organization/project/test"]
+)
+def test_stack_list_rejects_qualified_or_colon_names(value):
+    assert validator._validate_stack_list(value) is not None

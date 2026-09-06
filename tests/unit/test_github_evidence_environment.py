@@ -31,6 +31,13 @@ def test_valid_boundary_has_no_all_pr_review_bottleneck():
 @pytest.mark.parametrize(
     "policies",
     [
+        None,
+        1,
+        "main",
+        {},
+        [None],
+        ["main"],
+        [{}],
         [],
         [{"name": "*", "type": "branch"}],
         [{"name": "main", "type": "tag"}],

@@ -728,7 +728,13 @@ def test_storage_encryption_and_logging_violations_cover_supported_resources(
     assert (
         policy_runtime.storage_encryption_violations(
             "aws:s3/bucket:Bucket",
-            {"serverSideEncryptionConfiguration": {"rule": "AES256"}},
+            {
+                "serverSideEncryptionConfiguration": {
+                    "rule": {
+                        "applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}
+                    }
+                }
+            },
         )
         == []
     )
@@ -858,7 +864,11 @@ def test_storage_encryption_stack_violations_cover_missing_inline_and_name_only_
         "aws:s3/bucket:Bucket",
         props={
             "bucket": "inline-encrypted-bucket",
-            "serverSideEncryptionConfiguration": {"rule": "AES256"},
+            "serverSideEncryptionConfiguration": {
+                "rule": {
+                    "applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}
+                }
+            },
         },
         urn=(
             "urn:pulumi:dev::bootstrap::aws:s3/bucket:Bucket::inline-encrypted-bucket"
@@ -925,10 +935,13 @@ def test_storage_encryption_stack_violations_cover_missing_inline_and_name_only_
         dependencies=[dependency_only_bucket],
     )
     assert (  # nosec B101
-        policy_runtime.storage_encryption_stack_violations(
-            [dependency_only_bucket, dependency_only_encryption]
-        )
-        == []
+        [
+            urn
+            for urn, _ in policy_runtime.storage_encryption_stack_violations(
+                [dependency_only_bucket, dependency_only_encryption]
+            )
+        ]
+        == [dependency_only_bucket.urn]
     )
 
 
@@ -1034,10 +1047,13 @@ def test_logging_stack_violations_cover_missing_inline_exempt_and_name_only_path
         dependencies=[dependency_only_bucket],
     )
     assert (  # nosec B101
-        policy_runtime.logging_stack_violations(
-            [dependency_only_bucket, dependency_only_logging]
-        )
-        == []
+        [
+            urn
+            for urn, _ in policy_runtime.logging_stack_violations(
+                [dependency_only_bucket, dependency_only_logging]
+            )
+        ]
+        == [dependency_only_bucket.urn]
     )
 
 
@@ -2211,3 +2227,170 @@ def test_policy_main_supports_direct_pack_startup_without_repo_root(
 
     assert recorded["name"] == "vilnacrm-guardrails"
     assert len(recorded["policies"]) == 8
+
+
+@pytest.mark.parametrize("kind", ["encryption", "logging"])
+@pytest.mark.parametrize("property_scoped", [False, True])
+def test_split_s3_coverage_never_credits_an_unrelated_dependency(
+    policy_runtime: SimpleNamespace, kind: str, property_scoped: bool
+) -> None:
+    """A log destination/general dependency cannot prove its own protection."""
+    source = _stack_resource(
+        "aws:s3/bucket:Bucket", props={"bucket": "source"}, urn="urn:source"
+    )
+    destination = _stack_resource(
+        "aws:s3/bucket:Bucket", props={"bucket": "destination"}, urn="urn:destination"
+    )
+    if kind == "encryption":
+        resource_type = (
+            "aws:s3/bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2"
+        )
+        props = {
+            "rule": {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}}
+        }
+        validate = policy_runtime.storage_encryption_stack_violations
+    else:
+        resource_type = "aws:s3/bucketLogging:BucketLogging"
+        props = {"targetBucket": "destination"}
+        validate = policy_runtime.logging_stack_violations
+    if not property_scoped:
+        props["bucket"] = "source"
+    protection = _stack_resource(
+        resource_type,
+        props=props,
+        urn="urn:protection",
+        dependencies=[source, destination],
+        property_dependencies={"bucket": [source]} if property_scoped else {},
+    )
+    violations = validate([source, destination, protection])
+    assert [urn for urn, _ in violations] == [destination.urn]
+
+
+@pytest.mark.parametrize(
+    "operator",
+    [
+        "StringNotEquals",
+        "ArnNotEquals",
+        "StringEqualsIfExists",
+        "ForAllValues:StringEquals",
+        "ForAnyValue:StringEquals",
+        "Bool",
+        "UnknownOperator",
+        7,
+    ],
+)
+@pytest.mark.parametrize(
+    "action",
+    [
+        "kms:CreateKey",
+        "ce:CreateAnomalyMonitor",
+        "ce:CreateAnomalySubscription",
+        "guardduty:CreateDetector",
+    ],
+)
+def test_required_request_tags_cannot_use_optional_negated_or_set_conditions(
+    policy_runtime: SimpleNamespace, operator: str | int, action: str
+) -> None:
+    """Required single-valued tags need a positive, existence-requiring match."""
+    policy = {
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": action,
+                "Resource": "*",
+                "Condition": {
+                    operator: {
+                        "aws:RequestTag/Environment": "test",
+                        "aws:RequestTag/Purpose": "bootstrap",
+                    }
+                },
+            }
+        ]
+    }
+    assert policy_runtime.wildcard_iam_violations(
+        "aws:iam/policy:Policy",
+        {"policy": policy},
+        _custom_config(policy_runtime),
+    ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
+
+
+@pytest.mark.parametrize("kind", ["encryption", "logging"])
+def test_split_s3_non_bucket_property_dependency_cannot_prove_protection(
+    policy_runtime: SimpleNamespace, kind: str
+) -> None:
+    """Even a property dependency must identify the bucket resource itself."""
+    bucket = _stack_resource(
+        "aws:s3/bucket:Bucket", props={}, urn="urn:unprotected-bucket"
+    )
+    unrelated_role = _stack_resource(
+        "aws:iam/role:Role", props={}, urn="urn:unrelated-role"
+    )
+    if kind == "encryption":
+        resource_type = (
+            "aws:s3/bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2"
+        )
+        props = {
+            "rule": {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}}
+        }
+        validate = policy_runtime.storage_encryption_stack_violations
+    else:
+        resource_type = "aws:s3/bucketLogging:BucketLogging"
+        props = {"targetBucket": "destination"}
+        validate = policy_runtime.logging_stack_violations
+    protection = _stack_resource(
+        resource_type,
+        props=props,
+        urn="urn:protection",
+        property_dependencies={"bucket": [unrelated_role]},
+    )
+    assert [urn for urn, _ in validate([bucket, protection])] == [bucket.urn]
+
+
+@pytest.mark.parametrize(
+    "encryption",
+    [
+        {},
+        {"rule": "AES256"},
+        {"rules": []},
+        {"rules": [None, "AES256"]},
+        {"rule": {}},
+        {"rule": {"applyServerSideEncryptionByDefault": {}}},
+        {"rule": {"applyServerSideEncryptionByDefault": {"sseAlgorithm": ""}}},
+        {"rule": {"applyServerSideEncryptionByDefault": "AES256"}},
+    ],
+)
+def test_inline_s3_encryption_requires_concrete_default(policy_runtime, encryption):
+    """Malformed inline metadata must not bypass resource or stack encryption policy."""
+    props = {
+        "bucket": "unencrypted-inline",
+        "serverSideEncryptionConfiguration": encryption,
+    }
+    resource_type = "aws:s3/bucket:Bucket"
+    bucket = _stack_resource(resource_type, props=props, urn="urn:unencrypted-inline")
+    message = "S3 buckets must enable default server-side encryption."
+    assert policy_runtime.storage_encryption_violations(resource_type, props) == [
+        message
+    ]
+    assert policy_runtime.storage_encryption_stack_violations([bucket]) == [
+        (bucket.urn, message)
+    ]
+
+
+@pytest.mark.parametrize("container", ["rule", "rules"])
+@pytest.mark.parametrize("algorithm", ["AES256", "aws:kms"])
+def test_inline_s3_encryption_accepts_concrete_default(
+    policy_runtime, container, algorithm
+):
+    """Real inline rule shapes satisfy both resource and stack encryption policy."""
+    rule = {"applyServerSideEncryptionByDefault": {"sseAlgorithm": algorithm}}
+    encryption = {container: rule if container == "rule" else [rule]}
+    props = {
+        "bucket": "encrypted-inline",
+        "serverSideEncryptionConfiguration": encryption,
+    }
+    resource_type = "aws:s3/bucket:Bucket"
+    bucket = _stack_resource(resource_type, props=props, urn="urn:encrypted-inline")
+    assert policy_runtime.storage_encryption_violations(resource_type, props) == []
+    assert policy_runtime.storage_encryption_stack_violations([bucket]) == []

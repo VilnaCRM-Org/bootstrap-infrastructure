@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from _github_environment_controls import (
     environment_is_main_only,
@@ -42,7 +42,7 @@ OPERATIONS_ALERT_RECONCILE_ENVIRONMENT = "operations-alert-reconcile"
 GOVERNANCE_ENVIRONMENT = "governance"
 
 
-def required_status_checks_rule(*, promotion_app_id: int) -> dict[str, object]:
+def required_status_checks_rule(*, promotion_app_id: int) -> dict[str, Any]:
     """Return the ruleset rule that enforces the documented PR gates."""
     return {
         "type": "required_status_checks",
@@ -60,7 +60,56 @@ def required_status_checks_rule(*, promotion_app_id: int) -> dict[str, object]:
     }
 
 
-def default_pull_request_rule() -> dict[str, object]:
+def _harden_status_check(item: object, *, promotion_app_id: int) -> dict[str, Any]:
+    """Preserve one valid required check and reconcile its promotion issuer."""
+    if not isinstance(item, Mapping):
+        raise ValueError("Existing required status check is malformed.")
+    context = item.get("context")
+    if not isinstance(context, str) or not context.strip():
+        raise ValueError("Existing required status check is malformed.")
+    check = dict(item)
+    if check["context"] == GOVERNANCE_PROMOTION_CONTEXT:
+        if check.get("integration_id") not in (None, promotion_app_id):
+            raise ValueError(
+                "Existing promotion issuer requires explicit reconciliation."
+            )
+        check["integration_id"] = promotion_app_id
+    return check
+
+
+def harden_required_status_checks_rule(
+    existing: Mapping[str, Any], *, promotion_app_id: int
+) -> dict[str, Any]:
+    """Keep existing contexts and issuers while adding missing required checks."""
+    parameters = existing.get("parameters", {})
+    if not isinstance(parameters, Mapping):
+        raise ValueError("Existing status-check parameters must be an object.")
+    original = parameters.get("required_status_checks", [])
+    if not isinstance(original, list):
+        raise ValueError("Existing required status checks must be a list.")
+    checks = [
+        _harden_status_check(item, promotion_app_id=promotion_app_id)
+        for item in original
+    ]
+    baseline = required_status_checks_rule(promotion_app_id=promotion_app_id)
+    contexts = {check["context"] for check in checks}
+    checks.extend(
+        check
+        for check in baseline["parameters"]["required_status_checks"]
+        if check["context"] not in contexts
+    )
+    return {
+        **existing,
+        "type": "required_status_checks",
+        "parameters": {
+            **parameters,
+            "strict_required_status_checks_policy": True,
+            "required_status_checks": checks,
+        },
+    }
+
+
+def default_pull_request_rule() -> dict[str, Any]:
     """Return the minimum pull-request review rule expected by the project."""
     return {
         "type": "pull_request",
@@ -92,9 +141,11 @@ def harden_pull_request_rule(existing: Mapping[str, Any]) -> dict[str, Any]:
 def ruleset_payload(
     existing_rules: Sequence[Mapping[str, Any]] = (), *, promotion_app_id: int
 ) -> dict[str, Any]:
-    """Build the branch ruleset payload while preserving known stronger rules."""
+    """Build the branch ruleset payload while preserving additional rule types."""
     if promotion_app_id <= 0 or promotion_app_id == 15368:
         raise ValueError("A dedicated promotion GitHub App ID is required.")
+    if sum(rule.get("type") == "required_status_checks" for rule in existing_rules) > 1:
+        raise ValueError("Multiple existing status-check rules require reconciliation.")
     rules_by_type = {
         rule.get("type"): dict(rule)
         for rule in existing_rules
@@ -104,12 +155,22 @@ def ruleset_payload(
         rules_by_type.get("deletion", {"type": "deletion"}),
         rules_by_type.get("non_fast_forward", {"type": "non_fast_forward"}),
         harden_pull_request_rule(rules_by_type.get("pull_request", {})),
-        required_status_checks_rule(promotion_app_id=promotion_app_id),
+        harden_required_status_checks_rule(
+            rules_by_type.get("required_status_checks", {}),
+            promotion_app_id=promotion_app_id,
+        ),
     ]
-    for optional_rule_type in ("code_quality", "code_scanning", "required_deployments"):
-        rule = rules_by_type.get(optional_rule_type)
-        if rule is not None:
-            rules.append(rule)
+    replaced_types = {
+        "deletion",
+        "non_fast_forward",
+        "pull_request",
+        "required_status_checks",
+    }
+    rules.extend(
+        dict(rule)
+        for rule in existing_rules
+        if isinstance(rule.get("type"), str) and rule["type"] not in replaced_types
+    )
 
     return {
         "name": "main",
@@ -153,7 +214,10 @@ def governance_environment_payload(reviewer_id: int) -> dict[str, Any]:
 
 def required_status_check_items(rule: object) -> Sequence[object]:
     """Return required status check items from one ruleset rule."""
-    if not isinstance(rule, Mapping) or rule.get("type") != "required_status_checks":
+    if not isinstance(rule, Mapping):
+        return ()
+    rule = cast(Mapping[str, Any], rule)
+    if rule.get("type") != "required_status_checks":
         return ()
     parameters = rule.get("parameters")
     if not isinstance(parameters, Mapping):
@@ -166,6 +230,7 @@ def status_check_context(check: object) -> str | None:
     """Return the status-check context from GitHub ruleset metadata."""
     if not isinstance(check, Mapping):
         return None
+    check = cast(Mapping[str, Any], check)
     context = check.get("context") or check.get("name")
     return str(context) if context else None
 
@@ -251,6 +316,33 @@ def ruleset_has_pull_request_reviews(ruleset: Mapping[str, Any]) -> bool:
     return False
 
 
+def _ruleset_has_promotion_issuer(
+    ruleset: Mapping[str, Any], promotion_app_id: int
+) -> bool:
+    """Require the configured issuer on a concrete promotion status check."""
+    promotion_checks = [
+        cast(Mapping[str, Any], item)
+        for rule in ruleset.get("rules", [])
+        for item in required_status_check_items(rule)
+        if isinstance(item, Mapping)
+        and status_check_context(item) == GOVERNANCE_PROMOTION_CONTEXT
+    ]
+    return any(
+        item.get("integration_id") == promotion_app_id for item in promotion_checks
+    )
+
+
+def _ruleset_requires_strict_checks(ruleset: Mapping[str, Any]) -> bool:
+    """Inspect strictness independently from the names and issuers of checks."""
+    return any(
+        isinstance(rule, Mapping)
+        and rule.get("type") == "required_status_checks"
+        and isinstance(rule.get("parameters"), Mapping)
+        and rule["parameters"].get("strict_required_status_checks_policy") is True
+        for rule in ruleset.get("rules", [])
+    )
+
+
 def ruleset_verification_blockers(
     ruleset: Mapping[str, Any] | None, *, promotion_app_id: int
 ) -> list[str]:
@@ -265,19 +357,12 @@ def ruleset_verification_blockers(
             "Active main branch ruleset is missing required status checks: "
             f"{', '.join(missing_contexts)}."
         )
-    promotion_checks = [
-        item
-        for rule in ruleset.get("rules", [])
-        for item in required_status_check_items(rule)
-        if isinstance(item, Mapping)
-        and status_check_context(item) == GOVERNANCE_PROMOTION_CONTEXT
-    ]
-    if not any(
-        item.get("integration_id") == promotion_app_id for item in promotion_checks
-    ):
+    if not _ruleset_has_promotion_issuer(ruleset, promotion_app_id):
         blockers.append(
             "Governance Promotion must require the dedicated GitHub App issuer."
         )
+    if not _ruleset_requires_strict_checks(ruleset):
+        blockers.append("Active main branch ruleset must require strict status checks.")
     if not ruleset_has_pull_request_reviews(ruleset):
         blockers.append(
             "Active main branch ruleset does not require pull request reviews "
@@ -310,6 +395,7 @@ def reviewer_ids_from_items(items: Sequence[object]) -> set[int]:
     for item in items:
         if not isinstance(item, Mapping):
             continue
+        item = cast(Mapping[str, Any], item)
         reviewer_type = item.get("type")
         reviewer_id = item.get("id")
         if reviewer_type == "User" and isinstance(reviewer_id, int):
@@ -319,6 +405,49 @@ def reviewer_ids_from_items(items: Sequence[object]) -> set[int]:
         if isinstance(nested_user, Mapping) and isinstance(nested_user.get("id"), int):
             reviewer_ids.add(nested_user["id"])
     return reviewer_ids
+
+
+def _is_user_reviewer(item: object) -> bool:
+    """Validate one direct or nested GitHub reviewer without hiding its type."""
+    if not isinstance(item, Mapping):
+        return False
+    item = cast(Mapping[str, Any], item)
+    if item.get("type") != "User":
+        return False
+    person = item.get("reviewer", item)
+    if not isinstance(person, Mapping):
+        return False
+    identity = person.get("id")
+    return type(identity) is int and identity > 0
+
+
+def _environment_reviewer_groups(
+    environment: Mapping[str, Any],
+) -> list[object] | None:
+    """Collect all reviewer groups, rejecting malformed protection rules."""
+    groups = []
+    if "reviewers" in environment:
+        groups.append(environment["reviewers"])
+    rules = environment.get("protection_rules", [])
+    if not isinstance(rules, list):
+        return None
+    for rule in rules:
+        if not isinstance(rule, Mapping):
+            return None
+        if rule.get("type") == "required_reviewers" and "reviewers" not in rule:
+            return None
+        if "reviewers" in rule:
+            groups.append(rule["reviewers"])
+    return groups
+
+
+def environment_has_only_user_reviewers(environment: Mapping[str, Any]) -> bool:
+    """Reject team or malformed reviewers that a user-ID projection would hide."""
+    groups = _environment_reviewer_groups(environment)
+    return groups is not None and all(
+        isinstance(items, list) and all(_is_user_reviewer(item) for item in items)
+        for items in groups
+    )
 
 
 def protected_environment_verification_blockers(
@@ -337,6 +466,8 @@ def protected_environment_verification_blockers(
         blockers.append(f"{label} does not allow only the main branch.")
     if environment.get("can_admins_bypass") is not False:
         blockers.append(f"{label} allows administrator bypass.")
+    if not environment_has_only_user_reviewers(environment):
+        blockers.append(f"{label} includes a malformed or non-user reviewer.")
     if environment_reviewer_ids(environment) != {reviewer_id}:
         blockers.append(f"{label} does not require only the configured reviewer.")
     return blockers

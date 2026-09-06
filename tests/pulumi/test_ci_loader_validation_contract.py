@@ -46,6 +46,7 @@ def environment(tmp_path):
         "CI_CONFIG_PURPOSE": "offline local closure validation",
         "CI_CONFIG_SECRET_ID": "/example/ci/test-pr",
         "CI_CONFIG_ACCOUNT_ID": "123456789012",
+        "CI_CONFIG_EXPECTED_REGION": "eu-central-1",
         "REQUIRED_KEYS": "AWS_ACCOUNT_ID,AWS_REGION",
         "AWS_ACCOUNT_ID": "123456789012",
         "AWS_REGION": "eu-central-1",

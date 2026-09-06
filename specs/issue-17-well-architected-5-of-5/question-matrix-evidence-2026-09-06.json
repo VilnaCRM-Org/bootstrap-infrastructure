@@ -131,8 +131,8 @@
       "pillar": "Operational Excellence",
       "score": 4,
       "status": "unresolved",
-      "rationale": "Protected main-only command environments and account/SHA/saved-plan checks are installed; genuine TEST governance runs exist. TEST and PROD operator/platform local saved-plan apply and refreshed no-change drift now succeeded; these are not PR-comment protected promotion or downstream service/DR acceptance.",
-      "primaryBlocker": "Actual current same-head platform TEST/PROD protected PR-comment deployments and PROD approval remain; five local apply/drift pairs are not promotion substitution.",
+      "rationale": "All eight baseline operator/platform/governance/backend-only service targets have successful local saved-plan apply and refreshed drift receipts. Subsequent PR204 TEST governance comment run 34062796631 at ffae8ec17ef7e2c4610fd699f4a2aa2f30734654 also completed plan, apply and drift; PROD and promotion proof were skipped. Exact subsequent receipts and their separate source bindings are recorded in technical-operating-review-2026-09-06.json. This does not certify downstream workload acceptance or the forthcoming corrected source.",
+      "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion, downstream service live/manual acceptance and successful recovery remain. Completed baseline PROD governance and both service targets are no longer listed as missing. No score increase is inferred from baseline or TEST-only success.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
@@ -146,8 +146,8 @@
       "pillar": "Operational Excellence",
       "score": 3,
       "status": "unresolved",
-      "rationale": "Eight-target inventory and source/runbook controls support a concrete readiness checklist. TEST and PROD operator/platform local saved-plan apply and refreshed no-change drift now succeeded; these are not PR-comment protected promotion or downstream service/DR acceptance.",
-      "primaryBlocker": "PROD governance completion and both service targets, successful recovery and final protected promotion remain. Operator/platform, TEST governance, security record, real alert route, bypass cleanup and environment installation are now evidenced.",
+      "rationale": "All eight baseline operator/platform/governance/backend-only service targets have successful local saved-plan apply and refreshed drift receipts. Subsequent PR204 TEST governance comment run 34062796631 at ffae8ec17ef7e2c4610fd699f4a2aa2f30734654 also completed plan, apply and drift; PROD and promotion proof were skipped. Exact subsequent receipts and their separate source bindings are recorded in technical-operating-review-2026-09-06.json. This does not certify downstream workload acceptance or the forthcoming corrected source.",
+      "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion, downstream service live/manual acceptance and successful recovery remain. Completed baseline PROD governance and both service targets are no longer listed as missing. No score increase is inferred from baseline or TEST-only success.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
