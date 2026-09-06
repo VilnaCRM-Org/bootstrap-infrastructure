@@ -33,10 +33,11 @@ explicit denials reject a missing or different service and a missing or differen
 secret ARN. Direct KMS decryption, Pulumi secrets decryption and other secrets
 remain denied; no general KMS allow is added.
 
-The installed trusted controller retains separate governance routing. The operator
-and governance programs are separate successor work. The config-reader repair
-changes existing inline policies without provisioning roles or broadening
-platform deployment permissions.
+The installed trusted controller retains separate governance routing. The shipped
+operator program owns the governor/boundary prerequisites; the delegated
+governance program remains deferred to #78. The config-reader repair changes
+existing inline policies without provisioning roles or broadening platform
+deployment permissions.
 
 Every command environment allows exactly the `main` branch through a custom
 deployment branch rule. Administrator bypass is disabled; the sole reviewer is
@@ -101,9 +102,9 @@ Follow [AWS Secrets Manager CI cutover manual](aws-secrets-manager-ci-cutover.md
 to refresh AWS CLI credentials, apply Pulumi stacks, populate Secrets Manager
 payloads, set GitHub variables, verify privileged CI, and remove legacy GitHub
 Environment variables.
-The operator program at `pulumi/github-ci-bootstrap` is a separate #60
-successor dependency, not included in this change. Use only its independently
-reviewed checkout and ownership/migration procedure; do not recreate live roles.
+The operator program at `pulumi/github-ci-bootstrap` is included in this source.
+Use the [operator guide](github-ci-bootstrap-stack.md) and its independently
+reviewed ownership/migration procedure; do not recreate live roles.
 
 Never paste secret payloads into chat, GitHub issues, workflow logs, docs, or
 Pulumi config. Use `put-secret-value` with a private local JSON file, and use
@@ -130,3 +131,10 @@ exists to create a canonical issue, use **Operations Alert Canonical Backfill**
 with an SRE-confirmed `stable_event_json` object first. Then use
 **Operations Alert Legacy Reconcile** and provide the required
 `sre_confirmation_reference`.
+
+
+## Privileged operator project
+
+See the [GitHub CI bootstrap operator guide](github-ci-bootstrap-stack.md) for
+account and repository pins, protected ownership, provider continuity, saved-plan
+replay and the distinction between operator receipts and comment deployments.

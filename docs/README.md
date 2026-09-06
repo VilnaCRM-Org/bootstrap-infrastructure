@@ -24,6 +24,7 @@ We follow a docs-as-code workflow: every guide lives alongside the source and ev
 - [Contributing](#contributing)
 - [Sponsorship](#sponsorship)
 - [Documentation Workflow](#documentation-workflow)
+- [Privileged Operator Project](#privileged-operator-project)
 
 ## Quick Start
 
@@ -302,3 +303,10 @@ Donations are very welcome, whether in beer 🍺, T-shirts 👕, or cold, hard c
 4. Keep `AGENTS.md` aligned with any workflow or secret-handling changes that affect coding agents.
 
 You can organize content as it grows by creating subdirectories (e.g., `docs/pulumi/`).
+
+
+## Privileged operator project
+
+See the [GitHub CI bootstrap operator guide](github-ci-bootstrap-stack.md) for
+account and repository pins, protected ownership, provider continuity, saved-plan
+replay and the distinction between operator receipts and comment deployments.

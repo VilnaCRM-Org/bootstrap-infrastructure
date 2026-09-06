@@ -582,7 +582,8 @@ def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
     ):
         assert re.search(r"make pulumi-up(?!-)", operator_doc) is None  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in setup_doc  # nosec B101
-    assert "separate #60" in setup_doc  # nosec B101
+    assert "github-ci-bootstrap-stack.md" in setup_doc  # nosec B101
+    assert "reviewed ownership/migration procedure" in setup_doc  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in github_setup_doc  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in readme  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in docs_readme  # nosec B101
@@ -663,3 +664,56 @@ def test_github_environment_cleanup_is_manual_and_guarded() -> None:
     assert "repository **Environments** write permission" in setup_doc  # nosec B101
     assert "`PULUMI_PR_*`" in setup_doc  # nosec B101
     assert "dry_run=false" in setup_doc  # nosec B101
+
+
+def test_github_ci_bootstrap_stack_is_isolated_and_non_secret() -> None:
+    """Keep one-time CI bootstrap out of normal Pulumi stack discovery."""
+    project_dir = ROOT / "pulumi" / "github-ci-bootstrap"
+    manifest = yaml.safe_load((project_dir / "Pulumi.yaml").read_text())
+    stack_file_names = {path.name for path in project_dir.glob("Pulumi.*.yaml")}
+    root_stack_file_names = {
+        path.name for path in (ROOT / "pulumi").glob("Pulumi.*.yaml")
+    }
+    entrypoint = (project_dir / "__main__.py").read_text()
+
+    assert manifest["name"] == "github-ci-bootstrap"  # nosec B101
+    assert manifest["runtime"]["name"] == "python"  # nosec B101
+    assert stack_file_names == {  # nosec B101
+        "Pulumi.example.yaml",
+        "Pulumi.prod.yaml",
+        "Pulumi.test.yaml",
+    }
+    assert "Pulumi.github-ci-bootstrap.yaml" not in root_stack_file_names  # nosec B101
+    assert "GitHubCiBootstrap" in entrypoint  # nosec B101
+    assert "BootstrapInfrastructure" not in entrypoint  # nosec B101
+    assert "pulumi/__main__.py" not in entrypoint  # nosec B101
+
+    for stack_file in ("Pulumi.test.yaml", "Pulumi.prod.yaml"):
+        stack_text = (project_dir / stack_file).read_text()
+        stack_config = yaml.safe_load(stack_text)
+        config_keys = set(stack_config["config"])
+
+        assert "secure:" not in stack_text  # nosec B101
+        assert "encryptedkey" not in stack_text  # nosec B101
+        assert "encryptionsalt" not in stack_text  # nosec B101
+        assert "PULUMI_ACCESS_TOKEN" not in stack_text  # nosec B101
+        assert "Pulumi Cloud" not in stack_text  # nosec B101
+        assert "Pulumi ESC" not in stack_text  # nosec B101
+        assert "bootstrap-infrastructure:repoSlug" not in config_keys  # nosec B101
+        assert "github-ci-bootstrap:repoSlug" in config_keys  # nosec B101
+        assert stack_config["secretsprovider"].startswith("awskms://")  # nosec B101
+
+
+def test_operator_example_requires_public_identity_and_preserves_private_provider() -> (
+    None
+):
+    """An incomplete public template must not pretend to be deployable."""
+    text = (ROOT / "pulumi/github-ci-bootstrap/Pulumi.example.yaml").read_text()
+    config = yaml.safe_load(text)["config"]
+    assert config["github-ci-bootstrap:awsAccountId"] == "891377212104"  # nosec B101
+    for key in ("githubRepositoryId", "githubRepositoryOwnerId"):
+        assert config[  # nosec B101
+            f"github-ci-bootstrap:{key}"
+        ].startswith("REPLACE_WITH_VERIFIED_")
+    assert "Incomplete TEST example" in text  # nosec B101
+    assert "encryptedkey" not in text and "secure:" not in text  # nosec B101

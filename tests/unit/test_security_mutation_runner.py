@@ -22,11 +22,20 @@ def test_inventory_produces_valid_single_expression_security_mutants():
     assert len(mutants) >= 60
     assert {
         item.path for item in mutants
-    } == gate.GUARDS.keys() | gate.REQUIREMENTS.keys()
+    } == gate.GUARDS.keys() | gate.REQUIREMENTS.keys() | gate.SEMANTIC_TARGETS.keys()
     assert {
         "remove-immutable-identity-pin",
+        "widen-iam-resource-scope",
         "drop-promotion-status-predicate",
+        "remove-checkpoint-deny",
     } <= {item.operator for item in mutants}
+    assert len(mutants) == 83
+    assert (
+        sum(item.path == "pulumi/infra/governance_automation.py" for item in mutants)
+        == 14
+    )
+    assert "pulumi/infra/iam/account.py" in gate.GUARDS
+    assert "tests/unit/test_platform_entrypoint_boundary.py" in gate.TARGETS
     for mutant in mutants:
         source = (ROOT / mutant.path).read_text()
         changed = gate.mutate(source, mutant)

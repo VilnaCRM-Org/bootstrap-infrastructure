@@ -445,7 +445,9 @@ The workflows are committed, but source installation is distinct from live cutov
 
 1. Use the separately reviewed operator program and ownership procedure to
    apply the Pulumi test and production stacks that own `GitHubCiConfigRead` roles and
-   fixed AWS Secrets Manager containers. This #57 change does not ship #60.
+   fixed AWS Secrets Manager containers. The shipped `pulumi/github-ci-bootstrap`
+   project is documented in the [operator guide](github-ci-bootstrap-stack.md);
+   its presence does not authorize a new live replay.
 2. Populate the exact four payloads and independent repository account pins;
    verify all required privileged CI and saved-plan execution with current evidence.
 3. Keep the protected `prod` approval boundary and every other installed command
@@ -513,3 +515,10 @@ The current platform supports the commercial AWS partition and the fixed TEST/PR
 The configuration helper requires the dedicated promotion App ID for apply, dry-run and verification. Set `PROMOTION_APP_ID` to the actual configured App's numeric ID before using the example; never use a guessed identity.
 
 The CI loader trims surrounding whitespace from scalar configuration values before exporting them. Backend and KMS validation checks that effective environment value; it does not certify the original secret as byte-for-byte canonical. Embedded whitespace, control characters and malformed provider/backend structure remain rejected.
+
+
+## Privileged operator project
+
+See the [GitHub CI bootstrap operator guide](github-ci-bootstrap-stack.md) for
+account and repository pins, protected ownership, provider continuity, saved-plan
+replay and the distinction between operator receipts and comment deployments.

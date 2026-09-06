@@ -1,0 +1,22 @@
+# Incomplete TEST example until both immutable GitHub ID placeholders are replaced.
+# Use the existing operator checkpoint and its private AWS KMS provider metadata.
+# The governance catalog provisions operator-owned boundary prerequisites only.
+# It does not create delegated service resources or complete onboarding.
+config:
+  aws:region: eu-central-1
+  github-ci-bootstrap:awsAccountId: "891377212104"
+  github-ci-bootstrap:githubRepositoryId: "REPLACE_WITH_VERIFIED_REPOSITORY_ID"
+  github-ci-bootstrap:githubRepositoryOwnerId: "REPLACE_WITH_VERIFIED_OWNER_ID"
+  github-ci-bootstrap:costCenter: core
+  github-ci-bootstrap:criticality: high
+  github-ci-bootstrap:dataClassification: internal
+  github-ci-bootstrap:environment: test
+  github-ci-bootstrap:githubBranch: main
+  github-ci-bootstrap:githubOrg: VilnaCRM-Org
+  github-ci-bootstrap:loggingPrefix: company
+  github-ci-bootstrap:owner: platform
+  github-ci-bootstrap:pulumiSecretsProvider: awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1
+  github-ci-bootstrap:repoSlug: bootstrap-infrastructure
+  github-ci-bootstrap:retentionClass: standard
+  github-ci-bootstrap:serviceName: bootstrap-infrastructure
+  github-ci-bootstrap:writeSecretValues: "true"

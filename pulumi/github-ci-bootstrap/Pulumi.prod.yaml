@@ -1,0 +1,29 @@
+# Initialize with:
+# pulumi -C pulumi/github-ci-bootstrap stack init prod --secrets-provider "$PULUMI_SECRETS_PROVIDER"
+config:
+  github-ci-bootstrap:platformInlinePolicyNames:
+    PulumiAutomation-bootstrap-infrastructure-prod:
+      github-automation-policy: github-automation-policy
+    PulumiDeploy-bootstrap-infrastructure:
+      github-oidc-policy-bootstrap-infrastructure: github-oidc-policy-bootstrap-infrastructure-f01bc5a
+  github-ci-bootstrap:platformLoggingReplicationRoleName: central-logging-replication-role-2ff5487
+  github-ci-bootstrap:platformBackupRoleName: s3-backup-role-827eba6
+  github-ci-bootstrap:githubRepositoryId: "1098568429"
+  github-ci-bootstrap:githubRepositoryOwnerId: "114362548"
+  github-ci-bootstrap:awsAccountId: "933245420672"
+  aws:region: eu-central-1
+  github-ci-bootstrap:costCenter: core
+  github-ci-bootstrap:criticality: high
+  github-ci-bootstrap:dataClassification: internal
+  github-ci-bootstrap:environment: prod
+  github-ci-bootstrap:githubBranch: main
+  github-ci-bootstrap:githubOrg: VilnaCRM-Org
+  github-ci-bootstrap:loggingPrefix: company
+  github-ci-bootstrap:owner: platform
+  github-ci-bootstrap:pulumiBackendUrl: s3://pulumi-bootstrap-infrastructure-prod-state/state/prod
+  github-ci-bootstrap:pulumiSecretsProvider: awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1
+  github-ci-bootstrap:repoSlug: bootstrap-infrastructure
+  github-ci-bootstrap:retentionClass: standard
+  github-ci-bootstrap:serviceName: bootstrap-infrastructure
+  github-ci-bootstrap:writeSecretValues: "true"
+secretsprovider: awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1

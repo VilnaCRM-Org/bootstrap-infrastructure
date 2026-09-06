@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 
 import pytest
+from iam_statement_matcher import iam_statement_matches
+from infra.governance_automation import governance_backend_policy
+from test_governance_automation import inputs
 from test_pulumi_command_preflight import fixture_data
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
@@ -26,17 +29,19 @@ def test_retry_cannot_claim_a_new_command(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "fault",
+    "fault,message",
     [
-        "invalid-number",
-        "invalid-head",
-        "foreign-base",
-        "invalid-base",
-        "moved-head",
-        "moved-base",
+        ("invalid-number", "Invalid PR number"),
+        ("invalid-head", "Invalid PR SHA"),
+        ("foreign-base", "PR must target main"),
+        ("invalid-base", "Invalid base SHA"),
+        ("moved-head", "PR head or base moved"),
+        ("moved-base", "PR head or base moved"),
     ],
 )
-def test_scope_cannot_publish_for_invalid_or_moving_pr(monkeypatch, tmp_path, fault):
+def test_scope_cannot_publish_for_invalid_or_moving_pr(
+    monkeypatch, tmp_path, fault, message
+):
     """An allow result must refer to one well-formed, immutable main-based diff."""
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
     monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.com")
@@ -70,7 +75,7 @@ def test_scope_cannot_publish_for_invalid_or_moving_pr(monkeypatch, tmp_path, fa
 
     monkeypatch.setattr(promotion, "gh", api)
     monkeypatch.setattr(promotion, "api_write", lambda *args: writes.append(args))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=message):
         promotion.report_scope()
     assert writes == []
 
@@ -106,3 +111,20 @@ def test_runner_cannot_claim_both_service_and_governance_scope(monkeypatch):
     assert len(outputs) == 1
     assert all(key.startswith("feedback_") for key in outputs[0])
     assert outputs[0]["feedback_head_sha"] == request["head_sha"]
+
+
+@pytest.mark.parametrize("action", ["s3:PutObject", "s3:DeleteObject"])
+def test_apply_can_update_checkpoint_without_an_overriding_deny(action):
+    """Read-role checkpoint denies must never disable the trusted apply path."""
+    policy = json.loads(governance_backend_policy(inputs(), purpose="apply"))
+    resource = (
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/"
+        "governance/.pulumi/stacks/platform/test.json"
+    )
+    matching = [
+        statement["Effect"]
+        for statement in policy["Statement"]
+        if iam_statement_matches(statement, action, resource)
+    ]
+    assert "Allow" in matching
+    assert "Deny" not in matching

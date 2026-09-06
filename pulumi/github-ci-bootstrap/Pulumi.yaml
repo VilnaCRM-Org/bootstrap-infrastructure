@@ -1,0 +1,4 @@
+name: github-ci-bootstrap
+runtime:
+  name: python
+description: One-time AWS-only GitHub OIDC bootstrap stack for privileged CI.

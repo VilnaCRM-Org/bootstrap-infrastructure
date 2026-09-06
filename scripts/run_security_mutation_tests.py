@@ -27,17 +27,24 @@ TARGETS = (
     "tests/unit/test_pulumi_command_preflight.py",
     "tests/unit/test_governance_promotion.py",
     "tests/unit/test_platform_entrypoint_boundary.py",
+    "tests/unit/test_governance_automation.py",
     "tests/unit/test_security_boundary_regressions.py",
     "tests/unit/test_main_only_environments.py",
     "tests/unit/test_reviewed_script_boundaries.py",
 )
 GUARDS = {
+    "pulumi/infra/iam/account.py": {"assert_bootstrap_account"},
     "pulumi/infra/github_identity.py": {
         "normalize_identity",
         "identity_conditions",
         "expand_subjects",
     },
-    "pulumi/infra/iam/account.py": {"assert_bootstrap_account"},
+    "pulumi/infra/governance_automation.py": {
+        "assert_bootstrap_account",
+        "_validate_backend",
+        "governance_trust_policy",
+        "_allow",
+    },
 }
 REQUIREMENTS = {
     "scripts/pulumi_command_preflight.py": {
@@ -59,6 +66,7 @@ REQUIREMENTS = {
 
 SEMANTIC_TARGETS = {
     "pulumi/infra/github_identity.py": {"identity_conditions"},
+    "pulumi/infra/governance_automation.py": {"_allow", "governance_backend_policy"},
     "scripts/governance_promotion.py": {
         "verified_promotion_status",
         "scope_promotion_kind",
@@ -110,6 +118,25 @@ def _identity_pin_candidates(node):
             yield node, ast.unparse(reduced), "remove-immutable-identity-pin"
 
 
+def _is_resource_list(node):
+    """Identify only the IAM helper's explicit resource-list conversion."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "list"
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "resources"
+    )
+
+
+def _backend_candidates(node):
+    """Remove checkpoint denies and force each conditional write branch."""
+    if isinstance(node, ast.Constant) and node.value == "Deny":
+        yield node, '"Allow"', "remove-checkpoint-deny"
+    if isinstance(node, ast.IfExp):
+        yield node.test, "True", "force-backend-write-branch"
+
+
 def _feedback_candidates(node):
     """Bypass original-intake authentication or expose execution keys too early."""
     if (
@@ -148,6 +175,10 @@ def semantic_candidates(function: str, node: ast.AST):
     yield from _promotion_candidates(function, node)
     if function == "identity_conditions":
         yield from _identity_pin_candidates(node)
+    if function == "_allow" and _is_resource_list(node):
+        yield node, "['*']", "widen-iam-resource-scope"
+    if function == "governance_backend_policy":
+        yield from _backend_candidates(node)
     if function == "main":
         yield from _feedback_candidates(node)
 
