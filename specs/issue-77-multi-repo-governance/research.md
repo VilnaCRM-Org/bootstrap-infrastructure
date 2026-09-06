@@ -411,7 +411,7 @@ fan-out, parameterized by a governance repo list.
   `ci_bootstrap.py:53`). Plan accordingly.
 - **Import-isolation finding, resolved in the successor:** the historical graph
   omitted infra. Current `pyproject.toml` includes `app`, `policy` and `infra`, and
-  forbids `infra.governance` from `policy`/`app`. CLI scripts remains outside that
+  forbids `infra.governance` from `policy`/`app`. The CLI `scripts` package remains outside that
   graph; `tests/pulumi/test_governance_import_isolation.py` independently forbids
   `policy`/`app`/`scripts` via the AST. Architecture §9.4 retains the AST-only
   fallback for graphing failures without relaxing existing contracts.
