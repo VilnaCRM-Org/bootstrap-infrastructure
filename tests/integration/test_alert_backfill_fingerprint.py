@@ -20,22 +20,35 @@ triage = importlib.import_module("operations_alert_triage")
 
 
 def run_backfill(
-    tmp_path: Path, event: object, *, serialized: bool = False, complete: bool = False
+    tmp_path: Path,
+    event: object,
+    *,
+    serialized: bool = False,
+    complete: bool = False,
+    **inputs,
 ):
     """Run the actual preparation shell, stopping before renderer or GitHub calls."""
     workflow = yaml.safe_load(
         (ROOT / ".github/workflows/operations-alert-backfill.yml").read_text()
     )
     steps = workflow["jobs"]["backfill"]["steps"]
-    run = next(
-        step["run"]
+    matches = [
+        step
         for step in steps
         if step.get("name") == "Create or update canonical operations alert issue"
+    ]
+    assert len(matches) == 1, (
+        "Backfill execution step was renamed or duplicated; update the test's "
+        "named-step extraction to match operations-alert-backfill.yml."
     )
+    run = matches[0]["run"]
     preparation, boundary, _ = run.partition(
         "python3 scripts/operations_alert_triage.py"
     )
-    assert boundary
+    assert boundary, (
+        "Backfill renderer invocation changed; update the preparation boundary "
+        "in run_backfill before executing its shell."
+    )
     binary_dir = tmp_path / "bin"
     binary_dir.mkdir(exist_ok=True)
     gh = binary_dir / "gh"
@@ -61,6 +74,7 @@ def run_backfill(
                 "operations alert stream"
             ),
             "SRE_CONFIRMATION_REFERENCE": "https://example.invalid/sre-confirmation",
+            **inputs,
         },
         capture_output=True,
         text=True,
@@ -84,6 +98,50 @@ def confirmed_event(state_key: str = "state"):
             "nested": {"empty": "", "nullable": None, "enabled": False},
         },
     }
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("CONFIRMATION", "wrong"),
+        ("SRE_CONFIRMATION_REFERENCE", "http://example.invalid"),
+        ("AWS_ACCOUNT_ID", "123"),
+        ("AWS_ACCOUNT_ID", "123456789012\n"),
+        ("AWS_REGION", "eu central 1"),
+        ("AWS_REGION", ""),
+        ("MESSAGE_COUNT", "0"),
+        ("MESSAGE_COUNT", "-1"),
+        ("MESSAGE_COUNT", "01"),
+        ("MESSAGE_COUNT", "1.0"),
+    ],
+)
+def test_backfill_early_guards_fail_before_any_github_call(tmp_path, field, value):
+    result = run_backfill(tmp_path, confirmed_event(), complete=True, **{field: value})
+    assert result.returncode == 1
+    assert not result.stdout
+    assert not (tmp_path / "github-writes").exists()
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_backfill_rejects_nonstandard_json_constants(tmp_path, constant):
+    raw = (
+        '{"source":"aws.health","detail-type":"AWS Health Event",'
+        '"detail":{"nested":[' + constant + "]}}"
+    )
+    result = run_backfill(tmp_path, raw, serialized=True, complete=True)
+    assert result.returncode == 1
+    assert "duplicate-free valid JSON" in result.stderr
+    assert not (tmp_path / "github-writes").exists()
+
+
+def test_backfill_review_time_does_not_claim_an_event_time(tmp_path):
+    result = run_backfill(tmp_path, confirmed_event())
+    assert result.returncode == 0, result.stderr
+    message = json.loads(result.stdout)["Messages"][0]
+    sns = json.loads(message["Body"])
+    assert sns["ReviewedAt"]
+    assert "Timestamp" not in sns
+    assert triage.message_fields(message)["eventTime"] is None
 
 
 @pytest.mark.parametrize("state_key", ["state", "status"])
@@ -155,8 +213,14 @@ def test_actual_backfill_rejects_flattened_duplicates(tmp_path, duplicate, confl
     ("field", "value"),
     [
         ("source", ""),
+        ("source", "   "),
+        ("source", "aws.\nbackup"),
+        ("source", "aws.\x01backup"),
         ("source", None),
         ("detail-type", ""),
+        ("detail-type", "\t"),
+        ("detail-type", "\u2003"),
+        ("detail-type", "Backup\rEvent"),
         ("detail-type", 1),
         ("detail", None),
         ("detail", []),
@@ -167,9 +231,10 @@ def test_actual_backfill_rejects_flattened_duplicates(tmp_path, duplicate, confl
 def test_actual_backfill_rejects_invalid_event_shape(tmp_path, field, value):
     event = confirmed_event()
     event[field] = value
-    result = run_backfill(tmp_path, event)
+    result = run_backfill(tmp_path, event, complete=True)
     assert result.returncode != 0
     assert not result.stdout
+    assert not (tmp_path / "github-writes").exists()
 
 
 def test_actual_backfill_accepts_empty_detail_without_synthetic_state(tmp_path):

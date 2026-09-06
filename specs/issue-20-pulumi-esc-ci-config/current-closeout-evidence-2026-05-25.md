@@ -56,8 +56,10 @@ credentials were requested because the repository variables were still empty:
 config-role-arn must be an AWS IAM role ARN.
 ```
 
-The six non-secret GitHub repository variables were configured on 2026-05-25
-with deterministic `GitHubCiConfigRead-*` role ARNs and account regions. After
+The recorded setup configured the non-secret GitHub repository metadata on
+2026-05-25. The complete current inventory has eight variables: the four
+`GitHubCiConfigRead-*` role ARNs, `AWS_TEST_ACCOUNT_ID`, `AWS_PROD_ACCOUNT_ID`,
+`AWS_TEST_REGION` and `AWS_PROD_REGION`. After
 rerunning the failed jobs, both privileged checks advanced to AWS OIDC and now
 fail at test-account role assumption:
 
@@ -80,9 +82,14 @@ The same head also removes the silent pull-request fallback from
 jobs now select the exact `test-pr` CI configuration in a shell step and fail
 fast if the PR config-read role variable is missing.
 
-Local validation on this implementation head passed:
+The following validation was recorded for the historical implementation head.
+Two saved-plan test names in that record have since changed; the command below
+uses their current equivalents,
+`test_run_up_plan_stack_fails_closed_without_apply_or_lock_recovery` and
+`test_run_up_plan_stack_uses_saved_prod_plan_by_default_in_ci` for the current
+contract. These commands are not a current-head test receipt.
 
-- `uv run pytest tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_rejects_plan_decrypt_without_direct_apply tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_recovers_from_saved_plan_lock tests/unit/test_script_entrypoints.py::test_run_up_stack_does_not_retry_after_lock tests/unit/test_script_entrypoints.py::test_run_pulumi_command_unhandled_apply_failures_return_status -q`
+- `uv run pytest tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_fails_closed_without_apply_or_lock_recovery tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_uses_saved_prod_plan_by_default_in_ci tests/unit/test_script_entrypoints.py::test_run_up_stack_does_not_retry_after_lock tests/unit/test_script_entrypoints.py::test_run_pulumi_command_unhandled_apply_failures_return_status -q`
 - `uv run pytest tests/unit/test_script_entrypoints.py -k "run_up_plan_stack or run_up_stack or run_pulumi_command_unhandled_apply_failures_return_status or dispatch_propagates_apply_failures" -q`
 - `uv run pytest tests/unit/test_script_entrypoints.py::test_run_up_stack_does_not_retry_after_lock tests/unit/test_script_entrypoints.py::test_run_up_stack_rejects_direct_apply_in_github_actions tests/unit/test_script_entrypoints.py::test_run_pulumi_command_unhandled_apply_failures_return_status tests/unit/test_script_entrypoints.py::test_run_pulumi_command_dispatch_propagates_apply_failures -q`
 - `uv run pytest tests/pulumi/test_delivery_contracts.py::test_docker_compose_keeps_workspace_and_credentials_contract tests/pulumi/test_delivery_contracts.py::test_aws_ci_loader_reads_secrets_manager_without_pulumi_cloud tests/pulumi/test_delivery_contracts.py::test_multi_account_workflows_use_fixed_aws_ci_config_contracts tests/pulumi/test_delivery_contracts.py::test_multi_account_environment_docs_are_explicit -q`
@@ -211,8 +218,9 @@ canonical fingerprinted issue and records the sanitized confirmation reference.
 1. Apply the reviewed Pulumi `test` and `prod` stacks so AWS creates the four
    Secrets Manager containers and `GitHubCiConfigRead-*` roles.
 2. Populate the four AWS Secrets Manager JSON values in the owning AWS accounts.
-3. Keep the six non-secret GitHub repository variables aligned with the
-   `GitHubCiConfigRead-*` role ARNs and account regions. They are currently set
+3. Keep the eight non-secret GitHub repository variables aligned with the
+   `GitHubCiConfigRead-*` role ARNs, `AWS_TEST_ACCOUNT_ID`, `AWS_PROD_ACCOUNT_ID`,
+   `AWS_TEST_REGION` and `AWS_PROD_REGION`. They were set at this audit
    to the deterministic role names expected from this branch, but successful CI
    still requires the AWS roles and trust policies to exist.
 4. Refresh local test-account AWS CLI credentials and rerun metadata-only

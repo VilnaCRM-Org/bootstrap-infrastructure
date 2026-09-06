@@ -363,7 +363,7 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     assert "stable_event_json" in backfill_inputs  # nosec B101
     assert "sre_confirmation_reference" in backfill_run  # nosec B101
     assert "stable_event_json must be an object" in backfill_run  # nosec B101
-    assert "operations-alert:fingerprint=${fingerprint} in:body" in backfill_run  # nosec B101
+    assert r'--search "\"${fingerprint}\" in:body"' in backfill_run  # nosec B101
     assert "python3 scripts/operations_alert_triage.py" in backfill_run  # nosec B101
     assert "GH_REPO: ${{ github.repository }}" in yaml.safe_dump(  # nosec B101
         reconcile_workflow["jobs"]["reconcile"]["env"]

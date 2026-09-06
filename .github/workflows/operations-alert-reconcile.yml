@@ -53,9 +53,39 @@ jobs:
             echo "error: confirmation sentence does not match the documented value." >&2
             exit 1
           fi
-          sre_reference="${SRE_CONFIRMATION_REFERENCE}"
-          if [[ ! "${sre_reference}" =~ ^https://[^[:space:]]+$ ]]; then
-            echo "error: sre_confirmation_reference must be an HTTPS URL without whitespace." >&2
+          if ! sre_reference="$(python3 -I - <<'PYTHON'
+          import os
+          import re
+          import unicodedata
+          from urllib.parse import urlsplit
+
+          raw = os.environ["SRE_CONFIRMATION_REFERENCE"]
+          try:
+              parsed = urlsplit(raw)
+              host = (parsed.hostname or "").encode("idna").decode("ascii")
+              valid_host = len(host) <= 253 and all(
+                  re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", label)
+                  for label in host.removesuffix(".").split(".")
+              )
+              valid = (
+                  parsed.scheme == "https" and valid_host
+                  and parsed.username is None and parsed.password is None
+                  and "?" not in raw and "#" not in raw
+                  and (parsed.port is None or parsed.port > 0)
+                  and not any(
+                      char.isspace() or unicodedata.category(char).startswith("C")
+                      or char in "<>[]()`\\\"'"
+                      for char in raw
+                  )
+              )
+          except ValueError:
+              valid = False
+          if not valid:
+              raise SystemExit(1)
+          print(f"<{raw}>")
+          PYTHON
+          )"; then
+            echo "error: sre_confirmation_reference must be an HTTPS URL with a host, no credentials, query, fragment, controls, whitespace or Markdown delimiters." >&2
             exit 1
           fi
 

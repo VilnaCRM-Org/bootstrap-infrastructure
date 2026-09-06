@@ -114,6 +114,10 @@ Pulumi config. Use `put-secret-value` with a private local JSON file, and use
 After AWS-only privileged CI is green, run **GitHub Environment Legacy Variable Cleanup**
 with `dry_run=true`. The workflow needs a
 `GH_ENVIRONMENT_ADMIN_TOKEN` with repository **Environments** write permission.
+GitHub documents **Environments** read for inventory and write for deletion on
+the [environment-variable endpoints](https://docs.github.com/en/rest/actions/variables#delete-an-environment-variable).
+Repository **Variables** permission is a different scope and is not required
+by this cleanup workflow.
 Store it only in the protected `governance` environment, never as a repository
 secret. The cleanup job is restricted to `main` and waits for the environment
 reviewer before receiving this token. Remove the temporary token after cutover.

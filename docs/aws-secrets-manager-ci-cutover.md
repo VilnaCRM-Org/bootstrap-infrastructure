@@ -218,7 +218,8 @@ planned deletions. The workflow requires `GH_ENVIRONMENT_ADMIN_TOKEN` because
 GitHub's default token cannot delete repository environment variables. Store
 this temporary token only in the protected `governance` environment. The job
 requires main and reviewer approval. Remove the token after cleanup. Then
-rerun with `dry_run=false` and this confirmation:
+rerun with `dry_run=false`. Supply this confirmation for both runs; the explicit
+`dry_run` input still controls whether any deletion is attempted:
 
 ```text
 I confirm AWS Secrets Manager-backed privileged CI is green and legacy GitHub Environment variables can be removed
@@ -276,8 +277,10 @@ Then open a reviewed source change that copies the exact staged template from
 v2 structural/integration tests to that live path, and replaces the legacy-byte
 preservation assertion with the actual cutover receipt contract. Re-run lint,
 classification, acknowledgment and controller/security checks. Validate the
-expected SNS topic metadata, unchanged workflow-name OIDC permission, current
-main-only trust and role scope. Do not enable through an arbitrary repository
+expected SNS topic metadata, the applied exact `Operations Alert Issue Triage`
+workflow-name OIDC condition, current main-only trust and role scope. Both alert
+role constructors require this condition; source parity alone does not prove
+that the consumed AWS role has been updated. Do not enable through an arbitrary repository
 variable, dispatch bypass or fabricated status.
 
 The conservative Backup event pattern may be deployed before v2. The retained

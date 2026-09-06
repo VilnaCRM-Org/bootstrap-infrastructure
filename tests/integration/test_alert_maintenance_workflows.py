@@ -23,12 +23,21 @@ def save():
     path.write_text(json.dumps(data))
 def option(flag):
     return args[args.index(flag) + 1]
+data.setdefault("calls", []).append(args)
+save()
 if args[:2] == ["issue", "view"]:
-    print(data["issues"][args[2]][option("--json")])
+    field = option("--json")
+    assert field in {"state", "title", "body"}
+    assert option("--jq") == "." + field
+    print(data["issues"][args[2]][field])
 elif args[:2] == ["api", "graphql"]:
     query = next(a[6:] for a in args if a.startswith("query="))
-    assert "stateReason" in query and "duplicateOf" in query
-    assert "nameWithOwner" in query
+    assert "".join(query.split()) == (
+        "query($owner:String!,$name:String!,$number:Int!){"
+        "repository(owner:$owner,name:$name){issue(number:$number){"
+        "statestateReasonduplicateOf{numberrepository{nameWithOwner}}}}}"
+    )
+    assert "owner=example" in args and "name=infra" in args
     issue = next(a[7:] for a in args if a.startswith("number="))
     record = data["issues"][issue]
     data.setdefault("verified", []).append(issue)
@@ -50,9 +59,23 @@ elif args[:2] == ["issue", "close"]:
         "repository": {"nameWithOwner": option("--repo")},
     })
     data.setdefault("closed", []).append(issue)
+    data.setdefault("closure_comments", []).append(option("--comment"))
     save()
 elif args[:2] == ["issue", "list"]:
-    print("")
+    assert option("--limit") == "2"
+    assert option("--json") == "number,body"
+    search = option("--search")
+    fingerprint = search.split('"')[1]
+    assert search == f'"{fingerprint}" in:body'
+    marker = f"<!-- operations-alert:fingerprint={fingerprint} -->"
+    print(json.dumps([{
+        "number": n, "body": data.get("match_body", marker),
+    } for n in data.get("matches", [])][:2]))
+elif args[:2] == ["issue", "comment"]:
+    data.setdefault("comments", []).append({
+        "number": args[2], "body": Path(option("--body-file")).read_text(),
+    })
+    save()
 elif args[:2] == ["issue", "create"]:
     data["created_body"] = Path(option("--body-file")).read_text()
     save()
@@ -124,7 +147,7 @@ def issue_state():
     return {"issues": issues}
 
 
-def reconcile(tmp_path, state, legacy="11,12"):
+def reconcile(tmp_path, state, legacy="11,12", reference="https://example.invalid/sre"):
     """Run the closure step with an explicit SRE attestation reference."""
     return run_workflow(
         tmp_path,
@@ -137,7 +160,7 @@ def reconcile(tmp_path, state, legacy="11,12"):
         CONFIRMATION=(
             "I confirm these legacy issues match the canonical operations alert stream"
         ),
-        SRE_CONFIRMATION_REFERENCE="https://example.invalid/sre",
+        SRE_CONFIRMATION_REFERENCE=reference,
     )
 
 
@@ -210,14 +233,15 @@ def test_reconcile_requires_main_branch():
     )
 
 
-def test_backfill_body_distinguishes_representative_from_legacy_count(tmp_path):
+def backfill(tmp_path, state, reference="https://example.invalid/sre"):
+    """Execute the complete backfill shell against the stateful GitHub double."""
     event = '{"source":"aws.health","detail-type":"AWS Health Event","detail":{}}'
-    result, state = run_workflow(
+    return run_workflow(
         tmp_path,
         "operations-alert-backfill.yml",
         "backfill",
         "Create or update canonical operations alert issue",
-        {},
+        state,
         STABLE_EVENT_JSON=event,
         MESSAGE_COUNT="37",
         OPERATIONS_ALERT_QUEUE_NAME="reviewed-queue",
@@ -227,14 +251,92 @@ def test_backfill_body_distinguishes_representative_from_legacy_count(tmp_path):
             "I confirm these stable fields represent the canonical "
             "operations alert stream"
         ),
-        SRE_CONFIRMATION_REFERENCE="https://example.invalid/sre",
+        SRE_CONFIRMATION_REFERENCE=reference,
     )
+
+
+def test_backfill_body_distinguishes_representative_from_legacy_count(tmp_path):
+    result, state = backfill(tmp_path, {})
     assert result.returncode == 0, result.stderr
     body = state["created_body"]
     assert "one synthetic representative event" in body
     assert "37 legacy message(s)" in body
     assert "queue contains 1 message(s)" not in body
     assert "operations-alert:fingerprint=" in body
+
+
+@pytest.mark.parametrize("workflow", [backfill, reconcile])
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "https://?",
+        "https://%host.invalid",
+        "https://-bad.invalid",
+        "https://bad..invalid",
+        "https://[gg::]/reference",
+        "https://[bad",
+        "https://:443/path",
+        "http://example.invalid",
+        "https://user:password@example.invalid",
+        "https://example.invalid:70000",
+        "https://example.invalid:bad",
+        " https://example.invalid",
+        "https://example.invalid/\nreference",
+        "https://example.invalid/\x01reference",
+        "https://example.invalid/\x7freference",
+        "https://example.invalid/\u0085reference",
+        "https://example.invalid/\u202ereference",
+        "https://example.invalid/\u200breference",
+        "https://example.invalid/?token=synthetic",
+        "https://example.invalid/#fragment",
+        "https://example.invalid/a)[click](https://attacker.invalid)",
+        "https://example.invalid/<script>",
+        "https://example.invalid/`code`",
+        "https://example.invalid/\\reference",
+    ],
+)
+def test_invalid_confirmation_url_fails_before_any_github_call(
+    tmp_path, workflow, reference
+):
+    result, state = workflow(tmp_path, issue_state(), reference=reference)
+    assert result.returncode != 0
+    assert "sre_confirmation_reference must be an HTTPS URL" in result.stderr
+    assert not state.get("calls")
+
+
+@pytest.mark.parametrize("workflow", [backfill, reconcile])
+def test_confirmation_url_is_rendered_as_one_safe_autolink(tmp_path, workflow):
+    reference = "https://example.invalid/review/%5B123%5D"
+    result, state = workflow(tmp_path, issue_state(), reference=reference)
+    assert result.returncode == 0, result.stderr
+    bodies = (
+        [state["created_body"]] if workflow is backfill else state["closure_comments"]
+    )
+    assert all(f"SRE confirmation reference: <{reference}>" in body for body in bodies)
+
+
+@pytest.mark.parametrize("matches", [[], [11], [11, 12, 13]])
+def test_backfill_requires_unambiguous_canonical_search(tmp_path, matches):
+    result, state = backfill(tmp_path, {"matches": matches})
+    if len(matches) > 1:
+        assert result.returncode != 0
+        assert "multiple open canonical issues" in result.stderr
+        assert all(call[:2] == ["issue", "list"] for call in state["calls"])
+    elif matches:
+        assert result.returncode == 0, result.stderr
+        assert state["comments"][0]["number"] == "11"
+        assert "created_body" not in state
+    else:
+        assert result.returncode == 0, result.stderr
+        assert "created_body" in state
+        assert "comments" not in state
+
+
+def test_backfill_rejects_search_hit_without_exact_body_marker(tmp_path):
+    result, state = backfill(tmp_path, {"matches": [11], "match_body": "unrelated"})
+    assert result.returncode == 1
+    assert "without the exact fingerprint marker" in result.stderr
+    assert all(call[:2] == ["issue", "list"] for call in state["calls"])
 
 
 @pytest.mark.parametrize("dry_run", ["true", "false"])

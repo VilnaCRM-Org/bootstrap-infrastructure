@@ -140,7 +140,9 @@ duplicate closures.
 
 The workflow confirmation input must exactly match this sentence, and the
 `sre_confirmation_reference` input must point to the sanitized SRE confirmation
-comment or ticket. Do not put raw alert payloads, credentials, stack exports,
+issue, document or ticket. Use a direct HTTPS path without credentials, query,
+fragment, whitespace, controls or Markdown delimiters; a GitHub comment anchor
+is not an accepted reference. Do not put raw alert payloads, credentials, stack exports,
 tokens, or private incident notes in that referenced record.
 
 ```text
@@ -266,6 +268,25 @@ processed SQS group. Counted omission is display policy, not proof that an incid
 was resolved or that all occurrences were individually investigated.
 
 ### Typed backup classification before acknowledgment
+
+The staged v2 consumer makes one SQS receive request per run, returning at most
+10 messages. Its 900-second visibility window exceeds the 10-minute job timeout.
+This bounds issue searches and writes before acknowledgment. Each canonical
+marker search requests two results and fails on ambiguity instead of selecting
+an arbitrary issue. The retained v1 workflow is unchanged.
+
+New issue bodies include a visible fingerprint and the exact compatibility
+marker. Searches quote the hash and verify the returned body marker before
+writing. GitHub search is eventually consistent, so this is not an atomic
+uniqueness guarantee. Delivery is at least once: if a GitHub write succeeds and
+subsequent acknowledgment fails, retry can repeat a comment. Fingerprinting
+groups alert streams; it does not promise exactly-once occurrence comments.
+
+At the staged 30-minute schedule, the consumer can request at most 20 messages
+per hour, and SQS may return fewer than requested. Monitor backlog and message
+age before activation; sustained higher arrival rates require a separately
+reviewed schedule or bounded processing change. This cap is not a throughput
+guarantee or proof that a backlog has drained.
 
 The EventBridge backup rule is a conservative first filter. AWS's
 `TestEventPattern` API confirms that `anything-but: ""` also matches null; nested

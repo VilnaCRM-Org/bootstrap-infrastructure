@@ -76,11 +76,6 @@ jobs:
           aws-region: ${{ steps.ci_config.outputs.aws-region }}
           allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
-      - name: Install uv for triage renderer
-        run: |
-          python3 -m pip install --user 'uv==0.9.21'
-          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
-
       - name: Create or update GitHub issue for queued operations alerts
         id: triage
         env:
@@ -95,47 +90,28 @@ jobs:
           )"
           printf '%s' "${queue_url}" > "${RUNNER_TEMP}/operations-queue-url"
           alerts_json="$(mktemp)"
-          page_json="$(mktemp)"
-          next_alerts_json="$(mktemp)"
-          printf '{"Messages":[]}\n' > "${alerts_json}"
-
-          receive_pages=0
-          max_receive_pages=50
-          while [[ "${receive_pages}" -lt "${max_receive_pages}" ]]; do
-            aws sqs receive-message \
-              --queue-url "${queue_url}" \
-              --max-number-of-messages 10 \
-              --wait-time-seconds 10 \
-              --visibility-timeout 600 \
-              --attribute-names SentTimestamp \
-              --output json > "${page_json}"
-
-            page_count="$(jq '.Messages | length' "${page_json}")"
-            if [[ "${page_count}" -eq 0 ]]; then
-              break
-            fi
-
-            jq -s '{"Messages": ((.[0].Messages // []) + (.[1].Messages // []))}' \
-              "${alerts_json}" \
-              "${page_json}" > "${next_alerts_json}"
-            mv "${next_alerts_json}" "${alerts_json}"
-            next_alerts_json="$(mktemp)"
-            receive_pages="$((receive_pages + 1))"
-          done
+          # One receive bounds this run to ten messages and at most ten groups.
+          # At the 30-minute schedule, bursts drain gradually; assess queue age/DLQ
+          # capacity before activation. Do not widen this inert template silently.
+          aws sqs receive-message \
+            --queue-url "${queue_url}" \
+            --max-number-of-messages 10 \
+            --wait-time-seconds 10 \
+            --visibility-timeout 900 \
+            --attribute-names SentTimestamp \
+            --output json > "${alerts_json}"
 
           alert_count="$(jq '.Messages | length' "${alerts_json}")"
           if [[ "${alert_count}" -eq 0 ]]; then
             echo "No operations alert messages are currently queued."
             exit 0
           fi
-          if [[ "${receive_pages}" -eq "${max_receive_pages}" ]]; then
-            printf 'Reached receive page limit after collecting %s operations alert message(s).\n' "${alert_count}"
-          fi
-
+          # These aggregate outputs are required by the existing renderer CLI;
+          # the group manifest is the consumer output used below.
           aggregate_body_file="$(mktemp)"
           aggregate_fingerprint_file="$(mktemp)"
           groups_file="$(mktemp)"
-          uv run python scripts/operations_alert_triage.py \
+          python3 scripts/operations_alert_triage.py \
             --alerts-json "${alerts_json}" \
             --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
             --account-id "${AWS_ACCOUNT_ID}" \
@@ -155,7 +131,7 @@ jobs:
             fingerprint_file="$(mktemp)"
             jq ".groups[${group_index}].alerts" "${groups_file}" > "${group_alerts_json}"
             group_alert_count="$(jq '.Messages | length' "${group_alerts_json}")"
-            uv run python scripts/operations_alert_triage.py \
+            python3 scripts/operations_alert_triage.py \
               --alerts-json "${group_alerts_json}" \
               --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
               --account-id "${AWS_ACCOUNT_ID}" \
@@ -163,14 +139,25 @@ jobs:
               --body-file "${body_file}" \
               --fingerprint-file "${fingerprint_file}"
             fingerprint="$(cat "${fingerprint_file}")"
-            existing_issue="$(
+            existing_matches="$(
               gh issue list \
                 --repo "${GITHUB_REPOSITORY_NAME}" \
                 --state open \
-                --search "operations-alert:fingerprint=${fingerprint} in:body" \
-                --json number \
-                --jq '.[0].number // ""'
+                --search "\"${fingerprint}\" in:body" \
+                --limit 2 \
+                --json number,body
             )"
+            if ! jq -e --arg marker "<!-- operations-alert:fingerprint=${fingerprint} -->" \
+              'all(.[]; (.body | split("\n") | index($marker)) != null)' \
+              <<< "${existing_matches}" > /dev/null; then
+              echo "error: canonical search returned an issue without the exact fingerprint marker." >&2
+              exit 1
+            fi
+            if [[ "$(jq 'length' <<< "${existing_matches}")" -gt 1 ]]; then
+              echo "error: multiple open canonical issues match this fingerprint; reconcile them before retrying." >&2
+              exit 1
+            fi
+            existing_issue="$(jq -r '.[0].number // ""' <<< "${existing_matches}")"
             if [[ -n "${existing_issue}" ]]; then
               gh issue comment \
                 "${existing_issue}" \

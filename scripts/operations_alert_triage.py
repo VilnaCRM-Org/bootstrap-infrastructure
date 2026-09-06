@@ -47,6 +47,10 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
+def _reject_nonfinite(_value: str) -> None:
+    raise ValueError("Non-finite JSON numbers are not supported")
+
+
 def _event_time_valid(value: object) -> bool:
     if not isinstance(value, str):
         return False
@@ -60,12 +64,22 @@ def _strict_event_from_message(
     message: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Reject malformed or duplicate fields before choosing a dispatch path."""
-    sns = json.loads(message["Body"], object_pairs_hook=_unique_object)
+    sns = json.loads(
+        message["Body"],
+        object_pairs_hook=_unique_object,
+        parse_constant=_reject_nonfinite,
+    )
     if not isinstance(sns, dict):
         raise ValueError("SNS envelope must be an object")
-    event = json.loads(sns["Message"], object_pairs_hook=_unique_object)
+    event = json.loads(
+        sns["Message"],
+        object_pairs_hook=_unique_object,
+        parse_constant=_reject_nonfinite,
+    )
     if not isinstance(event, dict):
         raise ValueError("Event envelope must be an object")
+    # Validate recursive fingerprint processing before acknowledgment.
+    stable_detail(event)
     return sns, event
 
 
@@ -130,7 +144,7 @@ def message_disposition(
     """Validate known Backup events before permitting any benign acknowledgment."""
     try:
         sns, event = _strict_event_from_message(message)
-    except (ValueError, TypeError, KeyError):
+    except (ValueError, TypeError, KeyError, RecursionError):
         return "quarantine", "invalid_alert_envelope"
     kind = event.get("detail-type")
     if event.get("source") != "aws.backup":
@@ -196,8 +210,8 @@ def load_json(value: object) -> dict[str, Any]:
     if not isinstance(value, str) or not value:
         return {}
     try:
-        loaded = json.loads(value)
-    except json.JSONDecodeError:
+        loaded = json.loads(value, parse_constant=_reject_nonfinite)
+    except (ValueError, RecursionError):
         return {}
     if isinstance(loaded, dict):
         return {str(key): item for key, item in loaded.items()}
@@ -209,7 +223,10 @@ def safe_value(value: object) -> str:
     if not isinstance(value, str | int | float | bool) or value == "":
         return "unknown"
     text = str(value).replace("`", "'").replace("\n", " ")
-    return "".join(character for character in text if character.isprintable())[:200]
+    sanitized = "".join(character for character in text if character.isprintable())[
+        :200
+    ]
+    return sanitized if sanitized.strip() else "unknown"
 
 
 def event_from_message(
@@ -221,11 +238,13 @@ def event_from_message(
 
 
 def alert_messages(alerts: dict[str, Any]) -> list[dict[str, Any]]:
-    """Return only well-formed SQS message objects from an alert batch."""
-    messages = alerts.get("Messages")
-    if not isinstance(messages, list):
-        return []
-    return [message for message in messages if isinstance(message, dict)]
+    """Reject a malformed batch rather than silently discard its messages."""
+    messages = alerts.get("Messages", [])
+    if not isinstance(messages, list) or any(
+        not isinstance(message, dict) for message in messages
+    ):
+        raise ValueError("Messages must be a list of JSON objects")
+    return messages
 
 
 def message_fields(message: dict[str, Any]) -> dict[str, object]:
@@ -250,7 +269,6 @@ _VOLATILE_DETAIL_KEYS = frozenset(
         "eventID",
         "eventId",
         "eventTime",
-        "id",
         "recoveryPointArn",
         "requestID",
         "requestId",
@@ -358,6 +376,7 @@ def render_issue_body(
     messages = alert_messages(alerts)
     lines = [
         f"<!-- operations-alert:fingerprint={context.fingerprint} -->",
+        f"Canonical fingerprint: <code>{safe_value(context.fingerprint)}</code>",
         f"The operations alert queue contains {len(messages)} message(s).",
         "",
         (
@@ -438,8 +457,12 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
         with Path(args.alerts_json).open(encoding="utf-8") as alerts_file:
-            loaded_alerts = json.load(alerts_file, object_pairs_hook=_unique_object)
-    except (OSError, ValueError, TypeError) as exc:
+            loaded_alerts = json.load(
+                alerts_file,
+                object_pairs_hook=_unique_object,
+                parse_constant=_reject_nonfinite,
+            )
+    except (OSError, ValueError, TypeError, RecursionError) as exc:
         print(
             f"error: {args.alerts_json} must contain a JSON object: {exc}",
             file=sys.stderr,
@@ -453,29 +476,31 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     alerts = {str(key): item for key, item in loaded_alerts.items()}
     try:
+        # Validate the complete batch before creating artifacts.
+        alert_messages(alerts)
         alerts = _prepare_classification(alerts, args)
-    except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-    fingerprint = alerts_fingerprint(alerts)
-    if args.groups_file:
-        Path(args.groups_file).write_text(
-            f"{json.dumps(grouped_alerts_payload(alerts), sort_keys=True)}\n",
+        fingerprint = alerts_fingerprint(alerts)
+        if args.groups_file:
+            Path(args.groups_file).write_text(
+                f"{json.dumps(grouped_alerts_payload(alerts), sort_keys=True)}\n",
+                encoding="utf-8",
+            )
+        Path(args.body_file).write_text(
+            render_issue_body(
+                alerts,
+                IssueContext(
+                    queue_name=args.queue_name,
+                    account_id=args.account_id,
+                    region=args.region,
+                    fingerprint=fingerprint,
+                ),
+            ),
             encoding="utf-8",
         )
-    Path(args.body_file).write_text(
-        render_issue_body(
-            alerts,
-            IssueContext(
-                queue_name=args.queue_name,
-                account_id=args.account_id,
-                region=args.region,
-                fingerprint=fingerprint,
-            ),
-        ),
-        encoding="utf-8",
-    )
-    Path(args.fingerprint_file).write_text(f"{fingerprint}\n", encoding="utf-8")
+        Path(args.fingerprint_file).write_text(f"{fingerprint}\n", encoding="utf-8")
+    except (OSError, ValueError, TypeError, RecursionError):
+        print("error: alert processing or artifact write failed.", file=sys.stderr)
+        return 1
     return 0
 
 

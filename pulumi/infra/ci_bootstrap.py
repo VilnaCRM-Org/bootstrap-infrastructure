@@ -366,6 +366,7 @@ def _deployment_assume_role_policy(
     repository_id: str | None = None,
     owner_id: str | None = None,
     branch_ref: str | None = None,
+    workflow_name: str | None = None,
 ) -> str:
     """Build the trust policy for one GitHub OIDC CI role."""
     document = json.dumps(
@@ -392,6 +393,15 @@ def _deployment_assume_role_policy(
                             ),
                             "token.actions.githubusercontent.com:repository": (
                                 repository
+                            ),
+                            **(
+                                {
+                                    "token.actions.githubusercontent.com:workflow": (
+                                        workflow_name
+                                    )
+                                }
+                                if workflow_name is not None
+                                else {}
                             ),
                         },
                     },
@@ -878,6 +888,7 @@ def _create_operations_alert_triage(
                 repository_id=context.settings.github_repository_id,
                 owner_id=context.settings.github_repository_owner_id,
                 branch_ref=_branch_ref(context.settings),
+                workflow_name="Operations Alert Issue Triage",
             ),
         ),
         tags=base_tags(

@@ -1582,17 +1582,14 @@ def test_sre_docs_map_blocking_ci_checks_back_to_local_commands() -> None:
     assert "awskms://alias/ALIAS_NAME?region=REGION" in operations_doc  # nosec B101
 
 
-def test_staged_operations_alert_triage_uses_repo_python_runner() -> None:
-    """Keep alert rendering on the repo-managed Python command path."""
+def test_staged_operations_alert_triage_uses_stdlib_python_runner() -> None:
+    """Avoid dependency installation for the standard-library-only renderer."""
     workflow = yaml.safe_load(
         (PROJECT_ROOT / "docs/examples/operations-alert-triage-v2.yml").read_text(
             encoding="utf-8"
         )
     )
     steps = workflow["jobs"]["triage_operations_alerts"]["steps"]
-    install_step = next(
-        step for step in steps if step.get("name") == "Install uv for triage renderer"
-    )
     triage_step = next(
         step
         for step in steps
@@ -1600,16 +1597,13 @@ def test_staged_operations_alert_triage_uses_repo_python_runner() -> None:
         == "Create or update GitHub issue for queued operations alerts"
     )
 
-    assert "uv==0.9.21" in install_step["run"]  # nosec B101
-    assert "GITHUB_PATH" in install_step["run"]  # nosec B101
-    assert (  # nosec B101
-        "uv run python scripts/operations_alert_triage.py" in triage_step["run"]
-    )
+    assert all("pip install" not in step.get("run", "") for step in steps)
+    assert "uv run" not in triage_step["run"]
     assert "--groups-file" in triage_step["run"]  # nosec B101
     assert "jq '.groups | length'" in triage_step["run"]  # nosec B101
     assert "for ((group_index = 0;" in triage_step["run"]  # nosec B101
-    assert "--visibility-timeout 600" in triage_step["run"]  # nosec B101
-    assert "python3 scripts/operations_alert_triage.py" not in triage_step["run"]  # nosec B101
+    assert "--visibility-timeout 900" in triage_step["run"]  # nosec B101
+    assert triage_step["run"].count("python3 scripts/operations_alert_triage.py") == 2
 
 
 def test_staged_operations_alert_triage_searches_fingerprint_before_queue_delete() -> (
@@ -1631,9 +1625,7 @@ def test_staged_operations_alert_triage_searches_fingerprint_before_queue_delete
 
     group_loop_index = triage_run.index("for ((group_index = 0;")
     fingerprint_index = triage_run.index('fingerprint="$(cat "${fingerprint_file}")"')
-    search_index = triage_run.index(
-        '--search "operations-alert:fingerprint=${fingerprint} in:body"'
-    )
+    search_index = triage_run.index(r'--search "\"${fingerprint}\" in:body"')
     comment_index = triage_run.index("gh issue comment")
     create_index = triage_run.index("gh issue create")
     audit_step = next(
@@ -1670,9 +1662,13 @@ def test_staged_operations_alert_triage_searches_fingerprint_before_queue_delete
     assert receipt_index < delete_index  # nosec B101
     assert '--repo "${GITHUB_REPOSITORY_NAME}"' in triage_run  # nosec B101
     assert "--state open" in triage_run  # nosec B101
-    assert "--json number" in triage_run  # nosec B101
-    assert "--jq '.[0].number // \"\"'" in triage_run  # nosec B101
-    assert 'existing_issue="$(' in triage_run  # nosec B101
+    assert "--json number,body" in triage_run  # nosec B101
+    assert "--limit 2" in triage_run  # nosec B101
+    ambiguity_index = triage_run.index("multiple open canonical issues")
+    assert ambiguity_index < triage_run.index("gh issue comment")  # nosec B101
+    assert ambiguity_index < triage_run.index("gh issue create")  # nosec B101
+    assert triage_run.index("without the exact fingerprint marker") < comment_index
+    assert 'existing_matches="$(' in triage_run  # nosec B101
     assert 'if [[ -n "${existing_issue}" ]]; then' in triage_run  # nosec B101
     assert '--body-file "${body_file}"' in triage_run  # nosec B101
     assert (  # nosec B101
@@ -1708,7 +1704,7 @@ def test_operations_alert_backfill_requires_protected_manual_confirmation() -> N
     assert "sre_confirmation_reference must be an HTTPS URL" in run  # nosec B101
     assert "stable_event_json.source is required" in run  # nosec B101
     assert "python3 scripts/operations_alert_triage.py" in run  # nosec B101
-    assert "operations-alert:fingerprint=${fingerprint} in:body" in run  # nosec B101
+    assert r'--search "\"${fingerprint}\" in:body"' in run  # nosec B101
     assert "gh issue create" in run  # nosec B101
     assert "gh issue comment" in run  # nosec B101
 

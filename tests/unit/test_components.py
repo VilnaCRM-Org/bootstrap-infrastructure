@@ -698,6 +698,12 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
     )
     assert "StringLike" not in preview_condition  # nosec B101
     assert "StringLike" not in apply_condition  # nosec B101
+    assert (
+        triage_condition["StringEquals"][  # nosec B101
+            "token.actions.githubusercontent.com:workflow"
+        ]
+        == "Operations Alert Issue Triage"
+    )
     assert "StringLike" not in triage_condition  # nosec B101
 
     backend_policy = json.loads(

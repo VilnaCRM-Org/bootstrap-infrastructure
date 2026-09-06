@@ -107,3 +107,62 @@ def test_exact_consumer_allowlist_controls_staged_workflow_ack_step(
     assert "quarantined" not in json.dumps(calls)
     if include_quarantine:
         assert "remain unacknowledged" in result.stderr
+
+
+@pytest.mark.parametrize("available", [0, 10, 25])
+def test_staged_receive_leaves_backlog_after_one_visibility_protected_batch(
+    tmp_path, available
+):
+    workflow = yaml.safe_load(
+        (ROOT / "docs/examples/operations-alert-triage-v2.yml").read_text()
+    )
+    job = workflow["jobs"]["triage_operations_alerts"]
+    step = next(item for item in job["steps"] if item.get("id") == "triage")
+    preparation, boundary, _ = step["run"].partition("aggregate_body_file=")
+    assert boundary, "Update the staged receive extraction after renderer changes."
+    state_path = tmp_path / "queue.json"
+    state_path.write_text(json.dumps({"available": available, "receives": 0}))
+    executable = tmp_path / "aws"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\nfrom pathlib import Path\n"
+        "path = Path(os.environ['QUEUE_STATE'])\n"
+        "state = json.loads(path.read_text())\n"
+        "args = sys.argv[1:]\n"
+        "if args[:2] == ['sqs', 'get-queue-url']:\n"
+        "    print('https://sqs.invalid/queue')\n"
+        "else:\n"
+        "    assert args[:2] == ['sqs', 'receive-message']\n"
+        "    assert int(args[args.index('--max-number-of-messages')+1]) == 10\n"
+        "    assert int(args[args.index('--visibility-timeout')+1]) > "
+        f"{job['timeout-minutes'] * 60}\n"
+        "    state['receives'] += 1\n"
+        "    assert state['receives'] == 1, 'Second receive would exceed batch bound'\n"
+        "    count = min(state['available'], 10)\n"
+        "    state['available'] -= count\n"
+        "    path.write_text(json.dumps(state))\n"
+        "    print(json.dumps({'Messages':"
+        "[{'MessageId':str(i)} for i in range(count)]}))\n"
+    )
+    executable.chmod(0o700)
+    result = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", preparation + '\ncat "${alerts_json}"'],
+        env={
+            "PATH": f"{tmp_path}:{os.environ['PATH']}",
+            "RUNNER_TEMP": str(tmp_path),
+            "TMPDIR": str(tmp_path),
+            "QUEUE_STATE": str(state_path),
+            "OPERATIONS_ALERT_QUEUE_NAME": "queue",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    state = json.loads(state_path.read_text())
+    assert state == {"available": max(available - 10, 0), "receives": 1}
+    if available:
+        assert len(json.loads(result.stdout)["Messages"]) == min(available, 10)
+    else:
+        assert "No operations alert messages" in result.stdout

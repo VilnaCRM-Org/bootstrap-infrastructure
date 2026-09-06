@@ -21,10 +21,13 @@ cloud metadata checks pass.
 - AWS Secrets Manager is the source of truth for account-local CI values; the
   workflow loader reads those JSON secrets directly through GitHub OIDC.
 - Pulumi Cloud and Pulumi ESC are not used for CI configuration.
-- Pulumi manages the AWS Secrets Manager secret containers and
-  `GitHubCiConfigRead-*` roles, but not the JSON secret values.
+- The platform CI component manages AWS Secrets Manager containers and
+  `GitHubCiConfigRead-*` roles. The separate operator component can also manage
+  encrypted secret versions through `write_secret_values`; inspect ownership
+  before rotating payloads manually.
 - GitHub `prod` protects platform production apply. Protected `test`,
-  `test-preview` and `prod-preview` environments remain in use for their jobs.
+  `test-preview`, `prod-preview`, `governance`, `governance-preview` and
+  `operations-alert-reconcile` environments remain in use for their jobs.
 - AWS role trust uses each role's intended repository/ref, pull request,
   protected environment and workflow conditions, with immutable identity pins.
 - AWS CI config validation happens after the config-read role loads the secret
@@ -56,10 +59,11 @@ cloud metadata checks pass.
 - AWS account trust-policy changes require applying the Pulumi stack through the
   existing GitOps process.
 
-The current PR and AWS metadata audit is retained in
-`current-closeout-evidence-2026-05-25.md`; it records the failing
-invalid local test-account AWS token, and missing production Secrets Manager
-containers/read roles as external closeout dependencies.
+The historical PR and AWS metadata audit is retained in
+`current-closeout-evidence-2026-05-25.md`; it records the invalid Pulumi Cloud
+token exchange, the test-account role-assumption failure, and missing production
+Secrets Manager containers/read roles. These dated observations are not current
+verification results.
 
 ## Residual Risks
 

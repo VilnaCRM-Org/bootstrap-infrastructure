@@ -152,12 +152,12 @@ def test_stable_detail_handles_lists_and_unknown_objects() -> None:
             return "custom-value"
 
     detail = {
-        "items": [{"id": "volatile", "name": "kept"}, CustomValue()],
+        "items": [{"id": "stable-resource", "name": "kept"}, CustomValue()],
         "requestID": "volatile",
     }
 
     assert triage.stable_detail(detail) == {  # nosec B101
-        "items": [{"name": "kept"}, "unknown"]
+        "items": [{"id": "stable-resource", "name": "kept"}, "unknown"]
     }
 
 
@@ -189,14 +189,13 @@ def test_load_json_handles_invalid_and_non_object_values() -> None:
 def test_safe_value_and_empty_fingerprint_defaults() -> None:
     assert triage.safe_value(None) == "unknown"
     assert triage.alerts_fingerprint({}) == "empty"
-    assert triage.alerts_fingerprint({"Messages": "not-a-list"}) == "empty"
+    with pytest.raises(ValueError, match="Messages must be a list"):
+        triage.alerts_fingerprint({"Messages": "not-a-list"})
 
 
-def test_malformed_messages_are_skipped_safely() -> None:
+def test_malformed_body_metadata_renders_unknown_safely() -> None:
     alerts = {
         "Messages": [
-            "not-a-message",
-            None,
             {
                 "MessageId": "sqs-safe",
                 "Body": "{not-json",
@@ -473,7 +472,7 @@ def test_duplicate_outer_batch_fields_fail_before_outputs(tmp_path):
 def test_resources_presence_and_full_value_have_distinct_fingerprints():
     fingerprints = []
     for resources in (..., None, [], ["arn:aws:s3:::one"], ["arn:aws:s3:::two"]):
-        event = {
+        event: dict[str, object] = {
             "source": "aws.health",
             "detail-type": "AWS Health Event",
             "detail": {"state": "FAILED"},
@@ -486,3 +485,205 @@ def test_resources_presence_and_full_value_have_distinct_fingerprints():
             "false" if resources is ... else "true"
         )
     assert len(set(fingerprints)) == len(fingerprints)
+
+
+@pytest.mark.parametrize("value", ["\x00", "\t\r\x1b", "\u200b", "   ", "\n"])
+def test_safe_value_filtered_empty_metadata_is_unknown(value):
+    assert triage.safe_value(value) == "unknown"
+
+
+def _runtime_cli(tmp_path):
+    paths = {
+        name: tmp_path / name
+        for name in ("input", "body", "fingerprint", "groups", "ack", "audit")
+    }
+    args = [
+        "--alerts-json",
+        str(paths["input"]),
+        "--queue-name",
+        "queue",
+        "--account-id",
+        "123456789012",
+        "--region",
+        "eu-central-1",
+        "--body-file",
+        str(paths["body"]),
+        "--fingerprint-file",
+        str(paths["fingerprint"]),
+        "--groups-file",
+        str(paths["groups"]),
+        "--acknowledgments-file",
+        str(paths["ack"]),
+        "--audit-file",
+        str(paths["audit"]),
+        "--topic-arn",
+        "arn:aws:sns:eu-central-1:123456789012:alerts",
+    ]
+    return args, paths
+
+
+@pytest.mark.parametrize("invalid", [None, False, 7, "message", []])
+@pytest.mark.parametrize("classification", [False, True])
+def test_nonobject_batch_entry_fails_before_any_artifact(
+    tmp_path, invalid, classification, monkeypatch, capsys
+):
+    args, paths = _runtime_cli(tmp_path)
+    if not classification:
+        args = args[: args.index("--acknowledgments-file")]
+    valid = {
+        "Body": json.dumps({"Message": '{"source":"aws.health"}'}),
+        "ReceiptHandle": "valid-receipt",
+    }
+    paths["input"].write_text(json.dumps({"Messages": [valid, invalid]}))
+
+    def must_not_classify(*_):
+        pytest.fail("A malformed batch reached classification")
+
+    monkeypatch.setattr(triage, "_prepare_classification", must_not_classify)
+    assert triage.main(args) == 1
+    assert all(not path.exists() for name, path in paths.items() if name != "input")
+    assert "Traceback" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("messages", [None, {}, "invalid", 1])
+def test_nonlist_messages_fail_before_artifacts(tmp_path, messages):
+    args, paths = _runtime_cli(tmp_path)
+    paths["input"].write_text(json.dumps({"Messages": messages}))
+    assert triage.main(args) == 1
+    assert all(not path.exists() for name, path in paths.items() if name != "input")
+
+
+@pytest.mark.parametrize("layer", ["sns", "event", "stable"])
+def test_nested_message_quarantines_without_acknowledgment(layer):
+    depth = sys.getrecursionlimit() + 100
+    if layer == "stable":
+        depth = sys.getrecursionlimit() // 2 + 30
+    nested = "[" * depth + "0" + "]" * depth
+    event = '{"source":"aws.health","detail":{"nested":' + nested + "}}"
+    if layer == "stable":
+        # Parsing succeeds; recursive stable-field processing must still quarantine.
+        json.loads(event)
+        with pytest.raises(RecursionError):
+            triage.stable_detail(json.loads(event))
+    body = event if layer == "sns" else json.dumps({"Message": event})
+    item = {"Body": body, "ReceiptHandle": "receipt"}
+    context = triage.IssueContext("queue", "123456789012", "eu-central-1", "")
+    actionable, ack, audit = triage.classified_alerts(
+        {"Messages": [item]}, context, "arn:aws:sns:eu-central-1:123456789012:alerts"
+    )
+    assert actionable == {"Messages": []}
+    assert ack == {"Messages": []}
+    assert audit["records"][0]["reason"] == "invalid_alert_envelope"
+    assert audit["records"][0]["disposition"] == "quarantine"
+
+
+def test_deep_outer_json_returns_clean_failure_without_artifacts(tmp_path, capsys):
+    args, paths = _runtime_cli(tmp_path)
+    depth = sys.getrecursionlimit() + 100
+    paths["input"].write_text('{"Messages":' + "[" * depth + "0" + "]" * depth + "}")
+    assert triage.main(args) == 1
+    assert all(not path.exists() for name, path in paths.items() if name != "input")
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_load_json_rejects_excessive_nesting():
+    depth = sys.getrecursionlimit() + 100
+    assert triage.load_json("[" * depth + "0" + "]" * depth) == {}
+
+
+@pytest.mark.parametrize(
+    "failure", ["open", "fchmod", "dump", "audit", "groups", "body", "fingerprint"]
+)
+def test_artifact_oserror_returns_clean_failure(tmp_path, monkeypatch, capsys, failure):
+    args, paths = _runtime_cli(tmp_path)
+    paths["input"].write_text('{"Messages": []}')
+
+    def denied(*_, **__):
+        raise OSError("private-error-payload")
+
+    if failure in {"open", "fchmod"}:
+        monkeypatch.setattr(triage.os, failure, denied)
+    elif failure == "dump":
+        monkeypatch.setattr(triage.json, "dump", denied)
+    else:
+        original = Path.write_text
+
+        def write(path, *args, **kwargs):
+            if path == paths[failure]:
+                denied()
+            return original(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "write_text", write)
+    assert triage.main(args) == 1
+    error = capsys.readouterr().err
+    assert "artifact write failed" in error
+    assert "private-error-payload" not in error
+    assert "Traceback" not in error
+    assert not paths["fingerprint"].exists()
+
+
+@pytest.mark.parametrize("location", ["detail", "nested", "list"])
+def test_generic_resource_ids_remain_distinct_stable_streams(location):
+    def event(resource_id, occurrence_id):
+        details = {
+            "detail": {"id": resource_id},
+            "nested": {"resource": {"id": resource_id}},
+            "list": {"resources": [{"id": resource_id}]},
+        }
+        detail = {**details[location], "backupJobId": occurrence_id}
+        return _event_message(
+            source="aws.backup",
+            detail_type="Backup Job State Change",
+            detail=detail,
+            message_id=occurrence_id,
+        )
+
+    first = event("resource-1", "occurrence-1")
+    redelivery = event("resource-1", "occurrence-2")
+    distinct = event("resource-2", "occurrence-1")
+    assert triage.message_fingerprint(first) == triage.message_fingerprint(redelivery)
+    assert triage.message_fingerprint(first) != triage.message_fingerprint(distinct)
+    groups = triage.alert_groups({"Messages": [first, redelivery, distinct]})
+    assert sorted(len(group["Messages"]) for _, group in groups) == [1, 2]
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("layer", ["sns", "event"])
+def test_nonfinite_envelope_constants_quarantine_without_ack(constant, layer):
+    event = '{"source":"aws.health","detail":{"value":' + constant + "}}"
+    body = event if layer == "sns" else json.dumps({"Message": event})
+    context = triage.IssueContext("queue", "123456789012", "eu-central-1", "")
+    actionable, ack, audit = triage.classified_alerts(
+        {"Messages": [{"Body": body, "ReceiptHandle": "receipt"}]},
+        context,
+        "arn:aws:sns:eu-central-1:123456789012:alerts",
+    )
+    assert actionable == ack == {"Messages": []}
+    assert audit["records"][0]["disposition"] == "quarantine"
+    assert audit["records"][0]["reason"] == "invalid_alert_envelope"
+    assert triage.load_json(event) == {}
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_nonfinite_outer_constants_fail_before_artifacts(tmp_path, constant):
+    args, paths = _runtime_cli(tmp_path)
+    paths["input"].write_text('{"Messages": [], "other":' + constant + "}")
+    assert triage.main(args) == 1
+    assert all(not path.exists() for name, path in paths.items() if name != "input")
+
+
+def test_rendered_body_keeps_marker_and_visible_canonical_fingerprint():
+    fingerprint = "0123456789abcdef01234567"
+    body = triage.render_issue_body(
+        {"Messages": []},
+        triage.IssueContext("queue", "123456789012", "eu-central-1", fingerprint),
+    )
+    assert (
+        body.splitlines()[0] == f"<!-- operations-alert:fingerprint={fingerprint} -->"
+    )
+    assert f"Canonical fingerprint: <code>{fingerprint}</code>" in body.splitlines()
+    sanitized = triage.render_issue_body(
+        {"Messages": []},
+        triage.IssueContext("queue", "123456789012", "eu-central-1", "\x00"),
+    )
+    assert "Canonical fingerprint: <code>unknown</code>" in sanitized.splitlines()

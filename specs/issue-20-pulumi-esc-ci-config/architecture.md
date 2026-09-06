@@ -46,9 +46,13 @@ Each fixed suffix maps to one AWS Secrets Manager JSON secret:
 The Pulumi `test` stack creates the `test-pr` and `test` AWS Secrets Manager
 secret containers plus matching `GitHubCiConfigRead-*` roles. The Pulumi `prod`
 stack creates the `prod-preview` and `prod` containers plus matching production
-read roles. Pulumi does not own secret versions or secret values; operators
-populate and rotate the JSON payloads directly in AWS Secrets Manager after the
-containers exist. The `githubCiConfigReadRoleArns` stack output gives operators
+read roles. The platform `CiConfiguration` component owns containers and read
+roles, not values. The separate operator `GitHubCiBootstrap` component defaults
+to `write_secret_values=True` and manages encrypted `SecretVersion` resources
+from its generated CI payloads; setting that option false leaves version
+management external. Check the owning component before rotating values, because
+an operator apply can replace a manually changed managed payload. The
+`githubCiConfigReadRoleArns` stack output gives operators
 the role ARNs to store as GitHub repository variables.
 
 Common AWS CI config variables:
@@ -96,10 +100,12 @@ The ordinary alert workflow does not use a reusable-workflow
 `job_workflow_ref` claim. The alert policy helper in `automation.py` binds the
 ordinary `workflow` claim to `Operations Alert Issue Triage`, together with
 `refs/heads/main`, repository and immutable repository/owner identity. The
-operator-owned triage role in `ci_bootstrap.py` currently binds audience,
-repository, main ref and immutable identity; it does not add that workflow-name
-condition. Verify the actual consumed role policy before activating v2, and do
-not infer a workflow-path restriction from its name.
+operator-owned triage role in `ci_bootstrap.py` requires the same exact workflow
+name, alongside audience, repository, main ref and immutable identity. Other
+operator roles retain their purpose-specific conditions. AWS supports this
+ordinary workflow-name condition in its [GitHub OIDC claim mapping](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_iam-condition-keys.html#condition-keys-wif).
+Verify the actual consumed role policy before activating v2; a workflow-name
+condition does not restrict the workflow file path.
 
 ## Operations Alert Dedupe
 
@@ -112,7 +118,9 @@ fingerprint marker:
 
 The fingerprint uses durable alert identity fields such as source, detail type,
 state, backup vault, backup plan, backup rule, resource ARN, stable
-EventBridge detail, and resources. It deliberately ignores occurrence IDs such
+EventBridge detail, and resources. Generic nested `id` fields remain part of the
+stable identity. It deliberately ignores the top-level event ID and explicitly
+named occurrence IDs such
 as SQS message ID, SNS message ID, backup job ID, request ID, and event time.
 The workflow splits mixed SQS batches into one GitHub issue update per stable
 alert stream, then deletes queue messages only after every issue creation or
