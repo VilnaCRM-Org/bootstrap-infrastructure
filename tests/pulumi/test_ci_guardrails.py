@@ -147,7 +147,7 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         if step.get("uses")
         == (
             "VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env"
-            "@a6496ad72285878db3c6b74b7a2b489249969e70"
+            "@d1297f1f00658c351dd6b94e510b394835b13ede"
         )
     )
     iam_ci_config_step = next(
@@ -156,7 +156,7 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
         if step.get("uses")
         == (
             "VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env"
-            "@a6496ad72285878db3c6b74b7a2b489249969e70"
+            "@d1297f1f00658c351dd6b94e510b394835b13ede"
         )
     )
     preview_ci_config_target_step = next(

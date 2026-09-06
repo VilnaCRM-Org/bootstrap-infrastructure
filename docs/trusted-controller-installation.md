@@ -1,5 +1,7 @@
 # Trusted controller installation candidate
 
+> **Installation decision, updated 2026-09-06:** The repository owner subsequently instructed: “if you can’t satisfy something currently, because it’s blocked - skip it and approve/merge” and “Do not ask me, merge PRs.” For PR #193 this supersedes the earlier installation hold described below. Record blocked controller-dependent deployments, unavailable external AI reviews and outstanding legacy live verification as explicit deferrals. Fixable source or test failures still require correction. A temporary PR-only exception for the exact Kravalg user may permit this installation after current available checks and code review; restore the original ruleset immediately after this one merge. No skipped check or deferred test becomes a passing result. Full bootstrap acceptance remains outstanding until its real operational requirements are verified.
+
 This local candidate is based on main `d3015695def1c704b1265db347ed411690314b32`. Its reviewed transplant source is `3ed47332f48e7faca5e2cb8bdcc1b7be5de3ab6c`, supplemented by the parent-accepted backup read-policy repair and independently reviewed saved-plan encryption continuity closure. Exact candidate file hashes and validation are recorded in the external installation manifest. It is not an approval, a deployment receipt, a full PR192 acceptance result, or permission to change repository rules.
 
 ## Scope and dependency closure

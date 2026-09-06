@@ -1,5 +1,7 @@
 # Installation verification and deferred acceptance
 
+> **Installation decision, updated 2026-09-06:** The repository owner subsequently instructed: “if you can’t satisfy something currently, because it’s blocked - skip it and approve/merge” and “Do not ask me, merge PRs.” For PR #193 this supersedes the earlier installation hold described below. Record blocked controller-dependent deployments, unavailable external AI reviews and outstanding legacy live verification as explicit deferrals. Fixable source or test failures still require correction. A temporary PR-only exception for the exact Kravalg user may permit this installation after current available checks and code review; restore the original ruleset immediately after this one merge. No skipped check or deferred test becomes a passing result. Full bootstrap acceptance remains outstanding until its real operational requirements are verified.
+
 This is a test strategy and evidence contract. It does not record tests as passed merely because they are listed.
 
 | Requirement | Positive | Negative | Edge/race/error |

@@ -14,14 +14,14 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 PIN = (
     "VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env"
-    "@a6496ad72285878db3c6b74b7a2b489249969e70"
+    "@d1297f1f00658c351dd6b94e510b394835b13ede"
 )
 CLOSURE = {
     ".github/actions/load-aws-ci-env/action.yml": (
         "cff9b9474e512a806fb6a07af571045553322c090055b3a966a1cf2f88c6098b"
     ),
     "scripts/validate_ci_environment.py": (
-        "261a19652257c1def74e2f64ed27c1fc917e5ee7d660ad27c6b579a8dc13e512"
+        "57ebb5d6ab65393b22936046b05eeb84d2be4fa4577b13616b73429d81a0579a"
     ),
 }
 

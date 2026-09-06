@@ -110,7 +110,7 @@ jobs:
         id: ci_config
         # The action is absent from pre-installation main. Use its reviewed,
         # immutable revision; never execute the PR checkout's credential loader.
-        uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@a6496ad72285878db3c6b74b7a2b489249969e70
+        uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@d1297f1f00658c351dd6b94e510b394835b13ede
         with:
           environment: ${{ steps.ci_config_target.outputs.environment }}
           config-role-arn: ${{ steps.ci_config_target.outputs.config-role-arn }}

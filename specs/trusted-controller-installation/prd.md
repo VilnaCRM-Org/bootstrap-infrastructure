@@ -1,5 +1,7 @@
 # Trusted controller installation PRD
 
+> **Installation decision, updated 2026-09-06:** The repository owner subsequently instructed: “if you can’t satisfy something currently, because it’s blocked - skip it and approve/merge” and “Do not ask me, merge PRs.” For PR #193 this supersedes the earlier installation hold described below. Record blocked controller-dependent deployments, unavailable external AI reviews and outstanding legacy live verification as explicit deferrals. Fixable source or test failures still require correction. A temporary PR-only exception for the exact Kravalg user may permit this installation after current available checks and code review; restore the original ruleset immediately after this one merge. No skipped check or deferred test becomes a passing result. Full bootstrap acceptance remains outstanding until its real operational requirements are verified.
+
 ## Decision and scope
 
 This bundle specifies PR #193 as the installation prerequisite for the full bootstrap completion. On 2026-09-06 the user explicitly permitted manual acceptance that is impossible before installation to be completed after PR #193 merges. The user retained green GitHub CI, resolved actionable review comments, substantive AI review approvals, and an organization BMAD FR/NFR PASS for this PR. PR #192 retains full live TEST/PROD comment-driven deployment and manual acceptance.
