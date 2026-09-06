@@ -7,8 +7,8 @@ active interpretation is defined by [the scoped successor verification](pr60-suc
 and the installed [trusted-controller contract](../trusted-controller-installation/prd.md)
 and [architecture](../trusted-controller-installation/architecture.md).
 Historical readiness scores, approvals and runs do not establish current-head
-acceptance. Current purpose-specific CI/governor ordinary-workflow trusts use
-the `workflow` claim; `job_workflow_ref` is reserved for reusable workflow trust.
+acceptance. Configuration-reader, triage and governor ordinary-workflow trusts
+use the `workflow` claim; `job_workflow_ref` is reserved for reusable workflow trust.
 Current protected environments, immutable repository IDs, saved-plan replay and
 operator-only ownership supersede the
 historical design. The operational procedure below uses reviewed saved-plan
@@ -80,16 +80,16 @@ repair.
 
 ## AWS Trust Model
 
-Current purpose-specific CI, configuration-reader and governor roles bind the
-audience, immutable repository/owner identity and allowed purpose context;
-ordinary-workflow trusts use the allowed `workflow` claim, while reusable-workflow
-trusts require the allowed `job_workflow_ref`. Legacy `PulumiAutomation` and
-`PulumiDeploy` trusts bind their protected environment, main ref and immutable
-repository/owner identity without a `workflow` claim; this legacy contract is
-not proof of a workflow-pinned operator executor and must not be broadened.
+Configuration-reader, triage and governor ordinary-workflow trusts use an
+allowed `workflow` name; reusable-workflow trusts use the applicable
+`job_workflow_ref`. Deployment CI roles (`GitHubCiPreview`, `GitHubCiApply` and
+`GitHubCiDrift`) and legacy `PulumiAutomation`/`PulumiDeploy` roles bind the
+audience, immutable repository/owner identity and protected purpose context
+(including the main ref where applicable), without a `workflow` claim. These
+deployment trusts are not proof of a workflow-pinned operator executor and must
+not be broadened.
 A workflow name alone is not an attestation of source code. The simplified
-subjects below are
-historical categories; current generated policies also pin immutable repository
+subjects below are historical categories; current generated policies also pin immutable repository
 and owner IDs and the applicable exact protected context.
 
 | Role type | Trusted subject |
