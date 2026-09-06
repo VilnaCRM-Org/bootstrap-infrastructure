@@ -560,9 +560,14 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
         jobs["test_account_evidence"]["env"]["DEPENDABOT_EXCEPTION_EVIDENCE"]
         == "${{ vars.DEPENDABOT_EXCEPTION_EVIDENCE }}"
     )
+    assert (  # nosec B101
+        jobs["test_account_evidence"]["env"]["RESTORE_DRILL_EVIDENCE"]
+        == "specs/issue-17-well-architected-5-of-5/"
+        "restore-drill-evidence-2026-04-27.json"
+    )
     question_matrix_evidence = (
         "specs/issue-17-well-architected-5-of-5/"
-        "question-matrix-evidence-2026-05-17.json"
+        "question-matrix-evidence-2026-09-06.json"
     )
     assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["QUESTION_MATRIX_EVIDENCE"]
@@ -570,7 +575,7 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
     )
     external_control_evidence = (
         "specs/issue-17-well-architected-5-of-5/"
-        "external-control-evidence-2026-05-17.json"
+        "external-control-evidence-2026-09-06.json"
     )
     assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["EXTERNAL_CONTROL_EVIDENCE"]
@@ -579,7 +584,7 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
     alert_route_evidence = (
         "${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE || "
         "'specs/issue-17-well-architected-5-of-5/"
-        "alert-route-observation-2026-05-17-approved.json' }}"
+        "alert-route-observation-2026-09-06-technical.json' }}"
     )
     assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["ALERT_ROUTE_OBSERVATION_EVIDENCE"]
@@ -588,7 +593,7 @@ def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
     security_attestation_evidence = (
         "${{ vars.SECURITY_ACCOUNT_ATTESTATION_EVIDENCE || "
         "'specs/issue-17-well-architected-5-of-5/"
-        "security-account-attestation-2026-05-17-approved.json' }}"
+        "security-account-attestation-2026-09-06-technical.json' }}"
     )
     assert (  # nosec B101
         jobs["test_account_evidence"]["env"]["SECURITY_ACCOUNT_ATTESTATION_EVIDENCE"]

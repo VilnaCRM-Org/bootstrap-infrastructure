@@ -19,9 +19,17 @@ mock-renderable.
 from __future__ import annotations
 
 import json
+from fnmatch import fnmatchcase
 
 import pytest
-from infra import ci_config, config, governance, pulumi_secrets, pulumi_state
+from infra import (
+    ci_config,
+    config,
+    governance,
+    logging_bucket,
+    pulumi_secrets,
+    pulumi_state,
+)
 from infra.governance import GovernanceStackArgs, RepoGovernance, _governance_payloads
 from infra.iam import github_oidc
 from infra.managed_repository import ManagedRepository
@@ -403,7 +411,7 @@ def test_repo_governance_renders_full_per_repo_surface(pulumi_mocks, monkeypatch
 def test_state_logging_prefix_matches_destination_contract(
     pulumi_mocks, monkeypatch, environment, governed
 ):
-    """Governed log delivery uses aws-logs; shared platform defaults stay intact."""
+    """Both state constructors target keys allowed by the actual destination policy."""
     _no_existing_resources(monkeypatch)
     settings = _governance_settings(environment)
     repo = _synthetic_repo("orders-infrastructure")
@@ -433,12 +441,34 @@ def test_state_logging_prefix_matches_destination_contract(
         _sync_await(future_output(resource.target_prefix))
         for resource in logging_resources
     ]
-    root = "aws-logs" if governed else "server-access"
+    root = "aws-logs"
     assert len(prefixes) == 2
     assert set(prefixes) == {
         f"{root}/pulumi-orders-infrastructure-{environment}-state/",
         f"{root}/pulumi-orders-infrastructure-{environment}-state-eu-west-1-replication/",
     }
+    for resource in logging_resources:
+        destination = _sync_await(future_output(resource.target_bucket))
+        prefix = _sync_await(future_output(resource.target_prefix))
+        policy = json.loads(
+            logging_bucket._log_bucket_policy(
+                f"arn:aws:s3:::{destination}", "123456789012"
+            )
+        )
+        grant = next(
+            statement
+            for statement in policy["Statement"]
+            if statement.get("Sid") == "AllowLogDelivery"
+        )
+        assert grant["Action"] == "s3:PutObject"
+        assert grant["Principal"] == {"Service": "logging.s3.amazonaws.com"}
+        assert fnmatchcase(
+            f"arn:aws:s3:::{destination}/{prefix}access-log-object", grant["Resource"]
+        )
+        assert not fnmatchcase(
+            f"arn:aws:s3:::{destination}/server-access/unapproved-object",
+            grant["Resource"],
+        )
 
 
 def test_all_governance_roles_require_bootstrap_owned_boundaries(
