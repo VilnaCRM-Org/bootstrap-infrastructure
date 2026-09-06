@@ -126,10 +126,13 @@ I confirm these stable fields represent the canonical operations alert stream
 
 After SRE confirmation, use the manual **Operations Alert Legacy Reconcile**
 workflow to close legacy duplicates. The workflow requires a canonical issue
-whose body already contains `operations-alert:fingerprint=`, accepts only
-unmarked open `Operations alerts queued:` issues as legacy duplicates, requires
-an HTTPS SRE confirmation reference, and uses GitHub duplicate closure
-semantics. It runs behind the
+whose body already contains `operations-alert:fingerprint=`, accepts unmarked
+open `Operations alerts queued:` issues as legacy duplicates, requires an HTTPS
+SRE confirmation reference, and uses GitHub duplicate closure semantics. On a
+retry, an already closed legacy issue is skipped only after GitHub GraphQL
+confirms `state=CLOSED`, `stateReason=DUPLICATE`, and `duplicateOf` identifies the
+exact canonical issue in the same repository. Other closed issues are rejected.
+The complete batch is validated before any duplicate closure. It runs behind the
 `operations-alert-reconcile` GitHub Environment so repository administrators can
 require SRE or reviewer approval before any duplicate closure. It does not
 request AWS or GitHub OIDC credentials; it only writes issue comments and
