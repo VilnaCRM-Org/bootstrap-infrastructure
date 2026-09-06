@@ -106,7 +106,7 @@ def test_evidence_loader_is_immutable() -> None:
     loader = next(step for step in steps if step.get("id") == "ci_config")
     assert loader["uses"] == (
         "VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env"
-        "@a6496ad72285878db3c6b74b7a2b489249969e70"
+        "@d1297f1f00658c351dd6b94e510b394835b13ede"
     )
 
 
