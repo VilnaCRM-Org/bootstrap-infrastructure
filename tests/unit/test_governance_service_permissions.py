@@ -6,6 +6,7 @@ import json
 from fnmatch import fnmatchcase
 
 import pytest
+from iam_statement_matcher import iam_statement_matches
 from infra import ci_bootstrap, governance
 from infra.bootstrap_settings import BootstrapSettings
 
@@ -34,7 +35,6 @@ def _service_role_specs(environment: str):
         region="us-east-1",
         repo="user-service-infrastructure",
         project="user-service-infrastructure",
-        repository="VilnaCRM-Org/user-service-infrastructure",
     )
 
 
@@ -156,19 +156,11 @@ def _s3_decision(spec, action: str, resource: str) -> str:
     decision = "implicit-deny"
     for _, document in spec.policy_documents:
         for statement in json.loads(document)["Statement"]:
-            if not any(fnmatchcase(action, value) for value in statement["Action"]):
+            if not iam_statement_matches(statement, action, resource):
                 continue
-            raw_resources = statement.get("Resource", statement.get("NotResource"))
-            resources = (
-                raw_resources if isinstance(raw_resources, list) else [raw_resources]
-            )
-            matches = any(fnmatchcase(resource, value) for value in resources)
-            if "NotResource" in statement:
-                matches = not matches
-            if matches and statement["Effect"] == "Deny":
+            if statement["Effect"] == "Deny":
                 return "explicit-deny"
-            if matches:
-                decision = "allow"
+            decision = "allow"
     return decision
 
 

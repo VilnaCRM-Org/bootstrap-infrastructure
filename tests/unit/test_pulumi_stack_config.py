@@ -406,7 +406,7 @@ def test_checkpoint_change_during_export_is_rejected(setup, empty_inventory):
 def test_separate_jobs_derive_same_existing_key_and_bind_replay(
     setup, monkeypatch, empty_inventory
 ):
-    module, command, context, values, calls, configs = setup
+    _, command, context, values, calls, configs = setup
     if empty_inventory:
         values["export"]["deployment"]["resources"] = []
     monkeypatch.setattr(

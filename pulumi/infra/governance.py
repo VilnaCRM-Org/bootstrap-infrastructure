@@ -329,7 +329,6 @@ def _governance_role_specs(
     region: str,
     repo: str,
     project: str,
-    repository: str,
 ) -> list[_CiRoleSpec]:
     """Build service role specs independently of platform bootstrap policies."""
     return [
@@ -529,7 +528,6 @@ class RepoGovernance(pulumi.ComponentResource):
                 region=region,
                 repo=repo.name,
                 project=project,
-                repository=f"{repo_settings.org}/{repo.name}",
             ),
         )
         self.deployment_role_arns = {

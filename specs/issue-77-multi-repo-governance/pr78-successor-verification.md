@@ -5,16 +5,18 @@
 This candidate is based on the actual PR60 squash-main commit
 `d61978ded596fb219a7b9379637d97003ee0a433`. Its source additions derive from
 canonical `54d6f664250483c8d3b77a52964f5ac575f87899`; installed PR57/60 source
-wins over older shared files. The 58-path scope contains 36 governance
+wins over older shared files. The initial 58-path scope contains 36 governance
 core/tests/docs/spec paths, 20 complete service-template paths, and two paths
 for the initialized-empty-checkpoint helper and its regression tests.
+The live TEST attempt also required the root Makefile and its CLI regression
+suite, bringing the reviewed diff to 60 paths.
 
 The final rebase produced `eacd8bd7601e77bb55dac6e4618a4aff5da710c3` with all
 377 tracked files byte-identical to tested commit
 `e8c79ab3a0ce3651fb9b529c48e8b0cdbe0c1659`; both have Git tree
 `7f97a18d2282e228c541b16f1f20919419e65501`. The subsequent independent source
-review corrected the generated runtime integration described below. The core
-Python implementation, IAM policies and workflow source are unchanged.
+review corrected the runtime integration described below and removed one unused
+private-function parameter. Rendered IAM policies and workflow source are unchanged.
 
 ## Required dependency closure
 
@@ -90,11 +92,13 @@ validation receipt JSON has SHA256
 `f47b0bf2a59de834e70dbb66e53ab7f23d531a70cdb7cd0f3100fbc67a4d5f97`.
 The original logs retain the initial coverage failure and successful correction.
 
-Of 65 protected installed paths, 64 remain byte-identical to the PR60 base;
-the sole intentional runtime difference is the initialized-empty-checkpoint
-helper. Its nonempty inventory, project/account/backend, pending-operation and
+On the validated baseline, 64 of 65 protected installed paths remained
+byte-identical to the PR60 base; the sole runtime difference was the initialized-empty-checkpoint
+helper. The later live fix also changes the root Makefile's six shared-helper
+recipes to select the installed uv environment. The helper's nonempty inventory,
+project/account/backend, pending-operation and
 encrypted-provider continuity checks remain enforced. Governance runtime
-matches the selected canonical implementation. Local checks do not establish
+retains the selected implementation's policy semantics. Local checks do not establish
 hosted current-head CI or live deployment and owner acceptance.
 Historical PR78 has26 resolved review threads; its June approvals do not transfer
 to this successor. New source defects must be fixed; unavailable installation or
@@ -113,3 +117,20 @@ imported the command helper and bound the forwarded account/project correctly.
 All three real Make targets rejected missing secrets-provider configuration
 before cloud access. These are local runtime acceptance probes, not AWS
 deployment evidence. Hosted CI must validate the published final commit.
+
+The first real `/pulumi test plan` comment reached the installed controller,
+passed current-head authorization, received Kravalg's protected-environment
+approval, and assumed the dedicated TEST preview role through OIDC. Run
+`34040632449` then failed before preview because the root Makefile also used
+system Python for the shared helper. All six affected container recipes now
+use `uv run --frozen python`; host preparation and isolated credential-loader
+commands retain their existing contract. The 72 CLI tests and six actual
+network-disabled container precondition probes pass after this correction.
+No IAM permission or trust was widened. A fresh comment run remains required.
+
+Qlty's unused private parameter and test binding were removed. The S3 policy
+test now reuses the installed strict IAM statement matcher while retaining
+explicit-Deny precedence; it does not claim to evaluate effective AWS access
+or IAM conditions. Explicit account/context parameters, ASCII account digits
+and the scaffold's reviewed file allowlist remain intentional. No scanner or
+quality threshold was disabled.
