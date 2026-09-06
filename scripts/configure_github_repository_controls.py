@@ -8,7 +8,7 @@ import json
 import subprocess  # nosec B404
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 import _github_evidence_environment as _evidence_environment
 import _github_repository_controls as _repository_controls
@@ -188,14 +188,15 @@ def _validated_branch_policy(value: object) -> dict[str, Any]:
     """Validate one record without permitting its fields to select arbitrary URLs."""
     if not isinstance(value, dict):
         raise ValueError("Environment branch-policy record must be an object.")
-    if not _positive_policy_id(value.get("id")):
+    record = cast(dict[str, Any], value)
+    if not _positive_policy_id(record.get("id")):
         raise ValueError("Environment branch-policy id must be a positive integer.")
-    name = value.get("name")
+    name = record.get("name")
     if not isinstance(name, str) or not name.strip() or name != name.strip():
         raise ValueError("Environment branch-policy name must be a non-empty string.")
-    if value.get("type") not in ("branch", "tag"):
+    if record.get("type") not in ("branch", "tag"):
         raise ValueError("Environment branch-policy type must be branch or tag.")
-    return dict(value)
+    return record.copy()
 
 
 def _validated_branch_policies(response: object) -> list[dict[str, Any]]:
