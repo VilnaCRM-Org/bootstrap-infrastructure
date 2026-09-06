@@ -28,7 +28,9 @@ settings = BootstrapSettings.from_pulumi_config(cfg)
 write_secret_values = cfg.get_bool("writeSecretValues")
 protect_resources = cfg.get_bool("protectResources")
 managed_secret_values = True if write_secret_values is None else write_secret_values
-protected_resources = True if protect_resources is None else protect_resources
+if protect_resources is False:
+    raise ValueError("Operator-owned resources require protectResources=true.")
+protected_resources = True
 
 governance_catalog = infra.ManagedRepositoryCatalog.load_from_json_file(
     cfg.get("governanceRepositoryCatalogPath")
@@ -46,6 +48,10 @@ for repository in platform_catalog:
         raise ValueError("Platform catalog repositories require pinned GitHub IDs.")
     if repository.name != settings.repo:
         raise ValueError("Platform catalog must contain only the bootstrap repository.")
+    if repository.default_branch != settings.github_branch:
+        raise ValueError(
+            "Bootstrap config and platform catalog default branches differ."
+        )
     if (
         repository.repository_id,
         repository.repository_owner_id,

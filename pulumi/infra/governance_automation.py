@@ -242,17 +242,21 @@ def _repo_secrets(args: GovernanceAutomationArgs, repo: ManagedRepository) -> li
 
 def _validate_backend(args: GovernanceAutomationArgs) -> tuple[str, str]:
     """Require a dedicated governance prefix and the account's platform alias."""
-    backend = urlsplit(args.backend_url)
+    error = "governance backend must be s3://<bucket>/governance"
+    if re.search(r"[%\\\x00-\x20]", args.backend_url):
+        raise ValueError(error)
+    try:
+        backend = urlsplit(args.backend_url)
+    except ValueError:
+        raise ValueError(error) from None
     if (
         backend.scheme != "s3"
-        or not backend.netloc
+        or not re.fullmatch(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]", backend.netloc)
         or backend.query
         or backend.fragment
-        or backend.username
-        or backend.port
-        or backend.path.rstrip("/") != "/governance"
+        or backend.path != "/governance"
     ):
-        raise ValueError("governance backend must be s3://<bucket>/governance")
+        raise ValueError(error)
     expected = (
         f"awskms://alias/pulumi-platform-bootstrap-{args.settings.environment}"
         f"?region={args.region}"
@@ -559,6 +563,26 @@ def governance_repo_storage_policy(
     return _document(statements)
 
 
+def _validate_catalog(args: GovernanceAutomationArgs) -> None:
+    """Reject overlapping resource namespaces before allocating any resources."""
+    names = [repo.name for repo in args.repositories]
+    canonical = [_ci_config_project(args.settings, name) for name in names]
+    declared = [repo.project_name for repo in args.repositories]
+    bootstrap_project = _ci_config_project(args.settings, args.settings.repo)
+    if not names:
+        raise ValueError("governance catalog must be nonempty")
+    for namespace in (names, canonical, declared):
+        if len(set(namespace)) != len(namespace):
+            raise ValueError(
+                "governance catalog must have unique names, "
+                "canonical and declared projects"
+            )
+    if bootstrap_project in set(canonical) | set(declared):
+        raise ValueError("governance catalog must exclude bootstrap projects")
+    if 2 + 2 * len(names) > 10:
+        raise ValueError("governance role exceeds the default 10 policy attachments")
+
+
 class GovernanceAutomation(pulumi.ComponentResource):
     """Create runner roles and immutable boundaries in the operator bootstrap stack."""
 
@@ -570,15 +594,7 @@ class GovernanceAutomation(pulumi.ComponentResource):
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         _validate_backend(args)
-        names = [repo.name for repo in args.repositories]
-        if not names or len(set(names)) != len(names) or args.settings.repo in names:
-            raise ValueError(
-                "governance catalog must be nonempty, unique and exclude bootstrap"
-            )
-        if 2 + 2 * len(names) > 10:
-            raise ValueError(
-                "governance role exceeds the default 10 policy attachments"
-            )
+        _validate_catalog(args)
         super().__init__("bootstrap:ci:GovernanceAutomation", name, None, opts)
         self.roles: dict[str, aws.iam.Role] = {}
         self.boundaries: dict[str, aws.iam.Policy] = {}

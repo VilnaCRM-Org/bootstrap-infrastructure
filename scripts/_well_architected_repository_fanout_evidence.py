@@ -5,6 +5,7 @@ from pathlib import Path
 
 from _well_architected_evidence_common import _check
 from validate_repository_catalogs import (
+    _GOVERNANCE_CATALOG_NAME,
     _fanout_failures,
     _fanout_threshold_report,
     _fanout_thresholds,
@@ -19,7 +20,7 @@ EXAMPLE_CATALOG_NAMES = frozenset({"repositories.example.json"})
 # Well-Architected deployment-fanout evidence below applies the deployment
 # thresholds, which the governance catalog intentionally exceeds, so it is
 # excluded here and asserted by its own per-kind validator instead.
-NON_DEPLOYMENT_CATALOG_NAMES = frozenset({"repositories.governance.json"})
+NON_DEPLOYMENT_CATALOG_NAMES = frozenset({_GOVERNANCE_CATALOG_NAME})
 
 
 def repository_fanout_evidence(

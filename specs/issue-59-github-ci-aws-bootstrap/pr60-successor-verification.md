@@ -80,7 +80,7 @@ shared dependency hashes supersede the older canonical hashes.
   120 policy, 6 unprivileged integration and 72 CLI tests, plus quality,
   architecture, dependency, repository hygiene, security and unprivileged
   guardrails. Combined coverage: 8972 statements and 2624 branches, 100%.
-  The final #57-base battery remains pending until the actual merge is available.
+  The actual-main battery is recorded separately below.
 
 
 ## Prior provisional #57-source rebase checks
@@ -103,8 +103,29 @@ independent ownership review and the deferred delegated governance program.
 - Changed Python Ruff lint, conflict-file formatting, scoped Ty and whitespace
   checks passed. These checks did not collect or alter coverage.
 - No full battery, mutation campaign, hosted review or live operation was repeated
-  for that provisional rebase. The actual-main rebase is now complete; final
-  validation must bind the frozen candidate commit before publication.
+  for that provisional rebase. The actual-main rebase and its validation are
+  recorded below.
+
+## Actual-main verification (2026-09-06)
+
+Frozen candidate `e1b3574cdaa8113e8bfc9a50d05360ee2b16e846` was validated and
+published on actual #57 squash base `e37eb3ff86105581b751df4526c1720dd469b0d2`.
+`make ci-pr-unprivileged` passed: 1594 unit, 188 structural, 120 policy,
+173 integration and 72 CLI tests; 9206 statements and 2702 branches at 100%.
+Full-battery log SHA-256:
+`e16395a076930b3527234a1c84826275316cf66c377944271703e0d5fc006ce5`.
+The isolated exact-source mutation campaign passed: 83/83 ordinary and 82/82
+semantic mutants killed, with zero survivors, errors or timeouts. Mutation log
+SHA-256: `5ae4b333fa230e7913f24cd40b58231f60e40525f14649e46bc9ec4d298cdbe7`.
+The local validation receipt SHA-256 is
+`3f04ca934ad7ba157d36eb5cfe50c45a2eb6e05ed3257a5bbd31e687387ee8c8`.
+
+The current review corrections add pre-allocation catalog/backend/protection/
+branch validation and strengthen independent regression assertions. They supersede
+the earlier exact-byte claim for the governor module, entrypoint and their tests.
+The e1b3574 results remain historical evidence; the correction revision requires
+its own focused and final combined validation before publication. These source
+checks do not establish operator deployment or full acceptance.
 
 ## Deferred external acceptance
 

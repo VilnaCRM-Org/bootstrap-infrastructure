@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 from controller_fixtures import ACCOUNT, PROVIDER, REPO, inputs
-from infra import automation, governance_automation, platform_iam
+from infra import automation, ci_bootstrap, governance_automation, platform_iam
 from infra.ci_config import (
     _ci_config_project,
     _ci_config_read_role_name,
@@ -223,15 +223,22 @@ def test_unconditioned_ce_read_cannot_override_tagged_mutation_ceiling():
     assert statements[0]["Action"] == ["ce:GetAnomalyMonitors"]
 
 
-def test_governor_config_role_names_match_creator_for_long_projects():
-    args = governor_inputs()
-    repo = replace(REPO, name="a" * 35)
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_governor_config_role_names_match_creator_for_long_projects(environment):
+    args = governor_inputs(environment)
+    longest_suffix = max(_ci_secret_suffixes(environment), key=len)
+    project_length = 64 - len(f"GitHubCiConfigRead--{longest_suffix}")
+    repo = replace(REPO, name="a" * project_length)
     roles, _ = governance_automation._role_resources(args, repo)
     project = _ci_config_project(args.settings, repo.name)
-    for suffix in _ci_secret_suffixes(args.settings.environment):
+    creator_suffixes = _ci_secret_suffixes(args.settings.environment)
+    assert creator_suffixes == ci_bootstrap._ci_secret_suffixes(args.settings)
+    expected = set()
+    for suffix in creator_suffixes:
         name = _ci_config_read_role_name(args.settings, suffix, project)
         assert len(name) <= 64
-        assert f"arn:aws:iam::{ACCOUNT}:role/{name}" in roles
+        expected.add(f"arn:aws:iam::{ACCOUNT}:role/{name}")
+    assert {arn for arn in roles if ":role/GitHubCiConfigRead-" in arn} == expected
 
 
 def test_governor_alias_operations_keep_target_key_conditions():

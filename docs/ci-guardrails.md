@@ -519,10 +519,6 @@ The CI loader trims surrounding whitespace from scalar configuration values befo
 
 ## Privileged operator project
 
-The [GitHub CI bootstrap operator guide](github-ci-bootstrap-stack.md) describes
-the shipped `pulumi/github-ci-bootstrap` project, immutable account/repository
-pins, existing checkpoint ownership, provider continuity and independently
-reviewed saved-plan replay. It owns platform control IAM, fixed CI secret values,
-and governor/boundary prerequisites. `governanceGithubVariables` is operator
-metadata; delegated service construction and onboarding remain deferred to #78.
-Operator receipts do not establish current-head GitHub comment deployments.
+See the [GitHub CI bootstrap operator guide](github-ci-bootstrap-stack.md) for
+account and repository pins, protected ownership, provider continuity, saved-plan
+replay and the distinction between operator receipts and comment deployments.

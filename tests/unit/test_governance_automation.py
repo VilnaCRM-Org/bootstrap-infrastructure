@@ -135,7 +135,15 @@ def test_entrypoint_asserts_account_before_first_resource(
 
 @pytest.mark.parametrize("overrides", [False, True])
 @pytest.mark.parametrize(
-    "catalog_change", [None, "name", "repository_id", "repository_owner_id"]
+    "catalog_change",
+    [
+        None,
+        "name",
+        "repository_id",
+        "repository_owner_id",
+        "default_branch",
+        "protection",
+    ],
 )
 def test_entrypoint_wires_complete_bootstrap_and_governance(
     monkeypatch, overrides, catalog_change
@@ -161,8 +169,10 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
             governanceBackendUrl="s3://operator-state/governance",
             governanceSecretsProvider="awskms://alias/custom-governance",
             writeSecretValues=False,
-            protectResources=False,
+            protectResources=True,
         )
+    if catalog_change == "protection":
+        values["protectResources"] = False
     config = SimpleNamespace(
         require=values.__getitem__,
         get=values.get,
@@ -210,7 +220,7 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
                 repository_id="12345",
                 repository_owner_id="67890",
             )
-            if catalog_change:
+            if catalog_change and catalog_change != "protection":
                 repository = dataclasses.replace(
                     repository, **{catalog_change: "99999"}
                 )
@@ -265,7 +275,13 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
         monkeypatch.setattr(sys, "path", [p for p in sys.path if p != str(root)])
     monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
     if catalog_change:
-        with pytest.raises(ValueError, match="Platform catalog|GitHub IDs differ"):
+        with pytest.raises(
+            ValueError,
+            match=(
+                "Platform catalog|GitHub IDs differ|"
+                "default branches differ|protectResources=true"
+            ),
+        ):
             runpy.run_path(str(root / "github-ci-bootstrap/__main__.py"))
         assert allocations == {}
         assert exported == {}
@@ -279,7 +295,7 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
         "pulumi_dir": "custom-pulumi" if overrides else "pulumi",
         "pulumi_secrets_provider": values.get("pulumiSecretsProvider"),
         "write_secret_values": not overrides,
-        "protect_resources": not overrides,
+        "protect_resources": True,
         "control_permissions_boundary": "control-boundary",
         "manage_oidc_provider": True,
     }
@@ -312,7 +328,7 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
             if overrides
             else "awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1"
         ),
-        "protect_resources": not overrides,
+        "protect_resources": True,
     }
     assert exported == {
         "governanceGithubVariables": governance.github_variables,
@@ -477,6 +493,16 @@ def test_trust_rejects_unknown_purpose_and_wrong_account():
         "s3://bucket/governance#fragment",
         "s3://user@bucket/governance",
         "s3://bucket:123/governance",
+        "s3://bucket/governance/",
+        "s3://BUCKET/governance",
+        "s3://ab/governance",
+        "s3://" + "a" * 64 + "/governance",
+        "s3://bucket_name/governance",
+        "s3://bucket/governance%2F",
+        "s3://bucket\\other/governance",
+        " s3://bucket/governance",
+        "s3://bucket/governance\n",
+        "s3://[broken/governance",
     ],
 )
 def test_backend_rejects_ambient_or_shared_state(url):
@@ -610,14 +636,30 @@ def test_policy_size_limit_fails_closed():
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
 def test_component_creates_three_roles_and_two_immutable_boundaries(
-    pulumi_mocks, environment
+    pulumi_mocks, environment, monkeypatch
 ):
+    import pulumi_aws as aws
+
+    protected = []
+
+    def capture(constructor):
+        def allocate(*args, **kwargs):
+            protected.append((constructor.__name__, kwargs["opts"].protect))
+            return constructor(*args, **kwargs)
+
+        return allocate
+
+    for kind in ("Role", "Policy", "RolePolicyAttachment"):
+        monkeypatch.setattr(aws.iam, kind, capture(getattr(aws.iam, kind)))
     component = GovernanceAutomation("test-governor", args=inputs(environment))
     for role in component.roles.values():
         _sync_await(future_output(role.arn))
     for boundary in component.boundaries.values():
         _sync_await(future_output(boundary.arn))
     _sync_await(wait_for_rpcs())
+    assert {kind for kind, _ in protected} == {"Role", "Policy", "RolePolicyAttachment"}
+    assert len(protected) == 29
+    assert all(protect is True for _, protect in protected)
     assert set(component.roles) == {"preview", "drift", "apply"}
     assert set(component.boundaries) == {
         f"GovernanceBoundary-user-service-infrastructure-{environment}",
@@ -673,3 +715,26 @@ def test_component_rejects_unreviewed_attachment_quota_growth():
     ]
     with pytest.raises(ValueError, match="10 policy"):
         GovernanceAutomation("too-large-governor", args=inputs(repositories=repos))
+
+
+@pytest.mark.parametrize(
+    "repos",
+    [
+        [
+            dataclasses.replace(REPO, name="service.one"),
+            dataclasses.replace(REPO, name="service-one", project="different"),
+        ],
+        [REPO, dataclasses.replace(REPO, name="other-service")],
+        [dataclasses.replace(REPO, name="BOOTSTRAP-INFRASTRUCTURE")],
+        [dataclasses.replace(REPO, project="bootstrap-infrastructure")],
+    ],
+)
+def test_catalog_namespace_collisions_fail_before_allocation(monkeypatch, repos):
+    import pulumi
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Invalid catalog reached resource allocation")
+
+    monkeypatch.setattr(pulumi.ComponentResource, "__init__", forbidden)
+    with pytest.raises(ValueError, match="catalog"):
+        GovernanceAutomation("collision", args=inputs(repositories=repos))

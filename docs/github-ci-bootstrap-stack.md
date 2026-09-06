@@ -208,3 +208,14 @@ AWS_PROFILE=<prod-admin-profile> aws secretsmanager put-secret-value \
 ```
 
 Verify with `describe-secret`. Do not use `get-secret-value` for verification.
+
+
+### Operator input invariants
+
+The operator rejects `protectResources: false`; its CI resources and governor
+roles, policies and boundaries remain protected. The pinned bootstrap branch must
+match the platform catalog's `defaultBranch` before any resources are allocated.
+Governance catalogs must have unique repository names, normalized resource
+projects and declared Pulumi projects, excluding the bootstrap project. The
+backend must be an exact `s3://<bucket>/governance` URL without a trailing slash,
+escapes, whitespace, credentials, port, query or fragment.
