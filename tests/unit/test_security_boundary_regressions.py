@@ -3,9 +3,12 @@
 import copy
 import json
 import sys
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
+from infra.governance_automation import governance_backend_policy
+from test_governance_automation import inputs
 from test_pulumi_command_preflight import fixture_data
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
@@ -106,3 +109,27 @@ def test_runner_cannot_claim_both_service_and_governance_scope(monkeypatch):
     assert len(outputs) == 1
     assert all(key.startswith("feedback_") for key in outputs[0])
     assert outputs[0]["feedback_head_sha"] == request["head_sha"]
+
+
+@pytest.mark.parametrize("action", ["s3:PutObject", "s3:DeleteObject"])
+def test_apply_can_update_checkpoint_without_an_overriding_deny(action):
+    """Read-role checkpoint denies must never disable the trusted apply path."""
+    policy = json.loads(governance_backend_policy(inputs(), purpose="apply"))
+    resource = (
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/"
+        "governance/.pulumi/stacks/platform/test.json"
+    )
+    matching = []
+    for statement in policy["Statement"]:
+        if action not in statement["Action"]:
+            continue
+        if "NotResource" in statement:
+            match = not any(fnmatchcase(resource, p) for p in statement["NotResource"])
+        else:
+            patterns = statement["Resource"]
+            patterns = [patterns] if isinstance(patterns, str) else patterns
+            match = any(fnmatchcase(resource, pattern) for pattern in patterns)
+        if match:
+            matching.append(statement["Effect"])
+    assert "Allow" in matching
+    assert "Deny" not in matching

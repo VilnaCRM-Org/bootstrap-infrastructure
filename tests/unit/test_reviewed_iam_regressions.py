@@ -6,10 +6,16 @@ from types import SimpleNamespace
 
 import pytest
 from controller_fixtures import ACCOUNT, PROVIDER, REPO, inputs
-from infra import automation, platform_iam
+from infra import automation, governance_automation, platform_iam
+from infra.ci_config import (
+    _ci_config_project,
+    _ci_config_read_role_name,
+    _ci_secret_suffixes,
+)
 from infra.platform_control_iam import PlatformControlIam
 from pulumi.runtime.stack import wait_for_rpcs
 from pulumi.runtime.sync_await import _sync_await
+from test_governance_automation import inputs as governor_inputs
 
 
 def test_platform_rejects_service_repository_before_any_allocation(monkeypatch):
@@ -215,3 +221,59 @@ def test_unconditioned_ce_read_cannot_override_tagged_mutation_ceiling():
     )
     assert "ce:*" not in service_actions | global_actions
     assert statements[0]["Action"] == ["ce:GetAnomalyMonitors"]
+
+
+def test_governor_config_role_names_match_creator_for_long_projects():
+    args = governor_inputs()
+    repo = replace(REPO, name="a" * 35)
+    roles, _ = governance_automation._role_resources(args, repo)
+    project = _ci_config_project(args.settings, repo.name)
+    for suffix in _ci_secret_suffixes(args.settings.environment):
+        name = _ci_config_read_role_name(args.settings, suffix, project)
+        assert len(name) <= 64
+        assert f"arn:aws:iam::{ACCOUNT}:role/{name}" in roles
+
+
+def test_governor_alias_operations_keep_target_key_conditions():
+    document = json.loads(
+        governance_automation.governance_repo_storage_policy(
+            governor_inputs(), REPO, apply=True
+        )
+    )
+    for action in ("kms:CreateAlias", "kms:UpdateAlias", "kms:DeleteAlias"):
+        statements = [s for s in document["Statement"] if action in s["Action"]]
+        alias = next(s for s in statements if ":alias/" in str(s["Resource"]))
+        key = next(s for s in statements if ":key/" in str(s["Resource"]))
+        assert "Condition" not in alias
+        assert key["Condition"]["StringEquals"] == {
+            "aws:ResourceTag/Repository": REPO.name,
+            "aws:ResourceTag/Environment": "test",
+            "aws:ResourceTag/Purpose": "pulumi-secrets",
+        }
+
+
+def test_governor_rejects_config_role_names_that_cannot_be_created():
+    with pytest.raises(ValueError, match="config read role name"):
+        governance_automation._role_resources(
+            governor_inputs(), replace(REPO, name="a" * 42)
+        )
+
+
+def test_governor_cannot_retag_key_into_another_ownership_scope():
+    document = json.loads(
+        governance_automation.governance_repo_storage_policy(
+            governor_inputs(), REPO, apply=True
+        )
+    )
+    tag = next(s for s in document["Statement"] if s["Action"] == ["kms:TagResource"])
+    assert tag["Condition"]["StringEquals"] == {
+        "aws:ResourceTag/Repository": REPO.name,
+        "aws:ResourceTag/Environment": "test",
+        "aws:ResourceTag/Purpose": "pulumi-secrets",
+        "aws:RequestTag/Repository": REPO.name,
+    }
+    assert tag["Condition"]["StringEqualsIfExists"] == {
+        "aws:RequestTag/Environment": "test",
+        "aws:RequestTag/Purpose": "pulumi-secrets",
+    }
+    assert not any("kms:UntagResource" in s["Action"] for s in document["Statement"])

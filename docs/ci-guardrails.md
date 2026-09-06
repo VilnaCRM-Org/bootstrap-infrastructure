@@ -513,3 +513,14 @@ The current platform supports the commercial AWS partition and the fixed TEST/PR
 The configuration helper requires the dedicated promotion App ID for apply, dry-run and verification. Set `PROMOTION_APP_ID` to the actual configured App's numeric ID before using the example; never use a guessed identity.
 
 The CI loader trims surrounding whitespace from scalar configuration values before exporting them. Backend and KMS validation checks that effective environment value; it does not certify the original secret as byte-for-byte canonical. Embedded whitespace, control characters and malformed provider/backend structure remain rejected.
+
+
+## Privileged operator project
+
+The [GitHub CI bootstrap operator guide](github-ci-bootstrap-stack.md) describes
+the shipped `pulumi/github-ci-bootstrap` project, immutable account/repository
+pins, existing checkpoint ownership, provider continuity and independently
+reviewed saved-plan replay. It owns platform control IAM, fixed CI secret values,
+and governor/boundary prerequisites. `governanceGithubVariables` is operator
+metadata; delegated service construction and onboarding remain deferred to #78.
+Operator receipts do not establish current-head GitHub comment deployments.

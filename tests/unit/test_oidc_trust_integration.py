@@ -1,10 +1,13 @@
 """Security regressions for pinned identities across all OIDC trust builders."""
 
+import importlib
 import json
+import runpy
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from infra import automation, ci_bootstrap, ci_config
+from infra import automation, ci_bootstrap, ci_config, governance_automation
 from infra.bootstrap_settings import BootstrapSettings
 from infra.iam import github_oidc
 
@@ -69,6 +72,19 @@ def documents():
     result["legacy"] = github_oidc._assume_role_policy_for_repo(
         PROVIDER, cfg.org, cfg.repo, "main", environment="test", **IDS
     )
+    args = governance_automation.GovernanceAutomationArgs(
+        settings=cfg,
+        repositories=[],
+        account_id=ACCOUNT,
+        region="eu-central-1",
+        provider_arn=PROVIDER,
+        backend_url="s3://backend/governance",
+        secrets_provider="awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1",
+    )
+    for purpose in ("preview", "drift", "apply"):
+        result["governor-" + purpose] = governance_automation.governance_trust_policy(
+            args, purpose, PROVIDER
+        )
     return result
 
 
@@ -85,6 +101,9 @@ def documents():
         "automation",
         "triage",
         "legacy",
+        "governor-preview",
+        "governor-drift",
+        "governor-apply",
     ],
 )
 def test_all_role_trusts_pin_ids_and_exact_subject_formats(name):
@@ -181,6 +200,85 @@ def test_legacy_deploy_requires_protected_environment_and_main(environment):
         trust,
         {**claims, "token.actions.githubusercontent.com:ref": "refs/pull/1/merge"},
     )
+
+
+@pytest.mark.parametrize("project", ["github-ci-bootstrap"])
+@pytest.mark.parametrize("missing", ["githubRepositoryId", "githubRepositoryOwnerId"])
+def test_live_entrypoints_require_identity_before_any_resource(
+    monkeypatch, project, missing
+):
+    required = []
+
+    def require(key):
+        required.append(key)
+        if key == missing:
+            raise ValueError("missing pinned identity")
+        return "12345"
+
+    cfg = SimpleNamespace(require=require)
+    infra = SimpleNamespace(
+        BootstrapSettings=BootstrapSettings,
+        GitHubCiBootstrap=None,
+        GitHubCiBootstrapArgs=None,
+        GovernanceStack=None,
+        GovernanceStackArgs=None,
+        ManagedRepositoryCatalog=None,
+    )
+    modules = {
+        "pulumi": SimpleNamespace(Config=lambda: cfg),
+        "infra": infra,
+        "pulumi_aws": SimpleNamespace(),
+    }
+    monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
+    with pytest.raises(ValueError, match="missing pinned identity"):
+        runpy.run_path(
+            str(Path(__file__).parents[2] / "pulumi" / project / "__main__.py")
+        )
+    assert missing in required
+
+
+@pytest.mark.parametrize("project", ["github-ci-bootstrap"])
+@pytest.mark.parametrize("missing", ["repository_id", "repository_owner_id"])
+def test_live_entrypoints_reject_unpinned_catalog_before_allocating(
+    monkeypatch, project, missing
+):
+    repository = SimpleNamespace(repository_id="123", repository_owner_id="456")
+    setattr(repository, missing, None)
+    cfg = SimpleNamespace(
+        require=lambda key: "123456789012",
+        get=lambda key: None,
+        get_bool=lambda key: None,
+    )
+    catalog = SimpleNamespace(repositories=[repository])
+
+    def allocate(*args, **kwargs):
+        pytest.fail("No resource may be allocated for an unpinned catalog")
+
+    modules = {
+        "pulumi": SimpleNamespace(Config=lambda: cfg),
+        "infra": SimpleNamespace(
+            BootstrapSettings=SimpleNamespace(
+                from_pulumi_config=lambda cfg: settings()
+            ),
+            GitHubCiBootstrap=allocate,
+            GitHubCiBootstrapArgs=lambda **kwargs: kwargs,
+            GovernanceStack=allocate,
+            GovernanceStackArgs=lambda **kwargs: kwargs,
+            ManagedRepositoryCatalog=SimpleNamespace(
+                from_settings=lambda *args: catalog,
+                load_from_json_file=lambda path: [repository],
+            ),
+        ),
+        "pulumi_aws": SimpleNamespace(
+            get_caller_identity=lambda: SimpleNamespace(account_id=ACCOUNT)
+        ),
+        "infra.governance_automation": governance_automation,
+    }
+    monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
+    with pytest.raises(ValueError, match="require pinned GitHub IDs"):
+        runpy.run_path(
+            str(Path(__file__).parents[2] / "pulumi" / project / "__main__.py")
+        )
 
 
 def test_existing_legacy_role_is_imported_with_catalog_identity(monkeypatch):

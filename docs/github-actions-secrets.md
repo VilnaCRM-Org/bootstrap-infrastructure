@@ -130,3 +130,14 @@ exists to create a canonical issue, use **Operations Alert Canonical Backfill**
 with an SRE-confirmed `stable_event_json` object first. Then use
 **Operations Alert Legacy Reconcile** and provide the required
 `sre_confirmation_reference`.
+
+
+## Privileged operator project
+
+The [GitHub CI bootstrap operator guide](github-ci-bootstrap-stack.md) describes
+the shipped `pulumi/github-ci-bootstrap` project, immutable account/repository
+pins, existing checkpoint ownership, provider continuity and independently
+reviewed saved-plan replay. It owns platform control IAM, fixed CI secret values,
+and governor/boundary prerequisites. `governanceGithubVariables` is operator
+metadata; delegated service construction and onboarding remain deferred to #78.
+Operator receipts do not establish current-head GitHub comment deployments.

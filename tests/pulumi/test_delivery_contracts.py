@@ -1736,3 +1736,42 @@ def test_triage_cutover_preserves_existing_handler():
         "YAML_LINT_PATHS          ?= docs/examples/operations-alert-triage-v2.yml"
         in makefile
     )
+
+
+def test_operator_runbook_keeps_reviewed_plan_and_output_scope():
+    """Operator instructions must preserve ownership and saved-plan authority."""
+    guide = (PROJECT_ROOT / "docs/github-ci-bootstrap-stack.md").read_text()
+    for phrase in (
+        "manage_control_resources=False",
+        "PulumiAutomation",
+        "Config recorder IAM",
+        "replication IAM",
+        "retained-policy inventory",
+        "encrypted backups",
+        "checkpoint VersionId/ETag",
+        "zero-drift",
+        "github-ci-bootstrap:pulumiBackendUrl",
+        "state/test",
+        "state/prod",
+        "make pulumi-plan",
+        "make pulumi-up-plan",
+        "PULUMI_EXPECTED_SHA",
+        "governanceGithubVariables",
+        "AWS_TEST_ACCOUNT_ID",
+        "AWS_PROD_ACCOUNT_ID",
+        "AWS_TEST_PR_CI_CONFIG_ROLE_ARN",
+        "AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN",
+        "job_workflow_ref",
+        "test-preview",
+        "governance-preview",
+        "Operator receipts are not GitHub OIDC",
+        "not exempt governor policies",
+    ):
+        assert phrase in guide
+    assert "up --stack test --yes" not in guide
+    assert "up --stack prod --yes" not in guide
+    assert "| PR guardrails preview | `test-pr` | `AWS_PREVIEW_ROLE_ARN`" in guide
+    assert (
+        "| Operations alert triage | `test` | `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN`"
+        in guide
+    )
