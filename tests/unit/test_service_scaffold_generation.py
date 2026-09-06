@@ -123,6 +123,23 @@ def test_generator_rejects_untrusted_repository_names(tmp_path, slug):
         scaffold.generate(ROOT, tmp_path / "new", slug)
 
 
+@pytest.mark.parametrize("prefix_length,accepted", [(17, True), (18, False)])
+def test_generator_enforces_iam_role_name_limit_before_creating_files(
+    tmp_path, prefix_length, accepted
+):
+    """A 64-character role is valid; a 65-character role leaves no artifact."""
+    repository = "a" * prefix_length + "-infrastructure"
+    destination = tmp_path / "new-parent" / "service"
+    if accepted:
+        manifest = scaffold.generate(ROOT, destination, repository)
+        assert manifest["repository"] == repository
+        assert (destination / "scaffold-manifest.json").is_file()
+    else:
+        with pytest.raises(ValueError, match="role longer than 64 characters"):
+            scaffold.generate(ROOT, destination, repository)
+        assert not destination.parent.exists()
+
+
 @pytest.fixture
 def initialization(monkeypatch):
     """Provide trusted workflow context and an observable fake CLI boundary."""
