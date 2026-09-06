@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
@@ -155,7 +157,7 @@ def test_stable_detail_handles_lists_and_unknown_objects() -> None:
     }
 
     assert triage.stable_detail(detail) == {  # nosec B101
-        "items": [{"name": "kept"}, "custom-value"]
+        "items": [{"name": "kept"}, "unknown"]
     }
 
 
@@ -380,3 +382,89 @@ def test_main_rejects_malformed_alerts_json(tmp_path: Path, capsys) -> None:
     assert "JSON object" in error
     assert not body_path.exists()
     assert not fingerprint_path.exists()
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"private": "nested-payload"},
+        ["nested-payload"],
+        ("nested-payload",),
+        {"nested-payload"},
+    ],
+)
+def test_safe_value_does_not_serialize_containers(value):
+    assert triage.safe_value(value) == "unknown"
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (False, "False"),
+        (12, "12"),
+        (1.5, "1.5"),
+        ("ok`\nnext", "ok' next"),
+        ("a\x00\t\r\x1b\x7f\x85\u202eb", "ab"),
+    ],
+)
+def test_safe_scalar_metadata_has_no_control_characters(value, expected):
+    assert triage.safe_value(value) == expected
+    assert len(triage.safe_value("x" * 201)) == 200
+
+
+def test_rendered_metadata_type_mismatches_do_not_leak_nested_payload():
+    nested = {"private": ["nested-payload-do-not-publish"]}
+    item = {
+        "MessageId": nested,
+        "Attributes": {"SentTimestamp": nested},
+        "Body": json.dumps(
+            {
+                "MessageId": nested,
+                "Message": json.dumps(
+                    {"source": nested, "detail-type": nested, "time": nested}
+                ),
+            }
+        ),
+    }
+    body = triage.render_issue_body(
+        {"Messages": [item]},
+        triage.IssueContext("queue", "123456789012", "eu-central-1", "fingerprint"),
+    )
+    assert "nested-payload" not in body
+    assert "private" not in body.split("Messages:\n", 1)[1]
+    for field in (
+        "sqsMessageId",
+        "snsMessageId",
+        "sentTimestamp",
+        "eventSource",
+        "detailType",
+        "eventTime",
+    ):
+        assert field + ": `unknown`" in body
+
+
+def test_duplicate_outer_batch_fields_fail_before_outputs(tmp_path):
+    source = tmp_path / "input.json"
+    source.write_text('{"Messages": [], "Messages": []}')
+    body, fingerprint = tmp_path / "body", tmp_path / "fingerprint"
+    assert (
+        triage.main(
+            [
+                "--alerts-json",
+                str(source),
+                "--queue-name",
+                "queue",
+                "--account-id",
+                "123456789012",
+                "--region",
+                "eu-central-1",
+                "--body-file",
+                str(body),
+                "--fingerprint-file",
+                str(fingerprint),
+            ]
+        )
+        == 1
+    )
+    assert not body.exists()
+    assert not fingerprint.exists()

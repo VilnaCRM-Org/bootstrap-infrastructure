@@ -150,7 +150,7 @@ def test_duplicate_json_fields_cannot_hide_warning():
     item["Body"] = json.dumps(sns)
     assert triage.message_disposition(item, CONTEXT, TOPIC) == (
         "quarantine",
-        "invalid_backup_envelope",
+        "invalid_alert_envelope",
     )
 
 
@@ -249,3 +249,78 @@ def test_classification_cli_writes_private_ack_and_sanitized_audit(tmp_path):
     assert "private-receipt" not in (tmp_path / "audit").read_text()
     assert json.loads((tmp_path / "groups").read_text())["groups"] == []
     assert (tmp_path / "fingerprint").read_text().strip() == "empty"
+
+
+@pytest.mark.parametrize(
+    "field,old,last",
+    [
+        ("source", "aws.backup", "aws.kms"),
+        ("source", "aws.backup", ""),
+        ("detail-type", "Backup Job State Change", "Unknown Backup Alert"),
+        ("detail-type", "Backup Job State Change", "AWS API Call via CloudTrail"),
+    ],
+)
+@pytest.mark.parametrize("escaped_alias", [False, True])
+def test_duplicate_dispatch_fields_cannot_escape_quarantine(
+    field, old, last, escaped_alias
+):
+    item = message()
+    sns = json.loads(item["Body"])
+    alias = field.replace("e", "\\u0065") if escaped_alias else field
+    sns["Message"] = sns["Message"].replace(
+        json.dumps(field) + ": " + json.dumps(old),
+        json.dumps(field)
+        + ": "
+        + json.dumps(old)
+        + ', "'
+        + alias
+        + '": '
+        + json.dumps(last),
+    )
+    item["Body"] = json.dumps(sns)
+    alerts, acknowledgments, audit = triage.classified_alerts(
+        {"Messages": [item]}, CONTEXT, TOPIC
+    )
+    assert alerts == acknowledgments == {"Messages": []}
+    assert audit["records"][0]["reason"] == "invalid_alert_envelope"
+    assert "private-receipt" not in json.dumps(audit)
+
+
+@pytest.mark.parametrize("field", ["Message", "Type", "TopicArn"])
+def test_duplicate_sns_envelope_fields_are_quarantined_before_dispatch(field):
+    item = message()
+    sns = json.loads(item["Body"])
+    sns["Message"] = json.dumps({"source": "aws.kms", "detail-type": "Other"})
+    encoded = json.dumps(sns)
+    item["Body"] = (
+        encoded[:-1] + ", " + json.dumps(field) + ": " + json.dumps(sns[field]) + "}"
+    )
+    _, acknowledgments, audit = triage.classified_alerts(
+        {"Messages": [item]}, CONTEXT, TOPIC
+    )
+    assert acknowledgments == {"Messages": []}
+    assert audit["records"][0]["disposition"] == "quarantine"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        None,
+        "",
+        "{broken",
+        "[]",
+        "null",
+        "{}",
+        '{"Message": []}',
+        '{"Message": "[]"}',
+        '{"Message": "{broken"}',
+    ],
+)
+def test_parse_failures_are_quarantined_instead_of_legacy_ack(body):
+    item = message()
+    item["Body"] = body
+    alerts, acknowledgments, audit = triage.classified_alerts(
+        {"Messages": [item]}, CONTEXT, TOPIC
+    )
+    assert alerts == acknowledgments == {"Messages": []}
+    assert audit["records"][0]["reason"] == "invalid_alert_envelope"

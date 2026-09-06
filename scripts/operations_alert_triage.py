@@ -56,14 +56,26 @@ def _event_time_valid(value: object) -> bool:
         return False
 
 
+def _strict_event_from_message(
+    message: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Reject malformed or duplicate fields before choosing a dispatch path."""
+    sns = json.loads(message["Body"], object_pairs_hook=_unique_object)
+    if not isinstance(sns, dict):
+        raise ValueError("SNS envelope must be an object")
+    event = json.loads(sns["Message"], object_pairs_hook=_unique_object)
+    if not isinstance(event, dict):
+        raise ValueError("Event envelope must be an object")
+    return sns, event
+
+
 def _backup_envelope_valid(
-    message: dict[str, Any], event: dict[str, Any], context: IssueContext, topic: str
+    message: dict[str, Any],
+    sns: dict[str, Any],
+    event: dict[str, Any],
+    context: IssueContext,
+    topic: str,
 ) -> bool:
-    try:
-        sns = json.loads(message["Body"], object_pairs_hook=_unique_object)
-        json.loads(sns["Message"], object_pairs_hook=_unique_object)
-    except (ValueError, TypeError, KeyError):
-        return False
     return all(
         (
             sns.get("Type") == "Notification",
@@ -116,7 +128,10 @@ def message_disposition(
     message: dict[str, Any], context: IssueContext, topic: str
 ) -> tuple[str, str]:
     """Validate known Backup events before permitting any benign acknowledgment."""
-    _, event = event_from_message(message)
+    try:
+        sns, event = _strict_event_from_message(message)
+    except (ValueError, TypeError, KeyError):
+        return "quarantine", "invalid_alert_envelope"
     kind = event.get("detail-type")
     if event.get("source") != "aws.backup":
         return "actionable", "existing_alert"
@@ -124,7 +139,7 @@ def message_disposition(
         return "quarantine", "invalid_backup_type"
     if kind not in BACKUP_JOB_TYPES:
         return "actionable", "existing_alert"
-    if not _backup_envelope_valid(message, event, context, topic):
+    if not _backup_envelope_valid(message, sns, event, context, topic):
         return "quarantine", "invalid_backup_envelope"
     detail = event.get("detail")
     if not isinstance(detail, dict) or not _nonempty_text(
@@ -191,9 +206,10 @@ def load_json(value: object) -> dict[str, Any]:
 
 def safe_value(value: object) -> str:
     """Return one sanitized metadata field for GitHub issue text."""
-    if value in (None, ""):
+    if not isinstance(value, str | int | float | bool) or value == "":
         return "unknown"
-    return str(value).replace("`", "'").replace("\n", " ")[:200]
+    text = str(value).replace("`", "'").replace("\n", " ")
+    return "".join(character for character in text if character.isprintable())[:200]
 
 
 def event_from_message(
@@ -421,8 +437,8 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
         with Path(args.alerts_json).open(encoding="utf-8") as alerts_file:
-            loaded_alerts = json.load(alerts_file)
-    except (OSError, json.JSONDecodeError, TypeError) as exc:
+            loaded_alerts = json.load(alerts_file, object_pairs_hook=_unique_object)
+    except (OSError, ValueError, TypeError) as exc:
         print(
             f"error: {args.alerts_json} must contain a JSON object: {exc}",
             file=sys.stderr,
