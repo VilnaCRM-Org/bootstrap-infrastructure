@@ -110,11 +110,10 @@ artifact, so apply jobs use a plan whose preview has already passed guardrails.
 selected stack, backend URL, commit SHA, plan hash, and preview hash. `make
 pulumi-up-plan` refuses to apply when the manifest is missing, stale, from a
 different commit or backend, or when the saved plan hash no longer matches.
-Production applies remain saved-plan-only. The test deployment workflow may
-fall back to a direct `make pulumi-up` only when `pulumi up --plan` fails with
-Pulumi's known KMS-backed saved-plan decryption error after the same-run
-preview, destructive-diff, and IAM validation gates have passed under the
-test-state concurrency lock.
+Test and production applies remain saved-plan-only. A failed saved-plan apply
+never cancels a stack lock or retries a direct apply. Repair the backend, KMS or
+artifact issue, then generate and review a fresh plan. A failed command alone
+is not evidence that a lock is stale.
 
 For S3 backends, every command prepares a private temporary stack configuration
 from the existing checkpoint before preview or apply. Set `AWS_ACCOUNT_ID` to
@@ -218,56 +217,28 @@ semantic validation for the rendered policy documents.
 The guardrail workflows are OIDC-first. They do not use long-lived
 `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` repository secrets.
 
-Privileged jobs read account-specific values from the active GitHub
-environment, not repository-wide variables. The required environment variables
-are:
+AWS Secrets Manager stores account-local CI configuration in the fixed suffixes
+`test-pr`, `test`, `prod-preview`, and `prod`. Independently pinned repository
+variables `AWS_TEST_ACCOUNT_ID` and `AWS_PROD_ACCOUNT_ID` are validated before
+configuration-role assumption; all returned role/backend/KMS values must agree.
+The protected `test`, `test-preview`, `prod-preview`, `prod`, `governance`,
+`governance-preview`, `operations-alert-reconcile`, and the `governance-evidence`
+evidence environment remain in use.
+Configuration suffixes do not replace approval or main-only branch restrictions.
+The installed trusted main controller validates original comments, current
+permissions, scope, fresh PR head and verified same-head deployment evidence.
+No apply/drift role fallback is permitted.
 
-| Variable | Purpose |
-| --- | --- |
-| `AWS_ACCOUNT_ID` | Expected AWS account for `allowed-account-ids` and audit evidence |
-| `AWS_PREVIEW_ROLE_ARN` | OIDC role assumed by preview and IAM validation jobs |
-| `AWS_DRIFT_ROLE_ARN` | OIDC role assumed by drift jobs |
-| `PULUMI_BACKEND_URL` | Account-specific shared Pulumi backend |
-| `PULUMI_SECRETS_PROVIDER` | AWS KMS Pulumi secrets provider URI used by stacks |
-
-Optional or job-specific environment variables:
-
-| Variable | Purpose |
-| --- | --- |
-| `AWS_REGION` | AWS region used by `configure-aws-credentials`; defaults to `eu-central-1` |
-| `PULUMI_PR_BACKEND_URL` | Optional PR-only backend, useful while a legacy shared test stack is being migrated |
-| `PULUMI_PR_PREVIEW_STACKS` | Optional PR-only stack list; used by trusted PR and test deploy fallbacks |
-| `PULUMI_PREVIEW_STACKS` | Optional comma-separated stack list for preview |
-| `PULUMI_DRIFT_STACKS` | Optional comma-separated stack list for nightly drift checks |
-| `AWS_APPLY_ROLE_ARN` | OIDC role used by test or production apply jobs |
-| `OPERATIONS_TOPIC_ARN` | Standard metadata input for evidence collection when the environment reuses an existing operations SNS topic |
-| `OPERATIONS_CLOUDTRAIL_NAME` | Standard metadata input for evidence collection when the environment reuses an existing operations CloudTrail |
-| `RESTORE_DRILL_EVIDENCE` | Standard metadata input pointing to the latest workload-scoped restore drill evidence record |
-| `DEPENDABOT_EXCEPTION_EVIDENCE` | Optional non-secret exception evidence covering exact open default-branch Dependabot alert numbers when remediation cannot land immediately |
-| `ALERT_ROUTE_OBSERVATION_EVIDENCE` | Optional non-secret SRE-approved downstream alert-route observation evidence matching the live operations route |
-| `SECURITY_ACCOUNT_ATTESTATION_EVIDENCE` | Optional non-secret security-owner attestation for aggregate IAM account-access posture, human MFA/SSO posture, active-key decision, and permissions-boundary or exemption decision |
-| `PRODUCTION_DR_OWNER_EVIDENCE` | Optional non-secret production-owner DR evidence that binds RTO/RPO, recovery ownership, escalation, communications, latest accepted drill, next review, and retention location to current restore-drill metadata |
-| `QUESTION_MATRIX_EVIDENCE` | Standard metadata input pointing to the structured 57-question review evidence record |
-| `EXTERNAL_CONTROL_EVIDENCE` | Standard metadata input pointing to the structured external-control owner and freshness evidence record |
-
-Optional environment secrets:
-
-| Secret | Purpose |
-| --- | --- |
-| `PULUMI_ACCESS_TOKEN` | Required only when the backend is the Pulumi Service |
-
-Shared backends should use an AWS KMS-backed Pulumi secrets provider rather
-than a passphrase-managed stack secret flow.
-
-`Pulumi Test Deploy` uses the generic backend, stack, apply-role, and drift-role
-variables when they exist. In the `test` environment it can fall back to
-`PULUMI_PR_BACKEND_URL`, `PULUMI_PR_PREVIEW_STACKS`, and `AWS_PREVIEW_ROLE_ARN`
-so an existing single bootstrap automation role can apply its own narrowed
-policy before creating new operations and cost-control resources.
+The [GitHub Actions secrets guide](github-actions-secrets.md) specifies the fixed
+payload and loader inputs. Required payload fields include `AWS_ACCOUNT_ID`,
+`AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`,
+`PULUMI_BACKEND_URL` and `PULUMI_SECRETS_PROVIDER` as appropriate to the job.
+The loader fails closed when a required role is missing. OIDC subject, audience, immutable repository IDs,
+workflow and ref constraints remain those reviewed in the installed IAM source.
 
 Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate. Same-repo pull requests fail fast when required
-AWS-backed environment variables are missing instead of silently bypassing
+AWS-backed configuration values are missing instead of silently bypassing
 privileged guardrails. The AWS-backed preview and Access Analyzer validation
 paths remain same-repo only because they require OIDC-issued AWS credentials.
 
@@ -438,37 +409,6 @@ The accepted Dependabot exception shape is also non-secret:
 }
 ```
 
-### Example IAM trust policy
-
-Replace the account ID, organization, repository name, and GitHub environment
-with your own values. `<ACCOUNT_ID>` must be the target 12-digit AWS account ID
-using digits only:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"
-      },
-      "Action": "sts:AssumeRoleWithWebIdentity",
-      "Condition": {
-        "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:<ENVIRONMENT>"
-        }
-      }
-    }
-  ]
-}
-```
-
-Use `environment:test` for test preview/apply roles, `environment:prod-preview`
-for production preview and drift roles, and `environment:prod` only for the
-production apply role.
-
 ## Production protection
 
 Production release automation has two boundaries:
@@ -501,17 +441,28 @@ fresh GitHub runner would be misleading.
 
 ## Manual maintainer follow-up
 
-The workflows are committed in this repository, but maintainers still need to:
+The workflows are committed, but source installation is distinct from live cutover:
 
-1. create the GitHub OIDC IAM role in AWS
-2. create `test`, `prod-preview`, and `prod` GitHub environments
-3. set the environment variables and optional secrets listed above
-4. enable required reviewers and branch restrictions on `prod`
-5. mark the required PR checks in GitHub branch protection
-6. decide whether production repositories want stricter stack lists or narrower
-   IAM role scopes than the template defaults
+1. Use the separately reviewed operator program and ownership procedure to
+   apply the Pulumi test and production stacks that own `GitHubCiConfigRead` roles and
+   fixed AWS Secrets Manager containers. This #57 change does not ship #60.
+2. Populate the exact four payloads and independent repository account pins;
+   verify all required privileged CI and saved-plan execution with current evidence.
+3. Keep the protected `prod` approval boundary and every other installed command
+   environment. Verify required reviewers, main-only branch rules and no stale AWS trust subjects.
+4. Run **GitHub Environment Legacy Variable Cleanup** with `dry_run=true` first.
+   Its temporary `GH_ENVIRONMENT_ADMIN_TOKEN` belongs only in protected
+   `governance`; review exact variable deletions and remove the token afterward.
+   No cleanup is automatic or permitted merely because local tests pass.
+5. Before fingerprint-v2 consumption, reconcile streams through protected
+   `operations-alert-reconcile`. Backfill and closure each require an HTTPS
+   `sre_confirmation_reference` to sanitized SRE confirmation. Follow the
+   [alert cutover procedure](alert-routing-evidence.md); preserve uncertainty if
+   the full stable identity of an old stream cannot be recovered.
+6. Retain every required check, independent review and genuine deployment gate.
+   Record unavailable external evidence as blocked/deferred, never success.
 
-Repository administrators can make steps 4 and 5 reproducible with:
+Repository administrators can verify the installed protection settings with:
 
 ```bash
 gh api graphql \

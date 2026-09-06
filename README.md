@@ -130,18 +130,20 @@ single Make invocation instead of exporting it globally.
 Run `make doctor` when you need a fast prerequisite check before debugging local
 Docker or Compose behavior.
 
-`make pulumi-preview` and `make pulumi-up` automatically enable the repository
-policy pack. If the shared `uv` environment inside the container is missing
-core Pulumi Python dependencies, the bootstrap helper resyncs it from
-`uv.lock` before Pulumi starts. The policy runtime is refreshed separately in
-`policy/.venv` from `policy/requirements.txt` so Pulumi starts the policy pack
-consistently in Docker, CI, and local shells. The interactive Pulumi targets
-also log into the configured backend automatically, falling back to the local
-file backend under `.pulumi-backend/` when no shared backend is configured,
-select the first committed `Pulumi.<stack>.yaml` file by default, and expect
-shared backends to use an AWS KMS-backed secrets provider. For test/prod CI
-setup, configure account-local GitHub environments and OIDC roles in
-[GitHub Actions Secrets and Variables](docs/github-actions-secrets.md).
+`make pulumi-preview`, `make pulumi-plan`, and `make pulumi-up-plan`
+automatically enable the repository policy pack. If the shared `uv`
+environment inside the container is missing core Pulumi Python dependencies,
+the bootstrap helper resyncs it from `uv.lock` before Pulumi starts. The policy
+runtime is refreshed separately in `policy/.venv` from `policy/requirements.txt`
+so Pulumi starts the policy pack consistently in Docker, CI, and local shells.
+Apply reviewed changes through saved plans: run `make pulumi-plan`, review the
+plan artifacts and guardrails, then run `make pulumi-up-plan` for the selected
+stack. Shared backends must use an AWS KMS-backed secrets provider. For
+test/prod CI setup, store account-local values in AWS Secrets Manager JSON
+secrets, project them directly from AWS Secrets Manager, and configure OIDC
+roles as described in [GitHub Actions Secrets and Variables](docs/github-actions-secrets.md).
+The secure human setup sequence is in the
+[AWS Secrets Manager CI cutover manual](docs/aws-secrets-manager-ci-cutover.md).
 
 ## Security
 

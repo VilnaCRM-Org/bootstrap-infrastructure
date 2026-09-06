@@ -66,14 +66,14 @@ critical resources without requiring live AWS credentials. Keep
 `make test-iam-validation` for the separate Access Analyzer check when you
 intentionally have AWS credentials configured.
 
-Apply only after the preview is understood and reviewed:
+Save and review the exact plan with `make pulumi-plan`, then apply that plan:
 
 ```bash
-make pulumi-up
+make pulumi-up-plan
 pulumi -C pulumi stack output
 ```
 
-`make pulumi-up` uses the same policy-pack enforcement path as preview.
+`make pulumi-up-plan` uses the same policy-pack enforcement path as preview.
 
 For drift reconciliation without applying a fresh plan:
 
@@ -153,7 +153,9 @@ keeps the logging and state replica changes ordered together.
 
 The deployment boundary is the GitHub environment:
 
-- `test` handles trusted PR previews, main-branch test applies, and test drift
+- `test-preview` handles protected command previews; eligible same-repo PR
+  guardrails use their bounded PR role
+- `test` handles main-branch test applies and test drift
 - `prod-preview` handles production preview and drift without production apply
   permissions
 - `prod` handles production apply and must require reviewers plus deployment
@@ -200,7 +202,7 @@ high-severity control-plane signals:
 
 | Signal | Source | Immediate owner action |
 | --- | --- | --- |
-| AWS Backup failed, aborted, or expired job | `aws.backup` job state events | Confirm the affected vault, plan, and protected bucket, then schedule a fresh backup or restore drill |
+| AWS Backup failed, aborted, expired, or completed-with-issues job | `aws.backup` job state events | Confirm the affected vault, plan, and protected bucket, then schedule a fresh backup or restore drill |
 | KMS key deletion, disablement, rotation disablement, or policy change | `aws.kms` CloudTrail events | Verify the key and actor, cancel unintended deletion, and review deploy role access |
 | IAM OIDC provider or role policy changes | `aws.iam` CloudTrail events | Confirm the GitHub OIDC trust still matches approved branches or environments |
 | S3 bucket encryption, logging, policy, or replication changes | `aws.s3` CloudTrail events | Confirm state and log buckets still enforce encryption, TLS, logging, and replication |
@@ -451,3 +453,24 @@ make clean
 
 This removes Compose state and Python build artifacts without touching cloud
 resources.
+
+## AWS Configuration And Alert Cutover
+
+AWS Secrets Manager stores account-local CI configuration in the fixed suffixes
+`test-pr`, `test`, `prod-preview`, and `prod`. Independently pinned repository
+variables `AWS_TEST_ACCOUNT_ID` and `AWS_PROD_ACCOUNT_ID` are validated before
+configuration-role assumption; all returned role/backend/KMS values must agree.
+The protected `test`, `test-preview`, `prod-preview`, `prod`, `governance`,
+`governance-preview`, and `operations-alert-reconcile` environments remain in use.
+Configuration suffixes do not replace approval or main-only branch restrictions.
+The installed trusted main controller validates original comments, current
+permissions, scope, fresh PR head and verified same-head deployment evidence.
+No apply/drift role fallback is permitted.
+
+Follow the [AWS Secrets Manager CI cutover manual](aws-secrets-manager-ci-cutover.md)
+before privileged CI. Run `make pulumi-plan` and review its exact saved-plan
+manifest before `make pulumi-up-plan`; never bypass a failed plan or stale lock.
+The alert transition uses fingerprint version 2 and requires sanitized SRE
+confirmation before backfill or reconciliation. Main-only environment approval
+remains required for `Operations Alert Canonical Backfill` and
+`Operations Alert Legacy Reconcile`.

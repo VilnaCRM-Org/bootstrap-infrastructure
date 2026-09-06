@@ -1,0 +1,191 @@
+name: Operations Alert Legacy Reconcile
+
+on:
+  workflow_dispatch:
+    inputs:
+      canonical_issue:
+        description: Canonical fingerprinted operations alert issue number
+        required: true
+        type: string
+      legacy_issues:
+        description: Space or comma separated legacy duplicate issue numbers
+        required: true
+        type: string
+      confirmation:
+        description: Type the documented confirmation sentence
+        required: true
+        type: string
+      sre_confirmation_reference:
+        description: HTTPS URL for the SRE confirmation comment or ticket
+        required: true
+        type: string
+
+concurrency:
+  group: operations-alert-legacy-reconcile
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  reconcile:
+    if: github.ref == 'refs/heads/main'
+    name: Close Confirmed Legacy Duplicates
+    runs-on: ubuntu-latest
+    environment: operations-alert-reconcile
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CANONICAL_ISSUE: ${{ inputs.canonical_issue }}
+      LEGACY_ISSUES: ${{ inputs.legacy_issues }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      SRE_CONFIRMATION_REFERENCE: ${{ inputs.sre_confirmation_reference }}
+    steps:
+      - name: Reconcile legacy operations alerts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected="I confirm these legacy issues match the canonical operations alert stream"
+          if [[ "${CONFIRMATION}" != "${expected}" ]]; then
+            echo "error: confirmation sentence does not match the documented value." >&2
+            exit 1
+          fi
+          if ! sre_reference="$(python3 -I - <<'PYTHON'
+          import os
+          import re
+          import unicodedata
+          from urllib.parse import urlsplit
+
+          raw = os.environ["SRE_CONFIRMATION_REFERENCE"]
+          try:
+              parsed = urlsplit(raw)
+              host = (parsed.hostname or "").encode("idna").decode("ascii")
+              valid_host = len(host) <= 253 and all(
+                  re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", label)
+                  for label in host.removesuffix(".").split(".")
+              )
+              valid = (
+                  parsed.scheme == "https" and valid_host
+                  and parsed.username is None and parsed.password is None
+                  and "?" not in raw and "#" not in raw
+                  and (parsed.port is None or parsed.port > 0)
+                  and not any(
+                      char.isspace() or unicodedata.category(char).startswith("C")
+                      or char in "<>[]()`\\\"'"
+                      for char in raw
+                  )
+              )
+          except ValueError:
+              valid = False
+          if not valid:
+              raise SystemExit(1)
+          print(f"<{raw}>")
+          PYTHON
+          )"; then
+            echo "error: sre_confirmation_reference must be an HTTPS URL with a host, no credentials, query, fragment, controls, whitespace or Markdown delimiters." >&2
+            exit 1
+          fi
+
+          canonical="${CANONICAL_ISSUE#\#}"
+          if [[ ! "${canonical}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "error: canonical_issue must be an issue number." >&2
+            exit 1
+          fi
+
+          normalized="${LEGACY_ISSUES//,/ }"
+          declare -A seen_issues=()
+          legacy_issue_ids=()
+          for raw_issue in ${normalized}; do
+            issue="${raw_issue#\#}"
+            if [[ ! "${issue}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "error: legacy issue '${raw_issue}' is not an issue number." >&2
+              exit 1
+            fi
+            if [[ "${issue}" == "${canonical}" ]]; then
+              echo "error: legacy issue ${issue} cannot be the canonical issue." >&2
+              exit 1
+            fi
+            if [[ -n "${seen_issues[${issue}]:-}" ]]; then
+              continue
+            fi
+            seen_issues["${issue}"]=1
+            legacy_issue_ids+=("${issue}")
+          done
+          if [[ "${#legacy_issue_ids[@]}" -eq 0 ]]; then
+            echo "error: provide at least one legacy issue number." >&2
+            exit 1
+          fi
+
+          canonical_state="$(gh issue view "${canonical}" --repo "${GH_REPO}" --json state --jq '.state')"
+          canonical_title="$(gh issue view "${canonical}" --repo "${GH_REPO}" --json title --jq '.title')"
+          canonical_body="$(gh issue view "${canonical}" --repo "${GH_REPO}" --json body --jq '.body')"
+          if [[ "${canonical_state}" != "OPEN" ]]; then
+            echo "error: canonical issue ${canonical} is not open." >&2
+            exit 1
+          fi
+          if [[ "${canonical_title}" != Operations\ alerts\ queued:* ]]; then
+            echo "error: canonical issue ${canonical} is not an operations alert issue." >&2
+            exit 1
+          fi
+          if [[ "${canonical_body}" != *"operations-alert:fingerprint="* ]]; then
+            echo "error: canonical issue must contain an operations-alert fingerprint marker in its body." >&2
+            exit 1
+          fi
+
+          # Validate the complete batch before performing any closure.
+          pending_issue_ids=()
+          for issue in "${legacy_issue_ids[@]}"; do
+            state="$(gh issue view "${issue}" --repo "${GH_REPO}" --json state --jq '.state')"
+            title="$(gh issue view "${issue}" --repo "${GH_REPO}" --json title --jq '.title')"
+            body="$(gh issue view "${issue}" --repo "${GH_REPO}" --json body --jq '.body')"
+            if [[ "${title}" != Operations\ alerts\ queued:* ]]; then
+              echo "error: legacy issue ${issue} is not an operations alert issue." >&2
+              exit 1
+            fi
+            if [[ "${body}" == *"operations-alert:fingerprint="* ]]; then
+              echo "error: legacy issue ${issue} already has a fingerprint marker." >&2
+              exit 1
+            fi
+
+            if [[ "${state}" == "CLOSED" ]]; then
+              # GitHub Issue.duplicateOf and stateReason describe the current closure.
+              # GraphQL variables must remain literal for the API query.
+              # shellcheck disable=SC2016
+              closure="$(gh api graphql \
+                -f owner="${GH_REPO%/*}" -f name="${GH_REPO#*/}" -F number="${issue}" \
+                -f query='query($owner: String!, $name: String!, $number: Int!) {
+                  repository(owner: $owner, name: $name) {
+                    issue(number: $number) {
+                      state stateReason
+                      duplicateOf { number repository { nameWithOwner } }
+                    }
+                  }
+                }')"
+              if ! jq -e --arg repo "${GH_REPO}" --argjson canonical "${canonical}" '
+                (.errors // [] | length) == 0 and
+                (.data.repository.issue |
+                  .state == "CLOSED" and .stateReason == "DUPLICATE" and
+                  .duplicateOf.number == $canonical and
+                  .duplicateOf.repository.nameWithOwner == $repo)
+                ' <<< "${closure}" > /dev/null; then
+                echo "error: closed issue ${issue} is not a verified duplicate of ${canonical}." >&2
+                exit 1
+              fi
+              printf 'Verified already reconciled duplicate #%s of #%s.\n' "${issue}" "${canonical}"
+            elif [[ "${state}" == "OPEN" ]]; then
+              pending_issue_ids+=("${issue}")
+            else
+              echo "error: legacy issue ${issue} has an unexpected state." >&2
+              exit 1
+            fi
+          done
+
+          for issue in "${pending_issue_ids[@]}"; do
+            gh issue close "${issue}" \
+              --repo "${GH_REPO}" \
+              --duplicate-of "${canonical}" \
+              --comment "Closed as a confirmed duplicate of #${canonical}. SRE confirmation was provided through the Operations Alert Legacy Reconcile workflow after matching this legacy alert to the canonical fingerprinted operations-alert stream. SRE confirmation reference: ${sre_reference}"
+          done

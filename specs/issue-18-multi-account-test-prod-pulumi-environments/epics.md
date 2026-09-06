@@ -1,5 +1,13 @@
 # Epics and Stories: Multi-Account Pulumi Environments
 
+> **Configuration source superseded by issue 20.** Account configuration now uses
+> fixed AWS Secrets Manager suffixes with independent repository account pins.
+> Protected `test`, `test-preview`, `prod-preview`, `prod` and the installed
+> governance/reconciliation environments remain required. See the
+> [PR57 successor contract](../issue-20-pulumi-esc-ci-config/pr57-successor-verification.md).
+> Historical removal or environment-variable setup instructions below are not
+> the current execution contract.
+
 ## Epic 1: Stack And Discovery Contracts
 
 ### Story 1.1: Add non-secret test and prod stack configs

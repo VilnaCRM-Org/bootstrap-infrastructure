@@ -35,19 +35,24 @@ Docker-backed pull request checks use the same Docker workspace and the same
 
 ## Multi-Account Environments
 
-Issue 18 uses GitHub environments as the account and approval boundary:
+AWS Secrets Manager stores account-local CI configuration in the fixed suffixes
+`test-pr`, `test`, `prod-preview`, and `prod`. Independently pinned repository
+variables `AWS_TEST_ACCOUNT_ID` and `AWS_PROD_ACCOUNT_ID` are validated before
+configuration-role assumption; all returned role/backend/KMS values must agree.
+The protected `test`, `test-preview`, `prod-preview`, `prod`, `governance`,
+`governance-preview`, and `operations-alert-reconcile` environments remain in use.
+Configuration suffixes do not replace approval or main-only branch restrictions.
+The installed trusted main controller validates original comments, current
+permissions, scope, fresh PR head and verified same-head deployment evidence.
+No apply/drift role fallback is permitted.
 
-| GitHub environment | AWS account intent | Workflow use |
-| --- | --- | --- |
-| `test` | Test account | Trusted PR previews, main-branch test applies, test drift |
-| `prod-preview` | Production account with preview-only access | Production preview and production drift |
-| `prod` | Production account with apply access | Production apply after approval |
+The loader reads only the fixed account-local secret and exports validated keys
+without logging the payload. Control roles and secret containers are owned by
+an independently reviewed operator project; the platform consumes references.
+That separate #60 program is not delivered by this alert cutover. Use the
+[AWS Secrets Manager CI cutover manual](aws-secrets-manager-ci-cutover.md).
+Shared state and saved plans retain the existing checkpoint's KMS provider state.
 
-Each environment owns its own `AWS_ACCOUNT_ID`, OIDC role ARNs,
-`PULUMI_BACKEND_URL`, `PULUMI_SECRETS_PROVIDER`, region, and stack list. Shared
-Pulumi backends must use AWS KMS secrets providers via `PULUMI_SECRETS_PROVIDER`
-and stack initialization or migration must pass `--secrets-provider
-"$PULUMI_SECRETS_PROVIDER"`.
 
 Production apply is intentionally split from production preview. The preview job
 first verifies that the requested commit already has a successful `Pulumi Test

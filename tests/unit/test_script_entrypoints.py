@@ -2779,6 +2779,7 @@ def test_render_well_architected_closeout_writes_owner_handoff(
     assert "SECURITY_ACCOUNT_ATTESTATION_EVIDENCE=<path-if-needed>" in text  # nosec B101
     assert "PRODUCTION_DR_OWNER_EVIDENCE=<path-if-needed>" in text  # nosec B101
     assert "SecretString" not in text
+    assert "`operations-alert-reconcile` environments require" in output.read_text()
 
 
 def test_render_well_architected_closeout_handles_clean_and_invalid_inputs(

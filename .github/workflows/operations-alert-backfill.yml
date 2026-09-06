@@ -1,0 +1,248 @@
+name: Operations Alert Canonical Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      stable_event_json:
+        description: SRE-confirmed stable EventBridge JSON object
+        required: true
+        type: string
+      message_count:
+        description: Legacy alert message count represented by this backfill
+        required: true
+        default: '1'
+        type: string
+      queue_name:
+        description: Operations alert queue name
+        required: true
+        default: bootstrap-test-operations-alerts
+        type: string
+      aws_account_id:
+        description: AWS account ID from SRE-confirmed alert metadata
+        required: true
+        default: '891377212104'
+        type: string
+      aws_region:
+        description: Exact AWS region verified by SRE; the workflow checks syntax only
+        required: true
+        default: eu-central-1
+        type: string
+      confirmation:
+        description: Type the documented confirmation sentence
+        required: true
+        type: string
+      sre_confirmation_reference:
+        description: HTTPS URL for the SRE confirmation comment or ticket
+        required: true
+        type: string
+
+concurrency:
+  # Match the installed triage workflow's github.workflow value.
+  group: Operations Alert Issue Triage
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  backfill:
+    if: github.ref == 'refs/heads/main'
+    name: Create Or Update Canonical Alert Issue
+    runs-on: ubuntu-latest
+    environment: operations-alert-reconcile
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      STABLE_EVENT_JSON: ${{ inputs.stable_event_json }}
+      MESSAGE_COUNT: ${{ inputs.message_count }}
+      OPERATIONS_ALERT_QUEUE_NAME: ${{ inputs.queue_name }}
+      AWS_ACCOUNT_ID: ${{ inputs.aws_account_id }}
+      AWS_REGION: ${{ inputs.aws_region }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+      SRE_CONFIRMATION_REFERENCE: ${{ inputs.sre_confirmation_reference }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Create or update canonical operations alert issue
+        shell: bash
+        run: |
+          expected="I confirm these stable fields represent the canonical operations alert stream"
+          if [[ "${CONFIRMATION}" != "${expected}" ]]; then
+            echo "error: confirmation sentence does not match the documented value." >&2
+            exit 1
+          fi
+          if ! sre_reference="$(python3 -I - <<'PYTHON'
+          import os
+          import re
+          import unicodedata
+          from urllib.parse import urlsplit
+
+          raw = os.environ["SRE_CONFIRMATION_REFERENCE"]
+          try:
+              parsed = urlsplit(raw)
+              host = (parsed.hostname or "").encode("idna").decode("ascii")
+              valid_host = len(host) <= 253 and all(
+                  re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", label)
+                  for label in host.removesuffix(".").split(".")
+              )
+              valid = (
+                  parsed.scheme == "https" and valid_host
+                  and parsed.username is None and parsed.password is None
+                  and "?" not in raw and "#" not in raw
+                  and (parsed.port is None or parsed.port > 0)
+                  and not any(
+                      char.isspace() or unicodedata.category(char).startswith("C")
+                      or char in "<>[]()`\\\"'"
+                      for char in raw
+                  )
+              )
+          except ValueError:
+              valid = False
+          if not valid:
+              raise SystemExit(1)
+          print(f"<{raw}>")
+          PYTHON
+          )"; then
+            echo "error: sre_confirmation_reference must be an HTTPS URL with a host, no credentials, query, fragment, controls, whitespace or Markdown delimiters." >&2
+            exit 1
+          fi
+          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
+            echo "error: aws_account_id must be a 12-digit AWS account ID." >&2
+            exit 1
+          fi
+          if [[ ! "${AWS_REGION}" =~ ^[a-z]{2}-[a-z]+-[0-9]$ ]]; then
+            echo "error: aws_region must look like an AWS region." >&2
+            exit 1
+          fi
+          if [[ ! "${MESSAGE_COUNT}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "error: message_count must be a positive integer." >&2
+            exit 1
+          fi
+
+          alerts_json="$(mktemp)"
+          body_file="$(mktemp)"
+          fingerprint_file="$(mktemp)"
+          issue_body_file="$(mktemp)"
+
+          # Use the same duplicate-key rejection as live intake without reserializing.
+          python3 -I - <<'PYTHON'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path("scripts").resolve()))
+          from operations_alert_triage import _nonempty_text, _reject_nonfinite, _unique_object
+
+          try:
+              event = json.loads(
+                  os.environ["STABLE_EVENT_JSON"], object_pairs_hook=_unique_object,
+                  parse_constant=_reject_nonfinite,
+              )
+          except (ValueError, TypeError):
+              print("error: stable_event_json must be duplicate-free valid JSON.", file=sys.stderr)
+              raise SystemExit(1)
+          if isinstance(event, dict) and not all(
+              _nonempty_text(event.get(key)) for key in ("source", "detail-type")
+          ):
+              print("error: source and detail-type must be nonblank, control-free text.", file=sys.stderr)
+              raise SystemExit(1)
+          PYTHON
+
+          printf '%s\n' "${STABLE_EVENT_JSON}" |
+            jq -es '
+              if length != 1 then
+                error("stable_event_json must contain exactly one object")
+              else .[0] end |
+              def has_text($name):
+                (.[$name] // "") | type == "string" and length > 0;
+              if type != "object" then
+                error("stable_event_json must be an object")
+              elif (has_text("source") | not) then
+                error("stable_event_json.source is required")
+              elif ((keys - ["source", "detail-type", "detail", "resources"]) | length > 0) then
+                error("stable_event_json allows only source, detail-type, detail and resources")
+              elif (has_text("detail-type") | not) then
+                error("stable_event_json.detail-type is required")
+              elif (.detail | type != "object") then
+                error("stable_event_json.detail must be an object")
+              elif (has("resources") and (.resources != null) and (.resources | type != "array")) then
+                error("stable_event_json.resources must be null or an array when present")
+              else
+                .
+              end' > /dev/null
+
+          jq -n \
+            --arg reviewed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg stable_event "${STABLE_EVENT_JSON}" \
+            '{
+              Messages: [
+                {
+                  MessageId: "backfill-sre-confirmed",
+                  Attributes: {SentTimestamp: "backfill"},
+                  Body: ({
+                    MessageId: "backfill-sre-confirmed",
+                    ReviewedAt: $reviewed_at,
+                    # Preserve numeric representations for the Python fingerprint parser.
+                    Message: $stable_event
+                  } | tostring)
+                }
+              ]
+            }' > "${alerts_json}"
+
+          python3 scripts/operations_alert_triage.py \
+            --alerts-json "${alerts_json}" \
+            --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
+            --account-id "${AWS_ACCOUNT_ID}" \
+            --region "${AWS_REGION}" \
+            --body-file "${body_file}" \
+            --fingerprint-file "${fingerprint_file}"
+
+          fingerprint="$(cat "${fingerprint_file}")"
+          {
+            sed 's/^The operations alert queue contains 1 message(s)\.$/This backfill contains one synthetic representative event; it does not measure live queue depth./' "${body_file}"
+            printf '\nCanonical backfill: this issue was created from SRE-confirmed stable fields for %s legacy message(s).\n' "${MESSAGE_COUNT}"
+            printf 'SRE confirmation reference: %s\n' "${sre_reference}"
+          } > "${issue_body_file}"
+
+          existing_matches="$(
+            gh issue list \
+              --repo "${GH_REPO}" \
+              --state open \
+              --search "\"${fingerprint}\" in:body" \
+              --limit 2 \
+              --json number,body
+          )"
+          if ! jq -e --arg marker "<!-- operations-alert:fingerprint=${fingerprint} -->" \
+            'all(.[]; (.body | split("\n") | index($marker)) != null)' \
+            <<< "${existing_matches}" > /dev/null; then
+            echo "error: canonical search returned an issue without the exact fingerprint marker." >&2
+            exit 1
+          fi
+          if [[ "$(jq 'length' <<< "${existing_matches}")" -gt 1 ]]; then
+            echo "error: multiple open canonical issues match this fingerprint; reconcile them before retrying." >&2
+            exit 1
+          fi
+          existing_issue="$(jq -r '.[0].number // ""' <<< "${existing_matches}")"
+          if [[ -n "${existing_issue}" ]]; then
+            gh issue comment \
+              "${existing_issue}" \
+              --repo "${GH_REPO}" \
+              --body-file "${issue_body_file}"
+            printf 'Updated canonical operations alert issue #%s for fingerprint %s.\n' \
+              "${existing_issue}" \
+              "${fingerprint}"
+          else
+            issue_url="$(
+              gh issue create \
+                --repo "${GH_REPO}" \
+                --title "Operations alerts queued: canonical backfill (${MESSAGE_COUNT} message(s))" \
+                --body-file "${issue_body_file}"
+            )"
+            printf 'Created canonical operations alert issue: %s\n' "${issue_url}"
+          fi

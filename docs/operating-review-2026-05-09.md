@@ -113,3 +113,13 @@ additional always-on compute is accepted in this review.
 
 Next quarterly sustainability review is due by 2026-08-07 or before any region,
 retention, compute, or catalog expansion change.
+
+## Alert Cutover Source Amendment (2026-09-06)
+
+This May observation remains historical. The successor source groups alerts by
+complete stable fingerprint-v2 metadata and displays the first 10 occurrences
+with an omitted count. See [alert routing evidence](alert-routing-evidence.md)
+for the v1-to-v2 mapping and protected `Operations Alert Canonical Backfill` /
+`Operations Alert Legacy Reconcile` procedures. Record stable SNS/SQS route metadata;
+queue depth remains observation-only metadata, never a durable readiness gate.
+This amendment does not refresh any dated external-control result.

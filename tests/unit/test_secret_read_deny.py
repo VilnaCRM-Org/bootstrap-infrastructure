@@ -70,6 +70,10 @@ def test_config_read_deny_omits_get_secret_value_but_keeps_own_allow() -> None:
     settings = _settings()
     statements = _statements(
         ci_config._ci_config_read_policy(
+            region="eu-central-1",
+            secret_arns=(
+                "arn:aws:secretsmanager:eu-central-1:123456789012:secret:/bootstrap-infrastructure/ci/test-aBc123",
+            ),
             account_id=_ACCOUNT_ID,
             partition=_PARTITION,
             settings=settings,
@@ -82,9 +86,9 @@ def test_config_read_deny_omits_get_secret_value_but_keeps_own_allow() -> None:
     assert deny["Resource"] == "*"  # nosec B101
     # GetSecretValue is EXCLUDED from the Deny (Deny would otherwise void Allow).
     assert "secretsmanager:GetSecretValue" not in deny["Action"]  # nosec B101
-    # Every other leak action IS denied.
+    assert "kms:Decrypt" not in deny["Action"]  # nosec B101
+    # Decrypt has independent context guardrails; other leak actions stay denied.
     for action in (
-        "kms:Decrypt",
         "ssm:GetParameter*",
         "lambda:GetFunction",
         "ec2:GetPasswordData",
@@ -111,6 +115,10 @@ def test_config_read_repo_none_allow_is_byte_identical_to_pre_change() -> None:
     settings = _settings()
     statements = _statements(
         ci_config._ci_config_read_policy(
+            region="eu-central-1",
+            secret_arns=(
+                "arn:aws:secretsmanager:eu-central-1:123456789012:secret:/bootstrap-infrastructure/ci/test-aBc123",
+            ),
             account_id=_ACCOUNT_ID,
             partition=_PARTITION,
             settings=settings,
@@ -142,6 +150,10 @@ def test_config_read_repo_override_scopes_to_other_repo_only() -> None:
     other = "user-service-infrastructure"
     statements = _statements(
         ci_config._ci_config_read_policy(
+            region="eu-central-1",
+            secret_arns=(
+                "arn:aws:secretsmanager:eu-central-1:123456789012:secret:/bootstrap-infrastructure/ci/test-aBc123",
+            ),
             account_id=_ACCOUNT_ID,
             partition=_PARTITION,
             settings=settings,
@@ -390,6 +402,10 @@ def test_new_deny_statements_are_crossguard_exempt_effect_deny() -> None:
 
     config_deny = _statements(
         ci_config._ci_config_read_policy(
+            region="eu-central-1",
+            secret_arns=(
+                "arn:aws:secretsmanager:eu-central-1:123456789012:secret:/bootstrap-infrastructure/ci/test-aBc123",
+            ),
             account_id=_ACCOUNT_ID,
             partition=_PARTITION,
             settings=settings,

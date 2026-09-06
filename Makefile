@@ -67,7 +67,7 @@ GITHUB_REPOSITORY_CONTROLS_PROMOTION_APP_ID ?=
 GITHUB_REPOSITORY_CONTROLS_MODE ?= --dry-run
 DOCSTRING_PATHS          ?= pulumi/app policy scripts/pulumi_ci_guardrails.py
 WILY_TARGETS             ?= pulumi policy scripts
-YAML_LINT_PATHS          ?= .github/workflows .github/actionlint.yaml docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
+YAML_LINT_PATHS          ?= docs/examples/operations-alert-triage-v2.yml .github/workflows .github/actionlint.yaml docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
 MUTATION_TEST_TARGETS    ?= tests/unit/test_environment_component.py tests/unit/test_guardrails.py
 MUTATION_TESTS_DIR       ?= tests/unit
 INTEGRATION_COVERAGE_ENV  = -e COVERAGE_FILE=/workspace/.coverage.integration \
@@ -177,7 +177,10 @@ test-integration-unprivileged: ## Execute credential-free integration contracts.
 	rm -f .coverage.integration .coverage.integration.*
 	$(COMPOSE) run --rm $(INTEGRATION_COVERAGE_ENV) \
 		$(COMPOSE_SERVICE) uv run coverage run --parallel-mode -m pytest -q \
-		tests/integration/test_guardrail_contracts.py
+		tests/integration/test_guardrail_contracts.py \
+		tests/integration/test_backup_alert_acknowledgment.py \
+		tests/integration/test_alert_backfill_fingerprint.py \
+		tests/integration/test_alert_maintenance_workflows.py
 	$(COMPOSE) run --rm -e COVERAGE_FILE=/workspace/.coverage.integration \
 		-e COVERAGE_RCFILE=/workspace/.coveragerc \
 		$(COMPOSE_SERVICE) uv run coverage combine
@@ -247,6 +250,7 @@ test-bandit: ## Lint Python sources for common security hazards.
 
 test-actionlint: ## Lint GitHub Actions workflows with actionlint.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) actionlint -color
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) actionlint -color docs/examples/operations-alert-triage-v2.yml
 
 test-yaml: ## Lint GitHub workflows, Pulumi stacks, and operational YAML.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run yamllint -c .yamllint.yml $(YAML_LINT_PATHS)

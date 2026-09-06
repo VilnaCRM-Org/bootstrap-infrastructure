@@ -600,8 +600,9 @@ def render_closeout_bundle(
             f"`GITHUB_REPOSITORY_CONTROLS_REPO={repo} "
             "GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only "
             "make configure-github-repository-controls`.",
-            "- Confirm `main` requires all PR checks and the `prod` environment "
-            "requires an independent reviewer.",
+            "- Confirm `main` requires all PR checks and the `prod` plus "
+            "`operations-alert-reconcile` environments require an independent "
+            "reviewer.",
             "- After real owner evidence JSON paths exist, set the non-secret "
             "repository Actions variables for hosted evidence runs. Leave any "
             "variable unset until its owner evidence exists.",

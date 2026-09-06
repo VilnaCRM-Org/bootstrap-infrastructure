@@ -38,7 +38,7 @@ We follow a docs-as-code workflow: every guide lives alongside the source and ev
    make start
    ```
 
-5. Configure your AWS credentials (for example via `aws configure`, environment variables, or GitHub Actions secrets).
+5. Authenticate through an approved short-lived AWS profile, verify the account with `aws sts get-caller-identity`, and follow the [CI cutover manual](aws-secrets-manager-ci-cutover.md).
 6. Run a preview from inside the container to validate infrastructure changes:
 
    ```bash
@@ -69,7 +69,8 @@ report-security-account-attestation  Render a non-secret security account attest
 report-production-dr-owner-evidence  Render non-secret production DR owner evidence from collector evidence.
 start             Initialize and start the Pulumi development environment.
 pulumi-preview    Preview infrastructure changes with the policy pack enforced.
-pulumi-up         Apply the current infrastructure plan with the policy pack enforced.
+pulumi-plan       Save infrastructure changes for review with the policy pack enforced.
+pulumi-up-plan    Apply the exact reviewed saved plan.
 pulumi-refresh    Sync the Pulumi stack with live cloud resources.
 pulumi-destroy    Tear down the stack (irreversible; use with caution).
 sh                Open a shell inside the Pulumi container.
@@ -148,11 +149,20 @@ concurrency groups, bounded job timeouts, pinned actions, and a shared
 `make start` bootstrap path so local and GitHub-hosted
 validation stay aligned.
 
-Privileged issue 18 workflows use GitHub environments for account separation:
-`test` for trusted PR preview, test apply, and test drift; `prod-preview` for
-production preview and drift; and protected `prod` for production apply.
-Configure account-local variables, OIDC roles, Pulumi backend URLs, and AWS
-KMS-backed Pulumi secrets providers in the [GitHub Actions Secrets guide](github-actions-secrets.md).
+AWS Secrets Manager stores account-local CI configuration in the fixed suffixes
+`test-pr`, `test`, `prod-preview`, and `prod`. Independently pinned repository
+variables `AWS_TEST_ACCOUNT_ID` and `AWS_PROD_ACCOUNT_ID` are validated before
+configuration-role assumption; all returned role/backend/KMS values must agree.
+The protected `test`, `test-preview`, `prod-preview`, `prod`, `governance`,
+`governance-preview`, and `operations-alert-reconcile` environments remain in use.
+Configuration suffixes do not replace approval or main-only branch restrictions.
+The installed trusted main controller validates original comments, current
+permissions, scope, fresh PR head and verified same-head deployment evidence.
+No apply/drift role fallback is permitted.
+
+See the [AWS Secrets Manager CI cutover manual](aws-secrets-manager-ci-cutover.md)
+and [alert routing evidence](alert-routing-evidence.md) for secret-safe setup,
+protected cleanup and operations-alert reconciliation.
 The PR-comment path accepts `/pulumi test plan`, `/pulumi test up`,
 `/pulumi prod plan`, and `/pulumi prod up`; production comments run the test
 account apply and post-apply drift gates successfully before production starts.
@@ -240,7 +250,7 @@ Continuous integration runs automatically on every pull request. You can also va
 - Use the focused suites when you only need one slice: `make build`, `make test-pulumi`, `make test-repository-fanout`, `make test-policy`, `make test-crossguard`, `make test-quality`, `make test-repo-hygiene`, `make test-unit`, `make test-integration`, `make test-coverage`, `make test-mutation`, `make test-cli`, `make test-security`, `make test-guardrails`.
 - Use `make test-policy` when you are changing guardrails or adding new AWS resource types that should be covered by the policy pack.
 - `make test-mutation` intentionally uses the focused `pulumi/app` unit-test surface by default so the PR mutation check stays fast; override `MUTATION_TEST_TARGETS` or `MUTATION_TESTS_DIR` only when you explicitly need a broader, slower mutation run.
-- `make pulumi-preview` and `make pulumi-up` sync the shared `uv` environment if needed, refresh `policy/.venv`, and then run Pulumi with the repository policy pack enabled.
+- `make pulumi-preview` and `make pulumi-up-plan` sync the shared `uv` environment if needed, refresh `policy/.venv`, and then run Pulumi with the repository policy pack enabled.
 - Run `make test` to execute the faster structural, policy, quality, repo-hygiene, unit, integration, coverage, and CLI checks together after a prerequisite sanity check.
 - Use `make ci-pr` to mirror the non-mutation GitHub pull-request battery, including the prerequisite check, image build, security scans, preview generation, and policy suite.
 - Execute `make ci` to run the full local equivalent of all GitHub checks, including the prerequisite check, image build, and mutation suite.
@@ -249,7 +259,7 @@ Continuous integration runs automatically on every pull request. You can also va
   `GITHUB_TOKEN="$(gh auth token)"` explicitly to the preview-oriented target
   you are running instead of exporting it globally.
 - `make pulumi-preview` to review planned resources before applying.
-- `make pulumi-up` followed by `pulumi stack output` to inspect applied results.
+- `make pulumi-up-plan` followed by `pulumi stack output` to inspect applied results.
 - GitHub Actions mirrors `make ci-pr` through the `Pulumi Local Test Battery` workflow, while mutation remains isolated in `pulumi-mutation.yml`.
 - `Pulumi PR Guardrails` and `Security Scans` also expose their focused Make entrypoints as dedicated CI checks.
 

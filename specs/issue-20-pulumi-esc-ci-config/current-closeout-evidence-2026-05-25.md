@@ -1,0 +1,247 @@
+# Current Closeout Evidence: Issue 20 AWS Secrets Manager CI Configuration
+
+> **Archived May 25 evidence.** Profile availability, issue state and errors below
+> are dated observations, not current status. See the
+> [successor verification](pr57-successor-verification.md) for current scope.
+
+Recorded on 2026-05-25 in the `Europe/Sofia` timezone for branch
+`codex/issue20-pulumi-esc`.
+
+## Audited PR Head
+
+| Field | Value |
+| --- | --- |
+| PR | `https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/57` |
+| Latest implementation code head SHA | `1470d289e910765f7a772806a31819dd428ca717` |
+| Latest implementation code short SHA | `1470d28` |
+| Source of truth | AWS Secrets Manager remains the source of truth for account-local CI values; Pulumi Cloud and Pulumi ESC are not used for CI configuration. |
+| Secret handling | No secret values, `GetSecretValue` responses, decrypted stack outputs, access keys, or tokens were read or recorded. |
+
+## GitHub State
+
+Open repository issues at the time of this audit:
+
+| Issue | State | Current disposition |
+| --- | --- | --- |
+| `#20` | Open | GitOps implementation is present in PR `#57`; live closeout still needs external AWS CI config/AWS setup and successful privileged checks. |
+| `#49` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#50` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#52` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#53` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#54` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#55` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#56` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+| `#58` | Open | Legacy unmarked operations-alert issue; do not close until a canonical fingerprinted issue exists and SRE confirms it is the same alert stream with a sanitized HTTPS confirmation reference. |
+
+Current PR `#57` review state is approved, but merge state is still blocked by
+external AWS setup. The latest audited remote checks have all repo-owned jobs
+green except the two expected privileged AWS setup checks:
+
+- `Preview`
+- `Test Account Evidence`
+
+The prior Pulumi Cloud-era privileged checks failed before AWS-only loading was
+implemented:
+
+```text
+Invalid response from token exchange 400: Bad Request (invalid_request: invalid organization vilnacrm-org)
+```
+
+The AWS-only setup removes that Pulumi Cloud token exchange path. Remaining live
+setup work is limited to valid AWS credentials, AWS Secrets Manager payloads,
+and AWS OIDC role trust. Earlier AWS-only remote failures stopped before AWS
+credentials were requested because the repository variables were still empty:
+
+```text
+config-role-arn must be an AWS IAM role ARN.
+```
+
+The recorded setup configured the non-secret GitHub repository metadata on
+2026-05-25. The complete current inventory has eight variables: the four
+`GitHubCiConfigRead-*` role ARNs, `AWS_TEST_ACCOUNT_ID`, `AWS_PROD_ACCOUNT_ID`,
+`AWS_TEST_REGION` and `AWS_PROD_REGION`. After
+rerunning the failed jobs, both privileged checks advanced to AWS OIDC and now
+fail at test-account role assumption:
+
+```text
+Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity
+```
+
+That current failure proves GitHub can resolve the AWS-only metadata variables,
+but the test account still needs the reviewed Pulumi stack apply or equivalent
+GitOps-controlled IAM trust update before the runner can read the test
+Secrets Manager CI configuration.
+
+The latest implementation code head additionally enforces that direct
+`pulumi up` is disabled whenever `GITHUB_ACTIONS=true`; GitHub apply paths must
+generate and apply a reviewed saved plan with `pulumi-plan` and
+`pulumi-up-plan`.
+
+The same head also removes the silent pull-request fallback from
+`AWS_TEST_PR_CI_CONFIG_ROLE_ARN` to `AWS_TEST_CI_CONFIG_ROLE_ARN`. Pull request
+jobs now select the exact `test-pr` CI configuration in a shell step and fail
+fast if the PR config-read role variable is missing.
+
+The following validation was recorded for the historical implementation head.
+Two saved-plan test names in that record have since changed; the command below
+uses their current equivalents,
+`test_run_up_plan_stack_fails_closed_without_apply_or_lock_recovery` and
+`test_run_up_plan_stack_uses_saved_prod_plan_by_default_in_ci` for the current
+contract. These commands are not a current-head test receipt.
+
+- `uv run pytest tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_fails_closed_without_apply_or_lock_recovery tests/unit/test_script_entrypoints.py::test_run_up_plan_stack_uses_saved_prod_plan_by_default_in_ci tests/unit/test_script_entrypoints.py::test_run_up_stack_does_not_retry_after_lock tests/unit/test_script_entrypoints.py::test_run_pulumi_command_unhandled_apply_failures_return_status -q`
+- `uv run pytest tests/unit/test_script_entrypoints.py -k "run_up_plan_stack or run_up_stack or run_pulumi_command_unhandled_apply_failures_return_status or dispatch_propagates_apply_failures" -q`
+- `uv run pytest tests/unit/test_script_entrypoints.py::test_run_up_stack_does_not_retry_after_lock tests/unit/test_script_entrypoints.py::test_run_up_stack_rejects_direct_apply_in_github_actions tests/unit/test_script_entrypoints.py::test_run_pulumi_command_unhandled_apply_failures_return_status tests/unit/test_script_entrypoints.py::test_run_pulumi_command_dispatch_propagates_apply_failures -q`
+- `uv run pytest tests/pulumi/test_delivery_contracts.py::test_docker_compose_keeps_workspace_and_credentials_contract tests/pulumi/test_delivery_contracts.py::test_aws_ci_loader_reads_secrets_manager_without_pulumi_cloud tests/pulumi/test_delivery_contracts.py::test_multi_account_workflows_use_fixed_aws_ci_config_contracts tests/pulumi/test_delivery_contracts.py::test_multi_account_environment_docs_are_explicit -q`
+- `uv run pytest tests/pulumi/test_delivery_contracts.py::test_makefile_keeps_pulumi_guardrails_secret_safe tests/pulumi/test_project_structure.py::test_issue20_cutover_manual_is_secret_safe_and_actionable -q`
+- `uv run pytest tests/pulumi/test_project_structure.py::test_ci_guardrails_manual_follow_up_completes_aws_ci_cutover tests/pulumi/test_project_structure.py::test_issue20_cutover_manual_is_secret_safe_and_actionable tests/pulumi/test_project_structure.py::test_issue20_closeout_evidence_tracks_external_manual_steps -q`
+- `uv run pytest tests/pulumi/test_ci_guardrails.py::test_well_architected_evidence_workflow_uploads_enforced_reports tests/pulumi/test_delivery_contracts.py::test_multi_account_workflows_use_fixed_aws_ci_config_contracts tests/unit/test_components.py::test_ci_configuration_manages_aws_secret_containers_and_github_read_roles tests/unit/test_mutation_targets.py::test_mutation_target_ci_config_validation_and_lookup_helpers -q`
+- `uv run pytest tests/pulumi/test_ci_guardrails.py::test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs tests/pulumi/test_ci_guardrails.py::test_well_architected_evidence_workflow_uploads_enforced_reports tests/pulumi/test_delivery_contracts.py::test_multi_account_workflows_use_fixed_aws_ci_config_contracts -q`
+- `uv run pytest tests/unit/test_validate_ci_environment.py -q`
+- `uv run ruff check pulumi/infra/ci_config.py tests/pulumi/test_ci_guardrails.py tests/pulumi/test_delivery_contracts.py tests/unit/test_components.py tests/unit/test_mutation_targets.py scripts/validate_ci_environment.py tests/unit/test_validate_ci_environment.py`
+- `uv run ruff check scripts/run_pulumi_command.py tests/unit/test_script_entrypoints.py tests/conftest.py tests/pulumi/test_delivery_contracts.py`
+- `uv run ruff check scripts/run_pulumi_command.py tests/unit/test_script_entrypoints.py tests/pulumi/test_delivery_contracts.py`
+- `make test-actionlint`
+- `make test-yaml`
+- `make test-secrets`
+- `qlty check`
+- `git diff --check`
+
+## AWS Metadata Checks
+
+### Test Account
+
+Local AWS CLI checks for the test account could not prove live state because
+the current Codex process still inherits stale `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` values from its parent environment. `aws configure list`
+therefore reports credential sources as `env` and region `eu-central-1` from
+`~/.aws/config` in this running session. The values were not recorded.
+
+```text
+aws configure list
+access_key: env
+secret_key: env
+region: eu-central-1
+```
+
+The stale shell startup exports were removed from `~/.bashrc`; a dated backup
+was retained locally. When those inherited
+environment variables are explicitly unset for a command, AWS CLI uses the
+shared credentials file and authenticates to production account `933245420672`,
+not the test account `891377212104`:
+
+```text
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN aws sts get-caller-identity --output json
+Account: 933245420672
+Arn: arn:aws:iam::933245420672:user/codex
+```
+
+No test-account profile is configured locally yet. No test-account issue should
+be closed from this workstation until a maintainer configures a dedicated test
+profile and reruns metadata-only verification against account `891377212104`.
+
+### Production Account
+
+AWS MCP metadata checks succeeded for account `933245420672` with caller
+`arn:aws:iam::933245420672:user/codex`.
+
+The production operations queue exists:
+
+| Field | Value |
+| --- | --- |
+| Queue name | `bootstrap-prod-operations-alerts` |
+| Queue ARN | `arn:aws:sqs:eu-central-1:933245420672:bootstrap-prod-operations-alerts` |
+| Region | `eu-central-1` |
+| Visible messages | `1` |
+| Not-visible messages | `0` |
+| Delayed messages | `0` |
+| SSE | `SqsManagedSseEnabled=true` |
+
+The production AWS CI config AWS backing resources for this PR are not present yet:
+
+| Resource | Metadata-only result |
+| --- | --- |
+| `/bootstrap-infrastructure/ci/prod-preview` | `ResourceNotFoundException` from `secretsmanager:DescribeSecret` |
+| `/bootstrap-infrastructure/ci/prod` | `ResourceNotFoundException` from `secretsmanager:DescribeSecret` |
+| `GitHubCiConfigRead-bootstrap-infrastructure-prod-preview` | `NoSuchEntityException` from `iam:GetRole` |
+| `GitHubCiConfigRead-bootstrap-infrastructure-prod` | `NoSuchEntityException` from `iam:GetRole` |
+
+That absence is expected before the reviewed Pulumi `prod` stack has been
+applied. It also proves production privileged checks cannot be treated as
+complete yet.
+
+## Issue 20 Acceptance Status
+
+| Requirement | Current evidence | Status |
+| --- | --- | --- |
+| Fixed privileged AWS Secrets Manager CI secrets | Workflows call `.github/actions/load-aws-ci-env` with fixed suffixes such as `test-pr`, `test`, `prod-preview`, and `prod`; same-repo PR Well-Architected evidence now uses `test-pr` instead of the main-branch `test` trust path. | GitOps implemented |
+| AWS Secrets Manager source of truth | Pulumi creates secret containers and GitHub OIDC read roles; docs/tests state values stay in AWS Secrets Manager and must not be copied into Pulumi config, GitHub variables, workflow logs, or docs. | GitOps implemented |
+| Protected test and preview environments retained | Successor amendment: `test`, `test-preview` and `prod-preview` retain their protected jobs; non-production roles reject `environment:prod`, which protects platform production apply. This amendment does not renew the dated live evidence above. | Successor source contract; live evidence remains dated |
+| Production approval preserved | Protected GitHub `prod` Environment remains the production apply approval boundary. | GitOps implemented; repository-admin verification still required |
+| Protected manual reconcile gate | The repository controls helper now prints, applies, and verifies both `prod` and `operations-alert-reconcile`; the manual reconcile workflow requires `operations-alert-reconcile` and has no AWS/OIDC permission. | GitOps implemented; repository-admin verification still required |
+| Fork PR isolation | Fork paths stay unprivileged and do not open AWS CI config or request AWS credentials. | GitOps implemented |
+| No PR role fallback | Same-repo pull request jobs use `test-pr` and fail fast when `AWS_TEST_PR_CI_CONFIG_ROLE_ARN` is missing instead of falling back to `AWS_TEST_CI_CONFIG_ROLE_ARN`. | GitOps implemented |
+| KMS-backed Pulumi secrets provider | Validators require `awskms://` for shared CI stack configuration. | GitOps implemented |
+| Live AWS secret load and AWS role assumption | Privileged checks require the AWS-only GitHub variables, read roles, and Secrets Manager payloads. | Manual secure setup required |
+| AWS Secrets Manager payloads populated | Pulumi intentionally does not manage `SecretVersion` resources or JSON values. | Manual secure setup required |
+| Legacy GitHub Environment variable cleanup | Cleanup workflow is present and confirmation-gated. | Run manually only after AWS Secrets Manager-backed privileged CI is green |
+
+## Legacy Operations Alert Issues
+
+Issues `#49`, `#50`, `#52` through `#56`, and `#58` all reference
+`bootstrap-test-operations-alerts` in account `891377212104`,
+region `eu-central-1`, and AWS Backup `Backup Job State Change` events. None
+of those issue bodies contains an `operations-alert:fingerprint=` marker.
+
+Live `main` does not yet contain the fingerprint-aware triage workflow or the
+manual reconcile workflow from PR `#57`, and the live repository does not yet
+have an `operations-alert-reconcile` protected Environment. Do not close those
+issues automatically. The safe GitOps path is:
+
+1. Merge and run the fingerprint-aware operations alert triage workflow, or
+   recover a computed fingerprint from retained raw payloads without exposing
+   payload contents.
+2. Establish one canonical issue whose body contains
+   `operations-alert:fingerprint=`.
+3. Have SRE confirm the legacy issues match the same underlying alert stream,
+   including state, vault, plan or rule, and protected resource. Retain a
+   sanitized HTTPS confirmation reference without raw alert payloads,
+   credentials, stack exports, tokens, or private incident notes.
+4. Run **Operations Alert Legacy Reconcile** with the canonical issue and the
+   confirmed legacy issue list plus the SRE confirmation reference.
+
+Closure is safe only after SRE confirms the legacy issue list against the
+canonical fingerprinted issue and records the sanitized confirmation reference.
+
+## Manual Secure Steps Still Required
+
+1. Apply the reviewed Pulumi `test` and `prod` stacks so AWS creates the four
+   Secrets Manager containers and `GitHubCiConfigRead-*` roles.
+2. Populate the four AWS Secrets Manager JSON values in the owning AWS accounts.
+3. Keep the eight non-secret GitHub repository variables aligned with the
+   `GitHubCiConfigRead-*` role ARNs, `AWS_TEST_ACCOUNT_ID`, `AWS_PROD_ACCOUNT_ID`,
+   `AWS_TEST_REGION` and `AWS_PROD_REGION`. They were set at this audit
+   to the deterministic role names expected from this branch, but successful CI
+   still requires the AWS roles and trust policies to exist.
+4. Refresh local test-account AWS CLI credentials and rerun metadata-only
+   verification.
+5. Have a repository administrator run
+   `GITHUB_REPOSITORY_CONTROLS_MODE=--apply make configure-github-repository-controls`
+   and then `GITHUB_REPOSITORY_CONTROLS_MODE=--verify-only make configure-github-repository-controls`
+   so GitHub has both protected `prod` and `operations-alert-reconcile`
+   Environments.
+6. Rerun privileged PR checks and confirm `Preview` and `Test Account Evidence`
+   pass on the current head.
+7. Run GitHub Environment legacy variable cleanup only after AWS Secrets Manager-backed
+   privileged CI is green, then delete the temporary cleanup token.
+8. Close `#20` only after the successful run and reviewer acceptance of the AWS
+   Secrets Manager source-of-truth refinement.
+9. Close `#49`, `#50`, `#52` through `#56`, and `#58` only through the manual legacy
+   reconcile workflow after SRE confirmation, including the required
+   `sre_confirmation_reference`.
+
+## BMAD/BMALPH Notes
+
+Canonical planning artifacts remain under `specs/issue-20-pulumi-esc-ci-config/`.
+Generated BMAD/BMALPH/Ralph framework state remains intentionally uncommitted
+per `AGENTS.md`.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 from pathlib import Path
 
@@ -142,3 +143,58 @@ def test_newest_app_status_controls_reuse(monkeypatch):
     assert not module.matching_promotion_exists(
         "repos/org/repo", "a" * 40, 78, "b" * 40, "governance"
     )
+
+
+def _message(detail):
+    return {
+        "Body": json.dumps(
+            {
+                "Message": json.dumps(
+                    {"source": "aws.backup", "detail-type": "Backup", "detail": detail}
+                )
+            }
+        )
+    }
+
+
+def test_fingerprint_keeps_long_detail():
+    module = importlib.import_module("operations_alert_triage")
+    left = _message({"state": "FAILED", "reason": "x" * 400 + "A"})
+    right = _message({"state": "FAILED", "reason": "x" * 400 + "B"})
+    assert module.message_fingerprint(left) != module.message_fingerprint(right)
+    assert module.message_fingerprint(
+        _message({"reason": "A`B"})
+    ) != module.message_fingerprint(_message({"reason": "A'B"}))
+
+
+def test_large_alert_body_is_bounded():
+    module = importlib.import_module("operations_alert_triage")
+    message = {
+        "MessageId": "😀" * 300,
+        "Body": json.dumps(
+            {
+                "MessageId": "😀" * 300,
+                "Timestamp": "😀" * 300,
+                "Message": json.dumps(
+                    {"source": "😀" * 300, "detail-type": "😀" * 300}
+                ),
+            }
+        ),
+        "Attributes": {"SentTimestamp": "😀" * 300},
+    }
+    context = module.IssueContext(
+        "queue", "123456789012", "eu-central-1", "fingerprint"
+    )
+    body = module.render_issue_body({"Messages": [message] * 500}, context)
+    assert "500 message(s)" in body
+    assert "490 additional occurrences omitted" in body
+    assert len(body.encode()) < 65000
+
+
+def test_fingerprint_version_is_explicit():
+    module = importlib.import_module("operations_alert_triage")
+    payload = module.grouped_alerts_payload(
+        {"Messages": [_message({"state": "FAILED"})]}
+    )
+    assert payload["fingerprintVersion"] == 2
+    assert len(payload["groups"][0]["fingerprint"]) == 24

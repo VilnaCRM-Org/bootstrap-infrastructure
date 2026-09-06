@@ -71,9 +71,9 @@ The PR preview workflow also runs the same policy pack during `make test-preview
 before the destructive diff and IAM validation steps inspect the resulting
 preview artifact.
 
-`make pulumi-preview` and `make pulumi-up` also enable the policy pack by
-default. Before Pulumi starts, the repository checks that the shared
-container-managed `uv` environment contains both `pulumi` and
+`make pulumi-preview`, `make pulumi-plan`, and `make pulumi-up-plan` also
+enable the policy pack by default. Before Pulumi starts, the repository checks
+that the shared container-managed `uv` environment contains both `pulumi` and
 `pulumi-policy`; if the branch changed Python dependencies, the helper resyncs
 the environment from `uv.lock` and repoints `policy/.venv` at that shared
 interpreter.

@@ -1322,19 +1322,57 @@ def test_pr_command_runner_dispatch_inputs_stay_narrow() -> None:
 
 
 def test_multi_account_environment_docs_are_explicit() -> None:
-    """Document that account-specific CI config belongs to GitHub environments."""
+    """Document AWS Secrets Manager-backed fixed CI configuration."""
     docs = "\n".join(
         (
             SECRETS_DOC.read_text(encoding="utf-8"),
             (PROJECT_ROOT / "docs" / "ci-guardrails.md").read_text(encoding="utf-8"),
+            (PROJECT_ROOT / ".github" / "github-actions-secrets.md").read_text(
+                encoding="utf-8"
+            ),
+            (PROJECT_ROOT / "docs" / "ci-architecture.md").read_text(encoding="utf-8"),
+            (PROJECT_ROOT / "docs" / "security-operating-evidence.md").read_text(
+                encoding="utf-8"
+            ),
+            (PROJECT_ROOT / "docs" / "sre-operations.md").read_text(encoding="utf-8"),
+            (PROJECT_ROOT / "docs" / "aws-secrets-manager-ci-cutover.md").read_text(
+                encoding="utf-8"
+            ),
+            (
+                PROJECT_ROOT
+                / "specs"
+                / "issue-20-pulumi-esc-ci-config"
+                / "architecture.md"
+            ).read_text(encoding="utf-8"),
         )
     )
     normalized_docs = docs.lower()
 
-    assert "environment-scoped configuration" in normalized_docs  # nosec B101
+    assert "aws secrets manager" in normalized_docs  # nosec B101
+    assert "githubciconfigread" in normalized_docs  # nosec B101
+    assert "pulumi cloud and pulumi esc are not used" in normalized_docs  # nosec B101
+    assert "pulumi_access_token" in normalized_docs  # nosec B101
+    assert "put-secret-value" in normalized_docs  # nosec B101
+    assert "get-secret-value` for verification" in normalized_docs  # nosec B101
+    assert "aws_test_pr_ci_config_role_arn" in normalized_docs  # nosec B101
+    assert "aws_prod_preview_ci_config_role_arn" in normalized_docs  # nosec B101
+    assert "githubciconfigreadrolearns" in normalized_docs  # nosec B101
+    assert "pulumi-esc.json" not in normalized_docs  # nosec B101
+    assert "pulumi/auth-actions" not in normalized_docs  # nosec B101
+    assert "pulumi/esc-action" not in normalized_docs  # nosec B101
+    assert (  # nosec B101
+        "account-configuration boundary is the pulumi esc environment"
+        not in normalized_docs
+    )
+    assert (  # nosec B101
+        "load privileged account configuration from the correct fixed esc environment"
+        not in normalized_docs
+    )
+    assert "aws secrets manager is the account-configuration boundary" in (  # nosec B101
+        normalized_docs
+    )
+    assert "pulumiescsecretsreadrolearn" not in normalized_docs  # nosec B101
     assert "github environment" in normalized_docs  # nosec B101
-    for environment_name in ("test", "prod-preview", "prod"):
-        assert environment_name in docs  # nosec B101
     for variable_name in (
         "AWS_ACCOUNT_ID",
         "AWS_PREVIEW_ROLE_ARN",
@@ -1344,7 +1382,14 @@ def test_multi_account_environment_docs_are_explicit() -> None:
         "PULUMI_BACKEND_URL",
         "PULUMI_SECRETS_PROVIDER",
     ):
-        assert variable_name in docs
+        assert variable_name in docs  # nosec B101
+    for secret_id in (
+        "/bootstrap-infrastructure/ci/test-pr",
+        "/bootstrap-infrastructure/ci/test",
+        "/bootstrap-infrastructure/ci/prod-preview",
+        "/bootstrap-infrastructure/ci/prod",
+    ):
+        assert secret_id in docs  # nosec B101
 
 
 def test_template_sync_workflows_keep_guardrails() -> None:
@@ -1537,8 +1582,135 @@ def test_sre_docs_map_blocking_ci_checks_back_to_local_commands() -> None:
     assert "awskms://alias/ALIAS_NAME?region=REGION" in operations_doc  # nosec B101
 
 
+def test_staged_operations_alert_triage_uses_stdlib_python_runner() -> None:
+    """Avoid dependency installation for the standard-library-only renderer."""
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / "docs/examples/operations-alert-triage-v2.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    steps = workflow["jobs"]["triage_operations_alerts"]["steps"]
+    triage_step = next(
+        step
+        for step in steps
+        if step.get("name")
+        == "Create or update GitHub issue for queued operations alerts"
+    )
+
+    assert all("pip install" not in step.get("run", "") for step in steps)
+    assert "uv run" not in triage_step["run"]
+    assert "--groups-file" in triage_step["run"]  # nosec B101
+    assert "jq '.groups | length'" in triage_step["run"]  # nosec B101
+    assert "for ((group_index = 0;" in triage_step["run"]  # nosec B101
+    assert "--visibility-timeout 900" in triage_step["run"]  # nosec B101
+    assert triage_step["run"].count("python3 scripts/operations_alert_triage.py") == 2
+
+
+def test_staged_operations_alert_triage_searches_fingerprint_before_queue_delete() -> (
+    None
+):
+    """Update or create canonical alert issues before deleting SQS messages."""
+    workflow = yaml.safe_load(
+        (PROJECT_ROOT / "docs/examples/operations-alert-triage-v2.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    steps = workflow["jobs"]["triage_operations_alerts"]["steps"]
+    triage_run = next(
+        step["run"]
+        for step in steps
+        if step.get("name")
+        == "Create or update GitHub issue for queued operations alerts"
+    )
+
+    group_loop_index = triage_run.index("for ((group_index = 0;")
+    fingerprint_index = triage_run.index('fingerprint="$(cat "${fingerprint_file}")"')
+    search_index = triage_run.index(r'--search "\"${fingerprint}\" in:body"')
+    comment_index = triage_run.index("gh issue comment")
+    create_index = triage_run.index("gh issue create")
+    audit_step = next(
+        step
+        for step in steps
+        if step.get("name") == "Retain sanitized classification audit"
+    )
+    ack_step = next(
+        step
+        for step in steps
+        if step.get("name")
+        == "Acknowledge only successfully triaged or validated benign receipts"
+    )
+    ack_run = ack_step["run"]
+    receipt_index = ack_run.index("jq -r '.Messages[].ReceiptHandle'")
+    delete_index = ack_run.index("aws sqs delete-message")
+    triage_index = next(
+        index for index, step in enumerate(steps) if step.get("id") == "triage"
+    )
+    assert triage_index < steps.index(audit_step) < steps.index(ack_step)
+    assert audit_step["with"]["if-no-files-found"] == "error"
+    assert "success()" in ack_step["if"]
+    assert "operations-acknowledgments.json" in ack_run
+    assert "${alerts_json}" not in ack_run
+    assert "--topic-arn" in triage_run
+    assert "--acknowledgments-file" in triage_run
+    assert "--audit-file" in triage_run
+    assert "quarantine_count" in ack_run and "exit 1" in ack_run
+
+    assert group_loop_index < search_index  # nosec B101
+    assert fingerprint_index < search_index  # nosec B101
+    assert search_index < comment_index  # nosec B101
+    assert search_index < create_index
+    assert receipt_index < delete_index  # nosec B101
+    assert '--repo "${GITHUB_REPOSITORY_NAME}"' in triage_run  # nosec B101
+    assert "--state open" in triage_run  # nosec B101
+    assert "--json number,body" in triage_run  # nosec B101
+    assert "--limit 2" in triage_run  # nosec B101
+    ambiguity_index = triage_run.index("multiple open canonical issues")
+    assert ambiguity_index < triage_run.index("gh issue comment")  # nosec B101
+    assert ambiguity_index < triage_run.index("gh issue create")  # nosec B101
+    assert triage_run.index("without the exact fingerprint marker") < comment_index
+    assert 'existing_matches="$(' in triage_run  # nosec B101
+    assert 'if [[ -n "${existing_issue}" ]]; then' in triage_run  # nosec B101
+    assert '--body-file "${body_file}"' in triage_run  # nosec B101
+    assert (  # nosec B101
+        '--title "Operations alerts queued: ${group_alert_count} message(s)"'
+        in triage_run
+    )
+    assert triage_run.count("aws sqs delete-message") == 0
+    assert ack_run.count("aws sqs delete-message") == 1  # nosec B101
+
+
+def test_operations_alert_backfill_requires_protected_manual_confirmation() -> None:
+    """Backfilled canonical alert issues must be protected and fingerprinted."""
+    workflow = yaml.safe_load(
+        (WORKFLOWS_DIR / "operations-alert-backfill.yml").read_text(encoding="utf-8")
+    )
+    triggers = _triggers(workflow)
+    job = workflow["jobs"]["backfill"]
+    run = job["steps"][1]["run"]
+
+    assert "workflow_dispatch" in triggers  # nosec B101
+    assert len(triggers["workflow_dispatch"]["inputs"]) <= 10  # nosec B101
+    assert "stable_event_json" in triggers["workflow_dispatch"]["inputs"]  # nosec B101
+    assert job["environment"] == "operations-alert-reconcile"  # nosec B101
+    assert workflow["permissions"] == {"contents": "read", "issues": "write"}  # nosec B101
+    assert "id-token" not in workflow["permissions"]  # nosec B101
+    assert job["steps"][0]["uses"] == (  # nosec B101
+        "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5"
+    )
+    assert (  # nosec B101
+        "I confirm these stable fields represent the canonical operations alert stream"
+        in run
+    )
+    assert "sre_confirmation_reference must be an HTTPS URL" in run  # nosec B101
+    assert "stable_event_json.source is required" in run  # nosec B101
+    assert "python3 scripts/operations_alert_triage.py" in run  # nosec B101
+    assert r'--search "\"${fingerprint}\" in:body"' in run  # nosec B101
+    assert "gh issue create" in run  # nosec B101
+    assert "gh issue comment" in run  # nosec B101
+
+
 def test_triage_cutover_preserves_existing_handler():
-    """Only configuration loading changes; the existing queue handler stays exact."""
+    """Staging must preserve the complete installed scheduled v1 workflow."""
     import hashlib
 
     source = (
@@ -1550,4 +1722,17 @@ def test_triage_cutover_preserves_existing_handler():
     assert (
         hashlib.sha256(handler.encode()).hexdigest()
         == "f0a3613d5ca32286716dd50db196498122ad9840d80c46b744345040a462430d"
+    )
+
+    assert hashlib.sha256(source.encode()).hexdigest() == (
+        "7493923443846f089a7d9c21f1f881df9a36a567bdc7e297273b147aef86ae71"
+    )
+    staged = PROJECT_ROOT / "docs/examples/operations-alert-triage-v2.yml"
+    assert staged.is_file()
+    assert not (WORKFLOWS_DIR / staged.name).exists()
+    makefile = (PROJECT_ROOT / "Makefile").read_text()
+    assert "actionlint -color docs/examples/operations-alert-triage-v2.yml" in makefile
+    assert (
+        "YAML_LINT_PATHS          ?= docs/examples/operations-alert-triage-v2.yml"
+        in makefile
     )
