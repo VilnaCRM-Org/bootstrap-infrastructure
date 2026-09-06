@@ -1,7 +1,8 @@
 name: Load AWS Secrets Manager CI environment
 description: >-
   Assumes a GitHub OIDC AWS config-read role, loads CI configuration from
-  AWS Secrets Manager, and validates required deployment variables.
+  AWS Secrets Manager, and validates required deployment variables in the
+  commercial aws partition; GovCloud, China, and ISO partitions are unsupported.
 inputs:
   environment:
     description: Fixed CI configuration suffix such as test-pr, test, prod-preview, or prod.
@@ -11,7 +12,7 @@ inputs:
     required: false
     default: "Pulumi deployment"
   required-keys:
-    description: Newline-delimited environment variables that must exist in the JSON secret.
+    description: Newline- or comma-delimited environment variables that must exist in the JSON secret.
     required: true
   config-role-arn:
     description: Non-secret AWS IAM role ARN trusted by GitHub OIDC to read this CI config secret.
@@ -20,7 +21,7 @@ inputs:
     description: Independently configured AWS account ID for this deployment environment.
     required: true
   aws-region:
-    description: AWS region containing the AWS Secrets Manager CI config secret.
+    description: Commercial AWS region containing the AWS Secrets Manager CI config secret.
     required: true
 outputs:
   aws-account-id:
@@ -61,6 +62,7 @@ runs:
       run: |
         set -euo pipefail
         python3 -I - <<'PY'
+        import ipaddress
         import os
         import re
         import sys
@@ -72,13 +74,13 @@ runs:
             sys.exit(1)
 
         role_arn = os.environ["CI_CONFIG_ROLE_ARN"].strip()
-        role_match = re.fullmatch(r"arn:aws:iam::(\d{12}):role/[A-Za-z0-9+=,.@_/-]+", role_arn)
+        role_match = re.fullmatch(r"arn:aws:iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+", role_arn)
         if not role_match:
             print("config-role-arn must be an AWS IAM role ARN.", file=sys.stderr)
             sys.exit(1)
 
         expected_account_id = os.environ["CI_CONFIG_EXPECTED_ACCOUNT_ID"].strip()
-        if not re.fullmatch(r"\d{12}", expected_account_id):
+        if not re.fullmatch(r"[0-9]{12}", expected_account_id):
             print("expected-account-id must be a twelve-digit AWS account ID.", file=sys.stderr)
             sys.exit(1)
         if role_match.group(1) != expected_account_id:
@@ -86,19 +88,35 @@ runs:
             sys.exit(1)
 
         region = os.environ["CI_CONFIG_AWS_REGION"].strip()
-        if not re.fullmatch(r"[a-z]{2}-[a-z]+-\d", region):
-            print("aws-region must look like an AWS region, for example us-east-1.", file=sys.stderr)
+        if not re.fullmatch(r"(?!cn-)[a-z]{2}-[a-z]+-[0-9]+", region):
+            print("aws-region must be a commercial AWS region, for example us-east-1.", file=sys.stderr)
             sys.exit(1)
 
         repository = os.environ.get("GITHUB_REPOSITORY", "")
         if "/" not in repository:
             print("GITHUB_REPOSITORY must be present.", file=sys.stderr)
             sys.exit(1)
-        repo_name = repository.split("/", 1)[1]
-        repo_slug = re.sub(r"[^a-z0-9-]+", "-", repo_name.lower()).strip("-")
-        if not repo_slug:
-            print("Unable to derive repository slug for CI secret ID.", file=sys.stderr)
+        repo_name = repository.split("/", 1)[1].strip().lower()
+        try:
+            address = ipaddress.ip_address(repo_name)
+        except ValueError:
+            address = None
+        # Match BootstrapSettings.sanitize_bucket_component, then the CI
+        # project's final dot-to-hyphen conversion. Do not import PR code here.
+        repo_component = re.sub(r"[^a-z0-9.-]", "-", repo_name)
+        repo_component = re.sub(r"\.{2,}", ".", repo_component)
+        repo_component = re.sub(r"-{2,}", "-", repo_component).strip(".-")
+        if (
+            address is not None
+            or re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}", repo_name)
+            or re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}", repo_component)
+            or not repo_component
+            or len(repo_component) > 63
+            or re.search(r"\.-|-\.", repo_component)
+        ):
+            print("Unable to derive canonical repository slug for CI secret ID.", file=sys.stderr)
             sys.exit(1)
+        repo_slug = repo_component.replace(".", "-")
 
         secret_id = f"/{repo_slug}/ci/{suffix}"
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
