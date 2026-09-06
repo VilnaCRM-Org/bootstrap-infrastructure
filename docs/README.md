@@ -70,7 +70,7 @@ report-production-dr-owner-evidence  Render non-secret production DR owner evide
 start             Initialize and start the Pulumi development environment.
 pulumi-preview    Preview infrastructure changes with the policy pack enforced.
 pulumi-plan       Save infrastructure changes for review with the policy pack enforced.
-pulumi-up-plan     Apply the exact reviewed saved plan.
+pulumi-up-plan    Apply the exact reviewed saved plan.
 pulumi-refresh    Sync the Pulumi stack with live cloud resources.
 pulumi-destroy    Tear down the stack (irreversible; use with caution).
 sh                Open a shell inside the Pulumi container.

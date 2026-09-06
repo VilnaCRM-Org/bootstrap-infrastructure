@@ -58,15 +58,17 @@ local AWS CI action through GitHub OIDC.
 ## Acceptance Criteria
 
 - Privileged workflows load one fixed AWS Secrets Manager CI secret through a
-  local composite action and never derive the suffix from PR/comment payloads.
+  trusted pinned composite action and never derive the suffix from PR/comment payloads.
 - Workflows keep only the minimal repository variables needed to locate the
   account-local config-read roles and regions; account-local AWS values move to
-  AWS Secrets Manager, and workflows do not use GitHub `test` or `prod-preview`
-  deployment environments or `secrets.PULUMI_ACCESS_TOKEN`.
-- Production apply jobs are the only privileged jobs bound to GitHub
-  `environment: prod`.
+  AWS Secrets Manager. Protected `test`, `test-preview`, `prod-preview` and
+  `prod` deployment environments remain in use; CI configuration does not use
+  `secrets.PULUMI_ACCESS_TOKEN`.
+- Production mutation jobs require the protected GitHub `prod` environment;
+  preview jobs retain their separate protected preview environments.
 - Pulumi component tests prove non-production automation roles do not trust
-  `environment:test` and production roles still trust `environment:prod`.
+  `environment:prod`; test roles retain their intended `test`/`test-preview`
+  subjects, and production apply roles retain `environment:prod`.
 - Operations alert triage comments on an existing open canonical issue when a
   stable alert fingerprint already exists.
 - Operator documentation describes AWS Secrets Manager-backed CI keys, OIDC

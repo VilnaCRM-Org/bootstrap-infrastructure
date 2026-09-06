@@ -222,7 +222,8 @@ AWS Secrets Manager stores account-local CI configuration in the fixed suffixes
 variables `AWS_TEST_ACCOUNT_ID` and `AWS_PROD_ACCOUNT_ID` are validated before
 configuration-role assumption; all returned role/backend/KMS values must agree.
 The protected `test`, `test-preview`, `prod-preview`, `prod`, `governance`,
-`governance-preview`, and `operations-alert-reconcile` environments remain in use.
+`governance-preview`, `operations-alert-reconcile`, and the `governance-evidence`
+evidence environment remain in use.
 Configuration suffixes do not replace approval or main-only branch restrictions.
 The installed trusted main controller validates original comments, current
 permissions, scope, fresh PR head and verified same-head deployment evidence.

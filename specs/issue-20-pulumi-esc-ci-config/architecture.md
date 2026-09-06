@@ -86,10 +86,14 @@ Production apply roles trust only:
 
 - `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod`
 
-Trust conditions also bind
-`token.actions.githubusercontent.com:job_workflow_ref` to the workflow files
-that need the role. The operations alert triage role trusts only
-`operations-alert-triage.yml@refs/heads/main`.
+The ordinary alert workflow does not use a reusable-workflow
+`job_workflow_ref` claim. The alert policy helper in `automation.py` binds the
+ordinary `workflow` claim to `Operations Alert Issue Triage`, together with
+`refs/heads/main`, repository and immutable repository/owner identity. The
+operator-owned triage role in `ci_bootstrap.py` currently binds audience,
+repository, main ref and immutable identity; it does not add that workflow-name
+condition. Verify the actual consumed role policy before activating v2, and do
+not infer a workflow-path restriction from its name.
 
 ## Operations Alert Dedupe
 

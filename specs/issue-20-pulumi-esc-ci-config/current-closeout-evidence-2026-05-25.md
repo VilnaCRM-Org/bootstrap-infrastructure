@@ -117,8 +117,8 @@ secret_key: env
 region: eu-central-1
 ```
 
-The stale shell startup exports were removed from `~/.bashrc`; backup:
-`/home/kravtsov/.bashrc.codex-backup-20260525171555`. When those inherited
+The stale shell startup exports were removed from `~/.bashrc`; a dated backup
+was retained locally. When those inherited
 environment variables are explicitly unset for a command, AWS CLI uses the
 shared credentials file and authenticates to production account `933245420672`,
 not the test account `891377212104`:
