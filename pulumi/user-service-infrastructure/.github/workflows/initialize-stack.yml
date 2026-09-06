@@ -1,0 +1,108 @@
+name: Initialize Service Stack
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Governed backend stack to initialize (no resource update)
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-stack-initialization-${{ inputs.environment }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  INIT_ENVIRONMENT: ${{ inputs.environment }}
+  PULUMI_SKIP_UPDATE_CHECK: "true"
+
+jobs:
+  preflight:
+    permissions:
+      contents: read
+      actions: read
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      account_id: ${{ steps.target.outputs.account_id }}
+      config_role: ${{ steps.target.outputs.config_role }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Resolve the selected account without cross-account fallback
+        id: target
+        env:
+          TEST_ACCOUNT_ID: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          PROD_ACCOUNT_ID: ${{ vars.AWS_PROD_ACCOUNT_ID }}
+          TEST_CONFIG_ROLE: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          PROD_CONFIG_ROLE: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
+        run: |
+          case "${INIT_ENVIRONMENT}" in
+            test) account_id="${TEST_ACCOUNT_ID}"; config_role="${TEST_CONFIG_ROLE}" ;;
+            prod) account_id="${PROD_ACCOUNT_ID}"; config_role="${PROD_CONFIG_ROLE}" ;;
+            *) echo "Invalid initialization environment" >&2; exit 1 ;;
+          esac
+          [[ "${account_id}" =~ ^[0-9]{12}$ ]] || { echo "Missing or invalid selected account" >&2; exit 1; }
+          [[ "${config_role}" =~ ^arn:aws:iam::${account_id}:role/[A-Za-z0-9+=,.@_/-]+$ ]] || { echo "Missing or mismatched selected config role" >&2; exit 1; }
+          printf 'account_id=%s\nconfig_role=%s\n' "${account_id}" "${config_role}" >> "${GITHUB_OUTPUT}"
+      - name: Verify protected environments and trusted initialization context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INIT_ACCOUNT_ID: ${{ steps.target.outputs.account_id }}
+        run: python3 scripts/initialize_service_stack.py verify
+
+  initialize:
+    needs: preflight
+    if: github.ref == 'refs/heads/main'
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      INIT_ACCOUNT_ID: ${{ needs.preflight.outputs.account_id }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Load account-local governed configuration
+        id: config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: ${{ inputs.environment }}
+          config-role-arn: ${{ needs.preflight.outputs.config_role }}
+          expected-account-id: ${{ needs.preflight.outputs.account_id }}
+          aws-region: eu-central-1
+          purpose: Explicit backend-only stack initialization
+          required-keys: AWS_ACCOUNT_ID,AWS_APPLY_ROLE_ARN
+      - name: Assume gated apply role in the independently pinned account
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.config.outputs.aws-apply-role-arn }}
+          allowed-account-ids: ${{ needs.preflight.outputs.account_id }}
+          aws-region: eu-central-1
+      - name: Build pinned runtime
+        run: make start
+      - name: Select existing stack or initialize confirmed absent stack
+        run: make initialize-stack
+      - name: Upload initialization receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: stack-initialization-${{ inputs.environment }}-${{ github.sha }}
+          path: .artifacts/stack-initialization.json
+          if-no-files-found: error

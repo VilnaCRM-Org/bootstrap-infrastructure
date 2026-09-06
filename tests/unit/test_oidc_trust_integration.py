@@ -202,7 +202,7 @@ def test_legacy_deploy_requires_protected_environment_and_main(environment):
     )
 
 
-@pytest.mark.parametrize("project", ["github-ci-bootstrap"])
+@pytest.mark.parametrize("project", ["github-ci-bootstrap", "governance"])
 @pytest.mark.parametrize("missing", ["githubRepositoryId", "githubRepositoryOwnerId"])
 def test_live_entrypoints_require_identity_before_any_resource(
     monkeypatch, project, missing
@@ -237,7 +237,7 @@ def test_live_entrypoints_require_identity_before_any_resource(
     assert missing in required
 
 
-@pytest.mark.parametrize("project", ["github-ci-bootstrap"])
+@pytest.mark.parametrize("project", ["github-ci-bootstrap", "governance"])
 @pytest.mark.parametrize("missing", ["repository_id", "repository_owner_id"])
 def test_live_entrypoints_reject_unpinned_catalog_before_allocating(
     monkeypatch, project, missing

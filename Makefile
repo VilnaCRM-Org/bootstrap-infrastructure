@@ -127,27 +127,27 @@ publish-pulumi-preview-summary: ## Generate Pulumi preview artifacts and publish
 
 pulumi-preview: ## Preview infrastructure changes from inside the Pulumi container.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
-		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py preview
+		$(COMPOSE_SERVICE) uv run --frozen python ./scripts/run_pulumi_command.py preview
 
 pulumi-plan: ## Save a reviewed Pulumi update plan for the selected stack.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
-		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py plan
+		$(COMPOSE_SERVICE) uv run --frozen python ./scripts/run_pulumi_command.py plan
 
 pulumi-up: ## Apply directly for local/admin use only; GitHub Actions must use pulumi-up-plan.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
-		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py up
+		$(COMPOSE_SERVICE) uv run --frozen python ./scripts/run_pulumi_command.py up
 
 pulumi-up-plan: ## Apply a saved Pulumi update plan for the selected stack.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
-		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py up-plan
+		$(COMPOSE_SERVICE) uv run --frozen python ./scripts/run_pulumi_command.py up-plan
 
 pulumi-refresh: ## Sync the Pulumi stack with live cloud resources.
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
-		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py refresh
+		$(COMPOSE_SERVICE) uv run --frozen python ./scripts/run_pulumi_command.py refresh
 
 pulumi-destroy: ## Tear down the Pulumi stack (irreversible; use with caution).
 	@$(COMPOSE) run --rm $(COMPOSE_GITHUB_TOKEN) $(COMPOSE_PULUMI_ENV) \
-		$(COMPOSE_SERVICE) $(REPO_PYTHON) ./scripts/run_pulumi_command.py destroy
+		$(COMPOSE_SERVICE) uv run --frozen python ./scripts/run_pulumi_command.py destroy
 
 sh: ## Open a shell inside the Pulumi container.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) sh

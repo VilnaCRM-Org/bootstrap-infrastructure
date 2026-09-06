@@ -8,6 +8,7 @@ from .bootstrap_settings import BootstrapSettings
 from .ci_bootstrap import GitHubCiBootstrap, GitHubCiBootstrapArgs
 from .ci_config import CiConfiguration, CiConfigurationArgs
 from .cost_controls import CostControlInputs, CostControls
+from .governance import GovernanceStack, GovernanceStackArgs, RepoGovernance
 from .logging_bucket import CentralLoggingBuckets
 from .managed_repository import ManagedRepository
 from .operations_monitoring import OperationsMonitoring
@@ -27,6 +28,9 @@ __all__ = (
     "CostControlInputs",
     "CostControls",
     "GitHubAutomation",
+    "GovernanceStack",
+    "GovernanceStackArgs",
+    "RepoGovernance",
     "CentralLoggingBuckets",
     "ManagedRepository",
     "ManagedRepositoryCatalog",

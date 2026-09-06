@@ -251,8 +251,13 @@ def test_metadata_errors_do_not_expose_payloads(setup, payload, code, capsys):
         ),
     ],
 )
-def test_invalid_live_metadata_rejects_before_operation(setup, area, change):
+@pytest.mark.parametrize("empty_inventory", [False, True])
+def test_invalid_live_metadata_rejects_before_operation(
+    setup, area, change, empty_inventory
+):
     module, _, context, values, *_ = setup
+    if empty_inventory:
+        values["export"]["deployment"]["resources"] = []
     values[area] = change
     with pytest.raises(module.StackConfigError):
         with module.prepared_stack_configuration(context, "test"):
@@ -268,8 +273,13 @@ def test_invalid_live_metadata_rejects_before_operation(setup, area, change):
         {"secrets_providers": {"type": "cloud", "state": None}},
     ],
 )
-def test_pending_or_absent_existing_cloud_provider_rejects(setup, change):
+@pytest.mark.parametrize("empty_inventory", [False, True])
+def test_pending_or_absent_existing_cloud_provider_rejects(
+    setup, change, empty_inventory
+):
     module, _, context, values, *_ = setup
+    if empty_inventory:
+        values["export"]["deployment"]["resources"] = []
     values["export"]["deployment"].update(change)
     with pytest.raises(module.StackConfigError):
         with module.prepared_stack_configuration(context, "test"):
@@ -285,8 +295,13 @@ def test_pending_or_absent_existing_cloud_provider_rejects(setup, change):
         {"encryptedkey": "%%%"},
     ],
 )
-def test_provider_mismatch_or_missing_encrypted_key_never_generates_key(setup, change):
+@pytest.mark.parametrize("empty_inventory", [False, True])
+def test_provider_mismatch_or_missing_encrypted_key_never_generates_key(
+    setup, change, empty_inventory
+):
     module, _, context, values, calls, _ = setup
+    if empty_inventory:
+        values["export"]["deployment"]["resources"] = []
     values["export"]["deployment"]["secrets_providers"]["state"].update(change)
     with pytest.raises(module.StackConfigError):
         with module.prepared_stack_configuration(context, "test"):
@@ -310,10 +325,13 @@ def test_provider_mismatch_or_missing_encrypted_key_never_generates_key(setup, c
         },
     ],
 )
+@pytest.mark.parametrize("empty_inventory", [False, True])
 def test_kms_key_identity_rejects_foreign_account_region_or_disabled_key(
-    setup, metadata
+    setup, metadata, empty_inventory
 ):
     module, _, context, values, *_ = setup
+    if empty_inventory:
+        values["export"]["deployment"]["resources"] = []
     values["kms"] = {"KeyMetadata": metadata}
     with pytest.raises(module.StackConfigError, match="KMS key"):
         with module.prepared_stack_configuration(context, "test"):
@@ -362,8 +380,11 @@ def test_tracked_configuration_provider_conflict_is_not_silently_rewritten(
     assert path.read_bytes() == original
 
 
-def test_checkpoint_change_during_export_is_rejected(setup):
+@pytest.mark.parametrize("empty_inventory", [False, True])
+def test_checkpoint_change_during_export_is_rejected(setup, empty_inventory):
     module, _, context, values, *_ = setup
+    if empty_inventory:
+        values["export"]["deployment"]["resources"] = []
     original = context.runner
     count = 0
 
@@ -381,8 +402,13 @@ def test_checkpoint_change_during_export_is_rejected(setup):
             pytest.fail("unexpected yield")
 
 
-def test_separate_jobs_derive_same_existing_key_and_bind_replay(setup, monkeypatch):
-    module, command, context, _, calls, configs = setup
+@pytest.mark.parametrize("empty_inventory", [False, True])
+def test_separate_jobs_derive_same_existing_key_and_bind_replay(
+    setup, monkeypatch, empty_inventory
+):
+    _, command, context, values, calls, configs = setup
+    if empty_inventory:
+        values["export"]["deployment"]["resources"] = []
     monkeypatch.setattr(
         command,
         "_write_preview_summary",
@@ -405,10 +431,13 @@ def test_separate_jobs_derive_same_existing_key_and_bind_replay(setup, monkeypat
 @pytest.mark.parametrize(
     "change", ["missing-binding", "key", "version", "config", "retarget-key"]
 )
+@pytest.mark.parametrize("empty_inventory", [False, True])
 def test_replay_rejects_stale_or_tampered_provider_before_up(
-    setup, monkeypatch, change
+    setup, monkeypatch, change, empty_inventory
 ):
     module, command, context, values, calls, _ = setup
+    if empty_inventory:
+        values["export"]["deployment"]["resources"] = []
     monkeypatch.setattr(
         command,
         "_write_preview_summary",
@@ -459,3 +488,75 @@ def test_main_reports_safe_configuration_failure(setup, monkeypatch, capsys):
     monkeypatch.setattr(command, "_login_and_prepare", lambda *args: None)
     assert command.main(["preview"]) == 1
     assert "AWS caller account differs" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("omit_resources", [False, True])
+def test_explicitly_initialized_empty_checkpoint_reuses_existing_key(
+    setup, omit_resources
+):
+    module, _, context, values, calls, _ = setup
+    deployment = values["export"]["deployment"]
+    deployment["resources"] = []
+    if omit_resources:
+        deployment.pop("resources")
+    original = (context.pulumi_dir / "Pulumi.test.yaml").read_bytes()
+    with module.prepared_stack_configuration(context, "test") as prepared:
+        config = yaml.safe_load(prepared.config_file.read_text())
+        assert (
+            config["encryptedkey"]
+            == deployment["secrets_providers"]["state"]["encryptedkey"]
+        )
+        assert prepared.provider_identity["checkpointVersionId"] == "version-1"
+        assert prepared.provider_identity["project"] == "example"
+        assert prepared.provider_identity["stack"] == "test"
+        assert prepared.provider_identity["accountId"] == "123456789012"
+        assert prepared.provider_identity["backendUrl"] == context.backend_url
+        assert prepared.config_file.stat().st_mode & 0o777 == 0o600
+    assert (context.pulumi_dir / "Pulumi.test.yaml").read_bytes() == original
+    assert not any(
+        operation in call
+        for call in calls
+        for operation in ("init", "import", "up", "encrypt", "generate-data-key")
+    )
+
+
+@pytest.mark.parametrize(
+    "resources",
+    [
+        None,
+        {},
+        False,
+        "empty",
+        [{"urn": "urn:pulumi:test::example::aws:s3/bucket:Bucket::child"}],
+        [{"urn": "urn:pulumi:test::example::pulumi:pulumi:Stack::wrong-root"}],
+        [
+            {"urn": "urn:pulumi:test::example::pulumi:pulumi:Stack::example-test"},
+            {"urn": "urn:pulumi:prod::example::aws:s3/bucket:Bucket::foreign"},
+        ],
+    ],
+)
+def test_nonempty_or_malformed_inventory_retains_identity_checks(setup, resources):
+    module, _, context, values, *_ = setup
+    values["export"]["deployment"]["resources"] = resources
+    with pytest.raises(module.StackConfigError, match="Checkpoint project"):
+        with module.prepared_stack_configuration(context, "test"):
+            pytest.fail("unexpected yield")
+
+
+def test_missing_checkpoint_never_becomes_empty_initialization_fallback(setup):
+    module, _, context, _, calls, _ = setup
+    original = context.runner
+
+    def runner(argv, **kwargs):
+        if argv[:2] == ["aws", "s3api"]:
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 254, "", "NoSuchKey")
+        return original(argv, **kwargs)
+
+    with pytest.raises(module.StackConfigError):
+        with module.prepared_stack_configuration(
+            replace(context, runner=runner), "test"
+        ):
+            pytest.fail("unexpected yield")
+    assert not any(call[0] == "pulumi" for call in calls)
+    assert not any("encrypt" in call or "generate-data-key" in call for call in calls)

@@ -11,6 +11,8 @@ from infra.github_identity import (
     identity_conditions,
     normalize_identity,
 )
+from infra.governance import RepoGovernance
+from infra.managed_repository import ManagedRepository
 from infra.repository_catalog import ManagedRepositoryCatalog
 from jsonschema import Draft202012Validator
 
@@ -205,6 +207,41 @@ def test_committed_catalogs_pin_verified_public_repository_ids():
     root = Path(__file__).parents[2] / "pulumi"
     for filename, expected in [
         ("repositories.bootstrap.json", "1098568429"),
+        ("repositories.governance.json", REPOSITORY_ID),
     ]:
         repo = ManagedRepositoryCatalog.load_from_json_file(str(root / filename))[0]
         assert (repo.repository_id, repo.repository_owner_id) == (expected, OWNER_ID)
+
+
+def test_repo_rescope_never_inherits_bootstrap_identity():
+    """Service roles must use catalog IDs, never the platform repository's IDs."""
+    bootstrap = settings(
+        repoSlug="bootstrap-infrastructure",
+        githubRepositoryId="1098568429",
+        githubRepositoryOwnerId=OWNER_ID,
+    )
+    service = ManagedRepository(
+        "user-service-infrastructure",
+        "main",
+        repository_id=REPOSITORY_ID,
+        repository_owner_id=OWNER_ID,
+    )
+    scoped = RepoGovernance._repo_settings(bootstrap, service)
+    assert (
+        scoped.repo,
+        scoped.github_repository_id,
+        scoped.github_repository_owner_id,
+    ) == (service.name, REPOSITORY_ID, OWNER_ID)
+    legacy = RepoGovernance._repo_settings(
+        bootstrap, ManagedRepository("legacy-infrastructure", "main")
+    )
+    assert legacy.github_repository_id is None
+    assert legacy.github_repository_owner_id is None
+    same = RepoGovernance._repo_settings(
+        bootstrap, ManagedRepository("bootstrap-infrastructure", "main")
+    )
+    assert same.github_branch == "main"
+    assert same.github_repository_id == bootstrap.github_repository_id
+    assert same.github_repository_owner_id == bootstrap.github_repository_owner_id
+    override = RepoGovernance._repo_settings(scoped, service)
+    assert override.github_repository_id == REPOSITORY_ID

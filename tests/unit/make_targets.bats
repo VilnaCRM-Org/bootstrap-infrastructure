@@ -191,7 +191,7 @@ EOF
   assert_compose_env_file
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
-  [[ "$output" == *"./scripts/run_pulumi_command.py preview"* ]]
+  [[ "$output" == *"uv run --frozen python ./scripts/run_pulumi_command.py preview"* ]]
   assert_pulumi_secrets_provider_passthrough
 }
 
@@ -201,7 +201,7 @@ EOF
   run make -n PULUMI_DIR="$pulumi_dir" pulumi-preview
   [ "$status" -eq 0 ]
   [[ "$output" == *"-e PULUMI_DIR=\"$pulumi_dir\""* ]]
-  [[ "$output" == *"./scripts/run_pulumi_command.py preview"* ]]
+  [[ "$output" == *"uv run --frozen python ./scripts/run_pulumi_command.py preview"* ]]
 }
 
 @test "make pulumi-plan saves a deployment plan inside container" {
@@ -211,7 +211,7 @@ EOF
   assert_pulumi_secrets_provider_passthrough
   [[ "$output" == *"-e PULUMI_PLAN_DIR=\".artifacts/pulumi-plan\""* ]]
   [[ "$output" == *"-e PULUMI_COMMIT_SHA=\"\""* ]]
-  [[ "$output" == *"./scripts/run_pulumi_command.py plan"* ]]
+  [[ "$output" == *"uv run --frozen python ./scripts/run_pulumi_command.py plan"* ]]
 }
 
 @test "make pulumi-up executes deployment inside container" {
@@ -219,7 +219,7 @@ EOF
   [ "$status" -eq 0 ]
   assert_compose_env_file
   assert_pulumi_secrets_provider_passthrough
-  [[ "$output" == *"./scripts/run_pulumi_command.py up"* ]]
+  [[ "$output" == *"uv run --frozen python ./scripts/run_pulumi_command.py up"* ]]
 }
 
 @test "make pulumi-up-plan applies a saved plan inside container" {
@@ -230,7 +230,7 @@ EOF
   [[ "$output" == *"-e PULUMI_PLAN_DIR=\".artifacts/pulumi-plan\""* ]]
   [[ "$output" == *"-e PULUMI_EXPECTED_SHA=\"\""* ]]
   [[ "$output" == *"-e GITHUB_ACTIONS="* ]]
-  [[ "$output" == *"./scripts/run_pulumi_command.py up-plan"* ]]
+  [[ "$output" == *"uv run --frozen python ./scripts/run_pulumi_command.py up-plan"* ]]
 }
 
 @test "make pulumi-refresh executes refresh inside container" {
@@ -240,7 +240,7 @@ EOF
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
   assert_pulumi_secrets_provider_passthrough
-  [[ "$output" == *"./scripts/run_pulumi_command.py refresh"* ]]
+  [[ "$output" == *"uv run --frozen python ./scripts/run_pulumi_command.py refresh"* ]]
 }
 
 @test "make pulumi-destroy executes destroy inside container" {
@@ -250,7 +250,7 @@ EOF
   [[ "$output" == *"-e GITHUB_TOKEN"* ]]
   [[ "$output" != *"ghs_test_token"* ]]
   assert_pulumi_secrets_provider_passthrough
-  [[ "$output" == *"./scripts/run_pulumi_command.py destroy"* ]]
+  [[ "$output" == *"uv run --frozen python ./scripts/run_pulumi_command.py destroy"* ]]
 }
 
 @test "make sh opens a throwaway shell in the Pulumi container" {

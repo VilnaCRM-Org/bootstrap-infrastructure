@@ -151,17 +151,21 @@ def _validate_deployment(deployment: Any, target: dict[str, str]) -> None:
     _require(isinstance(deployment, dict), "Invalid stack deployment metadata.")
     prefix = f"urn:pulumi:{target['stack']}::{target['project']}::"
     resources = deployment.get("resources", [])
+    # Official stack init stores provider state before the first root resource.
+    # Existing nonempty inventories must still identify this exact stack.
     _require(
         isinstance(resources, list)
-        and bool(resources)
         and all(
             isinstance(r, dict) and str(r.get("urn", "")).startswith(prefix)
             for r in resources
         )
-        and any(
-            r.get("urn")
-            == f"{prefix}pulumi:pulumi:Stack::{target['project']}-{target['stack']}"
-            for r in resources
+        and (
+            not resources
+            or any(
+                r.get("urn")
+                == f"{prefix}pulumi:pulumi:Stack::{target['project']}-{target['stack']}"
+                for r in resources
+            )
         )
         and not deployment.get("pending_operations"),
         "Checkpoint project, stack or pending operation precondition failed.",

@@ -301,6 +301,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         *,
         repositories: Sequence[ManagedRepository] | None = None,
         log_delivery_dependencies: Sequence[pulumi.Resource] | None = None,
+        access_log_prefix: str = "server-access/",
         settings: BootstrapSettings | None = None,
         replication_region: str | None = None,
         replication_permissions_boundary: str | None = None,
@@ -311,6 +312,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         super().__init__("bootstrap:pulumi:PulumiStateBuckets", name, None, opts)
 
         self._settings = settings or globals()["settings"]
+        self._access_log_prefix = access_log_prefix
         self._replication_permissions_boundary = replication_permissions_boundary
         self._manage_replication_role = manage_replication_role
         self.state_buckets: dict[str, pulumi.Output[str]] = {}
@@ -497,7 +499,9 @@ class PulumiStateBuckets(pulumi.ComponentResource):
             f"{resource_name}-logging",
             bucket=bucket.id,
             target_bucket=logging_target_bucket,
-            target_prefix=pulumi.Output.format("server-access/{}/", bucket.bucket),
+            target_prefix=pulumi.Output.format(
+                "{}{}/", self._access_log_prefix, bucket.bucket
+            ),
             opts=_resource_options(
                 self,
                 provider=provider,

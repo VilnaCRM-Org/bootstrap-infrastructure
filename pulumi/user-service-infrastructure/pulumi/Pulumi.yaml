@@ -1,0 +1,7 @@
+name: user-service-infrastructure
+runtime:
+  name: python
+description: >-
+  Self-deployed service infrastructure for user-service-infrastructure. Consumes
+  the governance-provided Pulumi state bucket, KMS secrets key, and GitHub OIDC
+  deploy roles; it never creates IAM roles or OIDC trust for itself.
