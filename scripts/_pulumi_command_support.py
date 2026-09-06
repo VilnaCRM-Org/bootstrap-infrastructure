@@ -20,6 +20,8 @@ class CommandContext:
     backend_url: str
     secrets_provider: str
     runner: Callable[..., Any] = run
+    config_file: Path | None = None
+    provider_identity: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -39,16 +41,23 @@ class StackCommand:
     include_policy_pack: bool | None = None
 
 
+# A refreshed preview does not persist its observations. Refresh again on replay
+# so a saved plan cannot silently skip drift against stale checkpoint inputs.
 PULUMI_INVOCATIONS = {
     "preview": PulumiInvocation("preview", include_policy_pack=True),
     "plan": PulumiInvocation(
         "preview",
-        static_args=("--json",),
+        static_args=("--json", "--refresh"),
         include_policy_pack=True,
         plan_flag="--save-plan",
     ),
     "up": PulumiInvocation("up", static_args=("--yes",), include_policy_pack=True),
-    "up-plan": PulumiInvocation("up", static_args=("--yes",), plan_flag="--plan"),
+    "up-plan": PulumiInvocation(
+        "up",
+        static_args=("--yes", "--refresh"),
+        include_policy_pack=True,
+        plan_flag="--plan",
+    ),
     "refresh": PulumiInvocation("refresh", static_args=("--yes",)),
     "drift": PulumiInvocation(
         "preview",
@@ -173,6 +182,8 @@ def _pulumi_command(context: CommandContext, request: StackCommand) -> list[str]
         command.extend(["--policy-pack", str(context.policy_pack_dir)])
     if invocation.plan_flag:
         command.extend([invocation.plan_flag, str(_required_plan_path(request))])
+    if context.config_file is not None:
+        command.extend(["--config-file", str(context.config_file)])
     return command
 
 

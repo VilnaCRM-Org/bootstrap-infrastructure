@@ -24,9 +24,11 @@ def main() -> int:
         or mutation_test_targets
     )
     mutation_time_multiplier = os.environ.get("MUTATION_TEST_TIME_MULTIPLIER", "3")
+    # A single failed assertion kills a mutant. Avoid timing repeated failures
+    # and their tracebacks; the coverage baseline still executes every test.
     mutation_runner = os.environ.get(
         "MUTATION_RUNNER",
-        f"{uv_bin} run pytest -q {' '.join(mutation_test_targets)}",
+        f"{uv_bin} run pytest -q -x {' '.join(mutation_test_targets)}",
     )
 
     for coverage_file in root_dir.glob(".coverage*"):
@@ -66,6 +68,10 @@ def main() -> int:
             mutation_time_multiplier,
             "--use-coverage",
         ],
+        cwd=root_dir,
+    )
+    run(
+        [uv_bin, "run", "python", "./scripts/run_security_mutation_tests.py"],
         cwd=root_dir,
     )
     return 0

@@ -47,24 +47,56 @@ jobs:
     needs:
       - preview_mode
     timeout-minutes: 20
-    environment: test
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ github.event_name == 'pull_request' && vars.PULUMI_PR_BACKEND_URL || vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ github.event_name == 'pull_request' && vars.PULUMI_PR_PREVIEW_STACKS || vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+
+      - name: Select test AWS CI configuration
+        id: ci_config_target
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          AWS_TEST_PR_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN }}
+          AWS_TEST_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            ci_environment="test-pr"
+            config_role_arn="${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}"
+            config_variable_name="AWS_TEST_PR_CI_CONFIG_ROLE_ARN"
+          else
+            ci_environment="test"
+            config_role_arn="${AWS_TEST_CI_CONFIG_ROLE_ARN}"
+            config_variable_name="AWS_TEST_CI_CONFIG_ROLE_ARN"
+          fi
+          if [[ -z "${config_role_arn}" ]]; then
+            printf 'error: %s must be set for %s AWS CI configuration.\n' \
+              "${config_variable_name}" "${ci_environment}" >&2
+            exit 1
+          fi
+          {
+            echo "environment=${ci_environment}"
+            echo "config-role-arn=${config_role_arn}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Load test PR AWS CI configuration
+        id: ci_config
+        # Reviewed immutable loader; PR program still receives bounded preview credentials.
+        uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@d1297f1f00658c351dd6b94e510b394835b13ede
+        with:
+          environment: ${{ steps.ci_config_target.outputs.environment }}
+          config-role-arn: ${{ steps.ci_config_target.outputs.config-role-arn }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: test preview
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
 
       - name: Validate preview prerequisites
         run: |
@@ -81,7 +113,7 @@ jobs:
           done
           if [[ "${#missing[@]}" -gt 0 ]]; then
             printf 'error: trusted PR guardrails are missing %s\n' "${missing[*]}" >&2
-            echo "Set PULUMI_PR_BACKEND_URL/PULUMI_PR_PREVIEW_STACKS for a dedicated PR preview backend, or PULUMI_BACKEND_URL/PULUMI_PREVIEW_STACKS for the shared test stack." >&2
+            echo "Populate the fixed AWS Secrets Manager CI config secret for the test PR preview or shared test stack." >&2
             exit 1
           fi
           if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
@@ -100,17 +132,19 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-test-preview-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
       - name: Emit preview evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: test"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${GITHUB_SHA}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Guardrail mode: privileged"
           echo "Role purpose: preview"
@@ -203,32 +237,64 @@ jobs:
     needs:
       - preview
     timeout-minutes: 15
-    environment: test
     permissions:
       contents: read
       id-token: write
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
 
+      - name: Select test AWS CI configuration
+        id: ci_config_target
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          AWS_TEST_PR_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN }}
+          AWS_TEST_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            ci_environment="test-pr"
+            config_role_arn="${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}"
+            config_variable_name="AWS_TEST_PR_CI_CONFIG_ROLE_ARN"
+          else
+            ci_environment="test"
+            config_role_arn="${AWS_TEST_CI_CONFIG_ROLE_ARN}"
+            config_variable_name="AWS_TEST_CI_CONFIG_ROLE_ARN"
+          fi
+          if [[ -z "${config_role_arn}" ]]; then
+            printf 'error: %s must be set for %s AWS CI configuration.\n' \
+              "${config_variable_name}" "${ci_environment}" >&2
+            exit 1
+          fi
+          {
+            echo "environment=${ci_environment}"
+            echo "config-role-arn=${config_role_arn}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Load test PR AWS CI configuration
+        id: ci_config
+        # Reviewed immutable loader; PR program still receives bounded preview credentials.
+        uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@d1297f1f00658c351dd6b94e510b394835b13ede
+        with:
+          environment: ${{ steps.ci_config_target.outputs.environment }}
+          config-role-arn: ${{ steps.ci_config_target.outputs.config-role-arn }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: test IAM validation
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-test-iam-validate-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
 
       - name: Start development environment
         run: make start

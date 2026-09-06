@@ -1,0 +1,48 @@
+name: Governance Promotion Scope
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: promotion-status-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  scope:
+    name: Report Governance Promotion Scope
+    environment: governance-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Only default-branch code executes with the status-writing token.
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Verify main-only App key boundary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/governance_promotion.py verify-environment
+      - name: Create dedicated promotion App token
+        id: promotion_app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.GOVERNANCE_PROMOTION_APP_ID }}
+          private-key: ${{ secrets.GOVERNANCE_PROMOTION_APP_PRIVATE_KEY }}
+          permission-statuses: write
+          permission-deployments: write
+          permission-actions: read
+          permission-contents: read
+          permission-pull-requests: read
+      - name: Report SHA-bound governance scope
+        env:
+          GH_TOKEN: ${{ steps.promotion_app.outputs.token }}
+          PROMOTION_APP_SLUG: ${{ vars.GOVERNANCE_PROMOTION_APP_SLUG }}
+        run: python3 scripts/governance_promotion.py scope

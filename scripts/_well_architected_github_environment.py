@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Sequence, cast
 
-from _github_environment_controls import environment_prevents_self_review
+from _github_environment_controls import (
+    environment_is_main_only,
+    environment_prevents_self_review,
+)
 
 
 @dataclass(frozen=True)
@@ -17,6 +20,8 @@ class ProductionEnvironmentMetadata:
     prevents_self_review: bool
     protected_branches: bool
     custom_branch_policies: bool
+    main_branch_only: bool = False
+    can_admins_bypass: bool = True
 
     @property
     def protected_branches_only(self) -> bool:
@@ -40,6 +45,8 @@ def production_environment_metadata(
         prevents_self_review=environment_prevents_self_review(payload),
         protected_branches=bool(branch_policy.get("protected_branches")),
         custom_branch_policies=bool(branch_policy.get("custom_branch_policies")),
+        main_branch_only=environment_is_main_only(payload),
+        can_admins_bypass=payload.get("can_admins_bypass") is not False,
     )
 
 
@@ -52,23 +59,26 @@ def production_environment_blockers(
         blockers.append(
             f"GitHub environment {metadata.environment!r} does not require reviewers."
         )
-    elif (
-        metadata.reviewer_login
-        and metadata.reviewer_logins
-        and metadata.reviewer_login not in metadata.reviewer_logins
+    elif metadata.reviewer_login and (
+        metadata.reviewer_count != 1
+        or list(metadata.reviewer_logins) != [metadata.reviewer_login]
     ):
         blockers.append(
             f"GitHub environment {metadata.environment!r} required reviewers do not "
-            f"include {metadata.reviewer_login}."
+            f"contain only {metadata.reviewer_login}."
         )
     if not metadata.prevents_self_review:
         blockers.append(
             f"GitHub environment {metadata.environment!r} does not prevent self-review."
         )
-    if not metadata.protected_branches_only:
+    if not metadata.main_branch_only:
         blockers.append(
-            f"GitHub environment {metadata.environment!r} is not limited to protected "
-            "branches."
+            f"GitHub environment {metadata.environment!r} is not limited to the main "
+            "branch."
+        )
+    if metadata.can_admins_bypass:
+        blockers.append(
+            f"GitHub environment {metadata.environment!r} allows administrator bypass."
         )
     return blockers
 
@@ -85,6 +95,8 @@ def production_environment_evidence(
         "expectedReviewerLogin": metadata.reviewer_login,
         "preventSelfReview": metadata.prevents_self_review,
         "protectedBranchesOnly": metadata.protected_branches_only,
+        "mainBranchOnly": metadata.main_branch_only,
+        "canAdminsBypass": metadata.can_admins_bypass,
     }
 
 

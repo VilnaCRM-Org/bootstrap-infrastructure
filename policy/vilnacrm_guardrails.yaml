@@ -18,9 +18,36 @@ production_environments:
 
 allowlists:
   public_s3_buckets: []
-  wildcard_iam: []
+
+# Exact reviewed documents only. Changing a policy requires a new security review.
+reviewed_iam_documents:
+  "aws:iam/policy:Policy|GitHubCiApply-bootstrap-infrastructure-prod-iam-boundary-policy":
+    - 2df03c2d3f35d1c4810784de9cd4d0aa181a61f36261c61fbf7e94bd9f59fc26
+  "aws:iam/policy:Policy|GitHubCiApply-bootstrap-infrastructure-prod-iam-managed-policies":
+    - ddd429827a53e1b4a9e83aa55fdf4bc9ab857d7970ef564b5f67df3322bf8bd4
+  "aws:iam/policy:Policy|GitHubCiApply-bootstrap-infrastructure-test-iam-boundary-policy":
+    - 1c755fb7383d78b55dcf5395a161845cca03dcfe5d9826a1cf1946cd7b2eb976
+  "aws:iam/policy:Policy|GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies":
+    - b10d2ded1bfa7637071f177a01d07ebef8b9c83e027479a7067100f80a2e10dc
+  "aws:iam/policy:Policy|PlatformBoundary-backup-prod":
+    - a0cef31fbac50c7b9594f6c2c3f84c54ebd5a6a6b474e8b028dc3729a788f5ba
+  "aws:iam/policy:Policy|PlatformBoundary-backup-test":
+    - fd88c4dbc54b63344d698dfbfc46109355e9bb195ec6d006cdd7668a43e2c7a1
+  "aws:iam/policy:Policy|PlatformBoundary-control-prod":
+    - ddadb18cfe6f284f761caac0fa7ec91116141d52287554edec73e2f3136eab08
+  "aws:iam/policy:Policy|PlatformBoundary-control-test":
+    - ade775c64d9bc20b6ecd22e338e2e7e40c4db05cc87b8d2701ae02186247a7b8
+  "aws:iam/policy:Policy|github-automation-iam-boundary-policy":
+    - 2df03c2d3f35d1c4810784de9cd4d0aa181a61f36261c61fbf7e94bd9f59fc26
+    - 1c755fb7383d78b55dcf5395a161845cca03dcfe5d9826a1cf1946cd7b2eb976
+  "aws:iam/rolePolicy:RolePolicy|GitHubCiDrift-bootstrap-infrastructure-prod-read-only|GitHubCiDrift-bootstrap-infrastructure-prod":
+    - 27f8ffb394feebaf6d692807b43e6f38dae3af9a7e6188c45193d72650167f23
+  "aws:iam/rolePolicy:RolePolicy|GitHubCiDrift-bootstrap-infrastructure-test-read-only|GitHubCiDrift-bootstrap-infrastructure-test":
+    - 27f8ffb394feebaf6d692807b43e6f38dae3af9a7e6188c45193d72650167f23
+  "aws:iam/rolePolicy:RolePolicy|GitHubCiPreview-bootstrap-infrastructure-prod-read-only|GitHubCiPreview-bootstrap-infrastructure-prod":
+    - 27f8ffb394feebaf6d692807b43e6f38dae3af9a7e6188c45193d72650167f23
+  "aws:iam/rolePolicy:RolePolicy|GitHubCiPreview-bootstrap-infrastructure-test-read-only|GitHubCiPreview-bootstrap-infrastructure-test":
+    - 27f8ffb394feebaf6d692807b43e6f38dae3af9a7e6188c45193d72650167f23
 
 annotations:
   public_s3_tag: AllowPublicBucket
-  wildcard_iam_tag: AllowWildcardIam
-  wildcard_iam_reason_tag: AllowWildcardIamReason

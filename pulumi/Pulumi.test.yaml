@@ -1,6 +1,11 @@
 # Initialize with:
 # pulumi -C pulumi stack init test --secrets-provider "$PULUMI_SECRETS_PROVIDER"
 config:
+  bootstrap-infrastructure:platformLoggingReplicationRoleName: central-logging-replication-role-705bb42
+  bootstrap-infrastructure:platformBackupRoleName: s3-backup-role-ac43c65
+  bootstrap-infrastructure:awsAccountId: "891377212104"
+  bootstrap-infrastructure:githubRepositoryId: "1098568429"
+  bootstrap-infrastructure:githubRepositoryOwnerId: "114362548"
   aws:region: eu-central-1
   bootstrap-infrastructure:costCenter: core
   bootstrap-infrastructure:costAnomalyMonitorArn: arn:aws:ce::891377212104:anomalymonitor/e5509927-1fcc-400c-9536-0fdd01314bc9

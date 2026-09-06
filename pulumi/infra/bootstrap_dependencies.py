@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from .automation import GitHubAutomation
 from .backup import S3BackupPlan
+from .ci_config import CiConfiguration
 from .cost_controls import CostControls
 from .iam import GitHubOidcRoles
 from .logging_bucket import CentralLoggingBuckets
@@ -30,3 +31,4 @@ class BootstrapInfrastructureDependencies:
     security_account_controls_cls: type[SecurityAccountControls] = (
         SecurityAccountControls
     )
+    ci_config_cls: type[CiConfiguration] = CiConfiguration

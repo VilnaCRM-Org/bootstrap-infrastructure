@@ -36,6 +36,10 @@ def test_parse_command_rejects_non_exact_or_unsafe_forms() -> None:
         "/pulumi prod refresh",
         "/pulumi prod up now",
         "/pulumi; prod up",
+        "/pulumi test plan\n/pulumi test up",
+        "> /pulumi test plan",
+        "`/pulumi test plan`",
+        "please run /pulumi test plan",
     ):
         assert pulumi_pr_comment.parse_command(body) is None
 
@@ -50,10 +54,14 @@ def test_authorization_uses_github_author_association() -> None:
 
 def test_build_outputs_marks_skipped_and_actionable_comments() -> None:
     skipped = pulumi_pr_comment.build_outputs(None, "CONTRIBUTOR")
+    authorized_skip = pulumi_pr_comment.build_outputs(None, "OWNER")
     command = pulumi_pr_comment.PulumiPrCommand("prod", "up")
-    actionable = pulumi_pr_comment.build_outputs(command, "MEMBER")
+    actionable = pulumi_pr_comment.build_outputs(
+        command, "MEMBER", author_login="dmytrocraft"
+    )
 
     assert skipped == {"authorized": "false", "skip": "true"}
+    assert authorized_skip == {"authorized": "true", "skip": "true"}
     assert actionable == {
         "authorized": "true",
         "skip": "false",

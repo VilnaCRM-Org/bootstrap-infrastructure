@@ -1,0 +1,1193 @@
+"""One-time AWS resources that let GitHub Actions run AWS-only Pulumi CI."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+
+import pulumi_aws as aws
+
+import pulumi
+
+from .automation import (
+    _automation_policy_documents,
+    _operations_alert_triage_policy,
+    _operations_alert_triage_role_name,
+    _validate_automation_managed_policy_documents,
+)
+from .bootstrap_settings import BootstrapSettings
+from .ci_config import CiConfiguration, CiConfigurationArgs, _ci_config_project
+from .config import settings as default_settings
+from .github_identity import (
+    expand_subjects,
+    identity_conditions,
+    validate_trust_policy_size,
+)
+from .iam import GitHubOidcRoles
+from .operations_monitoring import _queue_name, _topic_name, _trail_name
+from .utils.outputs import apply_output
+from .utils.tags import base_tags
+
+_MAX_IAM_ROLE_NAME_LENGTH = 64
+_CREATE_POLICY_ACTION = "iam:CreatePolicy"
+_CI_ROLE_PREFIX_BY_PURPOSE = {
+    "preview": "GitHubCiPreview",
+    "apply": "GitHubCiApply",
+    "drift": "GitHubCiDrift",
+}
+_CI_SECRET_SUFFIXES_BY_ENVIRONMENT = {
+    "test": ("test-pr", "test"),
+    "prod": ("prod-preview", "prod"),
+}
+_PULUMI_BACKEND_S3_ACTIONS = (
+    "s3:ListBucket",
+    "s3:GetObject",
+    "s3:GetObjectVersion",
+    "s3:PutObject",
+    "s3:DeleteObject",
+    "s3:DeleteObjectVersion",
+)
+_PULUMI_KMS_ACTIONS = (
+    "kms:Decrypt",
+    "kms:Encrypt",
+    "kms:GenerateDataKey",
+    "kms:DescribeKey",
+    "kms:ReEncrypt*",
+)
+_READ_ONLY_ACTIONS = (
+    "access-analyzer:ValidatePolicy",
+    "backup:Describe*",
+    "backup:Get*",
+    "backup:List*",
+    "budgets:Describe*",
+    "budgets:ListTagsForResource",
+    "budgets:ViewBudget",
+    "ce:GetAnomalies",
+    "ce:GetAnomalyMonitors",
+    "ce:GetAnomalySubscriptions",
+    "ce:GetCostAndUsage",
+    "ce:GetCostForecast",
+    "ce:ListCostAllocationTags",
+    "ce:ListTagsForResource",
+    "cloudtrail:DescribeTrails",
+    "cloudtrail:Get*",
+    "cloudtrail:ListTags",
+    "config:Describe*",
+    "config:Get*",
+    "config:List*",
+    "ecr:Describe*",
+    "ecr:Get*",
+    "ecr:ListTagsForResource",
+    "events:DescribeRule",
+    "events:List*",
+    "guardduty:Get*",
+    "guardduty:List*",
+    "iam:Get*",
+    "iam:List*",
+    "kms:Describe*",
+    "kms:Get*",
+    "kms:List*",
+    "s3:GetAccelerateConfiguration",
+    "s3:GetBucket*",
+    "s3:GetEncryptionConfiguration",
+    "s3:GetLifecycleConfiguration",
+    "s3:GetReplicationConfiguration",
+    "s3:ListAllMyBuckets",
+    "s3:ListBucket",
+    "secretsmanager:DescribeSecret",
+    "secretsmanager:GetResourcePolicy",
+    "secretsmanager:ListSecretVersionIds",
+    "secretsmanager:ListSecrets",
+    "securityhub:Describe*",
+    "securityhub:Get*",
+    "securityhub:List*",
+    "sns:Get*",
+    "sns:List*",
+    "sqs:Get*",
+    "sqs:List*",
+    "sts:GetCallerIdentity",
+)
+# Full secret-leaking-read Deny attached to the read-only policy (preview/drift)
+# only (§5.3, FR22, D4). The read-only policy carries NO Allow for any of these,
+# so the Deny closes the leak surface — including ``secretsmanager:GetSecretValue``.
+# Deny is CrossGuard-exempt (``Effect == "Deny"``). The cognito/ssm actions are
+# expanded to explicit names (Access Analyzer prefers explicit over the ``Get*``
+# wildcard).
+#
+# ``kms:Decrypt`` is deliberately EXCLUDED. The preview/drift roles also carry the
+# pulumi-backend policy, whose alias-scoped ``UsePulumiSecretsProviderKey`` Allow
+# grants ``kms:Decrypt`` on the repo's OWN ``alias/pulumi-{repo}-{env}-secrets``
+# key so ``pulumi preview``/drift can decrypt the stack's encrypted config. An
+# explicit Deny on ``kms:Decrypt`` (Resource ``*``) wins over that Allow and would
+# break preview/drift on any encrypted-secret stack. The alias-scoped Allow is the
+# decryption boundary; a broad ``kms:Decrypt`` Deny here was both redundant (the
+# read-only policy carries no broad ``kms:Decrypt`` Allow) and harmful.
+_READ_ONLY_SECRET_DENY_ACTIONS = (
+    "secretsmanager:GetSecretValue",
+    "ssm:GetParameter",
+    "ssm:GetParameters",
+    "ssm:GetParametersByPath",
+    "lambda:GetFunction",
+    "ec2:GetPasswordData",
+    "ecr:GetAuthorizationToken",
+    "sts:GetSessionToken",
+    "cognito-identity:GetCredentialsForIdentity",
+    "cognito-identity:GetId",
+    "cognito-identity:GetOpenIdToken",
+    "cognito-identity:GetOpenIdTokenForDeveloperIdentity",
+)
+# Surgical secret-leaking-read Deny attached to the APPLY role only (§5.2a,
+# SECURITY-5). ``kms:Decrypt`` is deliberately EXCLUDED — the apply role
+# legitimately decrypts its own Pulumi secrets key, bounded by the §5.2 alias
+# condition. ``secretsmanager:GetSecretValue`` IS denied but with a ``NotResource``
+# carve-out for the apply role's own ``/{project}/ci/*`` secrets, so the apply
+# role can still read its own CI bootstrap secret but no other repo's or any
+# application secret. NOT attached to the pulumi-backend policy.
+_APPLY_SECRET_DENY_ACTIONS = (
+    "secretsmanager:GetSecretValue",
+    "ssm:GetParameter",
+    "ssm:GetParameters",
+    "ssm:GetParametersByPath",
+    "ec2:GetPasswordData",
+    "lambda:GetFunction",
+    "ecr:GetAuthorizationToken",
+    "sts:GetSessionToken",
+    "cognito-identity:GetCredentialsForIdentity",
+    "cognito-identity:GetId",
+    "cognito-identity:GetOpenIdToken",
+    "cognito-identity:GetOpenIdTokenForDeveloperIdentity",
+)
+_IAM_POLICY_MANAGEMENT_ACTIONS = (
+    _CREATE_POLICY_ACTION,
+    "iam:CreatePolicyVersion",
+    "iam:DeletePolicy",
+    "iam:DeletePolicyVersion",
+    "iam:GetPolicy",
+    "iam:GetPolicyVersion",
+    "iam:ListPolicies",
+    "iam:ListPolicyTags",
+    "iam:ListPolicyVersions",
+    "iam:SetDefaultPolicyVersion",
+    "iam:TagPolicy",
+    "iam:UntagPolicy",
+)
+
+
+@dataclass(frozen=True)
+class _CiRoleSpec:
+    """Static inputs for one GitHub CI role."""
+
+    purpose: str
+    role_name: str
+    subjects: Sequence[str]
+    policy_documents: Sequence[tuple[str, str]]
+    permissions_boundary: pulumi.Input[str] | None = None
+
+
+@dataclass(frozen=True)
+class _BootstrapBuildContext:
+    """Shared resource inputs for the CI bootstrap component.
+
+    ``repo`` is the specific ``*-infrastructure`` repository being governed and
+    ``project`` is its canonical naming root (``sanitize_bucket_component(repo)``,
+    the full slug — AWS-SRE-4, NOT ``project_name``). Both default to the values
+    derived from ``settings.repo`` so the single-repo bootstrap entrypoint and its
+    existing callers keep byte-identical output (NFR6); the governance loop builds
+    one context per catalog repo. This is the single source of truth threaded
+    through the role/policy helpers — there is no parallel ``_RepoCiContext``.
+    """
+
+    parent: pulumi.Resource
+    name: str
+    account_id: str
+    partition: str
+    region: str
+    settings: BootstrapSettings
+    provider_arn: pulumi.Input[str]
+    pulumi_dir: str
+    protect_resources: bool
+    repo: str | None = None
+    project: str | None = None
+    state_guards: dict[str, aws.iam.RolePolicy] = field(default_factory=dict)
+    enable_state_guards: bool = False
+
+    def __post_init__(self) -> None:
+        """Derive ``repo``/``project`` from settings when not supplied."""
+        if self.repo is None:
+            object.__setattr__(self, "repo", _require_repo(self.settings).repo)
+        if self.project is None:
+            object.__setattr__(self, "project", _ci_config_project(self.settings))
+
+
+@dataclass(frozen=True)
+class _PayloadOverrides:
+    """Optional values and role outputs used to build CI secret payloads."""
+
+    role_arns: Mapping[str, pulumi.Input[str]]
+    operations_alert_triage_role_arn: pulumi.Input[str] | None
+    pulumi_backend_url: str | None
+    pulumi_dir: str
+    pulumi_secrets_provider: str | None
+
+
+@dataclass(frozen=True)
+class _BootstrapOutputInputs:
+    """Inputs exported by the GitHub CI bootstrap component."""
+
+    oidc_provider_arn: pulumi.Input[str]
+    ci_configuration: CiConfiguration
+    role_arns: Mapping[str, pulumi.Input[str]]
+    operations_alert_triage_role_arn: pulumi.Input[str] | None
+    github_variables: Mapping[str, pulumi.Input[str]]
+    secret_payload_keys: Mapping[str, Sequence[str]]
+    secret_versions: Mapping[str, aws.secretsmanager.SecretVersion]
+
+
+@dataclass(frozen=True)
+class GitHubCiBootstrapArgs:
+    """Configuration for the one-time GitHub CI AWS bootstrap component."""
+
+    settings: BootstrapSettings | None = None
+    pulumi_backend_url: str | None = None
+    pulumi_dir: str = "pulumi"
+    pulumi_secrets_provider: str | None = None
+    write_secret_values: bool = True
+    protect_resources: bool = True
+    control_permissions_boundary: pulumi.Input[str] | None = None
+    manage_oidc_provider: bool | None = None
+
+
+@dataclass(frozen=True)
+class _OperationsAlertTriageResources:
+    """Resources and output value for optional operations alert triage."""
+
+    role: aws.iam.Role | None
+    policy: aws.iam.RolePolicy | None
+    role_arn: pulumi.Input[str] | None
+
+
+def _environment_part(settings: BootstrapSettings) -> str:
+    """Return the normalized environment segment used in role names."""
+    environment = settings.sanitize_bucket_component(
+        settings.environment,
+        "environment",
+    )
+    return environment.replace(".", "-")
+
+
+def _ci_secret_suffixes(settings: BootstrapSettings) -> tuple[str, ...]:
+    """Return fixed CI config suffixes owned by this account stack."""
+    return _CI_SECRET_SUFFIXES_BY_ENVIRONMENT.get(
+        settings.environment,
+        (settings.environment,),
+    )
+
+
+def _ci_role_name(
+    settings: BootstrapSettings,
+    purpose: str,
+    project: str | None = None,
+) -> str:
+    """Return a deterministic GitHub CI role name for one purpose."""
+    prefix = _CI_ROLE_PREFIX_BY_PURPOSE[purpose]
+    resolved_project = project if project is not None else _ci_config_project(settings)
+    name = f"{prefix}-{resolved_project}-{_environment_part(settings)}"
+    if len(name) > _MAX_IAM_ROLE_NAME_LENGTH:
+        raise ValueError(
+            "Combined repo/environment produce GitHub CI role name "
+            f"'{name}' longer than 64 characters."
+        )
+    return name
+
+
+def _iam_role_exists(name: str) -> bool:
+    """Return True when an IAM role already exists."""
+    try:
+        aws.iam.get_role(name=name)
+    except Exception as exc:
+        message = str(exc)
+        if "NoSuchEntity" in message or "couldn't find resource" in message:
+            return False
+        raise
+    return True
+
+
+def _branch_ref(settings: BootstrapSettings) -> str:
+    """Return the configured GitHub branch ref."""
+    return f"refs/heads/{settings.github_branch or 'main'}"
+
+
+def _repo_subject(
+    settings: BootstrapSettings,
+    suffix: str,
+    repo: str | None = None,
+) -> str:
+    """Return a GitHub OIDC subject for this repository."""
+    resolved_repo = repo if repo is not None else settings.repo
+    if not resolved_repo:
+        raise ValueError("repoSlug config is required for GitHub OIDC subjects.")
+    return f"repo:{settings.org}/{resolved_repo}:{suffix}"
+
+
+def _deployment_role_subjects(
+    settings: BootstrapSettings,
+    purpose: str,
+    repo: str | None = None,
+) -> list[str]:
+    """Return trusted GitHub OIDC subjects for a CI deployment role."""
+    branch_subject = _repo_subject(settings, f"ref:{_branch_ref(settings)}", repo)
+    if purpose == "apply":
+        return [_repo_subject(settings, f"environment:{settings.environment}", repo)]
+    if purpose == "preview" and settings.environment == "test":
+        return [
+            branch_subject,
+            _repo_subject(settings, "pull_request", repo),
+            _repo_subject(settings, "environment:test", repo),
+            _repo_subject(settings, "environment:test-preview", repo),
+        ]
+    if settings.environment == "test":
+        return [
+            branch_subject,
+            _repo_subject(settings, "environment:test", repo),
+            _repo_subject(settings, "environment:test-preview", repo),
+        ]
+    return [
+        branch_subject,
+        _repo_subject(settings, f"environment:{settings.environment}-preview", repo),
+    ]
+
+
+def _deployment_assume_role_policy(
+    oidc_provider_arn: str,
+    repository: str,
+    subjects: Sequence[str],
+    *,
+    repository_id: str | None = None,
+    owner_id: str | None = None,
+    branch_ref: str | None = None,
+) -> str:
+    """Build the trust policy for one GitHub OIDC CI role."""
+    document = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Principal": {"Federated": oidc_provider_arn},
+                    "Action": "sts:AssumeRoleWithWebIdentity",
+                    "Condition": {
+                        "StringEquals": {
+                            "token.actions.githubusercontent.com:aud": (
+                                "sts.amazonaws.com"
+                            ),
+                            "token.actions.githubusercontent.com:sub": expand_subjects(
+                                subjects, repository, repository_id, owner_id
+                            ),
+                            **identity_conditions(repository_id, owner_id),
+                            **(
+                                {"token.actions.githubusercontent.com:ref": branch_ref}
+                                if branch_ref is not None
+                                else {}
+                            ),
+                            "token.actions.githubusercontent.com:repository": (
+                                repository
+                            ),
+                        },
+                    },
+                }
+            ],
+        },
+        sort_keys=True,
+    )
+    return validate_trust_policy_size(document)
+
+
+def _state_bucket_resources(
+    settings: BootstrapSettings,
+    repo: str | None = None,
+) -> tuple[str, tuple[str, ...]]:
+    """Return the Pulumi backend bucket and state-object ARN patterns."""
+    bucket_name = (
+        settings.state_bucket_name_for_repo(repo)
+        if repo is not None
+        else settings.state_bucket_name()
+    )
+    return (
+        f"arn:aws:s3:::{bucket_name}",
+        (f"arn:aws:s3:::{bucket_name}/state/{settings.environment}/*",),
+    )
+
+
+def _pulumi_secrets_alias_conditions(
+    settings: BootstrapSettings,
+    repo: str,
+    env: str,
+    *,
+    include_platform_bootstrap: bool,
+) -> list[str]:
+    """Return accepted Pulumi KMS secrets-provider aliases for one repo.
+
+    The service-repo governance path (``include_platform_bootstrap=False``)
+    returns only ``[alias/pulumi-{repo}-{env}-secrets]`` so a managed repo can
+    never decrypt the platform master key (AWS-SRE-1, FR3). The single-repo
+    bootstrap entrypoint passes ``include_platform_bootstrap=True`` to keep its
+    own backend access to ``alias/pulumi-platform-bootstrap-{env}``. The
+    pre-refactor ``alias/pulumi-*-{env}-secrets`` wildcard is replaced by the
+    repo-scoped alias either way.
+    """
+    conditions = [settings.secrets_alias_for_repo(repo, env)]
+    if include_platform_bootstrap:
+        conditions.append(f"alias/pulumi-platform-bootstrap-{env}")
+    return conditions
+
+
+def _pulumi_backend_policy_document(
+    account_id: str,
+    partition: str,
+    settings: BootstrapSettings,
+    repo: str | None = None,
+    *,
+    read_only: bool = False,
+) -> str:
+    """Return S3 backend and KMS secrets-provider access for Pulumi CLI."""
+    resolved_repo = repo if repo is not None else (_require_repo(settings).repo or "")
+    bucket_arn, object_arns = _state_bucket_resources(settings, resolved_repo)
+    alias_conditions = _pulumi_secrets_alias_conditions(
+        settings,
+        resolved_repo,
+        _environment_part(settings),
+        include_platform_bootstrap=resolved_repo == settings.repo,
+    )
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "ReadCallerIdentity",
+                    "Effect": "Allow",
+                    "Action": ["sts:GetCallerIdentity"],
+                    "Resource": "*",
+                },
+                *_pulumi_backend_s3_statements(bucket_arn, object_arns, read_only),
+                {
+                    "Sid": "UsePulumiSecretsProviderKey",
+                    "Effect": "Allow",
+                    "Action": list(_PULUMI_KMS_ACTIONS),
+                    "Resource": f"arn:{partition}:kms:*:{account_id}:key/*",
+                    "Condition": {
+                        "ForAnyValue:StringLike": {
+                            "kms:ResourceAliases": alias_conditions
+                        }
+                    },
+                },
+            ],
+        },
+        sort_keys=True,
+    )
+
+
+def _pulumi_backend_s3_statements(
+    bucket_arn: str, object_arns: Sequence[str], read_only: bool
+) -> list[dict[str, object]]:
+    """Allow previews to lock the DIY backend without changing saved state."""
+    if not read_only:
+        return [
+            {
+                "Sid": "UsePulumiStateBucket",
+                "Effect": "Allow",
+                "Action": list(_PULUMI_BACKEND_S3_ACTIONS),
+                "Resource": [bucket_arn, *object_arns],
+            }
+        ]
+    return [
+        {
+            "Sid": "ReadPulumiStateBucket",
+            "Effect": "Allow",
+            "Action": ["s3:ListBucket", "s3:GetObject", "s3:GetObjectVersion"],
+            "Resource": [bucket_arn, *object_arns],
+        },
+        {
+            "Sid": "LockPulumiStateBucket",
+            "Effect": "Allow",
+            "Action": ["s3:PutObject", "s3:DeleteObject"],
+            "Resource": [f"{arn[:-1]}.pulumi/locks/*" for arn in object_arns],
+        },
+    ]
+
+
+def _read_only_policy_document(
+    _account_id: str,
+    _partition: str,
+    _settings: BootstrapSettings,
+) -> str:
+    """Return read-only AWS metadata access used by preview, drift, and evidence."""
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "ReadStackMetadata",
+                    "Effect": "Allow",
+                    "Action": list(_READ_ONLY_ACTIONS),
+                    "Resource": "*",
+                },
+                {
+                    "Sid": "DenySecretLeakingReads",
+                    "Effect": "Deny",
+                    "Action": list(_READ_ONLY_SECRET_DENY_ACTIONS),
+                    "Resource": "*",
+                },
+            ],
+        },
+        sort_keys=True,
+    )
+
+
+def _apply_extra_policy_document(account_id: str, partition: str) -> str:
+    """Return extra permissions needed to manage automation managed policies."""
+    automation_policy_arn = (
+        f"arn:{partition}:iam::{account_id}:policy/github-automation-*"
+    )
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "CreateBootstrapAutomationManagedPolicies",
+                    "Effect": "Allow",
+                    "Action": [_CREATE_POLICY_ACTION],
+                    "Resource": "*",
+                    "Condition": {
+                        "StringEquals": {
+                            "aws:RequestTag/Purpose": "pulumi-automation-policy"
+                        }
+                    },
+                },
+                {
+                    "Sid": "ManageBootstrapAutomationManagedPolicies",
+                    "Effect": "Allow",
+                    "Action": [
+                        action
+                        for action in _IAM_POLICY_MANAGEMENT_ACTIONS
+                        if action != _CREATE_POLICY_ACTION
+                    ],
+                    "Resource": automation_policy_arn,
+                },
+                {
+                    "Sid": "ListBootstrapAutomationManagedPolicies",
+                    "Effect": "Allow",
+                    "Action": ["iam:ListPolicies"],
+                    "Resource": "*",
+                },
+            ],
+        },
+        sort_keys=True,
+    )
+
+
+def _apply_secret_deny_document(
+    account_id: str,
+    partition: str,
+    region: str,
+    project: str,
+) -> str:
+    """Return the surgical secret-leaking-read Deny for the apply role (§5.2a).
+
+    Denies the leak surface on the highest-privilege role except its own
+    ``/{project}/ci/*`` CI-config secrets (``NotResource``), so a malicious but
+    review-passing governance PR cannot exfiltrate another repo's or any
+    application secret. ``kms:Decrypt`` is deliberately omitted (SECURITY-5).
+    """
+    return json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "DenySecretLeakingReadsApply",
+                    "Effect": "Deny",
+                    "Action": list(_APPLY_SECRET_DENY_ACTIONS),
+                    "NotResource": [
+                        f"arn:{partition}:secretsmanager:{region}:{account_id}"
+                        f":secret:/{project}/ci/*"
+                    ],
+                }
+            ],
+        },
+        sort_keys=True,
+    )
+
+
+def _role_policy_documents(
+    account_id: str,
+    partition: str,
+    settings: BootstrapSettings,
+    purpose: str,
+    repo: str | None = None,
+    region: str = "eu-central-1",
+    project: str | None = None,
+) -> list[tuple[str, str]]:
+    """Return policy documents for one GitHub CI role purpose."""
+    resolved_repo = repo if repo is not None else settings.repo
+    backend_policy = _pulumi_backend_policy_document(
+        account_id,
+        partition,
+        settings,
+        resolved_repo,
+        read_only=purpose in {"preview", "drift"},
+    )
+    if purpose in {"preview", "drift"}:
+        return [
+            ("pulumi-backend", backend_policy),
+            ("read-only", _read_only_policy_document(account_id, partition, settings)),
+        ]
+    if not resolved_repo:
+        raise ValueError("repoSlug config is required for GitHub CI apply policy.")
+    resolved_project = (
+        project if project is not None else _ci_config_project(settings, resolved_repo)
+    )
+    return [
+        ("pulumi-backend", backend_policy),
+        *_automation_policy_documents(account_id, settings, resolved_repo),
+        ("iam-managed-policies", _apply_extra_policy_document(account_id, partition)),
+        (
+            "secret-read-deny",
+            _apply_secret_deny_document(
+                account_id, partition, region, resolved_project
+            ),
+        ),
+    ]
+
+
+def _role_specs(
+    *,
+    account_id: str,
+    partition: str,
+    settings: BootstrapSettings,
+    region: str = "eu-central-1",
+    repo: str | None = None,
+    project: str | None = None,
+    control_permissions_boundary: pulumi.Input[str] | None = None,
+) -> list[_CiRoleSpec]:
+    """Return deterministic role specs for the three deployment role purposes."""
+    resolved_repo = repo if repo is not None else settings.repo
+    resolved_project = project if project is not None else _ci_config_project(settings)
+    return [
+        _CiRoleSpec(
+            purpose=purpose,
+            permissions_boundary=(
+                control_permissions_boundary if purpose == "apply" else None
+            ),
+            role_name=_ci_role_name(settings, purpose, resolved_project),
+            subjects=_deployment_role_subjects(settings, purpose, resolved_repo),
+            policy_documents=_role_policy_documents(
+                account_id,
+                partition,
+                settings,
+                purpose,
+                resolved_repo,
+                region,
+                resolved_project,
+            ),
+        )
+        for purpose in ("preview", "apply", "drift")
+    ]
+
+
+def _create_role_guard(context, spec, role) -> list[pulumi.Resource]:
+    """Guard platform grants without changing the shared governed-service builder."""
+    if not context.enable_state_guards:
+        return []
+    from .platform_iam import platform_control_state_guard
+
+    guard = aws.iam.RolePolicy(
+        f"{context.name}-{spec.purpose}-state-guard",
+        name=f"{spec.role_name}-state-guard",
+        role=role.name,
+        policy=platform_control_state_guard(
+            context.account_id, context.settings, purpose=spec.purpose
+        ),
+        opts=pulumi.ResourceOptions(
+            parent=context.parent, protect=context.protect_resources
+        ),
+    )
+    context.state_guards[spec.purpose] = guard
+    return [guard]
+
+
+def _create_role(
+    context: _BootstrapBuildContext,
+    spec: _CiRoleSpec,
+) -> aws.iam.Role:
+    """Create or import one GitHub OIDC CI role and its inline policies."""
+    if spec.purpose == "apply":
+        # This consumer attaches every document as customer-managed, including
+        # Automation's otherwise-inline first document.
+        _validate_automation_managed_policy_documents(list(spec.policy_documents))
+    repository = f"{context.settings.org}/{context.repo}"
+    repository_tag = context.project or _ci_config_project(context.settings)
+    role = aws.iam.Role(
+        f"{context.name}-{spec.purpose}-role",
+        name=spec.role_name,
+        permissions_boundary=spec.permissions_boundary,
+        assume_role_policy=apply_output(
+            pulumi.Output.from_input(context.provider_arn),
+            lambda arn: _deployment_assume_role_policy(
+                arn,
+                repository,
+                spec.subjects,
+                repository_id=context.settings.github_repository_id,
+                owner_id=context.settings.github_repository_owner_id,
+                branch_ref=(
+                    None if spec.purpose == "preview" else _branch_ref(context.settings)
+                ),
+            ),
+        ),
+        tags=base_tags(
+            {
+                "Purpose": f"github-ci-{spec.purpose}",
+                "Repository": repository_tag,
+            },
+            settings=context.settings,
+        ),
+        opts=pulumi.ResourceOptions(
+            parent=context.parent,
+            import_=spec.role_name if _iam_role_exists(spec.role_name) else None,
+            protect=context.protect_resources,
+        ),
+    )
+    guard_dependencies = _create_role_guard(context, spec, role)
+    for policy_suffix, policy_document in spec.policy_documents:
+        if spec.purpose == "apply":
+            policy = aws.iam.Policy(
+                f"{context.name}-{spec.purpose}-{policy_suffix}",
+                name=f"{spec.role_name}-{policy_suffix}",
+                policy=policy_document,
+                tags=base_tags(
+                    {
+                        "Purpose": f"github-ci-{spec.purpose}-policy",
+                        "Repository": repository_tag,
+                    },
+                    settings=context.settings,
+                ),
+                opts=pulumi.ResourceOptions(
+                    parent=context.parent,
+                    depends_on=guard_dependencies,
+                    protect=context.protect_resources,
+                ),
+            )
+            aws.iam.RolePolicyAttachment(
+                f"{context.name}-{spec.purpose}-{policy_suffix}-attachment",
+                role=role.name,
+                policy_arn=policy.arn,
+                opts=pulumi.ResourceOptions(
+                    parent=context.parent,
+                    depends_on=guard_dependencies,
+                    protect=context.protect_resources,
+                ),
+            )
+        else:
+            aws.iam.RolePolicy(
+                f"{context.name}-{spec.purpose}-{policy_suffix}",
+                name=f"{spec.role_name}-{policy_suffix}",
+                role=spec.role_name,
+                policy=policy_document,
+                opts=pulumi.ResourceOptions(
+                    parent=context.parent,
+                    depends_on=[role, *guard_dependencies],
+                    protect=context.protect_resources,
+                ),
+            )
+    return role
+
+
+def _create_roles(
+    context: _BootstrapBuildContext,
+    specs: Sequence[_CiRoleSpec],
+) -> dict[str, aws.iam.Role]:
+    """Create or import all GitHub OIDC CI deployment roles."""
+    return {
+        spec.purpose: _create_role(
+            context,
+            spec=spec,
+        )
+        for spec in specs
+    }
+
+
+def _secret_string(payload: Mapping[str, pulumi.Input[str]]) -> pulumi.Output[str]:
+    """Serialize a secret payload after all Pulumi inputs resolve."""
+    keys = list(payload)
+    values = [pulumi.Output.from_input(payload[key]) for key in keys]
+    return pulumi.Output.all(*values).apply(
+        lambda resolved: json.dumps(
+            dict(zip(keys, resolved, strict=True)),
+            sort_keys=True,
+        )
+    )
+
+
+def _default_backend_url(settings: BootstrapSettings) -> str:
+    """Return the default S3 backend URL used by the main Pulumi stack."""
+    return f"s3://{settings.state_bucket_name()}/state/{settings.environment}"
+
+
+def _default_secrets_provider(settings: BootstrapSettings, region: str) -> str:
+    """Return the default AWS KMS secrets provider for the main stack."""
+    return (
+        f"awskms://alias/pulumi-platform-bootstrap-{_environment_part(settings)}"
+        f"?region={region}"
+    )
+
+
+def _operations_topic_arn(
+    account_id: str,
+    partition: str,
+    region: str,
+    settings: BootstrapSettings,
+) -> str:
+    """Return the deterministic operations SNS topic ARN."""
+    return f"arn:{partition}:sns:{region}:{account_id}:{_topic_name(settings)}"
+
+
+def _create_operations_alert_triage(
+    context: _BootstrapBuildContext,
+) -> _OperationsAlertTriageResources:
+    """Create the test-account operations alert triage role when required."""
+    if context.settings.environment != "test":
+        return _OperationsAlertTriageResources(None, None, None)
+
+    triage_role_name = _operations_alert_triage_role_name(
+        context.settings,
+        context.settings.repo or "",
+    )
+    role = aws.iam.Role(
+        f"{context.name}-operations-alert-triage-role",
+        name=triage_role_name,
+        assume_role_policy=apply_output(
+            pulumi.Output.from_input(context.provider_arn),
+            lambda arn: _deployment_assume_role_policy(
+                arn,
+                f"{context.settings.org}/{context.settings.repo}",
+                [
+                    _repo_subject(
+                        context.settings,
+                        f"ref:{_branch_ref(context.settings)}",
+                    )
+                ],
+                repository_id=context.settings.github_repository_id,
+                owner_id=context.settings.github_repository_owner_id,
+                branch_ref=_branch_ref(context.settings),
+            ),
+        ),
+        tags=base_tags(
+            {
+                "Purpose": "operations-alert-triage",
+                "Repository": _ci_config_project(context.settings),
+            },
+            settings=context.settings,
+        ),
+        opts=pulumi.ResourceOptions(
+            parent=context.parent,
+            import_=triage_role_name if _iam_role_exists(triage_role_name) else None,
+            protect=context.protect_resources,
+        ),
+    )
+    policy = aws.iam.RolePolicy(
+        f"{context.name}-operations-alert-triage-policy",
+        name=f"{triage_role_name}-policy",
+        role=role.id,
+        policy=_operations_alert_triage_policy(context.account_id, context.settings),
+        opts=pulumi.ResourceOptions(
+            parent=context.parent,
+            protect=context.protect_resources,
+        ),
+    )
+    return _OperationsAlertTriageResources(role, policy, role.arn)
+
+
+def _payloads(
+    context: _BootstrapBuildContext,
+    overrides: _PayloadOverrides,
+) -> dict[str, dict[str, pulumi.Input[str]]]:
+    """Return CI config JSON payloads keyed by fixed secret suffix."""
+    backend_url = overrides.pulumi_backend_url or _default_backend_url(
+        context.settings,
+    )
+    secrets_provider = overrides.pulumi_secrets_provider or _default_secrets_provider(
+        context.settings,
+        context.region,
+    )
+    common = {
+        "AWS_ACCOUNT_ID": context.account_id,
+        "AWS_REGION": context.region,
+        "PULUMI_BACKEND_URL": backend_url,
+        "PULUMI_DIR": overrides.pulumi_dir,
+        "PULUMI_SECRETS_PROVIDER": secrets_provider,
+    }
+    preview_common = {
+        **common,
+        "AWS_PREVIEW_ROLE_ARN": overrides.role_arns["preview"],
+        "PULUMI_PREVIEW_STACKS": context.settings.environment,
+    }
+    drift_common = {
+        "AWS_DRIFT_ROLE_ARN": overrides.role_arns["drift"],
+        "PULUMI_DRIFT_STACKS": context.settings.environment,
+    }
+    if context.settings.environment == "test":
+        triage_role_arn = overrides.operations_alert_triage_role_arn
+        if triage_role_arn is None:
+            raise ValueError(
+                "test bootstrap requires operations alert triage role ARN."
+            )
+        return {
+            "test-pr": {
+                **preview_common,
+                "OPERATIONS_TOPIC_ARN": _operations_topic_arn(
+                    context.account_id,
+                    context.partition,
+                    context.region,
+                    context.settings,
+                ),
+                "OPERATIONS_CLOUDTRAIL_NAME": (
+                    context.settings.operations_cloudtrail_name
+                    or _trail_name(context.settings)
+                ),
+            },
+            "test": {
+                **preview_common,
+                **drift_common,
+                "AWS_APPLY_ROLE_ARN": overrides.role_arns["apply"],
+                "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN": triage_role_arn,
+                "OPERATIONS_ALERT_QUEUE_NAME": _queue_name(context.settings),
+                "OPERATIONS_TOPIC_ARN": _operations_topic_arn(
+                    context.account_id,
+                    context.partition,
+                    context.region,
+                    context.settings,
+                ),
+                "OPERATIONS_CLOUDTRAIL_NAME": (
+                    context.settings.operations_cloudtrail_name
+                    or _trail_name(context.settings)
+                ),
+            },
+        }
+    if context.settings.environment == "prod":
+        return {
+            "prod-preview": {
+                **preview_common,
+                **drift_common,
+            },
+            "prod": {
+                **common,
+                "AWS_APPLY_ROLE_ARN": overrides.role_arns["apply"],
+                "PULUMI_PREVIEW_STACKS": context.settings.environment,
+            },
+        }
+    return {
+        context.settings.environment: {
+            **preview_common,
+            **drift_common,
+            "AWS_APPLY_ROLE_ARN": overrides.role_arns["apply"],
+        }
+    }
+
+
+def _create_secret_versions(
+    context: _BootstrapBuildContext,
+    ci_configuration: CiConfiguration,
+    secret_payloads: Mapping[str, Mapping[str, pulumi.Input[str]]],
+    write_secret_values: bool,
+) -> dict[str, aws.secretsmanager.SecretVersion]:
+    """Write AWS Secrets Manager values when the bootstrap stack manages them."""
+    if not write_secret_values:
+        return {}
+    return {
+        suffix: aws.secretsmanager.SecretVersion(
+            f"{context.name}-secret-value-{suffix}",
+            secret_id=ci_configuration.secret_ids[suffix],
+            secret_string=pulumi.Output.secret(_secret_string(secret_payloads[suffix])),
+            opts=pulumi.ResourceOptions(
+                parent=context.parent,
+                depends_on=[
+                    ci_configuration.secrets[suffix],
+                    *ci_configuration.read_roles.values(),
+                ],
+                # Secret containers stay protected; versions must rotate when
+                # role ARNs or deployment metadata change.
+                protect=False,
+            ),
+        )
+        for suffix in _ci_secret_suffixes(context.settings)
+    }
+
+
+def _github_variables(
+    settings: BootstrapSettings,
+    *,
+    region: str,
+    account_id: str,
+    ci_configuration: CiConfiguration,
+) -> dict[str, pulumi.Input[str]]:
+    """Return GitHub repository variables that point workflows at AWS config."""
+    if settings.environment == "test":
+        return {
+            "AWS_TEST_ACCOUNT_ID": account_id,
+            "AWS_TEST_REGION": region,
+            "AWS_TEST_PR_CI_CONFIG_ROLE_ARN": (
+                ci_configuration.read_role_arns["test-pr"]
+            ),
+            "AWS_TEST_CI_CONFIG_ROLE_ARN": ci_configuration.read_role_arns["test"],
+        }
+    if settings.environment == "prod":
+        return {
+            "AWS_PROD_ACCOUNT_ID": account_id,
+            "AWS_PROD_REGION": region,
+            "AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN": (
+                ci_configuration.read_role_arns["prod-preview"]
+            ),
+            "AWS_PROD_CI_CONFIG_ROLE_ARN": ci_configuration.read_role_arns["prod"],
+        }
+    return {
+        f"AWS_{settings.environment.upper()}_REGION": region,
+        f"AWS_{settings.environment.upper()}_ACCOUNT_ID": account_id,
+    }
+
+
+def _secret_payload_keys(
+    secret_payloads: Mapping[str, Mapping[str, pulumi.Input[str]]],
+) -> dict[str, list[str]]:
+    """Return sorted secret payload keys for safe stack outputs and tests."""
+    return {suffix: sorted(payload) for suffix, payload in secret_payloads.items()}
+
+
+def _github_ci_bootstrap_outputs(inputs: _BootstrapOutputInputs) -> dict[str, object]:
+    """Return component outputs in one stable shape."""
+    return {
+        "oidc_provider_arn": inputs.oidc_provider_arn,
+        "ci_configuration_secret_ids": inputs.ci_configuration.secret_ids,
+        "ci_configuration_read_role_arns": inputs.ci_configuration.read_role_arns,
+        "deployment_role_arns": inputs.role_arns,
+        "operations_alert_triage_role_arn": inputs.operations_alert_triage_role_arn,
+        "github_variables": inputs.github_variables,
+        "secret_payload_keys": inputs.secret_payload_keys,
+        "secret_versions": {
+            suffix: version.version_id
+            for suffix, version in inputs.secret_versions.items()
+        },
+    }
+
+
+def _require_repo(settings: BootstrapSettings) -> BootstrapSettings:
+    """Return settings only after confirming repository-scoped config exists."""
+    if not settings.repo:
+        raise ValueError("repoSlug config is required for GitHub CI bootstrap.")
+    return settings
+
+
+class GitHubCiBootstrap(pulumi.ComponentResource):
+    """Provision one-time GitHub OIDC roles and AWS CI config payloads."""
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        args: GitHubCiBootstrapArgs | None = None,
+        opts: pulumi.ResourceOptions | None = None,
+    ) -> None:
+        super().__init__("bootstrap:ci:GitHubCiBootstrap", name, None, opts)
+
+        config = args or GitHubCiBootstrapArgs()
+        configured_settings = _require_repo(config.settings or default_settings)
+        account_id = aws.get_caller_identity().account_id
+        partition = aws.get_partition().partition
+        region = aws.get_region().region
+
+        oidc = GitHubOidcRoles(
+            f"{name}-oidc",
+            settings=configured_settings,
+            repositories=[],
+            manage_provider=config.manage_oidc_provider,
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+        ci_configuration = CiConfiguration(
+            f"{name}-configuration",
+            args=CiConfigurationArgs(
+                settings=configured_settings,
+                oidc_provider_arn=oidc.provider.arn,
+                protect_resources=config.protect_resources,
+            ),
+            opts=pulumi.ResourceOptions(parent=self),
+        )
+        context = _BootstrapBuildContext(
+            parent=self,
+            name=name,
+            account_id=account_id,
+            partition=partition,
+            region=region,
+            settings=configured_settings,
+            provider_arn=oidc.provider.arn,
+            pulumi_dir=config.pulumi_dir,
+            protect_resources=config.protect_resources,
+            enable_state_guards=True,
+        )
+
+        self.roles = _create_roles(
+            context,
+            specs=_role_specs(
+                account_id=account_id,
+                partition=partition,
+                settings=configured_settings,
+                region=region,
+                repo=context.repo,
+                project=context.project,
+                control_permissions_boundary=config.control_permissions_boundary,
+            ),
+        )
+        self.state_guards = context.state_guards
+        self.role_arns = {purpose: role.arn for purpose, role in self.roles.items()}
+
+        triage_resources = _create_operations_alert_triage(context)
+        self.operations_alert_triage_role = triage_resources.role
+        self.operations_alert_triage_policy = triage_resources.policy
+
+        self.secret_payloads = _payloads(
+            context,
+            _PayloadOverrides(
+                role_arns=self.role_arns,
+                operations_alert_triage_role_arn=triage_resources.role_arn,
+                pulumi_backend_url=config.pulumi_backend_url,
+                pulumi_dir=config.pulumi_dir,
+                pulumi_secrets_provider=config.pulumi_secrets_provider,
+            ),
+        )
+        self.secret_versions = _create_secret_versions(
+            context,
+            ci_configuration=ci_configuration,
+            secret_payloads=self.secret_payloads,
+            write_secret_values=config.write_secret_values,
+        )
+
+        self.oidc_provider_arn = oidc.provider.arn
+        self.ci_configuration = ci_configuration
+        self.github_variables = _github_variables(
+            configured_settings,
+            region=region,
+            account_id=context.account_id,
+            ci_configuration=ci_configuration,
+        )
+        self.secret_payload_keys = _secret_payload_keys(self.secret_payloads)
+
+        self.register_outputs(
+            _github_ci_bootstrap_outputs(
+                _BootstrapOutputInputs(
+                    oidc_provider_arn=self.oidc_provider_arn,
+                    ci_configuration=ci_configuration,
+                    role_arns=self.role_arns,
+                    operations_alert_triage_role_arn=triage_resources.role_arn,
+                    github_variables=self.github_variables,
+                    secret_payload_keys=self.secret_payload_keys,
+                    secret_versions=self.secret_versions,
+                )
+            )
+        )

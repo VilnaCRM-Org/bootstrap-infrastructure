@@ -158,6 +158,19 @@ def github_production_environment(
             ],
         )
 
+    branch_ok, branch_payload, _branch_error = _run_json(
+        [
+            "gh",
+            "api",
+            f"repos/{repo}/environments/{environment}/deployment-branch-policies",
+        ],
+        runner=runner,
+    )
+    payload["deployment_branch_policies"] = (
+        branch_payload.get("branch_policies")
+        if branch_ok and isinstance(branch_payload, dict)
+        else None
+    )
     metadata = _github_environment.production_environment_metadata(
         payload,
         environment=environment,

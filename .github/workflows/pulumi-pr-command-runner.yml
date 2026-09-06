@@ -4,36 +4,9 @@ on:
   repository_dispatch:
     types:
       - pulumi-pr-command
-  workflow_dispatch:
-    inputs:
-      pull_request_number:
-        description: Pull request number to operate on
-        required: true
-        type: string
-      head_sha:
-        description: Full PR head SHA to verify before running
-        required: true
-        type: string
-      target_environment:
-        description: Target environment
-        required: true
-        type: choice
-        options:
-          - test
-          - prod
-      command:
-        description: Pulumi command
-        required: true
-        type: choice
-        options:
-          - plan
-          - up
 
 concurrency:
-  group: >-
-    pulumi-pr-command-${{ github.event.client_payload.pull_request_number ||
-    inputs.pull_request_number }}-${{ github.event.client_payload.target_environment ||
-    inputs.target_environment }}
+  group: pulumi-command-${{ github.event.client_payload.pull_request_number }}
   cancel-in-progress: false
 
 defaults:
@@ -51,108 +24,92 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      issues: write
-      # Rejection feedback is posted to the PR conversation; live QA showed
-      # GitHub rejects this with only issues: write on the Actions token.
-      pull-requests: write
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      statuses: write
     outputs:
       command: ${{ steps.resolve.outputs.command }}
       display_command: ${{ steps.resolve.outputs.display_command }}
       head_sha: ${{ steps.resolve.outputs.head_sha }}
+      feedback_head_sha: ${{ steps.resolve.outputs.feedback_head_sha }}
+      feedback_pull_request_number: ${{ steps.resolve.outputs.feedback_pull_request_number }}
+      feedback_command: ${{ steps.resolve.outputs.feedback_command }}
+      feedback_target_environment: ${{ steps.resolve.outputs.feedback_target_environment }}
+      feedback_display_command: ${{ steps.resolve.outputs.feedback_display_command }}
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+      source_run_id: ${{ steps.resolve.outputs.source_run_id }}
+      comment_id: ${{ steps.resolve.outputs.comment_id }}
       pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
       target_environment: ${{ steps.resolve.outputs.target_environment }}
     env:
       GH_TOKEN: ${{ github.token }}
-      REQUEST_COMMAND: ${{ github.event.client_payload.command || inputs.command }}
-      REQUEST_HEAD_SHA: ${{ github.event.client_payload.head_sha || inputs.head_sha }}
-      REQUEST_PR_NUMBER: >-
-        ${{ github.event.client_payload.pull_request_number ||
-        inputs.pull_request_number }}
-      REQUEST_TARGET_ENVIRONMENT: >-
-        ${{ github.event.client_payload.target_environment ||
-        inputs.target_environment }}
+      REQUEST_COMMAND: ${{ github.event.client_payload.command }}
+      REQUEST_HEAD_SHA: ${{ github.event.client_payload.head_sha }}
+      REQUEST_PULL_REQUEST_NUMBER: ${{ github.event.client_payload.pull_request_number }}
+      REQUEST_COMMENT_ID: ${{ github.event.client_payload.comment_id }}
+      REQUEST_SOURCE_RUN_ID: ${{ github.event.client_payload.source_run_id }}
+      REQUEST_TARGET_ENVIRONMENT: ${{ github.event.client_payload.target_environment }}
     steps:
-      - name: Resolve and verify pull request command
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Authenticate immutable intake request and consume comment
         id: resolve
-        run: |
-          post_pr_comment() {
-            local pr_number="$1"
-            local body="$2"
-            jq -n --arg body "${body}" '{body: $body}' \
-              | gh api \
-                --method POST \
-                "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
-                --input -
-          }
-
-          if [[ ! "${REQUEST_PR_NUMBER}" =~ ^[0-9]+$ ]]; then
-            echo "error: pull_request_number must be numeric." >&2
-            exit 1
-          fi
-          if [[ ! "${REQUEST_HEAD_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "error: head_sha must be a full lowercase 40-character commit SHA." >&2
-            exit 1
-          fi
-          if [[ "${REQUEST_TARGET_ENVIRONMENT}" != "test" && "${REQUEST_TARGET_ENVIRONMENT}" != "prod" ]]; then
-            echo "error: target_environment must be test or prod." >&2
-            exit 1
-          fi
-          if [[ "${REQUEST_COMMAND}" != "plan" && "${REQUEST_COMMAND}" != "up" ]]; then
-            echo "error: command must be plan or up." >&2
-            exit 1
-          fi
-
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}")"
-          actual_head_sha="$(jq -r '.head.sha' <<< "${pr_json}")"
-          actual_head_repo="$(jq -r '.head.repo.full_name' <<< "${pr_json}")"
-          actual_pr_state="$(jq -r '.state' <<< "${pr_json}")"
-          actual_pr_merged="$(jq -r '.merged' <<< "${pr_json}")"
-          if [[ "${actual_pr_state}" != "open" || "${actual_pr_merged}" == "true" ]]; then
-            post_pr_comment "${REQUEST_PR_NUMBER}" "Pulumi PR command runner rejected this request because the pull request is closed or merged."
-            exit 1
-          fi
-          if [[ "${actual_head_repo}" != "${GITHUB_REPOSITORY}" ]]; then
-            post_pr_comment "${REQUEST_PR_NUMBER}" "Pulumi PR command runner rejected this request because the pull request head is not in the base repository."
-            exit 1
-          fi
-          if [[ "${actual_head_sha}" != "${REQUEST_HEAD_SHA}" ]]; then
-            post_pr_comment "${REQUEST_PR_NUMBER}" "Pulumi PR command runner rejected this request because the pull request head moved after the command was queued. Comment again on the latest commit."
-            exit 1
-          fi
-
-          {
-            echo "command=${REQUEST_COMMAND}"
-            echo "display_command=/pulumi ${REQUEST_TARGET_ENVIRONMENT} ${REQUEST_COMMAND}"
-            echo "head_sha=${REQUEST_HEAD_SHA}"
-            echo "pull_request_number=${REQUEST_PR_NUMBER}"
-            echo "target_environment=${REQUEST_TARGET_ENVIRONMENT}"
-          } >> "${GITHUB_OUTPUT}"
+        run: python3 scripts/pulumi_command_preflight.py
 
   test_preview:
     name: Test Preview
+    environment: test-preview
     runs-on: ubuntu-latest
     needs:
       - preflight
     timeout-minutes: 25
-    environment: test
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
+
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Recheck current PR head before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+        run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: PR test preview
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
 
       - name: Validate test preview prerequisites
         run: |
@@ -187,17 +144,19 @@ jobs:
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-pr-test-preview-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_TEST_ACCOUNT_ID }}
 
       - name: Emit test preview evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: test"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: preview"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
@@ -266,39 +225,64 @@ jobs:
 
   test_iam_validation:
     name: Test IAM Validation
+    environment: test-preview
     runs-on: ubuntu-latest
     needs:
       - preflight
       - test_preview
       - test_destructive_diff
     timeout-minutes: 15
-    environment: test
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Recheck current PR head before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+        run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: PR test IAM validation
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-pr-test-iam-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_TEST_ACCOUNT_ID }}
 
       - name: Start development environment
         run: make start
@@ -317,9 +301,8 @@ jobs:
   test_apply:
     name: Test Apply
     if: >-
-      needs.preflight.outputs.target_environment == 'prod' ||
-      (needs.preflight.outputs.target_environment == 'test' &&
-      needs.preflight.outputs.command == 'up')
+      needs.preflight.outputs.command == 'up'
+    environment: test
     runs-on: ubuntu-latest
     needs:
       - preflight
@@ -327,40 +310,66 @@ jobs:
       - test_destructive_diff
       - test_iam_validation
     timeout-minutes: 30
-    environment: test
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Recheck current PR head before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+        run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: PR test apply
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
       - name: Configure AWS apply credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_APPLY_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
           role-session-name: gha-pr-test-apply-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_TEST_ACCOUNT_ID }}
 
       - name: Emit test apply evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: test"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: apply"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
@@ -380,59 +389,69 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: |
-          set +e
-          make pulumi-up-plan 2>&1 | tee .artifacts/pulumi-plan/apply.log
-          apply_rc="${PIPESTATUS[0]}"
-          set -e
-          if [[ "${apply_rc}" -eq 0 ]]; then
-            exit 0
-          fi
-          if grep -Fq "decrypting secret value: cipher: message authentication failed" .artifacts/pulumi-plan/apply.log; then
-            echo "::warning::Saved Pulumi plan failed with the known KMS plan-decrypt error; retrying guarded direct test apply after preview, destructive diff, and IAM validation gates."
-            make pulumi-up
-            exit 0
-          fi
-          exit "${apply_rc}"
+        run: make pulumi-up-plan
 
   test_post_apply_drift:
     name: Test Post-Apply Drift
     if: >-
-      needs.preflight.outputs.target_environment == 'prod' ||
-      (needs.preflight.outputs.target_environment == 'test' &&
-      needs.preflight.outputs.command == 'up')
+      needs.preflight.outputs.command == 'up'
+    environment: test-preview
     runs-on: ubuntu-latest
     needs:
       - preflight
       - test_apply
     timeout-minutes: 20
-    environment: test
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Recheck current PR head before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+        run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: PR test drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
+
       - name: Configure AWS drift credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_DRIFT_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
           role-session-name: gha-pr-test-drift-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_TEST_ACCOUNT_ID }}
 
       - name: Start development environment
         run: make start
@@ -443,34 +462,62 @@ jobs:
   prod_preview:
     name: Prod Preview
     if: >-
+      always() && needs.preflight.result == 'success' &&
       needs.preflight.outputs.target_environment == 'prod' &&
-      needs.test_post_apply_drift.result == 'success'
+      needs.test_preview.result == 'success' &&
+      (needs.preflight.outputs.command == 'plan' ||
+      needs.test_post_apply_drift.result == 'success')
+    environment: prod-preview
     runs-on: ubuntu-latest
     needs:
       - preflight
+      - test_preview
       - test_post_apply_drift
     timeout-minutes: 25
-    environment: prod-preview
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
+
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Recheck current PR head before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+        run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load prod preview AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: prod-preview
+          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          purpose: PR prod preview
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,
+            PULUMI_PREVIEW_STACKS,PULUMI_DRIFT_STACKS
 
       - name: Validate production preview prerequisites
         run: |
@@ -507,17 +554,19 @@ jobs:
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-pr-prod-preview-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_PROD_ACCOUNT_ID }}
 
       - name: Emit production preview evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: prod-preview"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: preview"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
@@ -588,39 +637,64 @@ jobs:
   prod_iam_validation:
     name: Prod IAM Validation
     if: needs.preflight.outputs.target_environment == 'prod'
+    environment: prod-preview
     runs-on: ubuntu-latest
     needs:
       - preflight
       - prod_preview
       - prod_destructive_diff
     timeout-minutes: 15
-    environment: prod-preview
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_PREVIEW_ROLE_ARN: ${{ vars.AWS_PREVIEW_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Recheck current PR head before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+        run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load prod preview AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: prod-preview
+          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          purpose: PR prod IAM validation
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_PREVIEW_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
           role-session-name: gha-pr-prod-iam-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_PROD_ACCOUNT_ID }}
 
       - name: Start development environment
         run: make start
@@ -644,6 +718,8 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - preflight
+      - test_apply
+      - test_post_apply_drift
       - prod_preview
       - prod_destructive_diff
       - prod_iam_validation
@@ -652,16 +728,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_PREVIEW_STACKS: ${{ vars.PULUMI_PREVIEW_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -677,20 +746,55 @@ jobs:
           fi
           echo "Approved production SHA: ${checked_out_sha}"
 
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Recheck current PR head before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+        run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load prod AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: prod
+          config-role-arn: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          purpose: PR prod apply
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+
       - name: Configure AWS apply credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_APPLY_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
           role-session-name: gha-pr-prod-apply-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_PROD_ACCOUNT_ID }}
 
       - name: Emit production apply evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
           echo "GitHub environment: prod"
+          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
+          echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "AWS account ID: ${account_id}"
+          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
+          echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: apply"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
@@ -717,44 +821,141 @@ jobs:
     if: >-
       needs.preflight.outputs.target_environment == 'prod' &&
       needs.preflight.outputs.command == 'up'
+    environment: prod-preview
     runs-on: ubuntu-latest
     needs:
       - preflight
       - prod_apply
     timeout-minutes: 20
-    environment: prod-preview
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
-      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DEFAULT_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
-      AWS_DRIFT_ROLE_ARN: ${{ vars.AWS_DRIFT_ROLE_ARN }}
-      PULUMI_BACKEND_URL: ${{ vars.PULUMI_BACKEND_URL }}
-      PULUMI_SECRETS_PROVIDER: ${{ vars.PULUMI_SECRETS_PROVIDER }}
-      PULUMI_DRIFT_STACKS: ${{ vars.PULUMI_DRIFT_STACKS }}
-      PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ needs.preflight.outputs.head_sha }}
           persist-credentials: false
 
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Recheck current PR head before credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+        run: |
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load prod preview AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: prod-preview
+          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          purpose: PR prod drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
+
       - name: Configure AWS drift credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
-          role-to-assume: ${{ env.AWS_DRIFT_ROLE_ARN }}
+          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
           role-session-name: gha-pr-prod-drift-${{ github.run_id }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ env.AWS_ACCOUNT_ID }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_PROD_ACCOUNT_ID }}
 
       - name: Start development environment
         run: make start
 
       - name: Run production post-apply drift detection
         run: make test-drift
+
+  platform_promotion:
+    concurrency:
+      group: promotion-status-${{ needs.preflight.outputs.pull_request_number }}
+      cancel-in-progress: false
+    name: Publish Platform Promotion Proof
+    needs:
+      - preflight
+      - test_apply
+      - test_post_apply_drift
+      - prod_apply
+      - prod_post_apply_drift
+    if: >-
+      needs.preflight.outputs.command == 'up' &&
+      needs.preflight.outputs.target_environment == 'prod'
+    environment: governance-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PROMOTION_KIND: platform
+      PROMOTION_NEEDS: ${{ toJSON(needs) }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download same-run test saved-plan proof
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{ needs.preflight.outputs.head_sha }}-test-plan
+          path: .artifacts/promotion-inputs/test
+      - name: Download same-run prod saved-plan proof
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{ needs.preflight.outputs.head_sha }}-prod-plan
+          path: .artifacts/promotion-inputs/prod
+      - name: Prepare verified promotion proof
+        run: python3 scripts/governance_promotion.py prepare
+      - name: Upload immutable promotion proof
+        id: proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: governance-promotion
+          path: .artifacts/governance-promotion/proof.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Verify main-only App key boundary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/governance_promotion.py verify-environment
+      - name: Create dedicated promotion App token
+        id: promotion_app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.GOVERNANCE_PROMOTION_APP_ID }}
+          private-key: ${{ secrets.GOVERNANCE_PROMOTION_APP_PRIVATE_KEY }}
+          permission-statuses: write
+          permission-deployments: write
+          permission-actions: read
+          permission-contents: read
+          permission-pull-requests: read
+      - name: Publish verified promotion and account deployment records
+        env:
+          GH_TOKEN: ${{ steps.promotion_app.outputs.token }}
+          PROMOTION_ARTIFACT_ID: ${{ steps.proof.outputs.artifact-id }}
+        run: python3 scripts/governance_promotion.py publish
 
   comment_result:
     name: Comment Result
@@ -772,6 +973,7 @@ jobs:
       - prod_iam_validation
       - prod_apply
       - prod_post_apply_drift
+      - platform_promotion
     timeout-minutes: 10
     permissions:
       issues: write
@@ -788,8 +990,8 @@ jobs:
           {
             echo "## Pulumi PR command result"
             echo
-            echo "- Command: \`${{ needs.preflight.outputs.display_command || 'preflight' }}\`"
-            echo "- Commit: \`${{ needs.preflight.outputs.head_sha || 'unknown' }}\`"
+            echo "- Command: \`${{ needs.preflight.outputs.display_command || needs.preflight.outputs.feedback_display_command || 'preflight' }}\`"
+            echo "- Commit: \`${{ needs.preflight.outputs.head_sha || needs.preflight.outputs.feedback_head_sha || 'unknown' }}\`"
             echo "- Workflow run: ${RUN_URL}"
             echo
             echo "| Stage | Result |"
@@ -805,11 +1007,12 @@ jobs:
             echo "| Production IAM validation | \`${{ needs.prod_iam_validation.result }}\` |"
             echo "| Production apply | \`${{ needs.prod_apply.result }}\` |"
             echo "| Production post-apply drift | \`${{ needs.prod_post_apply_drift.result }}\` |"
+            echo "| Verified promotion proof | \`${{ needs.platform_promotion.result }}\` |"
             echo
             echo "Production stages are gated behind a successful test apply and test post-apply drift check for the same PR head SHA."
           } > "${body_file}"
 
-          pr_number="${{ needs.preflight.outputs.pull_request_number }}"
+          pr_number="${{ needs.preflight.outputs.pull_request_number || needs.preflight.outputs.feedback_pull_request_number }}"
           if [[ -n "${pr_number}" ]]; then
             jq -Rs '{body: .}' < "${body_file}" \
               | gh api \

@@ -22,6 +22,7 @@ bootstrap_requested = bool(
 )
 
 if bootstrap_requested:
+    import pulumi_aws as aws
     from infra import (
         BootstrapInfrastructure,
         BootstrapInfrastructureDependencies,
@@ -29,6 +30,15 @@ if bootstrap_requested:
     )
     from infra import (
         config as bootstrap_config,
+    )
+    from infra.github_identity import normalize_identity
+    from infra.iam.account import assert_bootstrap_account
+
+    normalize_identity(
+        cfg.require("githubRepositoryId"), cfg.require("githubRepositoryOwnerId")
+    )
+    assert_bootstrap_account(
+        cfg.require("awsAccountId"), aws.get_caller_identity().account_id
     )
 
     bootstrap_settings = bootstrap_config.settings
@@ -39,6 +49,7 @@ if bootstrap_requested:
         settings=bootstrap_settings,
         repository_catalog=repository_catalog,
         dependencies=dependencies,
+        manage_control_resources=False,
     )
 
     logging = bootstrap.logging
@@ -51,6 +62,8 @@ if bootstrap_requested:
     security_account_controls = bootstrap.security_account_controls
     if bootstrap.automation is not None:
         automation = bootstrap.automation
+    if bootstrap.ci_config is not None:
+        ci_config = bootstrap.ci_config
 
     pulumi.export("centralLogBucket", bootstrap.outputs["centralLogBucket"])
     pulumi.export("centralLogBucketArn", bootstrap.outputs["centralLogBucketArn"])
@@ -61,6 +74,19 @@ if bootstrap_requested:
     pulumi_secrets_provider_urls = bootstrap.outputs["pulumiSecretsProviderUrls"]
     pulumi.export("pulumiSecretsProviderUrls", pulumi_secrets_provider_urls)
     pulumi.export("deployRoleArns", bootstrap.outputs["deployRoleArns"])
+    if bootstrap.ci_config is not None:
+        pulumi.export(
+            "ciConfigurationSecretIds",
+            bootstrap.outputs["ciConfigurationSecretIds"],
+        )
+        pulumi.export(
+            "ciConfigurationSecretArns",
+            bootstrap.outputs["ciConfigurationSecretArns"],
+        )
+        pulumi.export(
+            "githubCiConfigReadRoleArns",
+            bootstrap.outputs["githubCiConfigReadRoleArns"],
+        )
     managed_repository_projects = bootstrap.outputs["managedRepositoryProjects"]
     pulumi.export("managedRepositoryProjects", managed_repository_projects)
     managed_repository_metadata = bootstrap.outputs["managedRepositoryMetadata"]

@@ -1,0 +1,48 @@
+# .github/CODEOWNERS — Kravalg-gated governance scope (architecture §7.1, FR10, D5, SECURITY-4).
+#
+# Sole approver @Kravalg owns every governance / IAM / policy / trust-or-scope path.
+# There is intentionally NO catch-all '*' line: unrelated paths stay unowned (no over-scoping, D5).
+# This @Kravalg glob set is kept set-equal to scripts/governance_paths.GOVERNANCE_PATH_GLOBS by
+# tests/unit/test_codeowners.py; drift between the two lists fails CI (single source of truth).
+
+# Governance + IAM + policy + trust/scope code — sole approver @Kravalg
+/pulumi/governance/                              @Kravalg
+/pulumi/infra/governance.py                      @Kravalg
+/pulumi/infra/iam/                               @Kravalg
+/pulumi/infra/ci_bootstrap.py                    @Kravalg
+/pulumi/infra/ci_config.py                       @Kravalg
+/pulumi/infra/automation.py                      @Kravalg
+/pulumi/infra/bootstrap_settings.py              @Kravalg
+/pulumi/infra/pulumi_state.py                    @Kravalg
+/pulumi/infra/pulumi_secrets.py                  @Kravalg
+/pulumi/repositories.governance.json             @Kravalg
+/policy/                                         @Kravalg
+/scripts/governance_paths.py                     @Kravalg
+/scripts/run_pulumi_command.py                   @Kravalg
+/scripts/_pulumi_command_support.py              @Kravalg
+/scripts/_script_support.py                      @Kravalg
+/scripts/prepare_policy_pack.py                  @Kravalg
+/scripts/pulumi_pr_comment.py                    @Kravalg
+/scripts/_github_repository_controls.py          @Kravalg
+/scripts/configure_github_repository_controls.py @Kravalg
+/.github/CODEOWNERS                              @Kravalg
+/.github/workflows/pulumi-governance.yml         @Kravalg
+/.github/workflows/pulumi-pr-command-runner.yml  @Kravalg
+/.github/workflows/pulumi-pr-commands.yml        @Kravalg
+
+/scripts/                                       @Kravalg
+/Makefile                                       @Kravalg
+/Dockerfile                                     @Kravalg
+/docker-compose*.yml                            @Kravalg
+/pyproject.toml                                 @Kravalg
+/uv.lock                                        @Kravalg
+/.github/actions/                               @Kravalg
+/.github/workflows/governance-promotion.yml       @Kravalg
+/.github/workflows/                              @Kravalg
+
+# Operator identity, boundaries and control ownership
+/pulumi/github-ci-bootstrap/                     @Kravalg
+/pulumi/infra/governance_automation.py           @Kravalg
+/pulumi/infra/github_identity.py                 @Kravalg
+/pulumi/infra/platform_control_iam.py            @Kravalg
+/pulumi/infra/platform_iam.py                    @Kravalg

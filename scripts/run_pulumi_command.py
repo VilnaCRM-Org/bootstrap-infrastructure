@@ -23,6 +23,11 @@ from _pulumi_command_support import (
     _select_or_init_stack,
     _uses_file_backend,
 )
+from _pulumi_stack_config import (
+    StackConfigError,
+    prepared_stack_configuration,
+    verify_provider_identity,
+)
 from _script_support import (
     discover_stacks,
     ensure_file_backend_directory,
@@ -45,7 +50,7 @@ __all__ = [
     "_uses_file_backend",
 ]
 
-COMMANDS_WITH_POLICY_PACK = {"preview", "plan", "up", "drift"}
+COMMANDS_WITH_POLICY_PACK = {"preview", "plan", "up", "up-plan", "drift"}
 COMMAND_STACK_LIST_ENV = {
     "preview": "PULUMI_PREVIEW_STACKS",
     "plan": "PULUMI_PREVIEW_STACKS",
@@ -160,8 +165,32 @@ def _artifact_path(context: CommandContext, path: Path) -> str:
     return str(path.relative_to(context.root_dir))
 
 
-def _manifest_path(context: CommandContext, value: str) -> Path:
-    return context.root_dir / value
+def _manifest_path(context: CommandContext, value: Any, field_name: str) -> Path | None:
+    if not isinstance(value, str) or not value:
+        print(
+            f"error: Pulumi plan manifest {field_name} must be a relative path.",
+            file=sys.stderr,
+        )
+        return None
+
+    relative_path = Path(value)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        print(
+            f"error: Pulumi plan manifest {field_name} must stay under the repository.",
+            file=sys.stderr,
+        )
+        return None
+
+    manifest_path = (context.root_dir / relative_path).resolve()
+    try:
+        manifest_path.relative_to(context.root_dir.resolve())
+    except ValueError:
+        print(
+            f"error: Pulumi plan manifest {field_name} must stay under the repository.",
+            file=sys.stderr,
+        )
+        return None
+    return manifest_path
 
 
 def _file_sha256(path: Path) -> str:
@@ -197,18 +226,23 @@ def _plan_max_age_seconds(context: CommandContext) -> int:
 
 def _plan_manifest_entry(
     context: CommandContext, stack: str, plan_file: Path, preview_file: Path
-) -> dict[str, str]:
+) -> dict[str, Any]:
     return {
         "stack": stack,
         "planFile": _artifact_path(context, plan_file),
         "planSha256": _file_sha256(plan_file),
         "previewFile": _artifact_path(context, preview_file),
         "previewSha256": _file_sha256(preview_file),
+        **(
+            {"secretsProviderIdentity": context.provider_identity}
+            if context.provider_identity is not None
+            else {}
+        ),
     }
 
 
 def _write_plan_manifest(
-    context: CommandContext, stack_entries: list[dict[str, str]]
+    context: CommandContext, stack_entries: list[dict[str, Any]]
 ) -> Path:
     manifest_file = _plan_manifest_file(context)
     manifest = {
@@ -231,18 +265,147 @@ def _load_plan_manifest(context: CommandContext) -> dict[str, Any] | None:
             f"error: Pulumi plan manifest not found: {manifest_file}", file=sys.stderr
         )
         return None
-    return json.loads(manifest_file.read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        print("error: Pulumi plan manifest is not valid JSON.", file=sys.stderr)
+        return None
+    if not isinstance(manifest, dict):
+        print("error: Pulumi plan manifest must be a JSON object.", file=sys.stderr)
+        return None
+    return manifest
 
 
 def _manifest_stack_entry(
     manifest: dict[str, Any], stack: str
 ) -> dict[str, Any] | None:
-    for entry in manifest.get("stacks", []):
+    stacks = manifest.get("stacks")
+    if not isinstance(stacks, list):
+        print("error: Pulumi plan manifest stacks must be a list.", file=sys.stderr)
+        return None
+
+    for entry in stacks:
+        if not isinstance(entry, dict):
+            print(
+                "error: Pulumi plan manifest stack entries must be objects.",
+                file=sys.stderr,
+            )
+            return None
         if entry.get("stack") == stack:
             return entry
     print(
         f"error: Pulumi plan manifest has no entry for stack {stack}", file=sys.stderr
     )
+    return None
+
+
+def _validate_plan_manifest_age(
+    context: CommandContext,
+    manifest: dict[str, Any],
+) -> int | None:
+    try:
+        plan_age = _plan_now_epoch(context) - int(manifest.get("createdAtEpoch", 0))
+        max_plan_age = _plan_max_age_seconds(context)
+    except (TypeError, ValueError):
+        print(
+            "error: Pulumi plan manifest timestamp or max age is invalid.",
+            file=sys.stderr,
+        )
+        return 1
+    if plan_age < 0:
+        print("error: Pulumi plan manifest was created in the future.", file=sys.stderr)
+        return 1
+    if plan_age > max_plan_age:
+        print("error: Pulumi plan manifest is stale.", file=sys.stderr)
+        return 1
+    return None
+
+
+def _manifest_plan_sha(entry: dict[str, Any]) -> str | None:
+    plan_sha = entry.get("planSha256")
+    if not isinstance(plan_sha, str) or not plan_sha:
+        print(
+            "error: Pulumi plan manifest planSha256 must be a non-empty string.",
+            file=sys.stderr,
+        )
+        return None
+    return plan_sha
+
+
+def _validate_plan_manifest_schema(manifest: dict[str, Any]) -> int | None:
+    if manifest.get("schemaVersion") != PLAN_MANIFEST_SCHEMA_VERSION:
+        print("error: unsupported Pulumi plan manifest schema.", file=sys.stderr)
+        return 1
+    return None
+
+
+def _validate_plan_manifest_commit(
+    context: CommandContext,
+    manifest: dict[str, Any],
+) -> int | None:
+    expected_sha = _commit_sha(context)
+    manifest_sha = manifest.get("commitSha", "")
+    requested_sha = context.env.get("PULUMI_EXPECTED_SHA")
+    if requested_sha and requested_sha != expected_sha:
+        print("error: Pulumi checkout SHA differs from requested SHA.", file=sys.stderr)
+        return 1
+    if not expected_sha or not manifest_sha or expected_sha != manifest_sha:
+        print("error: Pulumi plan commit SHA does not match checkout.", file=sys.stderr)
+        return 1
+    return None
+
+
+def _validate_plan_manifest_backend(
+    context: CommandContext,
+    manifest: dict[str, Any],
+) -> int | None:
+    if manifest.get("backendUrl") != context.backend_url:
+        print(
+            "error: Pulumi plan backend URL does not match apply backend.",
+            file=sys.stderr,
+        )
+        return 1
+    return None
+
+
+def _validate_plan_manifest_project(
+    context: CommandContext,
+    manifest: dict[str, Any],
+) -> int | None:
+    for field_name, expected_path in (
+        ("pulumiDir", context.pulumi_dir),
+        ("policyPackDir", context.policy_pack_dir),
+    ):
+        recorded_path = _manifest_path(context, manifest.get(field_name), field_name)
+        if recorded_path is None:
+            return 1
+        if recorded_path.resolve() != expected_path.resolve():
+            print(
+                f"error: Pulumi plan {field_name} does not match apply project.",
+                file=sys.stderr,
+            )
+            return 1
+    return None
+
+
+def _validate_plan_manifest_entry(
+    context: CommandContext,
+    entry: dict[str, Any],
+    plan_file: Path,
+) -> int | None:
+    recorded_plan = _manifest_path(context, entry.get("planFile"), "planFile")
+    if recorded_plan is None:
+        return 1
+    if recorded_plan.resolve() != plan_file.resolve():
+        print("error: Pulumi plan file does not match manifest entry.", file=sys.stderr)
+        return 1
+
+    plan_sha = _manifest_plan_sha(entry)
+    if plan_sha is None:
+        return 1
+    if _file_sha256(plan_file) != plan_sha:
+        print("error: Pulumi plan file hash does not match manifest.", file=sys.stderr)
+        return 1
     return None
 
 
@@ -252,41 +415,21 @@ def _validate_plan_manifest(
     stack: str,
     plan_file: Path,
 ) -> int | None:
-    if manifest.get("schemaVersion") != PLAN_MANIFEST_SCHEMA_VERSION:
-        print("error: unsupported Pulumi plan manifest schema.", file=sys.stderr)
-        return 1
-
-    plan_age = _plan_now_epoch(context) - int(manifest.get("createdAtEpoch", 0))
-    if plan_age > _plan_max_age_seconds(context):
-        print("error: Pulumi plan manifest is stale.", file=sys.stderr)
-        return 1
-
-    expected_sha = _commit_sha(context)
-    manifest_sha = manifest.get("commitSha", "")
-    if expected_sha and manifest_sha and expected_sha != manifest_sha:
-        print("error: Pulumi plan commit SHA does not match checkout.", file=sys.stderr)
-        return 1
-
-    if manifest.get("backendUrl") != context.backend_url:
-        print(
-            "error: Pulumi plan backend URL does not match apply backend.",
-            file=sys.stderr,
-        )
-        return 1
+    for validator in (
+        lambda: _validate_plan_manifest_schema(manifest),
+        lambda: _validate_plan_manifest_age(context, manifest),
+        lambda: _validate_plan_manifest_commit(context, manifest),
+        lambda: _validate_plan_manifest_backend(context, manifest),
+        lambda: _validate_plan_manifest_project(context, manifest),
+    ):
+        status = validator()
+        if status is not None:
+            return status
 
     entry = _manifest_stack_entry(manifest, stack)
     if entry is None:
         return 1
-
-    recorded_plan = _manifest_path(context, entry["planFile"])
-    if recorded_plan.resolve() != plan_file.resolve():
-        print("error: Pulumi plan file does not match manifest entry.", file=sys.stderr)
-        return 1
-
-    if _file_sha256(plan_file) != entry.get("planSha256"):
-        print("error: Pulumi plan file hash does not match manifest.", file=sys.stderr)
-        return 1
-    return None
+    return _validate_plan_manifest_entry(context, entry, plan_file)
 
 
 def _context_from_environment() -> CommandContext:
@@ -344,7 +487,7 @@ def _prepare_plan_artifacts(context: CommandContext) -> Path:
 def _run_plan_command(context: CommandContext, stacks: list[str]) -> int:
     summary_file = _prepare_plan_artifacts(context)
     plan_files: list[Path] = []
-    manifest_entries: list[dict[str, str]] = []
+    manifest_entries: list[dict[str, Any]] = []
 
     for stack in stacks:
         select_failure = _select_or_init_stack(context, stack)
@@ -354,11 +497,16 @@ def _run_plan_command(context: CommandContext, stacks: list[str]) -> int:
         plan_path = _plan_file(context.plan_dir, stack)
         plan_files.append(plan_path)
         preview_file = _preview_file(context.preview_artifact_dir, stack)
-        with preview_file.open("w", encoding="utf-8") as handle:
-            _run_stack_command(
-                context,
-                StackCommand("plan", stack, plan_path=plan_path, stdout=handle),
-            )
+        with prepared_stack_configuration(context, stack) as prepared:
+            with preview_file.open("w", encoding="utf-8") as handle:
+                _run_stack_command(
+                    prepared,
+                    StackCommand("plan", stack, plan_path=plan_path, stdout=handle),
+                )
+            if plan_path.is_file():
+                manifest_entries.append(
+                    _plan_manifest_entry(prepared, stack, plan_path, preview_file)
+                )
         if not plan_path.is_file():
             print(f"error: Pulumi plan file not created: {plan_path}", file=sys.stderr)
             return 1
@@ -367,9 +515,6 @@ def _run_plan_command(context: CommandContext, stacks: list[str]) -> int:
             preview_file,
             summary_file,
             env=context.env,
-        )
-        manifest_entries.append(
-            _plan_manifest_entry(context, stack, plan_path, preview_file)
         )
 
     manifest_file = _write_plan_manifest(context, manifest_entries)
@@ -428,96 +573,35 @@ def _run_with_observable_output(
     )
 
 
-def _plan_decrypt_fallback_enabled(context: CommandContext) -> bool:
-    return context.env.get("GITHUB_ACTIONS") == "true" and bool(
-        context.env.get("PULUMI_EXPECTED_SHA")
-    )
-
-
-def _saved_prod_plan_recovery_enabled(
-    context: CommandContext, combined_output: str, error_signature: str
-) -> bool:
-    return error_signature in combined_output and _plan_decrypt_fallback_enabled(
-        context
-    )
-
-
-def _recover_failed_saved_prod_plan(
-    context: CommandContext,
-    stack: str,
-    plan_path: Path,
-    result: subprocess.CompletedProcess[str],
-) -> int | None:
-    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if _saved_prod_plan_recovery_enabled(context, combined_output, PLAN_DECRYPT_ERROR):
-        print(
-            "error: saved Pulumi plan failed with the known KMS plan-decrypt "
-            "error; refusing direct production apply because production must "
-            "use the reviewed saved plan artifact.",
-            file=sys.stderr,
-        )
-        return result.returncode or 1
-
-    if _saved_prod_plan_recovery_enabled(context, combined_output, STACK_LOCK_ERROR):
-        print(
-            "warning: Pulumi reported a stack lock while applying the saved "
-            "production plan; running pulumi cancel for the selected stack "
-            "and retrying the same saved plan once.",
-            file=sys.stderr,
-        )
-        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
-        retry = _run_with_observable_output(
-            context,
-            _pulumi_command(
-                context, StackCommand("up-plan", stack, plan_path=plan_path)
-            ),
-        )
-        return None if retry.returncode == 0 else retry.returncode or 1
-
-    return result.returncode or 1
-
-
 def _run_up_plan_stack(
     context: CommandContext, stack: str, plan_path: Path
 ) -> int | None:
-    if stack != "prod":
-        _run_stack_command(
-            context,
-            StackCommand("up-plan", stack, plan_path=plan_path),
-        )
-        return None
-
     result = _run_with_observable_output(
         context,
         _pulumi_command(context, StackCommand("up-plan", stack, plan_path=plan_path)),
     )
-    if result.returncode == 0:
-        return None
+    # A failed saved plan never authorizes a different apply or cancellation of
+    # another update. Resolve the failure and generate a fresh reviewed plan.
+    return None if result.returncode == 0 else result.returncode
 
-    return _recover_failed_saved_prod_plan(context, stack, plan_path, result)
 
-
-def _pulumi_cancel_command(context: CommandContext, stack: str) -> list[str]:
-    return [
-        "pulumi",
-        "-C",
-        str(context.pulumi_dir),
-        "cancel",
-        "--stack",
-        stack,
-        "--yes",
-    ]
+def _direct_ci_up_forbidden(context: CommandContext) -> bool:
+    if context.env.get("GITHUB_ACTIONS") == "true":
+        print(
+            "error: direct Pulumi up is disabled in GitHub Actions; "
+            "generate and apply a reviewed saved plan with pulumi-plan and "
+            "pulumi-up-plan.",
+            file=sys.stderr,
+        )
+        return True
+    return False
 
 
 def _run_up_stack(
     context: CommandContext, stack: str, *, include_policy_pack: bool = True
 ) -> int | None:
-    if not _plan_decrypt_fallback_enabled(context):
-        _run_stack_command(
-            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
-        )
-        return None
-
+    if _direct_ci_up_forbidden(context):
+        return 1
     result = _run_with_observable_output(
         context,
         _pulumi_command(
@@ -525,19 +609,6 @@ def _run_up_stack(
         ),
     )
     if result.returncode == 0:
-        return None
-
-    combined_output = f"{result.stdout or ''}{result.stderr or ''}"
-    if STACK_LOCK_ERROR in combined_output:
-        print(
-            "warning: Pulumi reported a stack lock during guarded direct apply; "
-            "running pulumi cancel for the selected stack and retrying once.",
-            file=sys.stderr,
-        )
-        context.runner(_pulumi_cancel_command(context, stack), env=context.env)
-        _run_stack_command(
-            context, StackCommand("up", stack, include_policy_pack=include_policy_pack)
-        )
         return None
 
     return result.returncode or 1
@@ -598,7 +669,10 @@ def _run_validated_up_plan_stack(
     if status is None:
         status = _select_or_init_stack(context, stack)
     if status is None:
-        status = _run_up_plan_stack(context, stack, plan_path)
+        with prepared_stack_configuration(context, stack) as prepared:
+            entry = _manifest_stack_entry(manifest or {}, stack)
+            verify_provider_identity(prepared, entry or {})
+            status = _run_up_plan_stack(prepared, stack, plan_path)
     return manifest, status
 
 
@@ -609,12 +683,13 @@ def _run_regular_command(
         select_failure = _select_or_init_stack(context, stack)
         if select_failure is not None:
             return select_failure
-        if command == "up":
-            up_failure = _run_up_stack(context, stack)
-            if up_failure is not None:
-                return up_failure
-            continue
-        _run_stack_command(context, StackCommand(command, stack))
+        with prepared_stack_configuration(context, stack) as prepared:
+            if command == "up":
+                up_failure = _run_up_stack(prepared, stack)
+                if up_failure is not None:
+                    return up_failure
+                continue
+            _run_stack_command(prepared, StackCommand(command, stack))
     return 0
 
 
@@ -629,6 +704,8 @@ def _dispatch_command(command: str, context: CommandContext, stacks: list[str]) 
 
 def _run_command(command: str) -> int:
     context = _context_from_environment()
+    if command == "up" and _direct_ci_up_forbidden(context):
+        return 1
     provider_failure = _validate_secrets_provider(context.secrets_provider)
     stacks = _configured_stack_names(command, context.pulumi_dir, context.env)
     status = provider_failure
@@ -642,7 +719,11 @@ def _run_command(command: str) -> int:
         status = 1
 
     if status is None:
-        status = _dispatch_command(command, context, stacks)
+        try:
+            status = _dispatch_command(command, context, stacks)
+        except StackConfigError as error:
+            print(f"error: {error}", file=sys.stderr)
+            status = 1
     return status
 
 

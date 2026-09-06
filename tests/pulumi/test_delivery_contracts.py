@@ -10,6 +10,9 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = PROJECT_ROOT / ".github" / "workflows"
+AWS_CI_LOADER_ACTION = (
+    PROJECT_ROOT / ".github" / "actions" / "load-aws-ci-env" / "action.yml"
+)
 DOCKERFILE = PROJECT_ROOT / "Dockerfile"
 DOCKER_COMPOSE = PROJECT_ROOT / "docker-compose.yml"
 SECRETS_DOC = PROJECT_ROOT / "docs" / "github-actions-secrets.md"
@@ -234,7 +237,6 @@ def test_docker_compose_keeps_workspace_and_credentials_contract() -> None:
 
     assert service["env_file"] == [{"path": ".env", "required": False}]
     assert service["environment"] == [
-        "PULUMI_ACCESS_TOKEN",
         "PULUMI_BACKEND_URL",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
@@ -496,6 +498,9 @@ def test_makefile_keeps_pulumi_guardrails_secret_safe() -> None:
     assert "stack change-secrets-provider" not in pulumi_command_combined_text  # nosec B101
     assert '"--save-plan"' in pulumi_command_combined_text  # nosec B101
     assert '"summarize"' in pulumi_command_combined_text  # nosec B101
+    assert "direct Pulumi up is disabled in GitHub Actions" in (  # nosec B101
+        pulumi_command_combined_text
+    )
 
 
 def test_bats_suite_covers_every_public_make_target() -> None:
@@ -704,97 +709,300 @@ def test_actions_are_pinned_to_full_commit_shas() -> None:
                 )
 
 
-def test_multi_account_workflows_use_environment_scoped_oidc_contracts() -> None:
-    """Bind privileged AWS jobs to GitHub environments and account allow-lists."""
-    expected_environments = {"test", "prod-preview", "prod"}
-    preview_role = "${{ env.AWS_PREVIEW_ROLE_ARN }}"
-    apply_role = "${{ env.AWS_APPLY_ROLE_ARN }}"
-    drift_role = "${{ env.AWS_DRIFT_ROLE_ARN }}"
-    alert_triage_role = "${{ env.AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN }}"
+def test_aws_ci_loader_reads_secrets_manager_without_pulumi_cloud() -> None:
+    """Load CI config directly from AWS Secrets Manager through GitHub OIDC."""
+    action_text = AWS_CI_LOADER_ACTION.read_text(encoding="utf-8")
+    action = yaml.safe_load(action_text)
+    resolve_step = action["runs"]["steps"][0]
+    configure_aws_step = next(
+        step
+        for step in action["runs"]["steps"]
+        if step.get("name") == "Configure AWS config-read credentials"
+    )
+    load_step = next(
+        step
+        for step in action["runs"]["steps"]
+        if step.get("name") == "Load AWS Secrets Manager CI values"
+    )
+    validate_step = next(
+        step
+        for step in action["runs"]["steps"]
+        if step.get("name") == "Validate AWS Secrets Manager CI environment"
+    )
+    boundary_step = next(
+        step
+        for step in action["runs"]["steps"]
+        if step.get("name") == "Record AWS Secrets Manager source-of-truth boundary"
+    )
+
+    assert action["name"] == "Load AWS Secrets Manager CI environment"  # nosec B101
+    assert "organization" not in action["inputs"]  # nosec B101
+    assert "config-role-arn" in action["inputs"]  # nosec B101
+    assert "aws-region" in action["inputs"]  # nosec B101
+    assert "pulumi/auth-actions" not in action_text  # nosec B101
+    assert "pulumi/esc-action" not in action_text  # nosec B101
+    assert "PULUMI_ESC" not in action_text  # nosec B101
+    assert ".github/ci/pulumi-esc.json" not in action_text  # nosec B101
+    assert "secretsmanager get-secret-value" in load_step["run"]  # nosec B101
+    assert "--query SecretString" in load_step["run"]  # nosec B101
+    assert '"PULUMI_DIR"' in load_step["run"]  # nosec B101
+    assert "safe Pulumi project path" in load_step["run"]  # nosec B101
+    assert "Secret ID:" in boundary_step["run"]  # nosec B101
+    assert "Pulumi Cloud/ESC: not used" in boundary_step["run"]  # nosec B101
+    assert action["runs"]["steps"].index(resolve_step) < action["runs"]["steps"].index(  # nosec B101
+        boundary_step
+    )
+    assert action["runs"]["steps"].index(boundary_step) < action["runs"]["steps"].index(  # nosec B101
+        configure_aws_step
+    )
+    assert configure_aws_step["with"]["role-to-assume"] == (  # nosec B101
+        "${{ inputs.config-role-arn }}"
+    )
+    assert configure_aws_step["with"]["allowed-account-ids"] == (  # nosec B101
+        "${{ steps.aws-target.outputs.config_account_id }}"
+    )
+    assert "GITHUB_STEP_SUMMARY" in boundary_step["run"]  # nosec B101
+    assert all(
+        "setup-uv" not in step.get("uses", "") for step in action["runs"]["steps"]
+    )
+    assert validate_step["env"]["CI_CONFIG_ACTION_PATH"] == "${{ github.action_path }}"
+    assert (
+        'python3 -I "${CI_CONFIG_ACTION_PATH}/../../../scripts/'
+        'validate_ci_environment.py"' in validate_step["run"]
+    )
+    assert (  # nosec B101
+        "uv run" not in validate_step["run"]
+    )
+    assert "--purpose" in validate_step["run"]  # nosec B101
+    assert (  # nosec B101
+        "python3 scripts/validate_ci_environment.py" not in validate_step["run"]
+    )
+
+
+def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
+    """Load privileged CI config from fixed AWS Secrets Manager secrets."""
+    test_pr_environment = "${{ steps.ci_config_target.outputs.environment }}"
     expected_contracts_by_job = {
-        ("nightly-guardrails.yml", "test_drift_detection"): ("test", drift_role),
+        ("nightly-guardrails.yml", "test_drift_detection"): (
+            "test",
+            "${{ steps.ci_config.outputs.aws-drift-role-arn }}",
+        ),
         ("nightly-guardrails.yml", "prod_drift_detection"): (
             "prod-preview",
-            drift_role,
+            "${{ steps.ci_config.outputs.aws-drift-role-arn }}",
         ),
         ("well-architected-evidence.yml", "test_account_evidence"): (
-            "test",
-            preview_role,
+            test_pr_environment,
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
         ),
         ("operations-alert-triage.yml", "triage_operations_alerts"): (
             "test",
-            alert_triage_role,
+            "${{ steps.ci_config.outputs.aws-operations-alert-triage-role-arn }}",
         ),
-        ("pulumi-pr-command-runner.yml", "test_preview"): ("test", preview_role),
+        ("pulumi-pr-command-runner.yml", "test_preview"): (
+            "test",
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
+        ),
         ("pulumi-pr-command-runner.yml", "test_iam_validation"): (
             "test",
-            preview_role,
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
         ),
-        ("pulumi-pr-command-runner.yml", "test_apply"): ("test", apply_role),
+        ("pulumi-pr-command-runner.yml", "test_apply"): (
+            "test",
+            "${{ steps.ci_config.outputs.aws-apply-role-arn }}",
+        ),
         ("pulumi-pr-command-runner.yml", "test_post_apply_drift"): (
             "test",
-            drift_role,
+            "${{ steps.ci_config.outputs.aws-drift-role-arn }}",
         ),
         ("pulumi-pr-command-runner.yml", "prod_preview"): (
             "prod-preview",
-            preview_role,
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
         ),
         ("pulumi-pr-command-runner.yml", "prod_iam_validation"): (
             "prod-preview",
-            preview_role,
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
         ),
-        ("pulumi-pr-command-runner.yml", "prod_apply"): ("prod", apply_role),
+        ("pulumi-pr-command-runner.yml", "prod_apply"): (
+            "prod",
+            "${{ steps.ci_config.outputs.aws-apply-role-arn }}",
+        ),
         ("pulumi-pr-command-runner.yml", "prod_post_apply_drift"): (
             "prod-preview",
-            drift_role,
+            "${{ steps.ci_config.outputs.aws-drift-role-arn }}",
         ),
-        ("pulumi-pr-guardrails.yml", "preview"): ("test", preview_role),
-        ("pulumi-pr-guardrails.yml", "iam_validation"): ("test", preview_role),
-        ("pulumi-prod.yml", "preview"): ("prod-preview", preview_role),
-        ("pulumi-prod.yml", "iam_validation"): ("prod-preview", preview_role),
-        ("pulumi-prod.yml", "apply"): ("prod", apply_role),
-        ("pulumi-prod.yml", "post_apply_drift"): ("prod-preview", drift_role),
-        ("pulumi-test-deploy.yml", "preview"): ("test", preview_role),
-        ("pulumi-test-deploy.yml", "iam_validation"): ("test", preview_role),
-        ("pulumi-test-deploy.yml", "apply"): ("test", apply_role),
-        ("pulumi-test-deploy.yml", "post_apply_drift"): ("test", drift_role),
+        ("pulumi-pr-guardrails.yml", "preview"): (
+            test_pr_environment,
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
+        ),
+        ("pulumi-pr-guardrails.yml", "iam_validation"): (
+            test_pr_environment,
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
+        ),
+        ("pulumi-prod.yml", "preview"): (
+            "prod-preview",
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
+        ),
+        ("pulumi-prod.yml", "iam_validation"): (
+            "prod-preview",
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
+        ),
+        ("pulumi-prod.yml", "apply"): (
+            "prod",
+            "${{ steps.ci_config.outputs.aws-apply-role-arn }}",
+        ),
+        ("pulumi-prod.yml", "post_apply_drift"): (
+            "prod-preview",
+            "${{ steps.ci_config.outputs.aws-drift-role-arn }}",
+        ),
+        ("pulumi-test-deploy.yml", "preview"): (
+            "test",
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
+        ),
+        ("pulumi-test-deploy.yml", "iam_validation"): (
+            "test",
+            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
+        ),
+        ("pulumi-test-deploy.yml", "apply"): (
+            "test",
+            "${{ steps.ci_config.outputs.aws-apply-role-arn }}",
+        ),
+        ("pulumi-test-deploy.yml", "post_apply_drift"): (
+            "test",
+            "${{ steps.ci_config.outputs.aws-drift-role-arn }}",
+        ),
     }
-    environment_jobs = [
-        (workflow_name, job_name, job, environment_name)
-        for workflow_name, job_name, job in _workflow_jobs()
-        if (environment_name := _environment_name(job)) is not None
-    ]
+    approval_only_environment_jobs = {
+        ("pulumi-prod.yml", "apply"),
+        ("pulumi-pr-command-runner.yml", "prod_apply"),
+    }
+    forbidden_job_env_keys = {
+        "AWS_ACCOUNT_ID",
+        "AWS_REGION",
+        "AWS_DEFAULT_REGION",
+        "AWS_PREVIEW_ROLE_ARN",
+        "AWS_APPLY_ROLE_ARN",
+        "AWS_DRIFT_ROLE_ARN",
+        "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN",
+        "PULUMI_BACKEND_URL",
+        "PULUMI_SECRETS_PROVIDER",
+        "PULUMI_PREVIEW_STACKS",
+        "PULUMI_DRIFT_STACKS",
+        "PULUMI_ACCESS_TOKEN",
+    }
+    expected_config_role_by_environment = {
+        test_pr_environment: "${{ steps.ci_config_target.outputs.config-role-arn }}",
+        "test": "${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}",
+        "prod-preview": "${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}",
+        "prod": "${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}",
+    }
+    expected_region_by_environment = {
+        test_pr_environment: "${{ vars.AWS_TEST_REGION }}",
+        "test": "${{ vars.AWS_TEST_REGION }}",
+        "prod-preview": "${{ vars.AWS_PROD_REGION }}",
+        "prod": "${{ vars.AWS_PROD_REGION }}",
+    }
 
-    assert {item[3] for item in environment_jobs} == expected_environments  # nosec B101
+    for workflow_name, job_name, job in _workflow_jobs():
+        workflow_job = (workflow_name, job_name)
+        environment_name = _environment_name(job)
+        if workflow_job in approval_only_environment_jobs:
+            assert environment_name == "prod"  # nosec B101
+        elif workflow_job == ("pulumi-test-deploy.yml", "apply"):
+            assert environment_name == "test"
+        elif (
+            workflow_name == "pulumi-pr-command-runner.yml"
+            and workflow_job in expected_contracts_by_job
+        ):
+            expected_environment = (
+                "test"
+                if job_name == "test_apply"
+                else ("prod-preview" if job_name.startswith("prod") else "test-preview")
+            )
+            assert environment_name == expected_environment
+        elif workflow_job in expected_contracts_by_job:
+            assert environment_name is None  # nosec B101
 
-    for workflow_name, job_name, job, environment_name in environment_jobs:
-        assert environment_name in expected_environments  # nosec B101
+        if workflow_job not in expected_contracts_by_job:
+            continue
 
         job_env = job.get("env", {})
-        role_message = (
-            f"{workflow_name}:{job_name} must use environment-scoped "
-            "purpose-specific role variables directly from the OIDC step"
+        assert not forbidden_job_env_keys.intersection(job_env), workflow_job
+
+        expected_ci_environment, expected_role = expected_contracts_by_job[workflow_job]
+        ci_config_step = next(
+            step
+            for step in job.get("steps", [])
+            if step.get("uses", "")
+            .split("@", 1)[0]
+            .endswith("/.github/actions/load-aws-ci-env")
         )
-        assert "AWS_OIDC_ROLE_ARN" not in job_env, role_message  # nosec B101
+        if expected_ci_environment == test_pr_environment:
+            ci_config_target_step = next(
+                step
+                for step in job.get("steps", [])
+                if step.get("name") == "Select test AWS CI configuration"
+            )
+            assert (
+                "AWS_TEST_PR_CI_CONFIG_ROLE_ARN"
+                in (  # nosec B101
+                    ci_config_target_step["run"]
+                )
+            )
+            assert (
+                "AWS_TEST_CI_CONFIG_ROLE_ARN"
+                in (  # nosec B101
+                    ci_config_target_step["run"]
+                )
+            )
+            assert "must be set" in ci_config_target_step["run"]  # nosec B101
+        assert ci_config_step["id"] == "ci_config"  # nosec B101
+        assert ci_config_step["with"]["environment"] == expected_ci_environment  # nosec B101
+        assert (
+            ci_config_step["with"]["config-role-arn"]
+            == (  # nosec B101
+                expected_config_role_by_environment[expected_ci_environment]
+            )
+        )
+        assert "||" not in ci_config_step["with"]["config-role-arn"]  # nosec B101
+        assert (
+            ci_config_step["with"]["aws-region"]
+            == (  # nosec B101
+                expected_region_by_environment[expected_ci_environment]
+            )
+        )
+        assert "organization" not in ci_config_step["with"]  # nosec B101
+        assert "/" not in ci_config_step["with"]["environment"]  # nosec B101
+        assert "inputs." not in ci_config_step["with"]["environment"]  # nosec B101
+        assert "client_payload" not in ci_config_step["with"]["environment"]  # nosec B101
+        required_keys = ci_config_step["with"]["required-keys"]
+        for required_key in ("AWS_ACCOUNT_ID", "AWS_REGION"):
+            assert required_key in required_keys  # nosec B101
+        assert "PULUMI_SECRETS_PROVIDER" not in job_env  # nosec B101
+        assert job.get("permissions", {}).get("id-token") == "write"  # nosec B101
 
         oidc_steps = [
             step
             for step in job.get("steps", [])
             if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
         ]
-        if not oidc_steps:
-            continue
-
-        expected_environment, expected_role = expected_contracts_by_job[
-            (workflow_name, job_name)
-        ]
-        assert environment_name == expected_environment  # nosec B101
-        assert job.get("permissions", {}).get("id-token") == "write"  # nosec B101
+        assert oidc_steps, workflow_job
         for step in oidc_steps:
             step_with = step["with"]
             assert step_with["role-to-assume"] == expected_role  # nosec B101
-            assert step_with["aws-region"] == "${{ env.AWS_REGION }}"  # nosec B101
-            assert step_with["allowed-account-ids"] == "${{ env.AWS_ACCOUNT_ID }}"  # nosec B101
+            assert (
+                step_with["aws-region"] == "${{ steps.ci_config.outputs.aws-region }}"
+            )  # nosec B101
+            expected_account = (
+                (
+                    "${{ vars.AWS_PROD_ACCOUNT_ID }}"
+                    if job_name.startswith("prod")
+                    else "${{ vars.AWS_TEST_ACCOUNT_ID }}"
+                )
+                if workflow_name == "pulumi-pr-command-runner.yml"
+                else ("${{ steps.ci_config.outputs.aws-account-id }}")
+            )
+            assert step_with["allowed-account-ids"] == expected_account
 
 
 def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
@@ -805,10 +1013,34 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     test_workflow = yaml.safe_load(
         (WORKFLOWS_DIR / "pulumi-test-deploy.yml").read_text(encoding="utf-8")
     )
-    test_preview_env = test_workflow["jobs"]["preview"]["env"]
-    test_iam_env = test_workflow["jobs"]["iam_validation"]["env"]
-    test_apply_env = test_workflow["jobs"]["apply"]["env"]
-    test_drift_env = test_workflow["jobs"]["post_apply_drift"]["env"]
+    test_preview_ci_config = next(
+        step
+        for step in test_workflow["jobs"]["preview"]["steps"]
+        if step.get("uses", "")
+        .split("@", 1)[0]
+        .endswith("/.github/actions/load-aws-ci-env")
+    )
+    test_iam_ci_config = next(
+        step
+        for step in test_workflow["jobs"]["iam_validation"]["steps"]
+        if step.get("uses", "")
+        .split("@", 1)[0]
+        .endswith("/.github/actions/load-aws-ci-env")
+    )
+    test_apply_ci_config = next(
+        step
+        for step in test_workflow["jobs"]["apply"]["steps"]
+        if step.get("uses", "")
+        .split("@", 1)[0]
+        .endswith("/.github/actions/load-aws-ci-env")
+    )
+    test_drift_ci_config = next(
+        step
+        for step in test_workflow["jobs"]["post_apply_drift"]["steps"]
+        if step.get("uses", "")
+        .split("@", 1)[0]
+        .endswith("/.github/actions/load-aws-ci-env")
+    )
     prod_preview_lines = "\n".join(
         _run_lines(prod_workflow["jobs"]["preview"]["steps"])
     )
@@ -834,38 +1066,14 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert "12-digit AWS account ID" in test_preview_lines  # nosec B101
     assert "s3:// backend" in test_preview_lines  # nosec B101
     assert "awskms:// URI" in test_preview_lines  # nosec B101
-    assert (  # nosec B101
-        test_preview_env["PULUMI_BACKEND_URL"]
-        == "${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}"
-    )
-    assert (  # nosec B101
-        test_preview_env["PULUMI_PREVIEW_STACKS"]
-        == "${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
-    )
-    assert (  # nosec B101
-        test_preview_env["PULUMI_DRIFT_STACKS"]
-        == "${{ vars.PULUMI_DRIFT_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
-    )
-    assert (  # nosec B101
-        test_iam_env["PULUMI_BACKEND_URL"]
-        == "${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}"
-    )
-    assert (  # nosec B101
-        test_iam_env["PULUMI_PREVIEW_STACKS"]
-        == "${{ vars.PULUMI_PREVIEW_STACKS || vars.PULUMI_PR_PREVIEW_STACKS }}"
-    )
-    assert (  # nosec B101
-        test_apply_env["AWS_APPLY_ROLE_ARN"]
-        == "${{ vars.AWS_APPLY_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}"
-    )
-    assert (  # nosec B101
-        test_apply_env["PULUMI_BACKEND_URL"]
-        == "${{ vars.PULUMI_BACKEND_URL || vars.PULUMI_PR_BACKEND_URL }}"
-    )
-    assert (  # nosec B101
-        test_drift_env["AWS_DRIFT_ROLE_ARN"]
-        == "${{ vars.AWS_DRIFT_ROLE_ARN || vars.AWS_PREVIEW_ROLE_ARN }}"
-    )
+    assert test_preview_ci_config["with"]["environment"] == "test"  # nosec B101
+    assert "AWS_APPLY_ROLE_ARN" in test_preview_ci_config["with"]["required-keys"]  # nosec B101
+    assert "PULUMI_DRIFT_STACKS" in test_preview_ci_config["with"]["required-keys"]  # nosec B101
+    assert "PULUMI_BACKEND_URL" in test_iam_ci_config["with"]["required-keys"]  # nosec B101
+    assert "PULUMI_PREVIEW_STACKS" in test_iam_ci_config["with"]["required-keys"]  # nosec B101
+    assert "AWS_APPLY_ROLE_ARN" in test_apply_ci_config["with"]["required-keys"]  # nosec B101
+    assert "PULUMI_BACKEND_URL" in test_apply_ci_config["with"]["required-keys"]  # nosec B101
+    assert "AWS_DRIFT_ROLE_ARN" in test_drift_ci_config["with"]["required-keys"]  # nosec B101
     test_deploy_query = (
         "pulumi-test-deploy.yml/runs?head_sha=${TARGET_SHA}"
         + "&status=completed&per_page=100"
@@ -884,10 +1092,10 @@ def test_prod_workflow_requires_successful_test_deploy_for_same_sha() -> None:
     assert "make pulumi-plan" in prod_preview_lines  # nosec B101
     assert "make pulumi-plan" in test_preview_lines  # nosec B101
     assert "make pulumi-up-plan" in test_apply_lines  # nosec B101
-    assert "decrypting secret value: cipher: message authentication failed" in (  # nosec B101
+    assert "decrypting secret value: cipher: message authentication failed" not in (  # nosec B101
         test_apply_lines
     )
-    assert re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
+    assert not re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
     assert "decrypting secret value: cipher: message authentication failed" not in (  # nosec B101
         prod_apply_lines
     )
@@ -939,43 +1147,35 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
 
     triggers = _triggers(runner)
     assert triggers["repository_dispatch"]["types"] == ["pulumi-pr-command"]  # nosec B101
-    assert "workflow_dispatch" in triggers  # nosec B101
+    assert "workflow_dispatch" not in triggers  # nosec B101
     assert runner["concurrency"]["cancel-in-progress"] is False  # nosec B101
     assert runner["permissions"] == {  # nosec B101
         "contents": "read",
         "issues": "read",
         "pull-requests": "read",
     }
-    assert runner["jobs"]["preflight"]["permissions"] == {  # nosec B101
-        "issues": "write",
-        "pull-requests": "write",
+    assert runner["jobs"]["preflight"]["permissions"] == {
+        "contents": "read",
+        "actions": "read",
+        "issues": "read",
+        "pull-requests": "read",
+        "statuses": "write",
     }
     assert runner["jobs"]["comment_result"]["permissions"] == {  # nosec B101
         "issues": "write",
         "pull-requests": "write",
     }
 
-    assert "head_sha must be a full lowercase 40-character commit SHA" in (  # nosec B101
-        preflight_lines
-    )
-    assert "actual_head_sha" in preflight_lines  # nosec B101
-    assert "actual_head_repo" in preflight_lines  # nosec B101
-    assert "actual_pr_state" in preflight_lines  # nosec B101
-    assert (
-        preflight_lines.count(
-            'gh api "repos/${GITHUB_REPOSITORY}/pulls/${REQUEST_PR_NUMBER}"'
-        )
-        == 1
-    )  # nosec B101
-    assert "gh pr comment" not in preflight_lines  # nosec B101
-    assert "/issues/${pr_number}/comments" in preflight_lines  # nosec B101
-    assert "gh pr comment" not in comment_result_lines  # nosec B101
-    assert "/issues/${pr_number}/comments" in comment_result_lines  # nosec B101
-    assert "pull request is closed or merged" in preflight_lines  # nosec B101
-    assert "pull request head moved after the command was queued" in preflight_lines  # nosec B101
+    assert preflight_lines.strip() == "python3 scripts/pulumi_command_preflight.py"
+    assert "gh pr comment" not in comment_result_lines
+    assert "/issues/${pr_number}/comments" in comment_result_lines
 
     prod_preview = runner["jobs"]["prod_preview"]
-    assert prod_preview["needs"] == ["preflight", "test_post_apply_drift"]  # nosec B101
+    assert prod_preview["needs"] == [
+        "preflight",
+        "test_preview",
+        "test_post_apply_drift",
+    ]  # nosec B101
     assert (
         "needs.test_post_apply_drift.result == 'success'"
         in (  # nosec B101
@@ -993,10 +1193,10 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
         _run_lines(runner["jobs"]["test_iam_validation"]["steps"])
     )
     assert "make pulumi-up-plan" in test_apply_lines  # nosec B101
-    assert "decrypting secret value: cipher: message authentication failed" in (  # nosec B101
+    assert "decrypting secret value: cipher: message authentication failed" not in (  # nosec B101
         test_apply_lines
     )
-    assert re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
+    assert not re.search(r"(?m)^\s*make pulumi-up$", test_apply_lines)  # nosec B101
     assert "make test-drift" in "\n".join(  # nosec B101
         _run_lines(runner["jobs"]["test_post_apply_drift"]["steps"])
     )
@@ -1018,6 +1218,107 @@ def test_pr_comment_workflows_gate_prod_after_successful_test_apply() -> None:
     assert "make test-drift" in "\n".join(  # nosec B101
         _run_lines(runner["jobs"]["prod_post_apply_drift"]["steps"])
     )
+
+
+def test_pr_command_runner_encodes_expected_plan_and_up_job_matrix() -> None:
+    """Keep test/prod PR command routing explicit and regression-resistant."""
+    runner = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-pr-command-runner.yml").read_text(encoding="utf-8")
+    )
+    jobs = runner["jobs"]
+
+    test_apply_condition = jobs["test_apply"]["if"]
+    test_drift_condition = jobs["test_post_apply_drift"]["if"]
+    prod_preview_condition = jobs["prod_preview"]["if"]
+    prod_apply_condition = jobs["prod_apply"]["if"]
+    prod_drift_condition = jobs["prod_post_apply_drift"]["if"]
+
+    assert test_apply_condition.strip() == "needs.preflight.outputs.command == 'up'"
+    assert "needs.preflight.outputs.command == 'up'" in test_apply_condition  # nosec B101
+
+    assert jobs["test_post_apply_drift"]["needs"] == [  # nosec B101
+        "preflight",
+        "test_apply",
+    ]
+    assert test_drift_condition == test_apply_condition  # nosec B101
+    assert "needs.test_post_apply_drift.result == 'success'" in (  # nosec B101
+        prod_preview_condition
+    )
+    assert jobs["prod_preview"]["needs"] == [
+        "preflight",
+        "test_preview",
+        "test_post_apply_drift",
+    ]
+    assert "needs.preflight.outputs.command == 'up'" not in prod_preview_condition  # nosec B101
+    assert "needs.preflight.outputs.command == 'up'" in prod_apply_condition  # nosec B101
+    assert _environment_name(jobs["prod_apply"]) == "prod"  # nosec B101
+    assert jobs["prod_post_apply_drift"]["needs"] == [  # nosec B101
+        "preflight",
+        "prod_apply",
+    ]
+    assert "needs.preflight.outputs.command == 'up'" in prod_drift_condition  # nosec B101
+    assert jobs["comment_result"]["if"] == "always()"  # nosec B101
+    assert set(jobs["comment_result"]["needs"]) == {  # nosec B101
+        "preflight",
+        "platform_promotion",
+        "test_preview",
+        "test_destructive_diff",
+        "test_iam_validation",
+        "test_apply",
+        "test_post_apply_drift",
+        "prod_preview",
+        "prod_destructive_diff",
+        "prod_iam_validation",
+        "prod_apply",
+        "prod_post_apply_drift",
+    }
+
+
+def test_pr_command_runner_privileged_jobs_checkout_preflight_sha() -> None:
+    """Apply and drift jobs must run against the SHA that preflight validated."""
+    runner = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-pr-command-runner.yml").read_text(encoding="utf-8")
+    )
+    jobs = runner["jobs"]
+    privileged_jobs = (
+        "test_preview",
+        "test_destructive_diff",
+        "test_iam_validation",
+        "test_apply",
+        "test_post_apply_drift",
+        "prod_preview",
+        "prod_destructive_diff",
+        "prod_iam_validation",
+        "prod_apply",
+        "prod_post_apply_drift",
+    )
+
+    for job_name in privileged_jobs:
+        checkout = _checkout_step(jobs[job_name]["steps"], workflow_name=job_name)
+        assert checkout["with"]["ref"] == (  # nosec B101
+            "${{ needs.preflight.outputs.head_sha }}"
+        )
+
+
+def test_pr_command_runner_dispatch_inputs_stay_narrow() -> None:
+    """Require a comment and immutable intake run, with no manual bypass."""
+    runner = yaml.safe_load(
+        (WORKFLOWS_DIR / "pulumi-pr-command-runner.yml").read_text(encoding="utf-8")
+    )
+    assert _triggers(runner) == {
+        "repository_dispatch": {"types": ["pulumi-pr-command"]}
+    }
+    request_keys = {
+        key for key in runner["jobs"]["preflight"]["env"] if key.startswith("REQUEST_")
+    }
+    assert request_keys == {
+        "REQUEST_PULL_REQUEST_NUMBER",
+        "REQUEST_HEAD_SHA",
+        "REQUEST_COMMAND",
+        "REQUEST_TARGET_ENVIRONMENT",
+        "REQUEST_COMMENT_ID",
+        "REQUEST_SOURCE_RUN_ID",
+    }
 
 
 def test_multi_account_environment_docs_are_explicit() -> None:
@@ -1043,7 +1344,7 @@ def test_multi_account_environment_docs_are_explicit() -> None:
         "PULUMI_BACKEND_URL",
         "PULUMI_SECRETS_PROVIDER",
     ):
-        assert variable_name in docs  # nosec B101
+        assert variable_name in docs
 
 
 def test_template_sync_workflows_keep_guardrails() -> None:
@@ -1234,3 +1535,19 @@ def test_sre_docs_map_blocking_ci_checks_back_to_local_commands() -> None:
     assert "`Hadolint` -> `make test-dockerfile`" in operations_doc
     assert "stack change-secrets-provider" in operations_doc  # nosec B101
     assert "awskms://alias/ALIAS_NAME?region=REGION" in operations_doc  # nosec B101
+
+
+def test_triage_cutover_preserves_existing_handler():
+    """Only configuration loading changes; the existing queue handler stays exact."""
+    import hashlib
+
+    source = (
+        PROJECT_ROOT / ".github/workflows/operations-alert-triage.yml"
+    ).read_text()
+    handler = source[
+        source.index("      - name: Create GitHub issue for queued operations alerts") :
+    ]
+    assert (
+        hashlib.sha256(handler.encode()).hexdigest()
+        == "f0a3613d5ca32286716dd50db196498122ad9840d80c46b744345040a462430d"
+    )

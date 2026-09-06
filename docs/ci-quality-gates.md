@@ -15,6 +15,7 @@ These checks should be required in branch protection:
 
 | Check | Local command | Purpose |
 | --- | --- | --- |
+| `Governance Promotion` | Trusted main controller and dedicated App | Same-head test/prod deployment proof; enroll after controller installation and real live validation |
 | `Ruff` | `make test-ruff` | Lint, import-order, formatting drift, and McCabe complexity |
 | `Ty` | `make test-ty` | Fast static typing diagnostics |
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |

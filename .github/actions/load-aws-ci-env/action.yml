@@ -1,0 +1,282 @@
+name: Load AWS Secrets Manager CI environment
+description: >-
+  Assumes a GitHub OIDC AWS config-read role, loads CI configuration from
+  AWS Secrets Manager, and validates required deployment variables in the
+  commercial aws partition; GovCloud, China, and ISO partitions are unsupported.
+inputs:
+  environment:
+    description: Fixed CI configuration suffix such as test-pr, test, prod-preview, or prod.
+    required: true
+  purpose:
+    description: Human-readable reason for loading this configuration.
+    required: false
+    default: "Pulumi deployment"
+  required-keys:
+    description: Newline- or comma-delimited environment variables that must exist in the JSON secret.
+    required: true
+  config-role-arn:
+    description: Non-secret AWS IAM role ARN trusted by GitHub OIDC to read this CI config secret.
+    required: true
+  expected-account-id:
+    description: Independently configured AWS account ID for this deployment environment.
+    required: true
+  aws-region:
+    description: Commercial AWS region containing the AWS Secrets Manager CI config secret.
+    required: true
+outputs:
+  aws-account-id:
+    description: AWS account ID loaded from the CI config secret.
+    value: ${{ steps.collect.outputs.aws-account-id }}
+  aws-region:
+    description: AWS region loaded from the CI config secret.
+    value: ${{ steps.collect.outputs.aws-region }}
+  aws-preview-role-arn:
+    description: Preview role ARN loaded from the CI config secret.
+    value: ${{ steps.collect.outputs.aws-preview-role-arn }}
+  aws-apply-role-arn:
+    description: Apply role ARN loaded from the CI config secret.
+    value: ${{ steps.collect.outputs.aws-apply-role-arn }}
+  aws-drift-role-arn:
+    description: Drift role ARN loaded from the CI config secret.
+    value: ${{ steps.collect.outputs.aws-drift-role-arn }}
+  aws-operations-alert-triage-role-arn:
+    description: Operations alert triage role ARN loaded from the CI config secret.
+    value: ${{ steps.collect.outputs.aws-operations-alert-triage-role-arn }}
+  pulumi-backend-url:
+    description: Pulumi backend URL loaded from the CI config secret.
+    value: ${{ steps.collect.outputs.pulumi-backend-url }}
+  pulumi-secrets-provider:
+    description: Pulumi KMS secrets provider loaded from the CI config secret.
+    value: ${{ steps.collect.outputs.pulumi-secrets-provider }}
+runs:
+  using: composite
+  steps:
+    - name: Resolve AWS Secrets Manager target
+      id: aws-target
+      shell: bash
+      env:
+        CI_CONFIG_ENVIRONMENT: ${{ inputs.environment }}
+        CI_CONFIG_ROLE_ARN: ${{ inputs.config-role-arn }}
+        CI_CONFIG_EXPECTED_ACCOUNT_ID: ${{ inputs.expected-account-id }}
+        CI_CONFIG_AWS_REGION: ${{ inputs.aws-region }}
+      run: |
+        set -euo pipefail
+        python3 -I - <<'PY'
+        import ipaddress
+        import os
+        import re
+        import sys
+
+        valid_suffixes = {"test-pr", "test", "prod-preview", "prod"}
+        suffix = os.environ["CI_CONFIG_ENVIRONMENT"].strip()
+        if suffix not in valid_suffixes:
+            print(f"Unsupported CI configuration suffix: {suffix}", file=sys.stderr)
+            sys.exit(1)
+
+        role_arn = os.environ["CI_CONFIG_ROLE_ARN"].strip()
+        role_match = re.fullmatch(r"arn:aws:iam::([0-9]{12}):role/[A-Za-z0-9+=,.@_/-]+", role_arn)
+        if not role_match:
+            print("config-role-arn must be an AWS IAM role ARN.", file=sys.stderr)
+            sys.exit(1)
+
+        expected_account_id = os.environ["CI_CONFIG_EXPECTED_ACCOUNT_ID"].strip()
+        if not re.fullmatch(r"[0-9]{12}", expected_account_id):
+            print("expected-account-id must be a twelve-digit AWS account ID.", file=sys.stderr)
+            sys.exit(1)
+        if role_match.group(1) != expected_account_id:
+            print("Config role does not belong to the expected AWS account.", file=sys.stderr)
+            sys.exit(1)
+
+        region = os.environ["CI_CONFIG_AWS_REGION"].strip()
+        if not re.fullmatch(r"(?!cn-)[a-z]{2}-[a-z]+-[0-9]+", region):
+            print("aws-region must be a commercial AWS region, for example us-east-1.", file=sys.stderr)
+            sys.exit(1)
+
+        repository = os.environ.get("GITHUB_REPOSITORY", "")
+        if "/" not in repository:
+            print("GITHUB_REPOSITORY must be present.", file=sys.stderr)
+            sys.exit(1)
+        repo_name = repository.split("/", 1)[1].strip().lower()
+        try:
+            address = ipaddress.ip_address(repo_name)
+        except ValueError:
+            address = None
+        # Match BootstrapSettings.sanitize_bucket_component, then the CI
+        # project's final dot-to-hyphen conversion. Do not import PR code here.
+        repo_component = re.sub(r"[^a-z0-9.-]", "-", repo_name)
+        repo_component = re.sub(r"\.{2,}", ".", repo_component)
+        repo_component = re.sub(r"-{2,}", "-", repo_component).strip(".-")
+        if (
+            address is not None
+            or re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}", repo_name)
+            or re.fullmatch(r"(?:[0-9]{1,3}\.){3}[0-9]{1,3}", repo_component)
+            or not repo_component
+            or len(repo_component) > 63
+            or re.search(r"\.-|-\.", repo_component)
+        ):
+            print("Unable to derive canonical repository slug for CI secret ID.", file=sys.stderr)
+            sys.exit(1)
+        repo_slug = repo_component.replace(".", "-")
+
+        secret_id = f"/{repo_slug}/ci/{suffix}"
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write(f"secret_id={secret_id}\n")
+            output.write(f"config_account_id={expected_account_id}\n")
+            output.write(f"aws_region={region}\n")
+        PY
+
+    - name: Record AWS Secrets Manager source-of-truth boundary
+      shell: bash
+      env:
+        CI_CONFIG_SECRET_ID: ${{ steps.aws-target.outputs.secret_id }}
+        CI_CONFIG_PURPOSE: ${{ inputs.purpose }}
+      run: |
+        set -euo pipefail
+        {
+          echo "### AWS Secrets Manager CI configuration"
+          echo "- Secret ID: \`${CI_CONFIG_SECRET_ID}\`"
+          echo "- Purpose: ${CI_CONFIG_PURPOSE}"
+          echo "- Source of truth: AWS Secrets Manager"
+          echo "- Pulumi Cloud/ESC: not used"
+          echo "- Secret values are not printed in workflow logs"
+        } >> "${GITHUB_STEP_SUMMARY}"
+
+    - name: Configure AWS config-read credentials
+      uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+      with:
+        role-to-assume: ${{ inputs.config-role-arn }}
+        role-session-name: gha-ci-config-${{ github.run_id }}
+        aws-region: ${{ steps.aws-target.outputs.aws_region }}
+        allowed-account-ids: ${{ steps.aws-target.outputs.config_account_id }}
+
+    - name: Load AWS Secrets Manager CI values
+      id: load
+      shell: bash
+      env:
+        CI_CONFIG_SECRET_ID: ${{ steps.aws-target.outputs.secret_id }}
+        CI_CONFIG_ACCOUNT_ID: ${{ steps.aws-target.outputs.config_account_id }}
+        REQUIRED_KEYS: ${{ inputs.required-keys }}
+      run: |
+        set -euo pipefail
+        secret_file="$(mktemp "${RUNNER_TEMP:-/tmp}/ci-config.XXXXXX")"
+        cleanup() {
+          if command -v shred >/dev/null 2>&1; then
+            shred -u "${secret_file}" 2>/dev/null || rm -f "${secret_file}"
+          else
+            rm -f "${secret_file}"
+          fi
+        }
+        trap cleanup EXIT
+
+        aws secretsmanager get-secret-value \
+          --secret-id "${CI_CONFIG_SECRET_ID}" \
+          --query SecretString \
+          --output text > "${secret_file}"
+
+        python3 -I - "${secret_file}" <<'PY'
+        import json
+        import os
+        import re
+        import sys
+        from pathlib import Path
+
+        secret_file = Path(sys.argv[1])
+        try:
+            payload = json.loads(secret_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            print(f"CI config secret is not valid JSON: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+        if not isinstance(payload, dict):
+            print("CI config secret must be a JSON object.", file=sys.stderr)
+            sys.exit(1)
+
+        required = [
+            key.strip()
+            for line in os.environ["REQUIRED_KEYS"].splitlines()
+            for key in line.split(",")
+            if key.strip()
+        ]
+        missing = [key for key in required if key not in payload or str(payload[key]).strip() == ""]
+        if missing:
+            print("CI config secret is missing required keys: " + ", ".join(sorted(missing)), file=sys.stderr)
+            sys.exit(1)
+
+        exports: dict[str, str] = {}
+        for key in required:
+            value = payload[key]
+            if isinstance(value, bool):
+                text = "true" if value else "false"
+            elif isinstance(value, (int, float, str)):
+                text = str(value).strip()
+            else:
+                print(f"CI config value {key} must be scalar.", file=sys.stderr)
+                sys.exit(1)
+            if "\n" in text or "\r" in text:
+                print(f"CI config value {key} must not contain newlines.", file=sys.stderr)
+                sys.exit(1)
+            exports[key] = text
+
+        for key in ("PULUMI_DIR",):
+            if key not in payload or str(payload[key]).strip() == "":
+                continue
+            value = payload[key]
+            if not isinstance(value, str):
+                print(f"CI config value {key} must be a string.", file=sys.stderr)
+                sys.exit(1)
+            text = value.strip()
+            if "\n" in text or "\r" in text:
+                print(f"CI config value {key} must not contain newlines.", file=sys.stderr)
+                sys.exit(1)
+            if not re.fullmatch(r"pulumi(?:/[A-Za-z0-9_.-]+)*", text):
+                print(f"CI config value {key} must be a safe Pulumi project path.", file=sys.stderr)
+                sys.exit(1)
+            exports[key] = text
+
+        expected_account_id = os.environ["CI_CONFIG_ACCOUNT_ID"]
+        actual_account_id = exports.get("AWS_ACCOUNT_ID")
+        if actual_account_id and actual_account_id != expected_account_id:
+            print(
+                "AWS_ACCOUNT_ID in CI config secret does not match config-read role account.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        secret_id = os.environ["CI_CONFIG_SECRET_ID"]
+        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+            env.write(f"CI_CONFIG_SECRET_ID={secret_id}\n")
+            for key, value in exports.items():
+                env.write(f"{key}={value}\n")
+
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write("loaded=true\n")
+        PY
+
+    - name: Validate AWS Secrets Manager CI environment
+      shell: bash
+      env:
+        CI_CONFIG_SECRET_ID: ${{ steps.aws-target.outputs.secret_id }}
+        CI_CONFIG_PURPOSE: ${{ inputs.purpose }}
+        REQUIRED_KEYS: ${{ inputs.required-keys }}
+        CI_CONFIG_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        python3 -I "${CI_CONFIG_ACTION_PATH}/../../../scripts/validate_ci_environment.py" \
+          --purpose "${CI_CONFIG_PURPOSE}" \
+          --required-keys "${REQUIRED_KEYS}"
+
+    - name: Collect CI configuration outputs
+      id: collect
+      shell: bash
+      run: |
+        set -euo pipefail
+        {
+          echo "aws-account-id=${AWS_ACCOUNT_ID}"
+          echo "aws-region=${AWS_REGION}"
+          echo "aws-preview-role-arn=${AWS_PREVIEW_ROLE_ARN:-}"
+          echo "aws-apply-role-arn=${AWS_APPLY_ROLE_ARN:-}"
+          echo "aws-drift-role-arn=${AWS_DRIFT_ROLE_ARN:-}"
+          echo "aws-operations-alert-triage-role-arn=${AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN:-}"
+          echo "pulumi-backend-url=${PULUMI_BACKEND_URL:-}"
+          echo "pulumi-secrets-provider=${PULUMI_SECRETS_PROVIDER:-}"
+        } >> "${GITHUB_OUTPUT}"

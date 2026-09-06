@@ -21,7 +21,7 @@ class PolicyConfig:
     allowed_regions: tuple[str, ...]
     production_environments: tuple[str, ...]
     public_s3_bucket_allowlist: frozenset[str]
-    wildcard_iam_allowlist: frozenset[str]
+    reviewed_iam_documents: Mapping[str, tuple[str, ...]]
     annotations: Mapping[str, str]
 
 
@@ -42,11 +42,8 @@ def load_policy_config(path: Path | None = None) -> PolicyConfig:
                 "allowlists.public_s3_buckets",
             )
         ),
-        wildcard_iam_allowlist=frozenset(
-            _string_list(
-                allowlists.get("wildcard_iam"),
-                "allowlists.wildcard_iam",
-            )
+        reviewed_iam_documents=MappingProxyType(
+            _reviewed_document_pins(document.get("reviewed_iam_documents"))
         ),
         annotations=MappingProxyType(
             _string_mapping(
@@ -109,3 +106,20 @@ def _string_value(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label} must be a non-empty string.")
     return value.strip()
+
+
+def _reviewed_document_pins(value: object) -> dict[str, tuple[str, ...]]:
+    """Require explicit identities and lowercase SHA256 digests for reviewed IAM."""
+    result = {}
+    for identity, hashes in _mapping(value, label="reviewed_iam_documents").items():
+        key = _string_value(identity, "reviewed_iam_documents identity")
+        digests = _string_list(hashes, f"reviewed_iam_documents[{key!r}]")
+        if not digests:
+            raise ValueError("reviewed IAM document pins must not be empty.")
+        for digest in digests:
+            if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                raise ValueError(
+                    "reviewed IAM document pins must be lowercase SHA256 digests."
+                )
+        result[key] = tuple(digests)
+    return result

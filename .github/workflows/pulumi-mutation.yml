@@ -36,3 +36,12 @@ jobs:
         env:
           PULUMI_BACKEND_URL: file:///workspace/.pulumi-backend
         run: make test-mutation
+
+      - name: Upload semantic security mutation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: semantic-security-mutation
+          path: .artifacts/security-mutation
+          if-no-files-found: warn
+          retention-days: 7

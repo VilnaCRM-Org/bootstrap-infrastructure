@@ -129,9 +129,12 @@ def _github_pr_check_blockers(
     blockers = []
     merge_state = payload.get("mergeStateStatus")
     mergeable = payload.get("mergeable")
-    if merge_state != "CLEAN" and not (
-        merge_state == "BLOCKED" and mergeable == "MERGEABLE" and not failing
-    ):
+    rollup_allows_merge_state = (
+        merge_state in {"BLOCKED", "UNSTABLE"}
+        and mergeable == "MERGEABLE"
+        and not failing
+    )
+    if merge_state != "CLEAN" and not rollup_allows_merge_state:
         blockers.append("PR merge state is not CLEAN.")
     if payload.get("reviewDecision") != "APPROVED":
         blockers.append("PR is not approved.")
