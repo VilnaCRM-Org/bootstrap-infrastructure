@@ -11,7 +11,7 @@
 
 ## Epic 1: AWS CI Config Loading and Validation
 
-- Add a local composite action that authenticates to AWS through GitHub OIDC,
+- Use the reviewed immutable composite action that authenticates through GitHub OIDC,
   reads a fixed AWS Secrets Manager CI secret, exports environment variables,
   and exposes safe outputs for workflow `with:` blocks.
 - Add a Python validator for required keys, account ID shape, AWS region shape,
@@ -33,11 +33,12 @@
 
 ## Epic 3: AWS Trust Policy
 
-- Update Pulumi-generated IAM trust policies to use fixed branch and pull
-  request subjects for non-approval jobs.
-- Keep the GitHub environment subject only for `prod`.
-- Bind workflow refs to the expected workflow files.
-- Scope operations alert triage to its dedicated workflow and protected branch.
+- Use purpose-specific branch, pull request and protected environment subjects
+  for non-production jobs; retain `test`, `test-preview` and `prod-preview`.
+- Keep `environment:prod` restricted to platform production apply roles.
+- Bind each role to its intended workflow/ref and immutable repository identity.
+- Verify the consumed alert role's actual trust before activating v2; preserve
+  the protected branch and document any workflow-name restriction separately.
 
 ## Epic 4: Operations Alert Hygiene
 

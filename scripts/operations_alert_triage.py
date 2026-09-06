@@ -298,6 +298,7 @@ def fingerprint_parts(message: dict[str, Any]) -> tuple[str, ...]:
             detail.get("backupRuleId"),
             detail.get("resourceArn"),
             canonical_json(stable_detail(detail)),
+            "resources" in event,
             canonical_json(stable_detail(event.get("resources"))),
         )
     )

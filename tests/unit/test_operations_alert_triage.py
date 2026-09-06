@@ -468,3 +468,21 @@ def test_duplicate_outer_batch_fields_fail_before_outputs(tmp_path):
     )
     assert not body.exists()
     assert not fingerprint.exists()
+
+
+def test_resources_presence_and_full_value_have_distinct_fingerprints():
+    fingerprints = []
+    for resources in (..., None, [], ["arn:aws:s3:::one"], ["arn:aws:s3:::two"]):
+        event = {
+            "source": "aws.health",
+            "detail-type": "AWS Health Event",
+            "detail": {"state": "FAILED"},
+        }
+        if resources is not ...:
+            event["resources"] = resources
+        item = {"Body": json.dumps({"Message": json.dumps(event)})}
+        fingerprints.append(triage.message_fingerprint(item))
+        assert triage.fingerprint_parts(item)[-2] == (
+            "false" if resources is ... else "true"
+        )
+    assert len(set(fingerprints)) == len(fingerprints)

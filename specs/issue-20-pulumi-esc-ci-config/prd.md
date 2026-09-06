@@ -30,15 +30,17 @@ configuration drift outside GitOps review.
   Pulumi access tokens.
 - Validate AWS Secrets Manager-loaded configuration before deployment
   credentials are requested.
-- Update AWS OIDC trust to fixed repository subjects and workflow refs, with a
-  GitHub environment subject only for production apply.
+- Bind AWS OIDC trust to each role's fixed repository identity, intended
+  workflow/ref and protected environment subjects. Retain `test`, `test-preview`,
+  `prod-preview` and `prod`; non-production roles reject `environment:prod`.
 - Deduplicate operations alert issues created from repeated AWS Backup failure
   notifications.
 - Document every manual setup step that cannot be performed safely from GitOps.
 
 ## Non-Goals
 
-- Applying production infrastructure changes from this feature branch.
+- Adding production apply paths that bypass the trusted comment controller and
+  protected approval boundary.
 - Migrating Pulumi state secrets away from the existing AWS KMS provider.
 - Replacing GitHub branch protection or production reviewer controls.
 

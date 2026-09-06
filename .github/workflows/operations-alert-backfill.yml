@@ -23,7 +23,7 @@ on:
         default: '891377212104'
         type: string
       aws_region:
-        description: AWS region from SRE-confirmed alert metadata
+        description: Exact AWS region verified by SRE; the workflow checks syntax only
         required: true
         default: eu-central-1
         type: string
@@ -37,7 +37,8 @@ on:
         type: string
 
 concurrency:
-  group: operations-alert-canonical-backfill
+  # Match the installed triage workflow's github.workflow value.
+  group: Operations Alert Issue Triage
   cancel-in-progress: false
 
 permissions:

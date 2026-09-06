@@ -15,8 +15,9 @@ AWS Secrets Manager owns the privileged account-local configuration. GitHub
 Actions uses GitHub OIDC to assume one `GitHubCiConfigRead-*` role per fixed CI
 suffix, reads one AWS Secrets Manager JSON secret, and exports selected keys as
 workflow environment variables. Pulumi Cloud and Pulumi ESC are not used. GitHub
-`prod` remains the only deployment environment because it adds human approval
-and branch restrictions for production apply.
+`prod` protects platform production apply with human approval and branch
+restrictions. Protected `test`, `test-preview`, and `prod-preview` environments
+remain in use for their respective test and preview jobs.
 
 ```text
 GitHub workflow
@@ -77,12 +78,17 @@ must be `awskms://`.
 
 ## AWS Trust Model
 
-Non-production automation roles trust:
+Purpose-specific non-production roles accept only their intended repository
+subjects, selected from:
 
 - `repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main`
 - `repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request`
+- `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test`
+- `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test-preview`
+- `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod-preview`
 
-Production apply roles trust only:
+This is not a shared allowlist for every role. Test and preview roles must not
+accept production apply subjects. Platform production apply roles trust only:
 
 - `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod`
 
@@ -113,11 +119,9 @@ alert stream, then deletes queue messages only after every issue creation or
 comment creation succeeds.
 
 Legacy alert issues created before this marker was introduced will not be
-auto-deduped. The first post-merge run creates or updates a canonical
-fingerprinted issue. Maintainers can then link and close older duplicates after
-confirming the sanitized AWS Backup events share the same underlying stream, or
-they can edit one chosen issue body to include the computed marker from retained
-raw payloads.
+auto-deduped. V2 remains staged until the reviewed SRE mapping is complete.
+Maintainers use the protected backfill and reconciliation procedures with
+confirmed sanitized stable fields; v1 hashes alone do not establish v2 identity.
 
 The manual Operations Alert Legacy Reconcile workflow gives SREs a GitOps-owned
 cleanup path after confirmation. It requires a canonical fingerprinted issue,
@@ -130,13 +134,14 @@ legacy issues, and closes confirmed legacy issues with
 - Apply the Pulumi `test` and `prod` stacks so AWS contains the four Secrets
   Manager containers and AWS CI config read roles.
 - Populate the four AWS Secrets Manager JSON values in the owning AWS accounts.
-- Create the four AWS Secrets Manager CI secrets and configure each one to import its JSON
-  secret with `aws secretsmanager get-secret-value`.
+- Configure the repository role-locator variables after verifying the secret
+  containers and their populated account-local values; the pinned loader reads
+  them without publishing their values.
 - Configure GitHub-to-AWS OIDC for this repository and GitHub OIDC for each
   AWS Secrets Manager read role.
 - Apply the Pulumi trust-policy update in each AWS account through the normal
   stack process.
-- Keep protected GitHub `prod` reviewers and deployment branch restrictions in
-  place.
+- Keep the installed protected test, preview and production environments,
+  reviewers and deployment branch restrictions in place.
 - Verify test-account AWS metadata with local AWS CLI credentials and
   production metadata with AWS MCP/read-only access before enabling apply.

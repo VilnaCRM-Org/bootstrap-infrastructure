@@ -58,9 +58,15 @@ elif args[:2] == ["issue", "create"]:
     save()
     print("https://github.com/example/infra/issues/99")
 elif args[:2] == ["variable", "list"]:
-    print("\n".join(data["variables"][option("--env")]))
+    environment = option("--env")
+    data.setdefault("listed", []).append(environment)
+    save()
+    if environment == data.get("unreadable"):
+        sys.exit(1)
+    print("\n".join(data["variables"][environment]))
 elif args[:2] == ["variable", "delete"]:
     environment = option("--env")
+    assert set(data["variables"]) <= set(data.get("listed", []))
     data["variables"][environment].remove(args[2])
     data.setdefault("deleted", []).append([environment, args[2]])
     save()
@@ -260,3 +266,69 @@ def test_cleanup_visits_test_preview_and_preserves_unlisted_variables(
         assert state["variables"][name] == (
             variables if dry_run == "true" else ["AWS_TEST_ACCOUNT_ID", "OTHER"]
         )
+
+
+@pytest.mark.parametrize("dry_run", ["true", "false"])
+@pytest.mark.parametrize("unreadable", ["test-preview", "test", "prod-preview", "prod"])
+def test_cleanup_unreadable_inventory_fails_before_any_deletion(
+    tmp_path, dry_run, unreadable
+):
+    variables = {
+        name: ["AWS_REGION"]
+        for name in ("test-preview", "test", "prod-preview", "prod")
+    }
+    result, state = run_workflow(
+        tmp_path,
+        "github-environment-legacy-cleanup.yml",
+        "cleanup",
+        "Remove legacy GitHub Environment variables",
+        {"variables": variables, "unreadable": unreadable},
+        GH_ENVIRONMENT_ADMIN_TOKEN="test-placeholder",
+        DRY_RUN=dry_run,
+        CONFIRMATION=(
+            "I confirm AWS Secrets Manager-backed privileged CI is green and "
+            "legacy GitHub Environment variables can be removed"
+        ),
+    )
+    assert result.returncode != 0
+    assert "::error::" in result.stderr
+    assert "inventory is incomplete" in result.stderr
+    assert state["variables"] == variables
+    assert not state.get("deleted")
+    assert "Would delete" not in result.stdout
+
+
+@pytest.mark.parametrize("dry_run", ["", "TRUE", "invalid"])
+def test_cleanup_shell_boundary_rejects_invalid_boolean_before_inventory(
+    tmp_path, dry_run
+):
+    result, state = run_workflow(
+        tmp_path,
+        "github-environment-legacy-cleanup.yml",
+        "cleanup",
+        "Remove legacy GitHub Environment variables",
+        {},
+        GH_ENVIRONMENT_ADMIN_TOKEN="test-placeholder",
+        DRY_RUN=dry_run,
+        CONFIRMATION=(
+            "I confirm AWS Secrets Manager-backed privileged CI is green and "
+            "legacy GitHub Environment variables can be removed"
+        ),
+    )
+    assert result.returncode != 0
+    assert "::error:: dry_run must be true or false" in result.stderr
+    assert state == {}
+
+
+def test_alert_writers_share_installed_triage_concurrency():
+    live = yaml.safe_load(
+        (ROOT / ".github/workflows/operations-alert-triage.yml").read_text()
+    )
+    assert live["concurrency"]["group"] == "${{ github.workflow }}"
+    for path in (
+        ".github/workflows/operations-alert-backfill.yml",
+        "docs/examples/operations-alert-triage-v2.yml",
+    ):
+        workflow = yaml.safe_load((ROOT / path).read_text())
+        assert workflow["concurrency"]["group"] == live["name"]
+        assert workflow["concurrency"]["cancel-in-progress"] is False

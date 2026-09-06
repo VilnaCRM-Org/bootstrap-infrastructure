@@ -40,18 +40,19 @@ jobs:
 
           expected="I confirm AWS Secrets Manager-backed privileged CI is green and legacy GitHub Environment variables can be removed"
           if [[ "${CONFIRMATION}" != "${expected}" ]]; then
-            echo "error: confirmation sentence does not match the documented value." >&2
+            echo "::error:: confirmation sentence does not match the documented value." >&2
             exit 1
           fi
 
           if [[ -z "${GH_ENVIRONMENT_ADMIN_TOKEN}" ]]; then
-            echo "error: GH_ENVIRONMENT_ADMIN_TOKEN is required for GitHub Environment variable cleanup." >&2
+            echo "::error:: GH_ENVIRONMENT_ADMIN_TOKEN is required for GitHub Environment variable cleanup." >&2
             exit 1
           fi
           export GH_TOKEN="${GH_ENVIRONMENT_ADMIN_TOKEN}"
 
+          # Keep the destructive shell boundary fail-closed independently of input typing.
           if [[ "${DRY_RUN}" != "true" && "${DRY_RUN}" != "false" ]]; then
-            echo "error: dry_run must be true or false." >&2
+            echo "::error:: dry_run must be true or false." >&2
             exit 1
           fi
 
@@ -88,19 +89,20 @@ jobs:
               --jq '.[].name'
           }
 
+          # Require a complete inventory in both modes before any deletion.
+          declare -A inventory
+          for environment_name in "${environments[@]}"; do
+            if ! existing_names="$(list_environment_variables "${environment_name}")"; then
+              echo "::error::GitHub Environment '${environment_name}' is not readable; inventory is incomplete." >&2
+              exit 1
+            fi
+            inventory["${environment_name}"]="${existing_names}"
+          done
+
           overall_status=0
           for environment_name in "${environments[@]}"; do
             echo "::group::${environment_name}"
-            if ! existing_names="$(list_environment_variables "${environment_name}")"; then
-              if [[ "${DRY_RUN}" == "true" ]]; then
-                echo "::notice::GitHub Environment '${environment_name}' is not readable; skipping."
-              else
-                echo "error: GitHub Environment '${environment_name}' is not readable." >&2
-                overall_status=1
-              fi
-              echo "::endgroup::"
-              continue
-            fi
+            existing_names="${inventory[${environment_name}]}"
 
             found_legacy="false"
             for variable_name in "${legacy_variables[@]}"; do
@@ -119,7 +121,7 @@ jobs:
                   --env "${environment_name}"; then
                 echo "::notice::Deleted ${variable_name} from ${environment_name}."
               else
-                echo "error: failed to delete ${variable_name} from ${environment_name}." >&2
+                echo "::error:: failed to delete ${variable_name} from ${environment_name}." >&2
                 overall_status=1
               fi
             done
@@ -130,12 +132,12 @@ jobs:
 
             if [[ "${DRY_RUN}" == "false" ]]; then
               if ! remaining_names="$(list_environment_variables "${environment_name}")"; then
-                echo "error: could not verify ${environment_name} after cleanup." >&2
+                echo "::error:: could not verify ${environment_name} after cleanup." >&2
                 overall_status=1
               else
                 for variable_name in "${legacy_variables[@]}"; do
                   if grep -Fxq "${variable_name}" <<< "${remaining_names}"; then
-                    echo "error: ${variable_name} still exists in ${environment_name}." >&2
+                    echo "::error:: ${variable_name} still exists in ${environment_name}." >&2
                     overall_status=1
                   fi
                 done

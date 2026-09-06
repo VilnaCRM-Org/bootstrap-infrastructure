@@ -23,11 +23,12 @@ cloud metadata checks pass.
 - Pulumi Cloud and Pulumi ESC are not used for CI configuration.
 - Pulumi manages the AWS Secrets Manager secret containers and
   `GitHubCiConfigRead-*` roles, but not the JSON secret values.
-- GitHub `prod` remains the only deployment environment because it provides
-  human production approval.
-- AWS role trust uses repository ref, pull request, protected production
-  environment, and workflow-ref conditions.
-- AWS CI config validation happens before AWS credentials are requested.
+- GitHub `prod` protects platform production apply. Protected `test`,
+  `test-preview` and `prod-preview` environments remain in use for their jobs.
+- AWS role trust uses each role's intended repository/ref, pull request,
+  protected environment and workflow conditions, with immutable identity pins.
+- AWS CI config validation happens after the config-read role loads the secret
+  and before purpose-specific deployment credentials are requested.
 - Operations alert dedupe uses a stable issue fingerprint and preserves the SQS
   message until GitHub write success.
 

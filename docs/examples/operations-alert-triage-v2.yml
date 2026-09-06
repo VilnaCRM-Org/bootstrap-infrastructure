@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}
+  group: Operations Alert Issue Triage
   cancel-in-progress: false
 
 defaults:

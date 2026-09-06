@@ -108,6 +108,22 @@ def test_actual_backfill_jq_preserves_direct_v2_fingerprint(
     )
 
 
+def test_actual_backfill_keeps_resources_presence_and_values_distinct(tmp_path):
+    fingerprints = []
+    for resources in ("absent", None, [], ["resource-a"], ["resource-b"]):
+        event = confirmed_event()
+        if resources != "absent":
+            event["resources"] = resources
+        result = run_backfill(tmp_path, event)
+        assert result.returncode == 0, result.stderr
+        backfill = json.loads(result.stdout)["Messages"][0]
+        direct = {"Body": json.dumps({"Message": json.dumps(event)})}
+        fingerprint = triage.message_fingerprint(backfill)
+        assert fingerprint == triage.message_fingerprint(direct)
+        fingerprints.append(fingerprint)
+    assert len(set(fingerprints)) == len(fingerprints)
+
+
 @pytest.mark.parametrize(
     "duplicate",
     [
