@@ -27,6 +27,10 @@ TEST/PROD public config, operator entrypoint, operator requirements, governor
 module, governance catalog and governor tests. The example deliberately remains
 incomplete until both verified GitHub identity placeholders are supplied. The
 other changes are selected tests, additive mutation targets and corrected docs.
+A bounded 27th path adds the exact canonical deployment-evidence exclusion for
+`repositories.governance.json`. The first full battery exposed this dependency;
+the existing evidence expectation is preserved, and governance remains validated
+by the separate per-kind catalog/fanout validator.
 
 ## Requirement and story reconciliation
 
@@ -58,8 +62,16 @@ unsafe recovery. Nothing in this successor weakens that contract.
 - Ruff lint/format, Ty with repository settings, Xenon thresholds, YAML,
   catalog validation, all ten import contracts, dependency hygiene and Gitleaks
   directory scan passed.
-- Mutation campaigns and the final merged-base unprivileged battery are pending
-  at this amendment's first assembly; update with actual results before publishing.
+- Semantic mutation: 82/82 killed, including all 69 installed cases and 13 new
+  governor cases. Ordinary mutation: 83/83 killed, zero survivors, errors or
+  timeouts. Both campaigns ran in isolated copies.
+- The initial full battery passed 181 structural and 120 policy tests, quality,
+  hygiene and catalog gates; its unit suite found the missing canonical fanout
+  exclusion above. The separately completed remainder passed 6 unprivileged
+  integration and 72 CLI tests, security scans/audit and unprivileged guardrails.
+  After the exclusion, all 1380 unit tests passed; combined coverage is 100%
+  across 8972 statements and 2624 branches. The final #57-base battery remains
+  pending until the actual merge is available.
 
 ## Deferred external acceptance
 

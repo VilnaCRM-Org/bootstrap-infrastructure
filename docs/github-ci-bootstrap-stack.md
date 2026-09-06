@@ -100,7 +100,18 @@ never a repair fallback after a failed select, preview or apply.
 After these prerequisites, use the repository helpers with literal backend
 arguments matching the verified operator checkpoint. The following TEST example
 is a template; replace the commit and profile only after independent review.
-PROD requires its own account/backend/provider binding and review.
+PROD requires its own account/backend/provider binding and review. Use the
+corresponding stack and verified operator backend in both commands:
+
+| Stack | Expected account | Operator backend root | AWS KMS provider |
+| --- | --- | --- | --- |
+| `test` | `891377212104` | `s3://pulumi-bootstrap-infrastructure-test-state` | `awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1` |
+| `prod` | `933245420672` | `s3://pulumi-bootstrap-infrastructure-prod-state` | `awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1` |
+
+Verify these roots against the existing canonical checkpoint before use; this
+table does not authorize relocating a stack. For PROD, change `AWS_ACCOUNT_ID`,
+profile, backend, provider and `PULUMI_STACK` together, retain the same explicit
+source/plan bindings, and independently review the PROD plan before replay.
 
 ```bash
 AWS_PROFILE=<approved-test-operator-profile> \
@@ -140,12 +151,14 @@ comment-deployment evidence. TEST and PROD evidence remain separate.
 
 ```bash
 pulumi -C pulumi/github-ci-bootstrap stack output githubVariables --stack test
+pulumi -C pulumi/github-ci-bootstrap stack output governanceGithubVariables --stack test
 pulumi -C pulumi/github-ci-bootstrap stack output ciConfigurationSecretIds --stack test
 pulumi -C pulumi/github-ci-bootstrap stack output githubCiConfigReadRoleArns --stack test
 pulumi -C pulumi/github-ci-bootstrap stack output githubCiDeploymentRoleArns --stack test
 pulumi -C pulumi/github-ci-bootstrap stack output operationsAlertTriageRoleArn --stack test
 
 pulumi -C pulumi/github-ci-bootstrap stack output githubVariables --stack prod
+pulumi -C pulumi/github-ci-bootstrap stack output governanceGithubVariables --stack prod
 pulumi -C pulumi/github-ci-bootstrap stack output ciConfigurationSecretIds --stack prod
 pulumi -C pulumi/github-ci-bootstrap stack output githubCiConfigReadRoleArns --stack prod
 pulumi -C pulumi/github-ci-bootstrap stack output githubCiDeploymentRoleArns --stack prod
