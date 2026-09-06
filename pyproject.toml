@@ -127,6 +127,12 @@ root_packages = ["app", "policy", "infra"]
 include_external_packages = true
 
 [[tool.importlinter.contracts]]
+name = "Governance component stays isolated from the policy pack and Pulumi app layer"
+type = "forbidden"
+source_modules = ["infra.governance"]
+forbidden_modules = ["policy", "app"]
+
+[[tool.importlinter.contracts]]
 name = "Pulumi runtime does not depend on the policy pack"
 type = "forbidden"
 source_modules = ["app", "infra"]

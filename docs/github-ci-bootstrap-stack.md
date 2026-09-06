@@ -27,7 +27,9 @@ overrides and explicit boundary dependencies. Removing governor prerequisites
 would drop resources the existing operator checkpoint may already own.
 `repositories.governance.json` contains actual repository and owner IDs; this
 inventory does not create governed service buckets, keys, CI roles or secrets.
-The delegated `pulumi/governance` program and service onboarding remain #78 work.
+The delegated `pulumi/governance` program and complete service template are
+included. Follow [the governance runbook](governance-stack.md) for independent
+state initialization, real TEST/PROD comment deployment and service acceptance.
 
 ## CI Role Mapping
 

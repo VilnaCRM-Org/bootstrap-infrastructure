@@ -1,0 +1,19 @@
+# Example only (non-discovered). Use the test/prod stack files with the
+# governance-provided AWS KMS secrets provider for real deployments. This file
+# exists for structural-test parity and documents the consumed-resource shape;
+# the backend bucket and KMS alias are created by the governance stack, not here.
+config:
+  aws:region: eu-central-1
+  user-service-infrastructure:awsAccountId: "891377212104"
+  user-service-infrastructure:costCenter: core
+  user-service-infrastructure:criticality: high
+  user-service-infrastructure:dataClassification: internal
+  user-service-infrastructure:environment: test
+  user-service-infrastructure:githubBranch: main
+  user-service-infrastructure:githubOrg: VilnaCRM-Org
+  user-service-infrastructure:loggingPrefix: company
+  user-service-infrastructure:owner: team-user-service
+  user-service-infrastructure:pulumiBackendUrl: s3://pulumi-user-service-infrastructure-test-state
+  user-service-infrastructure:pulumiSecretsProvider: awskms://alias/pulumi-user-service-infrastructure-test-secrets?region=eu-central-1
+  user-service-infrastructure:repoSlug: user-service-infrastructure
+  user-service-infrastructure:retentionClass: standard

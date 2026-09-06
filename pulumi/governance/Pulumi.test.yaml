@@ -1,0 +1,23 @@
+# Initialize with:
+# pulumi -C pulumi/governance stack init test --secrets-provider "$PULUMI_SECRETS_PROVIDER"
+config:
+  governance:githubRepositoryId: "1098568429"
+  governance:githubRepositoryOwnerId: "114362548"
+  aws:region: eu-central-1
+  governance:awsAccountId: "891377212104"
+  governance:costCenter: core
+  governance:criticality: high
+  governance:dataClassification: internal
+  governance:environment: test
+  governance:githubBranch: main
+  governance:githubOidcProviderArn: arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com
+  governance:githubOrg: VilnaCRM-Org
+  governance:loggingPrefix: company
+  governance:owner: platform
+  governance:protectResources: "true"
+  governance:pulumiSecretsProvider: awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1
+  governance:replicationRegion: eu-west-1
+  governance:repositoryCatalogPath: ../repositories.governance.json
+  governance:retentionClass: standard
+  governance:writeSecretValues: "true"
+secretsprovider: awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1

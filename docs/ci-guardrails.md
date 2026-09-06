@@ -522,3 +522,7 @@ The CI loader trims surrounding whitespace from scalar configuration values befo
 See the [GitHub CI bootstrap operator guide](github-ci-bootstrap-stack.md) for
 account and repository pins, protected ownership, provider continuity, saved-plan
 replay and the distinction between operator receipts and comment deployments.
+
+The delegated governance program and complete service template are included.
+See [the governance runbook](governance-stack.md); real workload capability and
+current-head deployment/manual acceptance remain separate prerequisites.

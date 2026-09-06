@@ -6,7 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 from controller_fixtures import ACCOUNT, PROVIDER, REPO, inputs
-from infra import automation, ci_bootstrap, governance_automation, platform_iam
+from infra import (
+    automation,
+    ci_bootstrap,
+    governance,
+    governance_automation,
+    platform_iam,
+)
 from infra.ci_config import (
     _ci_config_project,
     _ci_config_read_role_name,
@@ -284,3 +290,45 @@ def test_governor_cannot_retag_key_into_another_ownership_scope():
         "aws:RequestTag/Purpose": "pulumi-secrets",
     }
     assert not any("kms:UntagResource" in s["Action"] for s in document["Statement"])
+
+
+@pytest.mark.parametrize("same_name", [False, True])
+def test_repository_default_branch_is_pinned_for_all_role_builders(same_name):
+    settings = governor_inputs().settings
+    repo = replace(
+        REPO, name=settings.repo if same_name else REPO.name, default_branch="release"
+    )
+    actual = governance.RepoGovernance._repo_settings(settings, repo)
+    assert actual.github_branch == "release"
+    assert actual.repo == repo.name
+    assert actual.github_repository_id == repo.repository_id
+    assert settings.github_branch == "main"
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        None,
+        "arn:aws:iam::999999999999:oidc-provider/token.actions.githubusercontent.com",
+        "arn:aws:iam::123456789012:oidc-provider/attacker.example",
+        "arn:aws-cn:iam::123456789012:oidc-provider/token.actions.githubusercontent.com",
+    ],
+)
+def test_governance_rejects_foreign_account_partition_or_oidc_issuer(provider):
+    with pytest.raises(ValueError):
+        governance._resolve_oidc_provider_arn(
+            SimpleNamespace(oidc_provider_arn=provider),
+            account_id=ACCOUNT,
+            partition="aws",
+        )
+
+
+def test_governance_accepts_exact_github_provider():
+    assert (
+        governance._resolve_oidc_provider_arn(
+            SimpleNamespace(oidc_provider_arn=PROVIDER),
+            account_id=ACCOUNT,
+            partition="aws",
+        )
+        == PROVIDER
+    )

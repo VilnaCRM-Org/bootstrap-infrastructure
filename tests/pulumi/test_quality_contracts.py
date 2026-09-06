@@ -102,6 +102,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
     assert importlinter["include_external_packages"] is True
     contracts = {contract["name"]: contract for contract in importlinter["contracts"]}
     assert set(contracts) == {
+        "Governance component stays isolated from the policy pack and Pulumi app layer",
         "Pulumi runtime does not depend on the policy pack",
         "Policy pack stays isolated from Pulumi runtime modules",
         "Runtime guardrails stay behind the environment component",
