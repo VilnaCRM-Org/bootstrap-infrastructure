@@ -834,8 +834,10 @@ workflow" primitive** — the earlier framing is dropped. Instead the governance
    treats **every** `client_payload` field as untrusted and re-derives them from the verified PR
    head SHA before any `id-token: write` job runs:
    - Resolve `client_payload.comment_id` back to its author via
-     `gh api repos/{repo}/issues/comments/{comment_id}` and assert `login == Kravalg`
-     (case-insensitive). Reject otherwise. This moves the @Kravalg author decision into the
+     `gh api repos/{repo}/issues/comments/{comment_id}` and verify the original
+     requester's current repository write permission. Reject missing identity,
+     revoked access and `Kravalg` (case-insensitive) for `up`; protected reviewer
+     approval remains separate. This moves the requester authorization decision into the
      trusted runner that assumes credentials — the intake gate (§7.3) is now defense-in-depth,
      not the sole control.
    - Recompute `governance_touched` server-side from the verified head SHA's changed files
@@ -1166,18 +1168,28 @@ verification remain mandatory. This is not a new human risk acceptance.
 
 ## 11. Onboarding flow (for `AGENTS.md`, FR17) — service `X`
 
-1. **PR A — Grant deploy roles (governance):** add `X-infrastructure` to
-   `pulumi/repositories.governance.json` (CODE). A current-write maintainer other than @Kravalg requests
-   `/pulumi test up` then `/pulumi prod up`; `@Kravalg` reviews CODEOWNERS and separately
-   approves `environment: governance`. Verified promotion precedes merge. The governance stack provisions X's state bucket, KMS key,
-   preview/apply/drift roles, config-read role, OIDC trust. (OPERATOR triggers the gated apply.)
-2. **PR B — Bootstrap generic infra for `X-infrastructure`** using the PR-A roles (CODE; applied
-   via the same gated flow).
-3. **Create `X-infrastructure` in `VilnaCRM-Org` + scaffold** (OPERATOR: repo create + push of
-   the `pulumi/user-service-infrastructure/**`-style scaffold).
-4. **PR C — Grant OIDC apply permissions** so X's own Actions can apply (CODE; `@Kravalg`-gated).
-5. **X self-deploys** via its `self-deploy.yml` (`/pulumi test up` / `/pulumi prod up` in its own
-   PRs); the roles/permissions live in `bootstrap-infrastructure`'s governance stack.
+First resolve or create the real `VilnaCRM-Org/X-infrastructure` repository and
+verify its immutable repository/owner IDs (OPERATOR). Before the catalog grant,
+install its reviewed operator-owned boundaries and exact delegation inventory
+through protected GitHub/OIDC saved plans (CODE plus OPERATOR execution).
+
+1. **PR A — Grant deploy roles:** add the verified identity to the governance
+   catalog (CODE). A current-write maintainer other than @Kravalg requests TEST then
+   PROD up; @Kravalg separately reviews and approves `environment: governance`.
+   Verify saved-plan apply, drift and promotion before merge (OPERATOR execution).
+2. **PR B — Prepare generic infrastructure:** generate the complete reviewed
+   scaffold using the PR-A backend-only roles (CODE). Additional workload deployment
+   requires explicit capability and boundary extensions.
+3. **Publish scaffold to the identified repository:** preserve existing content,
+   publish the reviewed generated dependency closure, and configure account-local
+   variables and protected environments (OPERATOR).
+4. **PR C — Grant reviewed workload capabilities:** review the actual service
+   resource/task-role inventory, extend operator-owned boundaries and grant only
+   the required capabilities through the same protected flow (CODE plus OPERATOR).
+5. **Verify self-deployment:** exercise the service's own TEST/PROD comment plan,
+   saved-plan apply, drift and promotion at the same source revision (OPERATOR).
+   Governance retains service roles/state/key ownership; the operator retains
+   immutable boundaries and its own delegation.
 
 Each step is labeled CODE vs OPERATOR in `AGENTS.md` per FR17/FR18.
 

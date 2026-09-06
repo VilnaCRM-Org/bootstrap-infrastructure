@@ -318,15 +318,18 @@ distinguish live operator setup from reviewed code/IaC.
 - **AC↔:** AC-6 (flow), supports AC-3/AC-4/AC-5
 - **Foundation:** issue #77 "Target onboarding flow" and the installed
   `AGENTS.md` multi-repo governance onboarding contract.
-- **Verify:** Doc test asserts `AGENTS.md` contains the PR-A/PR-B/create-repo/PR-C sequence with
-  the operator-vs-code labeling and references to the governance commands.
+- **Verify:** `test_onboarding_four_step_sequence_present` asserts identity → PR-A →
+  PR-B → publish-scaffold → PR-C ordering in `AGENTS.md`; companion tests verify
+  operator/code labels and the governed command references.
 
 ### FR18 — Operator runbook for the manual steps
 **[CODE deliverable now: the runbook]** The documentation SHALL include an operator runbook for
-the OPERATOR-only steps with the exact `gh api` / Pulumi commands and dry-run payloads: one-time
-`AdministratorAccess` governance bootstrap apply (test then prod), branch-protection +
-protected-`governance`-environment reviewer configuration, creating
-`user-service-infrastructure` in `VilnaCRM-Org`, and setting GitHub repo variables from outputs.
+live setup steps with exact metadata commands, reviewed dry-run payloads and
+protected GitHub/OIDC saved-plan execution: operator-owned boundary/delegation
+installation and any required state migration, branch and environment protection,
+verification or creation of the real repository, and account-local GitHub variables.
+Resource updates run TEST before PROD. The runbook grants no local root apply or
+unscoped administrator authority; existing repository content remains preserved.
 - **AC↔:** AC-3, AC-6 (out-of-scope/operator section)
 - **Foundation:** `docs/github-ci-bootstrap-stack.md:78-152`,
   `configure_github_repository_controls.py` `--dry-run`/`--apply`.
@@ -516,12 +519,12 @@ SHALL be `awskms://`; CI-config secret values written only when explicitly enabl
 
 | Deliverable now (CODE — no live creds) | Operator-only (AWS admin / GitHub org-admin) |
 |---|---|
-| Governance project + per-repo loop (FR1–FR9), account-model correctness — two accounts (FR21) | One-time `AdministratorAccess` bootstrap apply, test then prod (runbook in FR18) |
+| Governance project + per-repo loop (FR1–FR9), account-model correctness — two accounts (FR21) | Reviewed operator prerequisite via protected GitHub/OIDC saved plans, TEST then PROD (FR18) |
 | CODEOWNERS (FR10), governance-env payload + dry-run (FR11), runner env wiring (FR12) | Live `PUT` of branch protection + protected `governance` environment reviewer (FR11) |
 | Author/path gate (FR13, FR14), test→prod required-check wiring (FR15) | — |
 | IaC-only CI wiring (FR16) | — |
 | AGENTS.md onboarding flow + operator runbook (FR17, FR18) | — |
-| `user-service-infrastructure` scaffold/templates + catalog entry + self-deploy template (FR19, FR20) | Create repo in `VilnaCRM-Org` + actual `git push`; set GitHub repo variables (runbook in FR18) |
+| `user-service-infrastructure` scaffold/templates + catalog entry + self-deploy template (FR19, FR20) | Verify or create the real repository in `VilnaCRM-Org`; publish the complete scaffold while preserving existing content; set GitHub variables (FR18) |
 | Secret-deny set (FR22), no-wildcard validation (FR23), all tests (FR24), all NFRs | Real AWS applies + capturing real ARNs/outputs |
 
 ## Resolved architecture decisions

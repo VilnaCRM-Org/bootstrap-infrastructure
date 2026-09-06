@@ -529,15 +529,16 @@ Covers FR17, FR18, FR21 (docs half).
 
 ### Story 4.1: [E4.S1] `AGENTS.md` 3-PR onboarding flow (CODE vs OPERATOR labeled)
 
-- **Atomic scope:** Document the PR-A / PR-B / create-repo / PR-C onboarding sequence for a new
-  `X-infrastructure` service, each step labeled CODE or OPERATOR, referencing the governance commands
-  (FR17).
+- **Atomic scope:** Document identity and operator prerequisites, then PR-A / PR-B /
+  publish-scaffold / PR-C for a new `X-infrastructure` service. Each step is labeled
+  CODE or OPERATOR and references the governed commands (FR17).
 - **Files:**
   - `~ AGENTS.md` — add the onboarding section (§11 flow).
-- **Acceptance criteria:** FR17. Doc presence test asserts the PR-A/PR-B/create-repo/PR-C sequence +
+- **Acceptance criteria:** FR17. Doc presence test asserts identity/PR-A/PR-B/publish-scaffold/PR-C ordering +
   CODE/OPERATOR labels + governance command references.
 - **Test cases:**
-  - positive: all four steps present with operator-vs-code labels.
+  - positive: identity prerequisite and all four onboarding phases appear in order
+    with operator/code labels.
   - negative: no step omits its CODE/OPERATOR tag.
   - edge: references `/pulumi test up` then `/pulumi prod up` and `repositories.governance.json`.
 - **Dependencies:** E1.S6 (catalog), E3 (gate exists, referenced).
