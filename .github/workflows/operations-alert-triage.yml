@@ -20,6 +20,7 @@ permissions:
 jobs:
   triage_operations_alerts:
     name: Triage Operations Alerts
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -44,7 +45,7 @@ jobs:
           purpose: operations alert triage
           required-keys: >-
             AWS_ACCOUNT_ID,AWS_REGION,AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN,
-            OPERATIONS_ALERT_QUEUE_NAME
+            OPERATIONS_ALERT_QUEUE_NAME,OPERATIONS_TOPIC_ARN
 
       - name: Validate triage prerequisites
         run: |
@@ -52,7 +53,8 @@ jobs:
           for name in \
             AWS_ACCOUNT_ID \
             AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN \
-            OPERATIONS_ALERT_QUEUE_NAME; do
+            OPERATIONS_ALERT_QUEUE_NAME \
+            OPERATIONS_TOPIC_ARN; do
             if [[ -z "${!name}" ]]; then
               missing+=("${name}")
             fi
@@ -80,15 +82,18 @@ jobs:
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
       - name: Create or update GitHub issue for queued operations alerts
+        id: triage
         env:
           GITHUB_REPOSITORY_NAME: ${{ github.repository }}
         run: |
+          umask 077
           queue_url="$(
             aws sqs get-queue-url \
               --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
               --query QueueUrl \
               --output text
           )"
+          printf '%s' "${queue_url}" > "${RUNNER_TEMP}/operations-queue-url"
           alerts_json="$(mktemp)"
           page_json="$(mktemp)"
           next_alerts_json="$(mktemp)"
@@ -137,7 +142,11 @@ jobs:
             --region "${AWS_REGION}" \
             --body-file "${aggregate_body_file}" \
             --fingerprint-file "${aggregate_fingerprint_file}" \
-            --groups-file "${groups_file}"
+            --groups-file "${groups_file}" \
+            --topic-arn "${OPERATIONS_TOPIC_ARN}" \
+            --acknowledgments-file "${RUNNER_TEMP}/operations-acknowledgments.json" \
+            --audit-file "${RUNNER_TEMP}/operations-classification.json"
+          echo "classified=true" >> "${GITHUB_OUTPUT}"
 
           group_count="$(jq '.groups | length' "${groups_file}")"
           for ((group_index = 0; group_index < group_count; group_index++)); do
@@ -181,9 +190,30 @@ jobs:
             fi
           done
 
-          jq -r '.Messages[].ReceiptHandle' "${alerts_json}" |
+      - name: Retain sanitized classification audit
+        if: always() && steps.triage.outputs.classified == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: operations-classification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/operations-classification.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Acknowledge only successfully triaged or validated benign receipts
+        if: success() && steps.triage.outputs.classified == 'true'
+        run: |
+          queue_url="$(cat "${RUNNER_TEMP}/operations-queue-url")"
+          jq -r '.Messages[].ReceiptHandle' \
+            "${RUNNER_TEMP}/operations-acknowledgments.json" |
             while IFS= read -r receipt_handle; do
               aws sqs delete-message \
                 --queue-url "${queue_url}" \
                 --receipt-handle "${receipt_handle}"
             done
+          quarantine_count="$(jq '[.records[] | select(.disposition == "quarantine")] | length' \
+            "${RUNNER_TEMP}/operations-classification.json")"
+          if [[ "${quarantine_count}" -gt 0 ]]; then
+            printf 'error: %s malformed backup or receipt record(s) remain unacknowledged; inspect the classification audit.\n' \
+              "${quarantine_count}" >&2
+            exit 1
+          fi

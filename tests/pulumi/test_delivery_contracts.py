@@ -1053,13 +1053,38 @@ def test_operations_alert_triage_searches_fingerprint_before_queue_delete() -> N
     )
     comment_index = triage_run.index("gh issue comment")
     create_index = triage_run.index("gh issue create")
-    receipt_index = triage_run.index("jq -r '.Messages[].ReceiptHandle'")
-    delete_index = triage_run.index("aws sqs delete-message")
+    audit_step = next(
+        step
+        for step in steps
+        if step.get("name") == "Retain sanitized classification audit"
+    )
+    ack_step = next(
+        step
+        for step in steps
+        if step.get("name")
+        == "Acknowledge only successfully triaged or validated benign receipts"
+    )
+    ack_run = ack_step["run"]
+    receipt_index = ack_run.index("jq -r '.Messages[].ReceiptHandle'")
+    delete_index = ack_run.index("aws sqs delete-message")
+    triage_index = next(
+        index for index, step in enumerate(steps) if step.get("id") == "triage"
+    )
+    assert triage_index < steps.index(audit_step) < steps.index(ack_step)
+    assert audit_step["with"]["if-no-files-found"] == "error"
+    assert "success()" in ack_step["if"]
+    assert "operations-acknowledgments.json" in ack_run
+    assert "${alerts_json}" not in ack_run
+    assert "--topic-arn" in triage_run
+    assert "--acknowledgments-file" in triage_run
+    assert "--audit-file" in triage_run
+    assert "quarantine_count" in ack_run and "exit 1" in ack_run
 
     assert group_loop_index < search_index  # nosec B101
     assert fingerprint_index < search_index  # nosec B101
-    assert search_index < comment_index < receipt_index < delete_index  # nosec B101
-    assert search_index < create_index < receipt_index < delete_index  # nosec B101
+    assert search_index < comment_index  # nosec B101
+    assert search_index < create_index
+    assert receipt_index < delete_index  # nosec B101
     assert '--repo "${GITHUB_REPOSITORY_NAME}"' in triage_run  # nosec B101
     assert "--state open" in triage_run  # nosec B101
     assert "--json number" in triage_run  # nosec B101
@@ -1071,7 +1096,8 @@ def test_operations_alert_triage_searches_fingerprint_before_queue_delete() -> N
         '--title "Operations alerts queued: ${group_alert_count} message(s)"'
         in triage_run
     )
-    assert triage_run.count("aws sqs delete-message") == 1  # nosec B101
+    assert triage_run.count("aws sqs delete-message") == 0
+    assert ack_run.count("aws sqs delete-message") == 1  # nosec B101
 
 
 def test_operations_alert_backfill_requires_protected_manual_confirmation() -> None:

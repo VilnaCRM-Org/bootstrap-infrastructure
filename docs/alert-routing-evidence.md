@@ -241,3 +241,41 @@ size budget. Omitted IDs are not claimed to appear in an uploaded artifact. The
 workflow must still create/update the issue successfully before deleting the full
 processed SQS group. Counted omission is display policy, not proof that an incident
 was resolved or that all occurrences were individually investigated.
+
+### Typed backup classification before acknowledgment
+
+The EventBridge backup rule is a conservative first filter. AWS's
+`TestEventPattern` API confirms that `anything-but: ""` also matches null; nested
+conditions on the same field do not provide a reliable string-type conjunction.
+The triage consumer therefore validates Backup, Copy, and Restore job events
+before deciding whether they need an issue or can be acknowledged as benign.
+This is a staged filter contract, not a claim that the EventBridge pattern alone
+excludes every malformed event.
+
+The trusted CI configuration supplies `OPERATIONS_TOPIC_ARN`. For known backup
+job events, the consumer requires that exact SNS Notification topic, the expected
+account and region, event and job identifiers, message IDs, a valid receipt,
+and scalar `state`/`status` fields that agree when both are present. A completed
+job with absent, null, or empty-string `statusMessage` is benign. A nonempty
+string (including whitespace) is actionable, as are FAILED, ABORTED, and EXPIRED
+states. Nonstring messages, malformed metadata, conflicting states, unexpected
+job states, and duplicate receipt handles are quarantined. Here quarantine means
+retaining the existing SQS message for investigation; no new queue or automatic
+redrive is implied. Unknown and nonbackup alerts retain their existing issue and
+fingerprint behavior when their receipt is valid.
+
+The workflow first creates or updates every actionable issue. It then publishes
+a sanitized classification artifact containing only message hashes, dispositions,
+and fixed reason codes. Receipt handles and event payloads stay in private runner
+files. Only successful issue handling **and** successful audit upload permit the
+later deletion step to use the explicit acknowledgment allowlist. No quarantined
+receipt appears in that allowlist. Any quarantine leaves the workflow failed and
+visible after the safe receipts are acknowledged. Failure to publish the audit
+or create an issue prevents all acknowledgment in that run.
+
+The seven-day artifact is a classification record, not evidence of successful
+backup, restore, rule deployment, or SNS/SQS delivery. The local integration test
+executes the actual acknowledgment shell against a local AWS stub and proves that
+only actionable and validated-benign receipts are selected; it performs no live
+queue or issue operations. Actual end-to-end acceptance still requires the
+reviewed consumer to be deployed and observed through the authorized workflow.
