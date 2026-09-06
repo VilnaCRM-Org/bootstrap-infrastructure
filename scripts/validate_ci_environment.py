@@ -8,7 +8,7 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import SplitResult, parse_qs, unquote, urlsplit
 
 AWS_ACCOUNT_ID_PATTERN = re.compile(r"^[0-9]{12}$")
 AWS_REGION_PATTERN = re.compile(r"^(?!cn-)[a-z]{2}-[a-z]+-[0-9]+$")
@@ -146,15 +146,7 @@ def _validate_secrets_provider(value: str, environ: Mapping[str, str]) -> str | 
     region = environ.get("AWS_REGION") or environ.get("AWS_DEFAULT_REGION", "")
     account = environ.get("AWS_ACCOUNT_ID", "")
     identifier = unquote(provider.netloc + provider.path)
-    if (
-        not value.startswith("awskms://")
-        or provider.fragment
-        or not identifier
-        or re.search(r"[\x00-\x20]", value + identifier)
-        or not AWS_REGION_PATTERN.fullmatch(region)
-        or not AWS_ACCOUNT_ID_PATTERN.fullmatch(account)
-        or parse_qs(provider.query, keep_blank_values=True) != {"region": [region]}
-    ):
+    if not _provider_uri_matches_context(value, provider, identifier, region, account):
         return invalid
     if identifier.lower().startswith("arn:"):
         arn = re.fullmatch(
@@ -166,6 +158,21 @@ def _validate_secrets_provider(value: str, environ: Mapping[str, str]) -> str | 
     # Aliases and bare key IDs need the existing describe-key check to establish
     # their actual account, region and Enabled state; URI syntax cannot prove it.
     return None
+
+
+def _provider_uri_matches_context(
+    value: str, provider: SplitResult, identifier: str, region: str, account: str
+) -> bool:
+    """Validate URI structure and its independently configured account/region."""
+    return (
+        value.startswith("awskms://")
+        and not provider.fragment
+        and bool(identifier)
+        and re.search(r"[\x00-\x20]", value + identifier) is None
+        and AWS_REGION_PATTERN.fullmatch(region) is not None
+        and AWS_ACCOUNT_ID_PATTERN.fullmatch(account) is not None
+        and parse_qs(provider.query, keep_blank_values=True) == {"region": [region]}
+    )
 
 
 def _validate_stack_list(value: str) -> str | None:
