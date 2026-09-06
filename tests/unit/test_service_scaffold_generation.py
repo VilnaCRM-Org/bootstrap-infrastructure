@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +17,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 import scaffold_infrastructure_repository as scaffold  # noqa: E402
+from _pulumi_stack_config import _coordinates  # noqa: E402
 
 TEMPLATE = ROOT / "pulumi/user-service-infrastructure"
 spec = importlib.util.spec_from_file_location(
@@ -113,6 +115,58 @@ def test_generator_never_overwrites_existing_destination(tmp_path, existing):
         destination.symlink_to(tmp_path / "missing")
     with pytest.raises(FileExistsError):
         scaffold.generate(ROOT, destination, "billing-infrastructure")
+
+
+def test_generated_compose_forwards_account_to_checkpoint_binding(tmp_path):
+    """A workflow's account pin survives Compose and reaches the shared guard."""
+    destination = tmp_path / "service"
+    scaffold.generate(ROOT, destination, "billing-infrastructure")
+    compose = yaml.safe_load((destination / "docker-compose.yml").read_text())
+    forwarded = compose["services"]["pulumi"]["environment"]
+    host = {
+        "AWS_ACCOUNT_ID": "891377212104",
+        "PULUMI_BACKEND_URL": "s3://pulumi-billing-infrastructure-test-state",
+    }
+    context = SimpleNamespace(
+        env={name: value for name, value in host.items() if name in forwarded},
+        backend_url=host["PULUMI_BACKEND_URL"],
+        pulumi_dir=destination / "pulumi",
+    )
+    target = _coordinates(context, "test")
+    assert target["accountId"] == host["AWS_ACCOUNT_ID"]
+    assert target["project"] == "billing-infrastructure"
+
+
+@pytest.mark.parametrize(
+    "target,command",
+    [("pulumi-plan", "plan"), ("pulumi-up-plan", "up-plan"), ("test-drift", "drift")],
+)
+def test_generated_make_runs_checkpoint_helper_with_locked_dependencies(
+    tmp_path, target, command
+):
+    """Each actual Make recipe selects the venv containing PyYAML and Pulumi."""
+    destination = tmp_path / "service"
+    scaffold.generate(ROOT, destination, "billing-infrastructure")
+    result = subprocess.run(
+        ["make", "--no-print-directory", "--dry-run", target],
+        cwd=destination,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert shlex.split(result.stdout) == [
+        "docker",
+        "compose",
+        "run",
+        "--rm",
+        "pulumi",
+        "uv",
+        "run",
+        "--frozen",
+        "python",
+        "scripts/run_pulumi_command.py",
+        command,
+    ]
 
 
 @pytest.mark.parametrize(
