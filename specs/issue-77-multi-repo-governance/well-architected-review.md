@@ -292,7 +292,7 @@ approves the protected environment and cannot self-request the apply.
   exact catalogued identities within one account under operator-owned boundaries.
   It has no account-global IAM scope and cannot alter its own delegation or shared
   OIDC provider. Service apply roles are backend-only with no IAM administration.
-  Existing `test_service_apply_is_backend_only_in_its_own_repository` covers both
+  Existing `test_service_apply_cannot_escalate_or_modify_other_repositories` covers both
   environments; `test_governance_automation.py` verifies exact role resources,
   required boundaries, boundary-deletion/provider-change denials and disjoint
   service boundaries. These source checks do not replace live policy validation

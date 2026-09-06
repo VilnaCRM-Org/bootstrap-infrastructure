@@ -26,6 +26,7 @@ from infra.governance import GovernanceStackArgs, RepoGovernance, _governance_pa
 from infra.iam import github_oidc
 from infra.managed_repository import ManagedRepository
 from infra.utils.outputs import future_output
+from pulumi.runtime.stack import wait_for_rpcs
 from pulumi.runtime.sync_await import _sync_await
 
 _MOCK_PROVIDER_ARN = (
@@ -394,6 +395,49 @@ def test_repo_governance_renders_full_per_repo_surface(pulumi_mocks, monkeypatch
     assert component.ci_config_secret_ids == {  # nosec B101
         "test-pr": "/user-service-infrastructure/ci/test-pr",
         "test": "/user-service-infrastructure/ci/test",
+    }
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("governed", [True, False])
+def test_state_logging_prefix_matches_destination_contract(
+    pulumi_mocks, monkeypatch, environment, governed
+):
+    """Governed log delivery uses aws-logs; shared platform defaults stay intact."""
+    _no_existing_resources(monkeypatch)
+    settings = _governance_settings(environment)
+    repo = _synthetic_repo("orders-infrastructure")
+    logging_resources = []
+    original_logging = pulumi_state.aws.s3.BucketLogging
+
+    def capture_logging(*args, **kwargs):
+        resource = original_logging(*args, **kwargs)
+        logging_resources.append(resource)
+        return resource
+
+    monkeypatch.setattr(pulumi_state.aws.s3, "BucketLogging", capture_logging)
+    if governed:
+        component = _build_repo_governance(
+            f"gov-logging-{environment}", repo=repo, settings=settings
+        )
+        _flush_component(component)
+    else:
+        pulumi_state.PulumiStateBuckets(
+            f"default-logging-{environment}",
+            repositories=[repo],
+            settings=settings,
+        )
+
+    _sync_await(wait_for_rpcs())
+    prefixes = [
+        _sync_await(future_output(resource.target_prefix))
+        for resource in logging_resources
+    ]
+    root = "aws-logs" if governed else "server-access"
+    assert len(prefixes) == 2
+    assert set(prefixes) == {
+        f"{root}/pulumi-orders-infrastructure-{environment}-state/",
+        f"{root}/pulumi-orders-infrastructure-{environment}-state-eu-west-1-replication/",
     }
 
 

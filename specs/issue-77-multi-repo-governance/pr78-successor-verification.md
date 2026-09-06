@@ -9,7 +9,8 @@ wins over older shared files. The initial 58-path scope contains 36 governance
 core/tests/docs/spec paths, 20 complete service-template paths, and two paths
 for the initialized-empty-checkpoint helper and its regression tests.
 The live TEST attempt also required the root Makefile and its CLI regression
-suite, bringing the reviewed diff to 60 paths.
+suite, bringing that reviewed diff to 60 paths. The later logging compatibility fix
+also updates the shared state-bucket helper while preserving its platform default.
 
 The final rebase produced `eacd8bd7601e77bb55dac6e4618a4aff5da710c3` with all
 377 tracked files byte-identical to tested commit
@@ -173,3 +174,14 @@ its runner-owned workspace, imports the full command dependencies and verifies
 its account/project binding. All three actual plan/apply/drift Make precondition
 probes reject missing provider configuration. No AWS resource operation occurs
 in those local tests. Hosted final-head CI and live deployment remain required.
+
+The baseline saved-plan review also found that central log bucket policies allow
+`aws-logs/*`, while new governed buckets proposed `server-access/` destinations.
+The service composition now passes `aws-logs/` to the shared state-bucket helper;
+its existing platform default is preserved. Both primary and replica paths are
+verified for TEST and PROD, along with unchanged default behavior. No log-bucket
+policy or IAM grant is widened. The full unit recheck passes 1,879 tests with
+100% combined coverage across 9,547 statements and 2,766 branches. The replacement
+current-head plan must confirm these exact prefixes before apply. The original
+preview established no actual log-delivery failure; it exposed an authorization
+mismatch before installation.

@@ -592,6 +592,7 @@ class RepoGovernance(pulumi.ComponentResource):
         state_buckets = PulumiStateBuckets(
             f"{name}-state",
             repositories=catalog.repositories,
+            access_log_prefix="aws-logs/",
             settings=settings,
             replication_permissions_boundary=replication_permissions_boundary,
             opts=pulumi.ResourceOptions(parent=self),
