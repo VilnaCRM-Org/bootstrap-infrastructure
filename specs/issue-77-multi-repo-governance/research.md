@@ -409,12 +409,12 @@ fan-out, parameterized by a governance repo list.
   (`:298,507-508,550-561,643-644`); it fails on findingTypes `{ERROR, SECURITY_WARNING}`
   (`:32,410-412`) using `access-analyzer:ValidatePolicy` (which the preview role already allows,
   `ci_bootstrap.py:53`). Plan accordingly.
-- **import-linter scope gotcha:** `root_packages = ["app", "policy"]` only
-  (`pyproject.toml:120`). The `infra` package and the `github-ci-bootstrap`/new project dirs are
-  NOT currently governed by import-linter contracts. The constraint mentions
-  "infra/policy_pack/scripts separation" — that separation is enforced by directory convention +
-  the app/policy contracts (`:123-181`), not by an `infra` contract. Any new governance code under
-  `pulumi/infra/` inherits no import-linter contract today (gap to confirm with architect).
+- **Import-isolation finding, resolved in the successor:** the historical graph
+  omitted infra. Current `pyproject.toml` includes `app`, `policy` and `infra`, and
+  forbids `infra.governance` from `policy`/`app`. CLI scripts remains outside that
+  graph; `tests/pulumi/test_governance_import_isolation.py` independently forbids
+  `policy`/`app`/`scripts` via the AST. Architecture §9.4 retains the AST-only
+  fallback for graphing failures without relaxing existing contracts.
 - CrossGuard pack registered policies: required-default-tags, region-allowlist,
   s3-no-public-exposure, critical-storage-encrypted, logging-enabled, **iam-no-wildcards**
   (MANDATORY, `policy/pack.py:201-206`), production-database-safety, security-group ports
@@ -475,10 +475,10 @@ fan-out, parameterized by a governance repo list.
   generalization may require updating these structural assertions in lockstep.
 - **R7 (coverage cliff):** 100% combined branch coverage is enforced; large new IAM/policy code
   needs exhaustive tests or the gate fails (`AGENTS.md:21`, `Makefile:234`).
-- **R8 (import-linter blind spot):** New governance code in `pulumi/infra/` has no import-linter
-  contract today; the "infra/policy_pack/scripts separation" the constraint cites is convention +
-  app/policy contracts, not an `infra` contract (`pyproject.toml:119-181`). Confirm intended
-  enforcement with architect.
+- **R8 (historical import-isolation gap, resolved):** Import Linter now enforces
+  the governance policy/app boundary; the companion AST test additionally forbids
+  ungraphed scripts imports. Architecture §9.4 records both enforcement points and
+  the graphing-failure fallback.
 
 ---
 
@@ -565,4 +565,5 @@ fan-out, parameterized by a governance repo list.
    without affecting unrelated paths.
 6. **Author gate mechanism (§4.3):** Compute changed paths in intake + add `--author-login` to
    `pulumi_pr_comment.py`, or enforce purely via a governance protected-environment reviewer?
-7. **import-linter (R8):** Should new governance `infra` code get its own import-linter contract?
+7. **Import isolation (R8, resolved):** governance uses the policy/app Import
+   Linter contract plus an AST guard for scripts outside the graph (architecture §9.4).

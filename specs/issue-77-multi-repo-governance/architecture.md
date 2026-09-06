@@ -68,7 +68,7 @@ does not redesign from scratch. All `file:line` anchors trace to current code on
 | D4 | Deny scoping (R3) | The shared read-only secret-read **Deny** attaches to `read-only` (preview/drift) and `config-read` policy documents; apply roles carry the separate surgical `DenySecretLeakingReadsApply` described in §5.2a. `kms:Decrypt` is **excluded from the `read-only` Deny** because preview/drift roles also carry the pulumi-backend policy's alias-scoped `kms:Decrypt` Allow (needed to decrypt the stack's encrypted config during `pulumi preview`/drift); a broad `kms:Decrypt` Deny would override that Allow and break preview/drift on encrypted-secret stacks. The apply role and the pulumi-backend policy likewise keep `kms:Decrypt`. Config-read uses separate conditional Decrypt Denies requiring both the regional Secrets Manager service and the exact owned CI-secret encryption context; it adds no KMS Allow. |
 | D5 | CODEOWNERS precision (R4) | Exact globs in §7.1 scope **only** governance/IAM/policy paths to `@Kravalg`; no catch-all `*` line, so unrelated paths stay unowned. |
 | D6 | Author-gate mechanism (FR13/FR14) | **Both layers, defense-in-depth:** (a) path-aware + login-aware gate in `scripts/pulumi_pr_comment.py` rejects `up` from the sole reviewer `@Kravalg`; the trusted runner independently verifies that the original requester still has repository write permission; (b) governance apply jobs declare `environment: governance` so the protected-environment reviewer gate is the hard backstop. |
-| D7 | import-linter (R8) | **Add one new contract** binding the governance component family. Because `infra` is not currently a `root_package`, we add `pulumi/infra` packages to import-linter via a new forbidden contract keeping `infra.governance` free of `policy`/`app` and free of `scripts` (§9.4). Low-risk, additive. |
+| D7 | Import isolation (R8) | **Implemented split:** `infra` is a root package; Import Linter forbids `infra.governance` from `policy`/`app`. `tests/pulumi/test_governance_import_isolation.py` separately checks the AST for `policy`/`app`/`scripts`; CLI `scripts` is intentionally outside the import graph. Preserve the documented AST-only fallback for graphing failures (§9.4). |
 
 ---
 
@@ -1094,23 +1094,19 @@ ARNs `:73-75`). New `tests/unit/test_governance.py`:
 - Mutation (`make test-mutation`): governance role/policy builders and the author-gate decision
   function are mutation-tested (assert mutants like flipping `governance_touched` or `action ==
   "up"` are killed).
-- import-linter (D7/R8) — **decided, single buildable target (closes FEASIBILITY-5).** The
-  implementer runs this exact sequence:
-  1. Add `infra` to `pyproject.toml` `root_packages` (alongside `app`, `policy`); `infra` already
-     resolves as a top-level package under `PYTHONPATH=/workspace/pulumi:/workspace`
-     (`Makefile:224-225`).
-  2. Run `lint-imports` once to confirm **zero new violations** against the existing `app`/`policy`
-     contracts and across the now-graphed `infra` modules.
-  3. **If zero new violations:** commit the forbidden contract
-     `name="infra.governance isolated"`, `type=forbidden`,
-     `source_modules=["infra.governance"]`, `forbidden_modules=["policy","app","scripts"]`.
-  4. **If adding `infra` surfaces pre-existing latent violations** (the architecture's documented
-     fallback): do NOT relax any contract; instead scope import-linter narrowly to the governance
-     module and add a **static AST-based unit test** asserting `infra/governance.py` imports neither
-     `policy`, `app`, nor `scripts`, and document that import-linter is not the enforcement point for
-     this contract. E6.S3's AC is to land **one** of these two outcomes (contract OR AST test), green,
-     with no relaxation of existing contracts — the "either/or" framing is removed; the implementer
-     picks based on step 2's result and records which in the PR.
+- Import isolation (D7/R8) — **implemented split (closes FEASIBILITY-5).**
+  `pyproject.toml` lists `root_packages = ["app", "policy", "infra"]`.
+  The forbidden contract has `source_modules=["infra.governance"]` and
+  `forbidden_modules=["policy","app"]`. `scripts` is intentionally not graphed.
+  `tests/pulumi/test_governance_import_isolation.py` independently parses the AST
+  and forbids `policy`, `app` and `scripts` imports. The scripts prohibition is
+  therefore enforced by the AST test, not by Import Linter.
+  Run `lint-imports` and the AST guard; preserve all existing app/policy contracts.
+  The historical AST-only fallback remains explicit: if graphing infra exposes
+  pre-existing violations, do not relax existing contracts. Use the narrow AST
+  guard for all three forbidden roots, document the limitation and retain the
+  unaffected Import Linter contracts. Current source uses the combined split,
+  not that fallback; neither outcome permits scripts imports.
 - ruff max-complexity ≤ 12: `GovernanceStack.__init__` and `RepoGovernance.__init__` delegate to
   small helpers (the per-repo loop body is one helper call) to stay under 12.
 - gitleaks/bandit/deptry/pip-audit: scaffold templates carry no secrets; secret values written
@@ -1223,7 +1219,7 @@ Each step is labeled CODE vs OPERATOR in `AGENTS.md` per FR17/FR18.
 | R5 single-approver/self-review | `prevent_self_review:true`; `@dmytrocraft` may request plan/up with current write permission; @Kravalg separately approves and cannot self-request `up`. |
 | R6 structural-test brittleness | §9.2 adds governance structural test; bootstrap test left intact. |
 | R7 coverage cliff | §9.4 exhaustive branch tests on `governance.py` + gate functions; account-assertion mock seam (§3.2 step 1) makes both branches reachable. |
-| R8 import-linter blind spot | D7: add `infra` to root_packages + forbidden contract `governance ↛ {policy, app, scripts}`; AST-test fallback if the graph destabilizes (§9.4, decided). |
+| R8 import-linter blind spot | D7: Import Linter enforces `infra.governance ↛ {policy, app}`; the AST guard enforces `{policy, app, scripts}` with scripts outside the graph. Preserve §9.4 AST-only fallback without relaxing existing contracts. |
 
 ### 12.1 Adversarial-review dispositions (implementation-readiness gate)
 
@@ -1244,5 +1240,5 @@ Each step is labeled CODE vs OPERATOR in `AGENTS.md` per FR17/FR18.
 | Fanout model wrong for governance project | AWS-SRE-6 | **Fixed** §9.2: per-catalog-kind fanout, governance-specific counts, quota-headroom report, no shared-constant relaxation. |
 | "Governance Apply" required check unmergeable | FEASIBILITY-1 | **Fixed** §7.5: dedicated App issues required `Governance Promotion` after all four apply/drift stages; `Governance Apply` remains informational. |
 | `_RepoCiContext` dual-context fragility / NFR6 | FEASIBILITY-4 | **Fixed** §3.1: extend existing `_BootstrapBuildContext`; golden byte-equal parity fixture is the gate. |
-| import-linter either/or unresolved | FEASIBILITY-5 | **Fixed** §9.4: decided sequence (add `infra` root pkg → contract, or AST-test fallback). |
+| import-linter either/or unresolved | FEASIBILITY-5 | **Fixed** §9.4: implemented Import Linter policy/app contract plus AST scripts guard; documented AST-only fallback preserves existing contracts. |
 | Operator-only deps mislabeled deliverable-now | FEASIBILITY-6 | **Fixed** §8/§10: scaffold preview-blocked tagged; cost-anomaly monitor is an operator apply-time step; FR21 verify tolerates absence. |

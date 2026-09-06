@@ -455,9 +455,10 @@ IaC-only apply rejection.
 **[CODE]** All changes SHALL pass ruff (format + lint, `max-complexity ≤ 12`), mypy, ty (Astral,
 strict None-narrowing), import-linter, deptry, bandit, pip-audit, gitleaks.
 - **AC↔:** AC-9
-- **Verify:** `make ci-pr` is green; `ruff` reports no complexity > 12; import-linter contracts
-  (`app`/`policy`) unbroken (research R8 notes `infra` is not currently contract-governed —
-  architect to confirm whether to add one).
+- **Verify:** `make ci-pr` is green; `ruff` reports no complexity > 12; existing
+  Import Linter contracts remain unbroken. The governance contract forbids
+  `policy`/`app`; `test_governance_import_isolation.py` separately forbids
+  `policy`/`app`/`scripts` in the AST because scripts is outside the import graph.
 
 ### NFR4 — CrossGuard policy pack green
 **[CODE]** Every governance resource SHALL satisfy the registered CrossGuard policies, including
@@ -537,7 +538,9 @@ Architecture §0 resolves the earlier research questions:
 4. Explicit credential-bearing CODEOWNERS globs and equality tests (D5/FR10).
 5. Path-aware routing, original current-write requester distinct from Kravalg, and
    separate protected-environment review (D6/FR13–14).
-6. Governance import boundaries are enforced by the committed import-linter contract (D7/NFR3).
+6. Governance import boundaries use the committed Import Linter policy/app
+   contract plus the AST scripts guard; preserve the documented graphing-failure
+   fallback (D7/NFR3).
 
 Operator-owned boundary/role inventory, real repository identity, trusted state
 initialization and real test/prod apply/drift acceptance remain prerequisites; these
