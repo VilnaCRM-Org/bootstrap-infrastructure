@@ -84,7 +84,7 @@ def test_ssl_socket_overrides_are_denied(isolated, method):
     "client_type", [http.client.HTTPConnection, http.client.HTTPSConnection]
 )
 @pytest.mark.parametrize("method", ["connect", "request"])
-def test_http_client_entry_points_are_denied(isolated, client_type, method):
+def test_http_operations_denied(isolated, client_type, method):
     """High-level HTTP calls fail without opening a network socket."""
     client = client_type("invalid.example")
     with pytest.raises(AssertionError, match="prohibit unmocked external access"):
@@ -105,14 +105,14 @@ def test_urllib_entry_points_are_denied(isolated, opener):
             opener("https://invalid.example")
 
 
-def test_requests_uses_guarded_http_boundary(isolated):
+def test_requests_boundary_denied(isolated):
     """Requests' cached socket helpers cannot reach external HTTP endpoints."""
     requests = pytest.importorskip("requests")
     with pytest.raises(AssertionError, match="prohibit unmocked external access"):
         requests.get("https://invalid.example", timeout=1)
 
 
-def test_explicit_process_double_still_works(isolated, monkeypatch):
+def test_process_double_allowed(isolated, monkeypatch):
     """A deliberate Popen double can exercise the actual streaming helper."""
     calls = []
 
