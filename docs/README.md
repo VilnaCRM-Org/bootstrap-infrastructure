@@ -311,6 +311,8 @@ See the [GitHub CI bootstrap operator guide](github-ci-bootstrap-stack.md) for
 account and repository pins, protected ownership, provider continuity, saved-plan
 replay and the distinction between operator receipts and comment deployments.
 
-The delegated governance program and complete service template are included.
+The delegated governance program and service scaffold inputs are included.
+Generate the complete dependency closure with
+[`scripts/scaffold_infrastructure_repository.py`](../scripts/scaffold_infrastructure_repository.py).
 See [the governance runbook](governance-stack.md); real workload capability and
 current-head deployment/manual acceptance remain separate prerequisites.

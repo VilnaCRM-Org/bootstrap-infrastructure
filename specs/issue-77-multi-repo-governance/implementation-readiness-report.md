@@ -106,7 +106,7 @@ testable without live credentials.**
 | FR24 test coverage of contract | E6.S1 | `test_governance.py` full matrix + structural |
 | NFR1 100% combined coverage | E6.S2 | `make test-coverage` (account-assertion mock seam makes both branches reachable) |
 | NFR2 mutation | E6.S2 | `make test-mutation` (gate-decision + Deny-list mutants killed) |
-| NFR3 static suite | E6.S3 | `make ci-pr`; import-linter `infra.governance ↛ {policy,app,scripts}` (decided) |
+| NFR3 static suite | E6.S3 | `make ci-pr`; import-linter `infra.governance ↛ {policy,app}` plus AST guard for `{policy,app,scripts}`; scripts intentionally ungraphed |
 | NFR4 CrossGuard pack | E6.S4 | `make test-policy` zero violations |
 | NFR5 no escape hatches | E6.S4 | no wildcard allowlist / `AllowWildcardIam` tag |
 | NFR6 backward-compat bootstrap | E1.S2 (golden parity), E6.S1 | byte-equal golden fixture; existing tests intact |
@@ -145,7 +145,7 @@ testable without live credentials.**
 | F2 | FR12 routing not a real GH Actions capability | **fixed** — same as A3: routing happens at intake via dedicated event type; "route to another workflow" framing removed. |
 | F3 | D1 assertion + eu-central-1 ARNs untestable under mocks | **fixed** — same as A5: parametric ARNs + injectable account/region. |
 | F4 | `_RepoCiContext` dual-context fragility / NFR6 | **fixed-in-architecture §3.1 / epics E1.S2**: extend existing `_BootstrapBuildContext` (single context); golden byte-equal parity fixture is the gate. |
-| F5 | import-linter either/or unresolved | **fixed-in-architecture §9.4 / epics E6.S3**: decided sequence — add `infra` root pkg → forbidden contract, with AST-test fallback if graph destabilizes. |
+| F5 | import-linter either/or unresolved | **fixed-in-architecture §9.4 / epics E6.S3**: current contract forbids policy/app; `test_governance_import_isolation.py` covers scripts outside the graph. Preserve §9.4 AST-only fallback if graphing infra exposes existing violations. |
 | F6 | Operator-only deps mislabeled deliverable-now | **fixed-in-architecture §8/§10 / epics E4.S2,E5.S1**: scaffold preview-blocked tagged; cost-anomaly-ARN-matches-stack is an operator apply-time verification (no repoint); FR21 verify tolerates ARN absence. |
 
 ---

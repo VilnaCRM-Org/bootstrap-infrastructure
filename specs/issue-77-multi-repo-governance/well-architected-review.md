@@ -148,8 +148,10 @@ risks" item 1).
   runs `make pulumi-plan` + `make pulumi-up-plan` (saved-plan only) with
   `PULUMI_DIR=pulumi/governance`; a direct `make pulumi-up` under
   `GITHUB_ACTIONS=true` hits the existing reject at
-  `scripts/run_pulumi_command.py:672-679`. The only permitted direct
-  `pulumi up` is the operator's one-time local bootstrap (architecture §6, §10.2).
+  `scripts/run_pulumi_command.py:672-679`. First setup permits only explicit
+  trusted state-only initialization of a genuinely absent encrypted checkpoint,
+  without program execution. Resource updates require protected GitHub/OIDC
+  `make pulumi-up-plan`; no local root or unsaved apply is authorized.
 - **Deterministic, length-guarded naming.** All resource names derive from the
   full sanitized repo slug + env via existing helpers that **raise rather than
   truncate** past the 64-char IAM limit; the canonical `{project}` source is one

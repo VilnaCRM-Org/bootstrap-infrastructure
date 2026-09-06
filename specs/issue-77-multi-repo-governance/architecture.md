@@ -582,51 +582,68 @@ permissions for both environments; `tests/unit/test_governance_automation.py`
 verifies exact central managed-role resources, required GovernanceBoundary and
 boundary/provider tampering denials.
 
-### 5.2 Deploy / pulumi-backend policy (apply/preview/drift share) — repo-scoped (FR3)
+### 5.2 Purpose-specific Pulumi backend policies — repo-scoped (FR3)
+
+`_governance_backend_policy_document(..., purpose=...)` builds separate policies.
+The **apply** role receives the following state statement; preview and drift do
+not receive its checkpoint write/delete actions:
 
 ```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {"Sid": "ReadCallerIdentity", "Effect": "Allow", "Action": ["sts:GetCallerIdentity"], "Resource": "*"},
-    {"Sid": "UsePulumiStateBucket", "Effect": "Allow",
-     "Action": ["s3:ListBucket","s3:GetObject","s3:GetObjectVersion","s3:PutObject","s3:DeleteObject","s3:DeleteObjectVersion"],
-     "Resource": ["arn:aws:s3:::pulumi-{repo}-{env}-state",
-                  "arn:aws:s3:::pulumi-{repo}-{env}-state/state/*",
-                  "arn:aws:s3:::pulumi-{repo}-{env}-state/.pulumi/*"]},
-    {"Sid": "UsePulumiSecretsProviderKey", "Effect": "Allow",
-     "Action": ["kms:Decrypt","kms:Encrypt","kms:GenerateDataKey","kms:DescribeKey","kms:ReEncrypt*"],
-     "Resource": "arn:aws:kms:eu-central-1:{account_id}:key/*",
-     "Condition": {"ForAnyValue:StringLike": {"kms:ResourceAliases": [
-        "alias/pulumi-{repo}-{env}-secrets"]}}}
-  ]
-}
+{"Sid":"UsePulumiStateBucket","Effect":"Allow",
+ "Action":["s3:ListBucket","s3:GetObject","s3:GetObjectVersion","s3:PutObject","s3:DeleteObject","s3:DeleteObjectVersion"],
+ "Resource":["{bucket_arn}","{bucket_arn}/state/*","{bucket_arn}/.pulumi/*"]}
 ```
-Changes from the bootstrap pattern (all closing review findings):
-- **Account-parametric ARN (closes FEASIBILITY-3):** the hardcoded `891377212104` literal is
-  replaced with `{account_id}` interpolation (matching the existing `_pulumi_backend_policy_document`
-  at `ci_bootstrap.py:340`), so the document is mock-renderable (tests run under mock account
-  `123456789012`) and account-agnostic.
-- **Region-pinned KMS Resource (closes SECURITY-KMS-medium):** `arn:aws:kms:*:...` →
-  `arn:aws:kms:eu-central-1:...`. The region wildcard is removed; only the deployment region's keys
-  are in scope.
-- **Repo-scoped alias, no platform-bootstrap (closes AWS-SRE-1, FR3):** the alias list is exactly
-  `[alias/pulumi-{repo}-{env}-secrets]` — the platform-bootstrap alias is **gone** from per-repo
-  deploy policies. Repo A's deploy role cannot decrypt repo B's secrets, and no service repo can
-  decrypt the platform master key.
-- **No alias self-grant (defense-in-depth, SECURITY-KMS-medium):** verify against `automation.py`
-  grants that no governance deployment role (preview/apply/drift) is granted
-  `kms:CreateAlias`/`kms:UpdateAlias`/`kms:DeleteAlias` on these keys, so the
-  `kms:ResourceAliases` condition cannot be self-satisfied by re-aliasing an attacker key. A unit
-  test asserts the apply role's automation documents contain no alias-mutation action on the repo
-  keys. Where the governance stack knows the concrete key ARN it created for the repo/env, the
-  implementer SHOULD scope the `Resource` to that key ARN, making `kms:ResourceAliases` a
-  defense-in-depth condition rather than the sole control (recorded as a hardening follow-up if the
-  stack-knows-ARN plumbing is deferred).
 
-The `Resource:*` on `sts:GetCallerIdentity` is CrossGuard-exempt (`sts:getcalleridentity` is in
-`_UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS`, `guardrails.py:599`). No `Action:*`, no unscoped
-`Resource:*` Allow (FR23).
+For **preview and drift**, that statement contains only `s3:ListBucket`,
+`s3:GetObject` and `s3:GetObjectVersion` on the same resources. The builder also
+adds these exact lock-management and explicit-denial statements:
+
+```json
+[
+ {"Sid":"ManagePulumiLocks","Effect":"Allow",
+  "Action":["s3:PutObject","s3:DeleteObject"],
+  "Resource":"{bucket_arn}/.pulumi/locks/*"},
+ {"Sid":"DenyWritesOutsidePulumiLocks","Effect":"Deny",
+  "Action":["s3:PutObject","s3:DeleteObject"],
+  "NotResource":"{bucket_arn}/.pulumi/locks/*"},
+ {"Sid":"DenyStateVersionDeletion","Effect":"Deny",
+  "Action":["s3:DeleteObjectVersion"],"Resource":"*"}
+]
+```
+
+`{bucket_arn}` is the exact ARN derived from
+`settings.state_bucket_name_for_repo(repo)`. Lock objects are confined to that
+repository's `.pulumi/locks/` prefix; checkpoint/history writes, foreign-bucket
+writes and all object-version deletion remain explicitly denied for the read
+roles. The shared service boundary admits an upper limit of backend operations;
+it does not override these identity-policy Denies. The executable
+`test_read_roles_can_lock_but_cannot_mutate_checkpoints` covers TEST/PROD and both
+read purposes, including checkpoint, adjacent-prefix, version and foreign-lock
+negative cases.
+
+All three purposes also receive caller-identity read and this KMS statement:
+
+```json
+{"Sid":"UsePulumiSecretsProviderKey","Effect":"Allow",
+ "Action":["kms:Decrypt","kms:Encrypt","kms:GenerateDataKey","kms:DescribeKey","kms:ReEncrypt*"],
+ "Resource":"arn:{partition}:kms:{region}:{account_id}:key/*",
+ "Condition":{"ForAnyValue:StringLike":{"kms:ResourceAliases":["{own_repository_alias}"]}}}
+```
+
+The code interpolates the verified deployment region/account and partition;
+`{own_repository_alias}` is exactly
+`settings.pulumi_secrets_alias_name_for_repo(repo)`. For the current TEST service,
+these become `arn:aws:kms:eu-central-1:891377212104:key/*` and
+`alias/pulumi-user-service-infrastructure-test-secrets`. The Resource is **not**
+a computed concrete key ARN: the exact alias condition provides the repository
+restriction together with the operator-owned boundary. Neither a platform alias
+nor a region wildcard is included. Service policies are built by
+`_governance_policy_documents`, not platform automation; they grant no alias
+mutation or IAM administration. An exact key-ARN restriction would require a
+separately reviewed source change and is not represented as implemented here.
+
+`sts:GetCallerIdentity` requires `Resource: "*"` and uses the existing explicit
+CrossGuard exception. No wildcard exception is introduced by this documentation.
 
 ### 5.2a Scoped secret-read Deny on the APPLY role (closes SECURITY-5)
 

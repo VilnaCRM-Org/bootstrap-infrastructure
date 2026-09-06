@@ -485,10 +485,15 @@ fan-out, parameterized by a governance repo list.
 ## 6. Operator-only manual steps vs pure code/IaC/docs deliverable now
 
 ### 6.1 Operator-only (needs AWS admin or GitHub org-admin) — NOT deliverable as code now
-- **One-time `AdministratorAccess` apply of the governance bootstrap per stack** (test, then prod)
-  — operator/@Kravalg runs locally or via the gated PR-comment path. Direct `pulumi up` is
-  permitted ONLY for this local bootstrap step (`docs/github-ci-bootstrap-stack.md:78-122`,
-  and `run_pulumi_command.py:672-679` blocks it only when `GITHUB_ACTIONS=true`).
+- **Current operator prerequisite (supersedes the historical local-admin design):**
+  verify immutable operator-owned roles/boundaries and exact account/backend/KMS
+  bindings. Install missing operator prerequisites through a separately reviewed
+  protected GitHub/OIDC saved-plan path; the governor cannot create or widen its
+  own delegation. After these prerequisites, `GitHubGovernanceApply-{env}` applies
+  only its bounded catalog through `make pulumi-up-plan`, TEST before PROD.
+  Explicit trusted state-only initialization may create a genuinely absent
+  encrypted empty checkpoint without running the program. No local root or
+  unsaved resource apply is authorized. See [the current runbook](../../docs/governance-stack.md).
 - **GitHub branch-protection + protected governance ENVIRONMENT required-reviewer (@Kravalg)
   configuration** — requires repo/org admin token (`_repo_admin_allowed`,
   `configure_github_repository_controls.py:122-128,186-190`). Deliver as documented `gh api`

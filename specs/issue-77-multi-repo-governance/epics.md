@@ -126,7 +126,7 @@ Covers FR1–FR9, FR21, FR22 (config-read half), FR23, NFR6, NFR7. Builds all re
 
 ### Story 1.2: [E1.S2] Lift bootstrap role/policy helpers to a per-repo context
 
-- **Atomic scope:** Introduce the `_RepoCiContext` dataclass and thread `repo`/`project` through the
+- **Atomic scope:** Extend the existing `_BootstrapBuildContext` and thread `repo`/`project` through the
   pure role/policy helpers, keeping the single-repo entrypoint byte-identical (NFR6). No new
   component, no new project yet.
 - **Files:**
@@ -681,15 +681,20 @@ Covers FR24, NFR1–NFR5, NFR7, D7, plus the structural-shape lockstep (R6).
 ### Story 6.3: [E6.S3] import-linter contract + static suite green
 
 - **Atomic scope:** Add one additive forbidden import-linter contract `infra.governance ↛ {policy, app}`
-  (and not `scripts`) and confirm the full static suite (ruff ≤12, mypy, ty, import-linter, deptry,
+  plus the AST guard `tests/pulumi/test_governance_import_isolation.py` for `scripts`,
+  which is intentionally outside the import-linter graph. Confirm the full static suite (ruff ≤12, mypy, ty, import-linter, deptry,
   bandit, pip-audit, gitleaks) is green (NFR3, D7).
 - **Files:**
   - `~ pyproject.toml` (or the import-linter config file) — add the forbidden contract; if `infra`
-    is not a root package, scope minimally per §9.4.
+    is not a root package, scope minimally per §9.4. Preserve the §9.4 AST-only
+    fallback if graphing infra exposes existing unrelated violations.
+  - `tests/pulumi/test_governance_import_isolation.py` — retain the AST ban on
+    imports from `policy`, `app` and `scripts`, including the ungraphed CLI code.
 - **Acceptance criteria:** NFR3, D7. `make ci-pr` green; import-linter contracts unbroken; ruff reports
   no complexity > 12 on the new modules.
 - **Test cases:**
-  - positive: `infra.governance` importing `policy` or `app` fails the contract.
+  - positive: `infra.governance` importing `policy` or `app` fails import-linter;
+    importing `scripts` fails the companion AST guard.
   - negative: legitimate `infra.governance` → `infra.*` imports pass.
   - edge: existing `app`/`policy` contracts remain green (no destabilization).
 - **Dependencies:** E1.S4a/E1.S4b (module exists), E6.S2.

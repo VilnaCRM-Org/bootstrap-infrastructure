@@ -28,6 +28,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -260,11 +261,24 @@ def test_referenced_role_names_match_governance_rendered_names() -> None:
     for line in text.splitlines():
         for raw_token in line.replace("`", " ").replace(",", " ").split():
             token = raw_token.strip(".()[]'\";:")
-            if token.startswith("GitHubCi") and "user-service" in token:
+            if token.startswith("GitHubCi"):
                 assert token in rendered_names, (  # nosec B101
                     f"template names governance role {token!r} which does not "
                     "match any rendered governance role name (name-parity drift)"
                 )
+
+
+@pytest.mark.parametrize(
+    "malformed_role", ["GitHubCiApply-user-svc-prod", "GitHubCiDrift-other-test"]
+)
+def test_malformed_role_without_service_substring_fails_parity(
+    monkeypatch, malformed_role
+) -> None:
+    """Unexpected GitHubCi tokens cannot evade parity through a different slug."""
+    template = _workflow_text() + f"\n# {malformed_role}\n"
+    monkeypatch.setattr(sys.modules[__name__], "_workflow_text", lambda: template)
+    with pytest.raises(AssertionError, match="name-parity drift"):
+        test_referenced_role_names_match_governance_rendered_names()
 
 
 def test_short_name_reference_would_fail_parity() -> None:

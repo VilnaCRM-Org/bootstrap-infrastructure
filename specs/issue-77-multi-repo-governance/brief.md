@@ -144,11 +144,12 @@ author gate, onboarding doc, and the first real consumer repo.
   is in scope; standing up any *additional* account beyond these two is a non-goal.
 - **Designing the trust/role model from scratch.** This increment **generalizes** the existing
   `GitHubCiBootstrap` + `CiConfiguration` components; it does not invent a new IAM model.
-- **Performing the operator-only live actions** as part of the code deliverable: the one-time
-  `AdministratorAccess` bootstrap apply (test then prod), the GitHub branch-protection /
-  protected-environment reviewer configuration, the actual creation + `git push` of
-  `user-service-infrastructure` in `VilnaCRM-Org`, and setting GitHub repo variables. These are
-  delivered as **documented runbooks / dry-run payloads**, executed by the operator.
+- **Performing operator-only live actions** as part of the code deliverable: verify
+  operator-owned role/boundary inventory, real repository identity and trusted
+  state-only initialization; install reviewed prerequisites through protected
+  GitHub/OIDC saved plans, TEST before PROD. Protected environments, verified
+  variables and scaffold publication remain operator steps. This scope grants
+  no local root apply or unscoped administrator authority.
 - **Onboarding additional repos** beyond `user-service-infrastructure` in this increment
   (`core-service-infrastructure` and others arrive later via config only).
 - **Replacing the PR-comment runner / saved-plan mechanics.** Those exist and are reused
@@ -178,9 +179,12 @@ author gate, onboarding doc, and the first real consumer repo.
   when `GITHUB_ACTIONS=true`; saved-plan-only).
 - Deploy is PR-comment driven (`/pulumi test up`, `/pulumi prod up` → `issue_comment` →
   `repository_dispatch` trusted runner → ECR image → OIDC role).
-- Least privilege everywhere; the secret-read deny set applies to **read-only / config-read**
-  roles only (never the apply/deploy backend, which legitimately needs `kms:Decrypt`).
-  CrossGuard exempts `Effect: Deny`; deployment roles carry no wildcard `Allow`.
+- Least privilege everywhere: preview/drift deny secret-bearing reads while
+  retaining scoped backend KMS decrypt. Config-read uses its own secret scope and
+  conditional Decrypt Denies. Apply has the separate surgical
+  `DenySecretLeakingReadsApply`, excluding only its owned CI secret from the
+  secret-read denial and retaining required scoped `kms:Decrypt`. CrossGuard
+  exempts `Effect: Deny`; deployment roles carry no unscoped wildcard `Allow`.
 - Must work generically for any `-infrastructure` repo and for repos added later, via config.
 
 ## 8. Historical questions resolved by architecture §0
