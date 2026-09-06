@@ -65,13 +65,13 @@ unsafe recovery. Nothing in this successor weakens that contract.
 - Semantic mutation: 82/82 killed, including all 69 installed cases and 13 new
   governor cases. Ordinary mutation: 83/83 killed, zero survivors, errors or
   timeouts. Both campaigns ran in isolated copies.
-- The initial full battery passed 181 structural and 120 policy tests, quality,
-  hygiene and catalog gates; its unit suite found the missing canonical fanout
-  exclusion above. The separately completed remainder passed 6 unprivileged
-  integration and 72 CLI tests, security scans/audit and unprivileged guardrails.
-  After the exclusion, all 1380 unit tests passed; combined coverage is 100%
-  across 8972 statements and 2624 branches. The final #57-base battery remains
-  pending until the actual merge is available.
+- Complete `make ci-pr-unprivileged` passed at
+  `55f67221f66f72345b401750832cf55a3fa348d0`: 1380 unit, 181 structural,
+  120 policy, 6 unprivileged integration and 72 CLI tests, plus quality,
+  architecture, dependency, repository hygiene, security and unprivileged
+  guardrails. Combined coverage: 8972 statements and 2624 branches, 100%.
+  The final #57-base battery remains pending until the actual merge is available.
+
 
 ## Deferred external acceptance
 
