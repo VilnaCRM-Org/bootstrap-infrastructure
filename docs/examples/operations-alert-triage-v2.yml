@@ -1,0 +1,219 @@
+name: Operations Alert Issue Triage
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  triage_operations_alerts:
+    name: Triage Operations Alerts
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          persist-credentials: false
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: operations alert triage
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN,
+            OPERATIONS_ALERT_QUEUE_NAME,OPERATIONS_TOPIC_ARN
+
+      - name: Validate triage prerequisites
+        run: |
+          missing=()
+          for name in \
+            AWS_ACCOUNT_ID \
+            AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN \
+            OPERATIONS_ALERT_QUEUE_NAME \
+            OPERATIONS_TOPIC_ARN; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+          if [[ "${#missing[@]}" -gt 0 ]]; then
+            printf 'error: operations alert triage is missing %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
+            echo "error: AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-operations-alert-triage-role-arn }}
+          role-session-name: gha-operations-alert-triage-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
+
+      - name: Install uv for triage renderer
+        run: |
+          python3 -m pip install --user 'uv==0.9.21'
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Create or update GitHub issue for queued operations alerts
+        id: triage
+        env:
+          GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+        run: |
+          umask 077
+          queue_url="$(
+            aws sqs get-queue-url \
+              --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
+              --query QueueUrl \
+              --output text
+          )"
+          printf '%s' "${queue_url}" > "${RUNNER_TEMP}/operations-queue-url"
+          alerts_json="$(mktemp)"
+          page_json="$(mktemp)"
+          next_alerts_json="$(mktemp)"
+          printf '{"Messages":[]}\n' > "${alerts_json}"
+
+          receive_pages=0
+          max_receive_pages=50
+          while [[ "${receive_pages}" -lt "${max_receive_pages}" ]]; do
+            aws sqs receive-message \
+              --queue-url "${queue_url}" \
+              --max-number-of-messages 10 \
+              --wait-time-seconds 10 \
+              --visibility-timeout 600 \
+              --attribute-names SentTimestamp \
+              --output json > "${page_json}"
+
+            page_count="$(jq '.Messages | length' "${page_json}")"
+            if [[ "${page_count}" -eq 0 ]]; then
+              break
+            fi
+
+            jq -s '{"Messages": ((.[0].Messages // []) + (.[1].Messages // []))}' \
+              "${alerts_json}" \
+              "${page_json}" > "${next_alerts_json}"
+            mv "${next_alerts_json}" "${alerts_json}"
+            next_alerts_json="$(mktemp)"
+            receive_pages="$((receive_pages + 1))"
+          done
+
+          alert_count="$(jq '.Messages | length' "${alerts_json}")"
+          if [[ "${alert_count}" -eq 0 ]]; then
+            echo "No operations alert messages are currently queued."
+            exit 0
+          fi
+          if [[ "${receive_pages}" -eq "${max_receive_pages}" ]]; then
+            printf 'Reached receive page limit after collecting %s operations alert message(s).\n' "${alert_count}"
+          fi
+
+          aggregate_body_file="$(mktemp)"
+          aggregate_fingerprint_file="$(mktemp)"
+          groups_file="$(mktemp)"
+          uv run python scripts/operations_alert_triage.py \
+            --alerts-json "${alerts_json}" \
+            --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
+            --account-id "${AWS_ACCOUNT_ID}" \
+            --region "${AWS_REGION}" \
+            --body-file "${aggregate_body_file}" \
+            --fingerprint-file "${aggregate_fingerprint_file}" \
+            --groups-file "${groups_file}" \
+            --topic-arn "${OPERATIONS_TOPIC_ARN}" \
+            --acknowledgments-file "${RUNNER_TEMP}/operations-acknowledgments.json" \
+            --audit-file "${RUNNER_TEMP}/operations-classification.json"
+          echo "classified=true" >> "${GITHUB_OUTPUT}"
+
+          group_count="$(jq '.groups | length' "${groups_file}")"
+          for ((group_index = 0; group_index < group_count; group_index++)); do
+            group_alerts_json="$(mktemp)"
+            body_file="$(mktemp)"
+            fingerprint_file="$(mktemp)"
+            jq ".groups[${group_index}].alerts" "${groups_file}" > "${group_alerts_json}"
+            group_alert_count="$(jq '.Messages | length' "${group_alerts_json}")"
+            uv run python scripts/operations_alert_triage.py \
+              --alerts-json "${group_alerts_json}" \
+              --queue-name "${OPERATIONS_ALERT_QUEUE_NAME}" \
+              --account-id "${AWS_ACCOUNT_ID}" \
+              --region "${AWS_REGION}" \
+              --body-file "${body_file}" \
+              --fingerprint-file "${fingerprint_file}"
+            fingerprint="$(cat "${fingerprint_file}")"
+            existing_issue="$(
+              gh issue list \
+                --repo "${GITHUB_REPOSITORY_NAME}" \
+                --state open \
+                --search "operations-alert:fingerprint=${fingerprint} in:body" \
+                --json number \
+                --jq '.[0].number // ""'
+            )"
+            if [[ -n "${existing_issue}" ]]; then
+              gh issue comment \
+                "${existing_issue}" \
+                --repo "${GITHUB_REPOSITORY_NAME}" \
+                --body-file "${body_file}"
+              printf 'Updated operations alert issue #%s for fingerprint %s.\n' \
+                "${existing_issue}" \
+                "${fingerprint}"
+            else
+              issue_url="$(
+                gh issue create \
+                  --repo "${GITHUB_REPOSITORY_NAME}" \
+                  --title "Operations alerts queued: ${group_alert_count} message(s)" \
+                  --body-file "${body_file}"
+              )"
+              printf 'Created operations alert issue: %s\n' "${issue_url}"
+            fi
+          done
+
+      - name: Retain sanitized classification audit
+        if: always() && steps.triage.outputs.classified == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: operations-classification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/operations-classification.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Acknowledge only successfully triaged or validated benign receipts
+        if: success() && steps.triage.outputs.classified == 'true'
+        run: |
+          queue_url="$(cat "${RUNNER_TEMP}/operations-queue-url")"
+          jq -r '.Messages[].ReceiptHandle' \
+            "${RUNNER_TEMP}/operations-acknowledgments.json" |
+            while IFS= read -r receipt_handle; do
+              aws sqs delete-message \
+                --queue-url "${queue_url}" \
+                --receipt-handle "${receipt_handle}"
+            done
+          quarantine_count="$(jq '[.records[] | select(.disposition == "quarantine")] | length' \
+            "${RUNNER_TEMP}/operations-classification.json")"
+          if [[ "${quarantine_count}" -gt 0 ]]; then
+            printf 'error: %s malformed backup or receipt record(s) remain unacknowledged; inspect the classification audit.\n' \
+              "${quarantine_count}" >&2
+            exit 1
+          fi

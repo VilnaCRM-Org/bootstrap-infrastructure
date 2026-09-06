@@ -1582,10 +1582,12 @@ def test_sre_docs_map_blocking_ci_checks_back_to_local_commands() -> None:
     assert "awskms://alias/ALIAS_NAME?region=REGION" in operations_doc  # nosec B101
 
 
-def test_operations_alert_triage_uses_repo_python_runner() -> None:
+def test_staged_operations_alert_triage_uses_repo_python_runner() -> None:
     """Keep alert rendering on the repo-managed Python command path."""
     workflow = yaml.safe_load(
-        (WORKFLOWS_DIR / "operations-alert-triage.yml").read_text(encoding="utf-8")
+        (PROJECT_ROOT / "docs/examples/operations-alert-triage-v2.yml").read_text(
+            encoding="utf-8"
+        )
     )
     steps = workflow["jobs"]["triage_operations_alerts"]["steps"]
     install_step = next(
@@ -1610,10 +1612,14 @@ def test_operations_alert_triage_uses_repo_python_runner() -> None:
     assert "python3 scripts/operations_alert_triage.py" not in triage_step["run"]  # nosec B101
 
 
-def test_operations_alert_triage_searches_fingerprint_before_queue_delete() -> None:
+def test_staged_operations_alert_triage_searches_fingerprint_before_queue_delete() -> (
+    None
+):
     """Update or create canonical alert issues before deleting SQS messages."""
     workflow = yaml.safe_load(
-        (WORKFLOWS_DIR / "operations-alert-triage.yml").read_text(encoding="utf-8")
+        (PROJECT_ROOT / "docs/examples/operations-alert-triage-v2.yml").read_text(
+            encoding="utf-8"
+        )
     )
     steps = workflow["jobs"]["triage_operations_alerts"]["steps"]
     triage_run = next(
@@ -1705,3 +1711,32 @@ def test_operations_alert_backfill_requires_protected_manual_confirmation() -> N
     assert "operations-alert:fingerprint=${fingerprint} in:body" in run  # nosec B101
     assert "gh issue create" in run  # nosec B101
     assert "gh issue comment" in run  # nosec B101
+
+
+def test_triage_cutover_preserves_existing_handler():
+    """Staging must preserve the complete installed scheduled v1 workflow."""
+    import hashlib
+
+    source = (
+        PROJECT_ROOT / ".github/workflows/operations-alert-triage.yml"
+    ).read_text()
+    handler = source[
+        source.index("      - name: Create GitHub issue for queued operations alerts") :
+    ]
+    assert (
+        hashlib.sha256(handler.encode()).hexdigest()
+        == "f0a3613d5ca32286716dd50db196498122ad9840d80c46b744345040a462430d"
+    )
+
+    assert hashlib.sha256(source.encode()).hexdigest() == (
+        "7493923443846f089a7d9c21f1f881df9a36a567bdc7e297273b147aef86ae71"
+    )
+    staged = PROJECT_ROOT / "docs/examples/operations-alert-triage-v2.yml"
+    assert staged.is_file()
+    assert not (WORKFLOWS_DIR / staged.name).exists()
+    makefile = (PROJECT_ROOT / "Makefile").read_text()
+    assert "actionlint -color docs/examples/operations-alert-triage-v2.yml" in makefile
+    assert (
+        "YAML_LINT_PATHS          ?= docs/examples/operations-alert-triage-v2.yml"
+        in makefile
+    )

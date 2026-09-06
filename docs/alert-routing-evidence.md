@@ -1,5 +1,12 @@
 # Alert Routing Evidence
 
+> **Staged activation:** The installed scheduled v1 workflow remains byte-for-byte
+> unchanged. The v2 consumer is staged at
+> [`docs/examples/operations-alert-triage-v2.yml`](examples/operations-alert-triage-v2.yml). GitHub does not execute workflows
+> from this documentation path. Local acknowledgment tests exercise that exact
+> template and do not attest to live v2 consumption. Backfill/reconcile are
+> protected manual preparation only; existing scheduling is not disabled.
+
 This record captures the repository-owned observability and alert-routing
 evidence for the bootstrap workload as of 2026-05-09. It contains only
 non-secret AWS metadata, route-test identifiers, owners, and fallback rules.

@@ -1,5 +1,12 @@
 # AWS Secrets Manager CI Cutover Manual
 
+> **Staged activation:** The installed scheduled v1 workflow remains byte-for-byte
+> unchanged. The v2 consumer is staged at
+> [`docs/examples/operations-alert-triage-v2.yml`](examples/operations-alert-triage-v2.yml). GitHub does not execute workflows
+> from this documentation path. Local acknowledgment tests exercise that exact
+> template and do not attest to live v2 consumption. Backfill/reconcile are
+> protected manual preparation only; existing scheduling is not disabled.
+
 This project does not require Pulumi Cloud or Pulumi ESC for privileged CI.
 GitHub Actions uses GitHub OIDC to assume AWS roles, reads account-local CI
 configuration from AWS Secrets Manager, and then runs Pulumi CLI with the S3
@@ -254,3 +261,28 @@ Fingerprint-v2 issue cutover needs the SRE procedure in
 [Alert routing evidence](alert-routing-evidence.md#fingerprint-version-2-cutover-2026-09-06-source-correction).
 Record fresh hosted checks, actual routing and redelivery evidence separately;
 local tests and this manual do not constitute current live acceptance.
+
+## Promote The Staged v2 Consumer
+
+No valid v1-to-v2 mapping receipt was present during source assembly. Keep
+`.github/workflows/operations-alert-triage.yml` unchanged until the SRE has
+recorded the full stable stream identities, v1-to-v2 mappings, uncertainty and
+protected backfill/reconciliation receipts. New v2 canonical issues may be
+prepared manually while the old consumer remains scheduled; they must not be
+represented as successful v2 queue delivery.
+
+Then open a reviewed source change that copies the exact staged template from
+`docs/examples/operations-alert-triage-v2.yml` to the live workflow, switches the
+v2 structural/integration tests to that live path, and replaces the legacy-byte
+preservation assertion with the actual cutover receipt contract. Re-run lint,
+classification, acknowledgment and controller/security checks. Validate the
+expected SNS topic metadata, unchanged workflow-name OIDC permission, current
+main-only trust and role scope. Do not enable through an arbitrary repository
+variable, dispatch bypass or fabricated status.
+
+The conservative Backup event pattern may be deployed before v2. The retained
+v1 consumer can create issues for benign overmatches in that interval; only v2
+provides the typed benign/quarantine acknowledgment contract. Do not claim that
+pattern deployment alone completes this rollout. After activation, observe a
+real allowed event and redelivery against the mapped canonical v2 issue, and
+record results without raw payloads or receipt handles.

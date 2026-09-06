@@ -1,4 +1,4 @@
-"""Run the real acknowledgment shell with a local AWS stub, never live SQS."""
+"""Run the staged v2 acknowledgment shell with a local AWS stub, never live SQS."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def backup_message(receipt: str, state: str, status_message: object):
 
 
 @pytest.mark.parametrize("include_quarantine", [False, True])
-def test_exact_consumer_allowlist_controls_real_workflow_ack_step(
+def test_exact_consumer_allowlist_controls_staged_workflow_ack_step(
     tmp_path, include_quarantine
 ):
     alerts = {
@@ -78,7 +78,7 @@ def test_exact_consumer_allowlist_controls_real_workflow_ack_step(
     )
     executable.chmod(0o700)
     workflow = yaml.safe_load(
-        (ROOT / ".github/workflows/operations-alert-triage.yml").read_text()
+        (ROOT / "docs/examples/operations-alert-triage-v2.yml").read_text()
     )
     steps = workflow["jobs"]["triage_operations_alerts"]["steps"]
     step = next(

@@ -1,5 +1,12 @@
 # PR57 Successor Verification
 
+> **Staged activation:** The installed scheduled v1 workflow remains byte-for-byte
+> unchanged. The v2 consumer is staged at
+> [`docs/examples/operations-alert-triage-v2.yml`](../../docs/examples/operations-alert-triage-v2.yml). GitHub does not execute workflows
+> from this documentation path. Local acknowledgment tests exercise that exact
+> template and do not attest to live v2 consumption. Backfill/reconcile are
+> protected manual preparation only; existing scheduling is not disabled.
+
 This successor assembles the remaining alert cutover from hardened commit
 `0d8a7089acbd7923960c16500e142fd3dc69190f` on the installed controller source.
 It preserves all installed IAM documents, loader pins, provider continuity,
@@ -53,4 +60,16 @@ Validation results are recorded below after the candidate checks complete.
 
 These are local source checks. A bounded artifact search found no valid
 SRE v1-to-v2 mapping receipt; scheduled v2 activation must remain staged pending
-that evidence. Actual main ancestry is finalized after controller installation.
+that evidence. The successor is rebound to the actual controller squash commit
+`888b2424c2cc3fe475e1cf24c614004c49a4928e`, whose tree equals the reviewed
+installation source.
+
+## Staging validation
+
+All 268 selected structural, classifier, renderer, event-pattern and staged
+acknowledgment tests passed after staging. Actionlint and Yamllint validate the
+inert template explicitly; the normal Make targets retain that lint coverage.
+The scheduled v1 workflow has an exact whole-file SHA regression in addition to
+the existing handler regression. Only a subsequent reviewed activation may
+change it. This staging adds no role, trust, policy, scheduler flag or workflow
+credential permission.
