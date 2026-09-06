@@ -56,6 +56,7 @@ jobs:
           fi
 
           environments=(
+            "test-preview"
             "test"
             "prod-preview"
             "prod"

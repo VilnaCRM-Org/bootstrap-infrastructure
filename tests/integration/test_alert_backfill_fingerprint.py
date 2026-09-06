@@ -25,7 +25,11 @@ def run_backfill(tmp_path: Path, event: object, *, serialized: bool = False):
         (ROOT / ".github/workflows/operations-alert-backfill.yml").read_text()
     )
     steps = workflow["jobs"]["backfill"]["steps"]
-    run = next(step["run"] for step in steps if "run" in step)
+    run = next(
+        step["run"]
+        for step in steps
+        if step.get("name") == "Create or update canonical operations alert issue"
+    )
     preparation, boundary, _ = run.partition(
         "python3 scripts/operations_alert_triage.py"
     )
@@ -174,3 +178,28 @@ def test_actual_backfill_rejects_unknown_envelope_keys(tmp_path):
     assert result.returncode != 0
     assert "only source, detail-type, detail and resources" in result.stderr
     assert not result.stdout
+
+
+@pytest.mark.parametrize(
+    "number_json",
+    [
+        "1e0",
+        "9007199254740993",
+        "123456789012345678901234567890",
+        "-0",
+        "-0.0",
+        "1.2345678901234567",
+        '{"nested":[1e0,-0.0,9007199254740993]}',
+    ],
+)
+def test_backfill_preserves_original_json_numeric_fingerprint(tmp_path, number_json):
+    raw = (
+        '{"source":"aws.health","detail-type":"AWS Health Event",'
+        '"detail":{"value":' + number_json + "}}"
+    )
+    result = run_backfill(tmp_path, raw, serialized=True)
+    assert result.returncode == 0, result.stderr
+    backfill = json.loads(result.stdout)["Messages"][0]
+    assert json.loads(backfill["Body"])["Message"] == raw
+    direct = {"Body": json.dumps({"Message": raw})}
+    assert triage.message_fingerprint(backfill) == triage.message_fingerprint(direct)

@@ -30,6 +30,7 @@ permissions:
 
 jobs:
   reconcile:
+    if: github.ref == 'refs/heads/main'
     name: Close Confirmed Legacy Duplicates
     runs-on: ubuntu-latest
     environment: operations-alert-reconcile
@@ -45,6 +46,8 @@ jobs:
       - name: Reconcile legacy operations alerts
         shell: bash
         run: |
+          set -euo pipefail
+
           expected="I confirm these legacy issues match the canonical operations alert stream"
           if [[ "${CONFIRMATION}" != "${expected}" ]]; then
             echo "error: confirmation sentence does not match the documented value." >&2
@@ -57,7 +60,7 @@ jobs:
           fi
 
           canonical="${CANONICAL_ISSUE#\#}"
-          if [[ ! "${canonical}" =~ ^[0-9]+$ ]]; then
+          if [[ ! "${canonical}" =~ ^[1-9][0-9]*$ ]]; then
             echo "error: canonical_issue must be an issue number." >&2
             exit 1
           fi
@@ -67,8 +70,12 @@ jobs:
           legacy_issue_ids=()
           for raw_issue in ${normalized}; do
             issue="${raw_issue#\#}"
-            if [[ ! "${issue}" =~ ^[0-9]+$ ]]; then
+            if [[ ! "${issue}" =~ ^[1-9][0-9]*$ ]]; then
               echo "error: legacy issue '${raw_issue}' is not an issue number." >&2
+              exit 1
+            fi
+            if [[ "${issue}" == "${canonical}" ]]; then
+              echo "error: legacy issue ${issue} cannot be the canonical issue." >&2
               exit 1
             fi
             if [[ -n "${seen_issues[${issue}]:-}" ]]; then
@@ -98,19 +105,12 @@ jobs:
             exit 1
           fi
 
+          # Validate the complete batch before performing any closure.
+          pending_issue_ids=()
           for issue in "${legacy_issue_ids[@]}"; do
-            if [[ "${issue}" == "${canonical}" ]]; then
-              echo "error: legacy issue ${issue} cannot be the canonical issue." >&2
-              exit 1
-            fi
-
             state="$(gh issue view "${issue}" --repo "${GH_REPO}" --json state --jq '.state')"
             title="$(gh issue view "${issue}" --repo "${GH_REPO}" --json title --jq '.title')"
             body="$(gh issue view "${issue}" --repo "${GH_REPO}" --json body --jq '.body')"
-            if [[ "${state}" != "OPEN" ]]; then
-              echo "error: legacy issue ${issue} is not open." >&2
-              exit 1
-            fi
             if [[ "${title}" != Operations\ alerts\ queued:* ]]; then
               echo "error: legacy issue ${issue} is not an operations alert issue." >&2
               exit 1
@@ -120,6 +120,40 @@ jobs:
               exit 1
             fi
 
+            if [[ "${state}" == "CLOSED" ]]; then
+              # GitHub Issue.duplicateOf and stateReason describe the current closure.
+              # GraphQL variables must remain literal for the API query.
+              # shellcheck disable=SC2016
+              closure="$(gh api graphql \
+                -f owner="${GH_REPO%/*}" -f name="${GH_REPO#*/}" -F number="${issue}" \
+                -f query='query($owner: String!, $name: String!, $number: Int!) {
+                  repository(owner: $owner, name: $name) {
+                    issue(number: $number) {
+                      state stateReason
+                      duplicateOf { number repository { nameWithOwner } }
+                    }
+                  }
+                }')"
+              if ! jq -e --arg repo "${GH_REPO}" --argjson canonical "${canonical}" '
+                (.errors // [] | length) == 0 and
+                (.data.repository.issue |
+                  .state == "CLOSED" and .stateReason == "DUPLICATE" and
+                  .duplicateOf.number == $canonical and
+                  .duplicateOf.repository.nameWithOwner == $repo)
+                ' <<< "${closure}" > /dev/null; then
+                echo "error: closed issue ${issue} is not a verified duplicate of ${canonical}." >&2
+                exit 1
+              fi
+              printf 'Verified already reconciled duplicate #%s of #%s.\n' "${issue}" "${canonical}"
+            elif [[ "${state}" == "OPEN" ]]; then
+              pending_issue_ids+=("${issue}")
+            else
+              echo "error: legacy issue ${issue} has an unexpected state." >&2
+              exit 1
+            fi
+          done
+
+          for issue in "${pending_issue_ids[@]}"; do
             gh issue close "${issue}" \
               --repo "${GH_REPO}" \
               --duplicate-of "${canonical}" \

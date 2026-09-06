@@ -68,6 +68,7 @@ jobs:
           persist-credentials: false
 
       - name: Create or update canonical operations alert issue
+        shell: bash
         run: |
           expected="I confirm these stable fields represent the canonical operations alert stream"
           if [[ "${CONFIRMATION}" != "${expected}" ]]; then
@@ -91,7 +92,6 @@ jobs:
             exit 1
           fi
 
-          stable_event_file="$(mktemp)"
           alerts_json="$(mktemp)"
           body_file="$(mktemp)"
           fingerprint_file="$(mktemp)"
@@ -118,11 +118,11 @@ jobs:
                 error("stable_event_json.resources must be null or an array when present")
               else
                 .
-              end' > "${stable_event_file}"
+              end' > /dev/null
 
           jq -n \
             --arg reviewed_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --slurpfile stable_event "${stable_event_file}" \
+            --arg stable_event "${STABLE_EVENT_JSON}" \
             '{
               Messages: [
                 {
@@ -131,8 +131,8 @@ jobs:
                   Body: ({
                     MessageId: "backfill-sre-confirmed",
                     Timestamp: $reviewed_at,
-                    # Wrap the confirmed projection without rebuilding its fields.
-                    Message: ($stable_event[0] | tostring)
+                    # Preserve numeric representations for the Python fingerprint parser.
+                    Message: $stable_event
                   } | tostring)
                 }
               ]
@@ -148,7 +148,7 @@ jobs:
 
           fingerprint="$(cat "${fingerprint_file}")"
           {
-            cat "${body_file}"
+            sed 's/^The operations alert queue contains 1 message(s)\.$/This backfill contains one synthetic representative event; it does not measure live queue depth./' "${body_file}"
             printf '\nCanonical backfill: this issue was created from SRE-confirmed stable fields for %s legacy message(s).\n' "${MESSAGE_COUNT}"
             printf 'SRE confirmation reference: %s\n' "${SRE_CONFIRMATION_REFERENCE}"
           } > "${issue_body_file}"
