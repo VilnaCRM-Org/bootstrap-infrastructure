@@ -26,9 +26,17 @@ and scoped to one fixed CI secret suffix. The loader checks the independently
 configured account ID before assuming the role, then verifies the returned CI
 configuration belongs to that same account.
 
+The config-reader policy permits the AWS-managed Secrets Manager key's existing
+decrypt grant only when the request comes through Secrets Manager in the expected
+region and carries the exact owned secret ARN in its encryption context. Separate
+explicit denials reject a missing or different service and a missing or different
+secret ARN. Direct KMS decryption, Pulumi secrets decryption and other secrets
+remain denied; no general KMS allow is added.
+
 The installed trusted controller retains separate governance routing. The operator
-and governance programs are separate successor work; this alert cutover does not
-provision their roles or broaden platform permissions.
+and governance programs are separate successor work. The config-reader repair
+changes existing inline policies without provisioning roles or broadening
+platform deployment permissions.
 
 Every command environment allows exactly the `main` branch through a custom
 deployment branch rule. Administrator bypass is disabled; the sole reviewer is

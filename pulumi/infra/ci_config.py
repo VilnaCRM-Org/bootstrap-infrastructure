@@ -60,10 +60,9 @@ class CiConfigurationArgs:
 # config-read role legitimately needs ``secretsmanager:GetSecretValue`` on its
 # OWN CI secret ARN (the Allow), so ``secretsmanager:GetSecretValue`` is
 # deliberately EXCLUDED from this Deny — Deny wins and would otherwise void the
-# role's own purpose. ``kms:Decrypt`` IS denied here (config-read never decrypts
-# a Pulumi secrets key).
+# role's own purpose. Decrypt is separately denied unless both the Secrets
+# Manager service and the exact owned secret encryption context match.
 _CONFIG_READ_DENY_ACTIONS = (
-    "kms:Decrypt",
     "ssm:GetParameter*",
     "lambda:GetFunction",
     "ec2:GetPasswordData",
@@ -304,6 +303,8 @@ def _ci_config_read_policy(
     partition: str,
     settings: BootstrapSettings,
     suffixes: Sequence[str],
+    secret_arns: Sequence[str],
+    region: str,
     repo: str | None = None,
 ) -> str:
     """Return least-privilege policy for GitHub to read CI secret payloads.
@@ -312,7 +313,10 @@ def _ci_config_read_policy(
     cross-repo isolation). A second ``Deny`` statement (``DenySecretLeakingReads``,
     §5.3/§5.4, FR22) blocks the other secret-leaking reads; it deliberately omits
     ``secretsmanager:GetSecretValue`` so the role retains its own Allow (Deny
-    wins). The Deny is CrossGuard-exempt (``Effect == "Deny"``).
+    wins). Independent Decrypt Denies require BOTH the regional Secrets Manager
+    service and the exact owned secret context, including when either is absent.
+    The AWS-managed Secrets Manager key supplies its own service-mediated Allow;
+    this policy adds no KMS Allow. Denies are CrossGuard-exempt.
     """
     return json.dumps(
         {
@@ -338,6 +342,28 @@ def _ci_config_read_policy(
                     "Effect": "Deny",
                     "Action": list(_CONFIG_READ_DENY_ACTIONS),
                     "Resource": "*",
+                },
+                {
+                    "Sid": "DenyDecryptOutsideSecretsManager",
+                    "Effect": "Deny",
+                    "Action": "kms:Decrypt",
+                    "Resource": "*",
+                    "Condition": {
+                        "StringNotEquals": {
+                            "kms:ViaService": f"secretsmanager.{region}.amazonaws.com"
+                        }
+                    },
+                },
+                {
+                    "Sid": "DenyDecryptOutsideOwnedCiSecrets",
+                    "Effect": "Deny",
+                    "Action": "kms:Decrypt",
+                    "Resource": "*",
+                    "Condition": {
+                        "StringNotEquals": {
+                            "kms:EncryptionContext:SecretARN": list(secret_arns)
+                        }
+                    },
                 },
             ],
         },
@@ -419,6 +445,7 @@ class CiConfiguration(pulumi.ComponentResource):
         suffixes = _ci_secret_suffixes(self._settings.environment)
         account_id = aws.get_caller_identity().account_id
         partition = aws.get_partition().partition
+        region = aws.get_region().region
 
         self.secret_ids: dict[str, str] = {}
         self.secrets: dict[str, aws.secretsmanager.Secret] = {}
@@ -506,12 +533,17 @@ class CiConfiguration(pulumi.ComponentResource):
                 f"{name}-github-ci-config-read-policy-{suffix}",
                 name=f"{role_name}-policy",
                 role=role.id,
-                policy=_ci_config_read_policy(
-                    account_id=account_id,
-                    partition=partition,
-                    settings=self._settings,
-                    suffixes=(suffix,),
-                    repo=repo,
+                policy=apply_output(
+                    secret.arn,
+                    lambda arn, ci_suffix=suffix: _ci_config_read_policy(
+                        account_id=account_id,
+                        partition=partition,
+                        settings=self._settings,
+                        suffixes=(ci_suffix,),
+                        secret_arns=(arn,),
+                        region=region,
+                        repo=repo,
+                    ),
                 ),
                 opts=pulumi.ResourceOptions(
                     parent=self,

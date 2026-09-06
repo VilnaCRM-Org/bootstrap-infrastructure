@@ -41,6 +41,7 @@ from infra.utils.outputs import future_output
 
 # Pulumi does not expose a public sync helper for Output values in tests, so keep
 # this internal import isolated here in case the SDK changes it later.
+from pulumi.runtime.stack import wait_for_rpcs
 from pulumi.runtime.sync_await import _sync_await
 
 import pulumi
@@ -430,6 +431,24 @@ def test_ci_configuration_manages_aws_secret_containers_and_github_read_roles(
         pulumi_mocks,
         "ci-configuration-github-ci-config-read-policy-test",
     )
+    for suffix, state in (
+        ("test-pr", test_pr_policy_state),
+        ("test", test_policy_state),
+    ):
+        resolved = json.loads(state["policy"])
+        clauses = {item["Sid"]: item for item in resolved["Statement"]}
+        assert clauses["DenyDecryptOutsideOwnedCiSecrets"]["Condition"] == {
+            "StringNotEquals": {
+                "kms:EncryptionContext:SecretARN": [
+                    _sync_await(future_output(component.secret_arns[suffix]))
+                ]
+            }
+        }
+        assert clauses["DenyDecryptOutsideSecretsManager"]["Condition"] == {
+            "StringNotEquals": {
+                "kms:ViaService": "secretsmanager.us-east-1.amazonaws.com"
+            }
+        }
     policy = json.loads(test_pr_policy_state["policy"])
     statement = policy["Statement"][0]
     assert statement["Action"] == [  # nosec B101
@@ -579,6 +598,7 @@ def test_github_ci_bootstrap_test_stack_creates_scoped_ci_roles_and_payloads(
     _sync_await(future_output(component.ci_configuration.read_role_arns["test"]))
     assert component.operations_alert_triage_role is not None  # nosec B101
     _sync_await(future_output(component.operations_alert_triage_role.arn))
+    _sync_await(wait_for_rpcs())
 
     assert _resource_state_by_name(  # nosec B101
         pulumi_mocks,

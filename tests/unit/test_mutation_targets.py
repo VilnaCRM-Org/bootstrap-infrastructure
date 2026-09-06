@@ -102,6 +102,10 @@ def test_mutation_target_ci_config_secret_contract():
 
     policy = json.loads(
         ci_config._ci_config_read_policy(
+            region="eu-central-1",
+            secret_arns=(
+                "arn:aws:secretsmanager:eu-central-1:123456789012:secret:/bootstrap-infrastructure/ci/test-aBc123",
+            ),
             account_id="123456789012",
             partition="aws",
             settings=settings,
