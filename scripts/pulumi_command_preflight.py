@@ -34,10 +34,8 @@ def gh(*args: str) -> Any:
     return json.loads(result.stdout)
 
 
-def validate_request(
-    request: dict, evidence: dict, *, governance: bool, service: bool = False
-) -> dict:
-    """Validate provenance, comment semantics, current permission, SHA and scope."""
+def authenticate_intake(request: dict, evidence: dict):
+    """Bind feedback to the original trusted run, artifact, repository and comment."""
     repository = evidence["repository"]
     pr, comment, run = (evidence[key] for key in ("pr", "comment", "run"))
     require(run["event"] == "issue_comment", "Source must be an issue_comment run")
@@ -46,14 +44,8 @@ def validate_request(
     require(run["run_attempt"] == 1, "Re-run intake requests are not accepted")
     require(str(run["id"]) == request["source_run_id"], "Source run mismatch")
     require(evidence["artifact"] == request, "Dispatch differs from intake artifact")
-    require(pr["state"] == "open" and pr["merged"] is False, "PR closed or merged")
     require(pr["head"]["repo"]["full_name"] == repository, "Fork PR rejected")
-    require(pr["head"]["sha"] == request["head_sha"], "PR head moved")
-    require(
-        pr["base"]["ref"] == "main" and pr["base"]["repo"]["full_name"] == repository,
-        "PR must target main",
-    )
-    require(pr["base"]["sha"] == evidence["scope_base_sha"], "PR base moved")
+    require(pr["base"]["repo"]["full_name"] == repository, "Foreign base repository")
     issue_url = (
         f"{evidence['api_url']}/repos/{repository}/issues/"
         f"{request['pull_request_number']}"
@@ -64,7 +56,6 @@ def validate_request(
     created = datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00"))
     started = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
     require(0 <= (started - created).total_seconds() <= 300, "Stale intake comment")
-    require(0 <= (evidence["now"] - created).total_seconds() <= 900, "Expired command")
     require(run["actor"]["id"] == comment["user"]["id"], "Intake actor mismatch")
     command = parse_command(comment["body"])
     if command is None:
@@ -74,6 +65,21 @@ def validate_request(
         and command.target_environment == request["target_environment"],
         "Comment command or environment differs from dispatch",
     )
+    return command
+
+
+def validate_request(
+    request: dict, evidence: dict, *, governance: bool, service: bool = False
+) -> dict:
+    """Require authenticated origin and all current execution authorization checks."""
+    command = authenticate_intake(request, evidence)
+    pr, comment = evidence["pr"], evidence["comment"]
+    require(pr["state"] == "open" and pr["merged"] is False, "PR closed or merged")
+    require(pr["head"]["sha"] == request["head_sha"], "PR head moved")
+    require(pr["base"]["ref"] == "main", "PR must target main")
+    require(pr["base"]["sha"] == evidence["scope_base_sha"], "PR base moved")
+    created = datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00"))
+    require(0 <= (evidence["now"] - created).total_seconds() <= 900, "Expired command")
     require(
         evidence["permission"] in {"write", "maintain", "admin"},
         "Write access required",
@@ -113,8 +119,8 @@ def read_request() -> dict[str, str]:
     return request
 
 
-def collect_evidence(request: dict[str, str]) -> dict:
-    """Fetch API evidence and the immutable artifact from the identified run."""
+def collect_intake_evidence(request: dict[str, str]) -> dict:
+    """Fetch provenance without depending on mutable execution prerequisites."""
     repository = os.environ["GITHUB_REPOSITORY"]
     base = f"repos/{repository}"
     run_id = request["source_run_id"]
@@ -147,6 +153,24 @@ def collect_evidence(request: dict[str, str]) -> dict:
     require(
         re.fullmatch(r"[A-Za-z0-9-]+", login) is not None, "Invalid commenter login"
     )
+    return {
+        "repository": repository,
+        "api_url": os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+        "pr": gh(f"{base}/pulls/{pr_number}"),
+        "comment": comment,
+        "run": run,
+        "artifact": artifact,
+    }
+
+
+def collect_evidence(request: dict[str, str], *, intake: dict | None = None) -> dict:
+    """Fetch current execution state after the immutable origin is authenticated."""
+    origin = collect_intake_evidence(request) if intake is None else intake
+    authenticate_intake(request, origin)
+    repository = origin["repository"]
+    base = f"repos/{repository}"
+    pr_number = request["pull_request_number"]
+    login = origin["comment"]["user"]["login"]
     before = gh(f"{base}/pulls/{pr_number}")
     require(
         before["head"]["sha"] == request["head_sha"], "PR head moved before scope scan"
@@ -163,13 +187,9 @@ def collect_evidence(request: dict[str, str]) -> dict:
         for name in (item["filename"], item.get("previous_filename", ""))
     ]
     return {
-        "repository": repository,
-        "api_url": os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+        **origin,
         "now": datetime.now(timezone.utc),
         "pr": gh(f"{base}/pulls/{pr_number}"),
-        "comment": comment,
-        "run": run,
-        "artifact": artifact,
         "permission": gh(f"{base}/collaborators/{login}/permission")["permission"],
         "scope_base_sha": base_sha,
         "files": files,
@@ -250,7 +270,25 @@ def main(argv: list[str] | None = None) -> int:
         "Only the trusted main workflow may run preflight",
     )
     request = read_request()
-    evidence = collect_evidence(request)
+    intake = collect_intake_evidence(request)
+    command = authenticate_intake(request, intake)
+    # These values permit informational feedback only, never AWS job execution.
+    write_outputs(
+        {
+            **{
+                f"feedback_{key}": request[key]
+                for key in (
+                    "head_sha",
+                    "pull_request_number",
+                    "command",
+                    "target_environment",
+                )
+            },
+            "feedback_display_command": command.display_command,
+        },
+        os.environ.get("GITHUB_OUTPUT"),
+    )
+    evidence = collect_evidence(request, intake=intake)
     require(not (args.service and args.governance), "Conflicting repository scopes")
     outputs = validate_request(
         request, evidence, governance=args.governance, service=args.service

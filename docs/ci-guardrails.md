@@ -673,3 +673,13 @@ with exact commit/account/plan bindings and apply plus drift receipts. Publish
 success only after those executions succeed. Label their operator provenance;
 they do not prove GitHub OIDC execution or protected-environment approval. Do not
 fabricate check contexts or use an extra App key to satisfy installation gates.
+
+## Controller scope limits
+
+The controller's compare-based scope check supports at most 300 changed files. Both authenticated execution preflight and promotion scope reject incomplete file lists. Split larger changes into independently reviewed PRs; a truncated comparison never authorizes execution or success. Expanding this limit requires an exact-head/base-bound file-list contract in both paths.
+
+The current platform supports the commercial AWS partition and the fixed TEST/PROD account contracts. A partition-shaped library argument or ARN does not establish GovCloud, China or isolated-region support. Those environments require a separately reviewed end-to-end credential, endpoint, IAM, backend and workflow contract.
+
+The configuration helper requires the dedicated promotion App ID for apply, dry-run and verification. Set `PROMOTION_APP_ID` to the actual configured App's numeric ID before using the example; never use a guessed identity.
+
+The CI loader trims surrounding whitespace from scalar configuration values before exporting them. Backend and KMS validation checks that effective environment value; it does not certify the original secret as byte-for-byte canonical. Embedded whitespace, control characters and malformed provider/backend structure remain rejected.

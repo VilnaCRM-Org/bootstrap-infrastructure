@@ -235,7 +235,7 @@ allowed alert and its redelivery update the intended v2 issue, while a different
 stable field after character200 produces a different stream. No live migration
 or notification is performed by the local tests.
 
-Large batches show the first10 sanitized occurrences, total message count and
+Large batches show the first 10 sanitized occurrences, total message count and
 explicit omitted count, keeping even four-byte Unicode metadata below the body
 size budget. Omitted IDs are not claimed to appear in an uploaded artifact. The
 workflow must still create/update the issue successfully before deleting the full

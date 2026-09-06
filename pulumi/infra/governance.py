@@ -621,6 +621,7 @@ class RepoGovernance(pulumi.ComponentResource):
                 protect_resources=protect,
                 repo=repo.name,
                 permissions_boundary=permissions_boundary,
+                governed_service_workflows=True,
             ),
             opts=pulumi.ResourceOptions(parent=self),
         )

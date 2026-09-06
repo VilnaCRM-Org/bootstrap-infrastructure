@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import posixpath
 import sys
-from fnmatch import fnmatch
+from fnmatch import fnmatchcase
 
 # Expanded §7.1 set covering ALL credential-bearing / trust-or-scope-altering
 # code. CODEOWNERS syntax: a leading "/" anchors to the repo root and a trailing
@@ -77,6 +77,17 @@ _FNMATCH_PATTERNS: tuple[str, ...] = tuple(
 )
 
 
+def _matches_path_pattern(path: str, pattern: str) -> bool:
+    """Keep file wildcards within one segment and directory globs recursive."""
+    if pattern.endswith("/*"):
+        return path.startswith(pattern[:-1])
+    parts = path.split("/")
+    patterns = pattern.split("/")
+    return len(parts) == len(patterns) and all(
+        fnmatchcase(part, glob) for part, glob in zip(parts, patterns, strict=True)
+    )
+
+
 def _path_touches_governance(path: str) -> bool:
     """Return whether one changed-file path falls under a governance glob."""
     stripped = path.strip().lstrip("/")
@@ -90,7 +101,9 @@ def _path_touches_governance(path: str) -> bool:
     normalized = posixpath.normpath(stripped).lstrip("/")
     if not normalized or normalized == ".":
         return False
-    return any(fnmatch(normalized, pattern) for pattern in _FNMATCH_PATTERNS)
+    return any(
+        _matches_path_pattern(normalized, pattern) for pattern in _FNMATCH_PATTERNS
+    )
 
 
 def paths_touch_governance(files: list[str]) -> bool:
@@ -111,6 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--files-stdin",
         action="store_true",
+        required=True,
         help="Read newline-delimited changed-file paths from standard input.",
     )
     parser.parse_args(argv)

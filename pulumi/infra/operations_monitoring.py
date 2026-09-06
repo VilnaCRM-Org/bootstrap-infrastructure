@@ -469,7 +469,10 @@ class OperationsMonitoring(pulumi.ComponentResource):
                     configured_settings,
                 ),
                 tags=base_tags(
-                    {"Purpose": "operations-cloudtrail"},
+                    {
+                        "Purpose": "operations-cloudtrail",
+                        "Repository": configured_settings.repo or pulumi.get_project(),
+                    },
                     settings=configured_settings,
                 ),
                 opts=base_opts,
@@ -602,7 +605,10 @@ class OperationsMonitoring(pulumi.ComponentResource):
             enable_key_rotation=True,
             policy=_topic_key_policy(account_id, partition),
             tags=base_tags(
-                {"Purpose": "operations-alerting"},
+                {
+                    "Purpose": "operations-alerting",
+                    "Repository": configured_settings.repo or pulumi.get_project(),
+                },
                 settings=configured_settings,
             ),
             opts=base_opts,

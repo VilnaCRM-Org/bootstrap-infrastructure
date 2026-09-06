@@ -633,6 +633,7 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     )
     assert statements["CreateBootstrapKmsKeys"]["Condition"]["StringEquals"] == {  # nosec B101
         "aws:RequestTag/Environment": "test",
+        "aws:RequestTag/Repository": "bootstrap-infrastructure",
         "aws:RequestTag/Purpose": [
             "pulumi-secrets",
             "operations-alerting",

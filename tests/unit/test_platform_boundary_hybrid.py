@@ -21,18 +21,18 @@ TARGETS = [
 ]
 
 
-def documents(environment, role):
+def documents(environment, role, account_id=ACCOUNT):
     configured = settings(environment)
     if role == "ci":
         return [
             json.loads(doc)
             for _, doc in ci_bootstrap._role_policy_documents(
-                ACCOUNT, "aws", configured, "apply", REPO.name
+                account_id, "aws", configured, "apply", REPO.name
             )
         ]
     if role == "automation":
         return [
-            json.loads(automation._automation_policy(ACCOUNT, configured, REPO.name))
+            json.loads(automation._automation_policy(account_id, configured, REPO.name))
         ]
     return [
         json.loads(
@@ -96,25 +96,30 @@ def test_effective_management_union_rejects_every_scope_escape(
     assert effective is (wrong is None and role != "deploy")
 
 
+@pytest.mark.parametrize(
+    "environment,account_id", [("test", "891377212104"), ("prod", "933245420672")]
+)
 @pytest.mark.parametrize("role", ["ci", "automation", "deploy"])
 @pytest.mark.parametrize("wrong", [None, "Project", "Environment", "Purpose"])
 @pytest.mark.parametrize("service,kind,purpose,verb", TARGETS)
 def test_effective_creation_preserves_request_purpose(
-    role, wrong, service, kind, purpose, verb
+    environment, account_id, role, wrong, service, kind, purpose, verb
 ):
     context = {
         "aws:RequestTag/Project": REPO.name,
-        "aws:RequestTag/Environment": "test",
+        "aws:RequestTag/Environment": environment,
         "aws:RequestTag/Purpose": purpose,
     }
     if wrong:
         context[f"aws:RequestTag/{wrong}"] = "foreign"
     action = f"{service}:{verb.replace('Delete', 'Create')}"
     boundary = json.loads(
-        platform_iam.platform_control_boundary(ACCOUNT, settings(), REPO.name)
+        platform_iam.platform_control_boundary(
+            account_id, settings(environment), REPO.name
+        )
     )
     assert (
-        allows(documents("test", role), action, "*", context)
+        allows(documents(environment, role, account_id), action, "*", context)
         and allows([boundary], action, "*", context)
     ) is (wrong is None and role != "deploy")
 

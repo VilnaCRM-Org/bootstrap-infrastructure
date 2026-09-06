@@ -144,12 +144,20 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     preview_ci_config_step = next(
         step
         for step in jobs["preview"]["steps"]
-        if step.get("uses") == "./.github/actions/load-aws-ci-env"
+        if step.get("uses")
+        == (
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env"
+            "@a6496ad72285878db3c6b74b7a2b489249969e70"
+        )
     )
     iam_ci_config_step = next(
         step
         for step in jobs["iam_validation"]["steps"]
-        if step.get("uses") == "./.github/actions/load-aws-ci-env"
+        if step.get("uses")
+        == (
+            "VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env"
+            "@a6496ad72285878db3c6b74b7a2b489249969e70"
+        )
     )
     preview_ci_config_target_step = next(
         step

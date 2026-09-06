@@ -46,6 +46,7 @@ GUARDS = {
 }
 REQUIREMENTS = {
     "scripts/pulumi_command_preflight.py": {
+        "authenticate_intake",
         "validate_request",
         "read_request",
         "claim_request",
@@ -58,6 +59,17 @@ REQUIREMENTS = {
         "publish_proof",
         "main",
     },
+}
+
+
+SEMANTIC_TARGETS = {
+    "pulumi/infra/github_identity.py": {"identity_conditions"},
+    "pulumi/infra/governance_automation.py": {"_allow", "governance_backend_policy"},
+    "scripts/governance_promotion.py": {
+        "verified_promotion_status",
+        "scope_promotion_kind",
+    },
+    "scripts/pulumi_command_preflight.py": {"main"},
 }
 
 
@@ -123,25 +135,63 @@ def _backend_candidates(node):
         yield node.test, "True", "force-backend-write-branch"
 
 
-def semantic_candidates(function: str, node: ast.AST):
-    """Dispatch the unchanged semantic operators for each security boundary."""
+def _feedback_candidates(node):
+    """Bypass original-intake authentication or expose execution keys too early."""
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "authenticate_intake"
+    ):
+        yield (
+            node,
+            'parse_command(intake["comment"]["body"])',
+            "bypass-feedback-authentication",
+        )
+    if _is_feedback_output_key(node):
+        yield node, "key", "expose-feedback-as-execution"
+
+
+def _is_feedback_output_key(node):
+    """Recognize the explicit output namespace separating feedback from authority."""
+    return isinstance(node, ast.JoinedStr) and any(
+        isinstance(value, ast.Constant) and value.value == "feedback_"
+        for value in node.values
+    )
+
+
+def _promotion_candidates(function: str, node: ast.AST):
+    """Weaken exact proof predicates or force either repository classification."""
     if function == "verified_promotion_status" and isinstance(node, ast.Compare):
         yield node, "True", "drop-promotion-status-predicate"
+    if function == "scope_promotion_kind" and isinstance(node, ast.If):
+        for value in ("True", "False"):
+            yield node.test, value, "misclassify-repository-scope"
+
+
+def semantic_candidates(function: str, node: ast.AST):
+    """Dispatch the unchanged semantic operators for each security boundary."""
+    yield from _promotion_candidates(function, node)
     if function == "identity_conditions":
         yield from _identity_pin_candidates(node)
     if function == "_allow" and _is_resource_list(node):
         yield node, "['*']", "widen-iam-resource-scope"
     if function == "governance_backend_policy":
         yield from _backend_candidates(node)
+    if function == "main":
+        yield from _feedback_candidates(node)
 
 
 def inventory(root: Path) -> list[Mutant]:
     """Build the complete configured semantic inventory; absent functions fail."""
     mutants = []
-    for path in sorted(GUARDS.keys() | REQUIREMENTS.keys()):
+    for path in sorted(GUARDS.keys() | REQUIREMENTS.keys() | SEMANTIC_TARGETS.keys()):
         tree = ast.parse((root / path).read_text())
         functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
-        expected = GUARDS.get(path, set()) | REQUIREMENTS.get(path, set())
+        expected = (
+            GUARDS.get(path, set())
+            | REQUIREMENTS.get(path, set())
+            | SEMANTIC_TARGETS.get(path, set())
+        )
         if not expected <= {node.name for node in functions}:
             raise ValueError(f"Mutation target function disappeared: {path}")
         for function in functions:

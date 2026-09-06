@@ -21,7 +21,11 @@ import pulumi
 from .bootstrap_settings import BootstrapSettings
 from .ci_bootstrap import _ci_role_name, _ci_secret_suffixes
 from .ci_config import _ci_config_project, _ci_config_read_role_name
-from .github_identity import expand_subjects, identity_conditions
+from .github_identity import (
+    expand_subjects,
+    identity_conditions,
+    validate_trust_policy_size,
+)
 from .managed_repository import ManagedRepository
 from .pulumi_state import (
     DEFAULT_REPLICATION_REGION,
@@ -332,7 +336,7 @@ def governance_trust_policy(
         raise ValueError("governance OIDC provider must belong to the target account")
     repository = f"{args.settings.org}/{args.settings.repo}"
     environment = "governance" if purpose == "apply" else "governance-preview"
-    return _document(
+    document = _document(
         [
             {
                 "Effect": "Allow",
@@ -363,6 +367,7 @@ def governance_trust_policy(
             }
         ]
     )
+    return validate_trust_policy_size(document)
 
 
 def service_boundary_policy(

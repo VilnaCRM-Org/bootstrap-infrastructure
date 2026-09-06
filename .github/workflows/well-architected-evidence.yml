@@ -29,12 +29,18 @@ jobs:
       privileged: ${{ steps.evidence_mode.outputs.privileged }}
     env:
       GITHUB_EVENT_NAME: ${{ github.event_name }}
+      GITHUB_REF: ${{ github.ref }}
       GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       GITHUB_REPOSITORY_NAME: ${{ github.repository }}
     steps:
       - name: Select evidence mode
         id: evidence_mode
         run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && \
+            "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "::error::Manual evidence collection must run from main."
+            exit 1
+          fi
           privileged=true
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
             "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
@@ -104,7 +110,7 @@ jobs:
         id: ci_config
         # The action is absent from pre-installation main. Use its reviewed,
         # immutable revision; never execute the PR checkout's credential loader.
-        uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@eba097ec3b2cd36dfd3f069c7a3302bc70cd6ef0
+        uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@a6496ad72285878db3c6b74b7a2b489249969e70
         with:
           environment: ${{ steps.ci_config_target.outputs.environment }}
           config-role-arn: ${{ steps.ci_config_target.outputs.config-role-arn }}

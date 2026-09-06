@@ -179,15 +179,50 @@ def _configure_evidence_environment(repo: str) -> None:
     _configure_main_branch_policy(endpoint)
 
 
-def _configure_main_branch_policy(endpoint: str) -> None:
-    """Converge one environment to exactly main, removing wildcard and tag rules."""
-    response = _run_gh_api([f"{endpoint}/deployment-branch-policies"])
+def _positive_policy_id(value: object) -> bool:
+    """Require an exact positive API identity, excluding booleans and strings."""
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _validated_branch_policy(value: object) -> dict[str, Any]:
+    """Validate one record without permitting its fields to select arbitrary URLs."""
+    if not isinstance(value, dict):
+        raise ValueError("Environment branch-policy record must be an object.")
+    if not _positive_policy_id(value.get("id")):
+        raise ValueError("Environment branch-policy id must be a positive integer.")
+    name = value.get("name")
+    if not isinstance(name, str) or not name.strip() or name != name.strip():
+        raise ValueError("Environment branch-policy name must be a non-empty string.")
+    if value.get("type") not in ("branch", "tag"):
+        raise ValueError("Environment branch-policy type must be branch or tag.")
+    return dict(value)
+
+
+def _validated_branch_policies(response: object) -> list[dict[str, Any]]:
+    """Validate the entire response before allowing any policy-list mutation."""
     if not isinstance(response, dict):
         raise ValueError("Environment branch-policy response must be an object.")
-    policies = response.get("branch_policies", [])
+    policies = response.get("branch_policies")
+    if not isinstance(policies, list):
+        raise ValueError("Environment branch_policies must be an array.")
+    result = [_validated_branch_policy(policy) for policy in policies]
+    ids = [policy["id"] for policy in result]
+    if len(set(ids)) != len(ids):
+        raise ValueError("Environment branch-policy ids must be unique.")
+    if "total_count" in response:
+        count = response["total_count"]
+        if type(count) is not int or count != len(result):
+            raise ValueError("Environment branch-policy listing is incomplete.")
+    return sorted(result, key=lambda policy: policy["id"])
+
+
+def _configure_main_branch_policy(endpoint: str) -> None:
+    """Converge validated policies to one main rule, keeping its smallest ID."""
+    response = _run_gh_api([f"{endpoint}/deployment-branch-policies"])
+    policies = _validated_branch_policies(response)
     main_exists = False
     for policy in policies:
-        if policy["name"] == "main" and policy["type"] == "branch":
+        if not main_exists and policy["name"] == "main" and policy["type"] == "branch":
             main_exists = True
         else:
             _run_gh_api(

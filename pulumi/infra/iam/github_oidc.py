@@ -14,7 +14,11 @@ import pulumi
 
 from ..bootstrap_settings import BootstrapSettings
 from ..config import managed_repositories, settings
-from ..github_identity import expand_subjects, identity_conditions
+from ..github_identity import (
+    expand_subjects,
+    identity_conditions,
+    validate_trust_policy_size,
+)
 from ..managed_repository import ManagedRepository
 from ..repository_catalog import ManagedRepositoryCatalog
 from ..utils.outputs import apply_output
@@ -105,7 +109,7 @@ def _assume_role_policy(
     """Bind the protected environment, immutable identity and protected branch."""
     repository = f"{org}/{repo_name}"
     branch_ref = f"refs/heads/{branch_name}"
-    return json.dumps(
+    document = json.dumps(
         {
             "Version": "2012-10-17",
             "Statement": [
@@ -136,6 +140,7 @@ def _assume_role_policy(
         },
         sort_keys=True,
     )
+    return validate_trust_policy_size(document)
 
 
 def _deploy_policy(

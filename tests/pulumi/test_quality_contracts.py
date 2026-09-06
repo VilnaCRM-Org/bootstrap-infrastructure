@@ -114,6 +114,12 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "Runtime guardrails stay free of Pulumi SDK bindings",
         "Policy helpers stay free of Pulumi runtime bindings",
     }
+    assert contracts["Pulumi runtime does not depend on the policy pack"][
+        "source_modules"
+    ] == ["app", "infra"]
+    assert contracts["Policy pack stays isolated from Pulumi runtime modules"][
+        "forbidden_modules"
+    ] == ["app", "infra"]
     assert contracts["Runtime guardrails stay behind the environment component"][
         "protected_modules"
     ] == ["app.guardrails"]

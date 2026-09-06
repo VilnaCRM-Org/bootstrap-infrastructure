@@ -20,6 +20,8 @@ CONTEXT = "Governance Promotion"
 PROMOTION_DESCRIPTION = "Infrastructure test and prod promotion verified"
 PROOF_PATH = Path(".artifacts/governance-promotion/proof.json")
 PLAN_INPUT_PATH = Path(".artifacts/promotion-inputs")
+# The scope workflow checks out trusted default-branch source before this script.
+TRUSTED_SOURCE_ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_STAGES = (
     "preflight",
     "governance_test_apply",
@@ -91,17 +93,25 @@ def report_scope() -> None:
         for name in (item["filename"], item.get("previous_filename", ""))
     ]
     governance = paths_touch_governance(files)
-    kind = "governance" if governance else "platform"
+    kind = scope_promotion_kind(governance)
+    needs_promotion = governance or kind == "service"
     if matching_promotion_exists(base, sha, pr_number, base_sha, kind):
         return
     post_status(
         sha,
-        "pending" if governance else "success",
-        "Governance requires test and prod apply plus drift"
-        if governance
+        "pending" if needs_promotion else "success",
+        f"{kind.title()} requires test and prod apply plus drift"
+        if needs_promotion
         else "No governance changes",
         f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/pull/{pr_number}",
     )
+
+
+def scope_promotion_kind(governance: bool) -> str:
+    """Select service scope only from the fixed trusted controller source tree."""
+    if (TRUSTED_SOURCE_ROOT / PROMOTION_WORKFLOWS["service"]).is_file():
+        return "service"
+    return "governance" if governance else "platform"
 
 
 def matching_promotion_exists(
@@ -229,11 +239,24 @@ def build_proof(needs: dict) -> dict:
 
 def publish_proof(proof: dict) -> None:
     """Project actual verified account applies into required deployment records."""
+    require(
+        proof["repository"] == os.environ["GITHUB_REPOSITORY"],
+        "Promotion belongs to another repository",
+    )
     base = f"repos/{proof['repository']}"
     pr = gh(f"{base}/pulls/{proof['pull_request_number']}")
     require(pr["state"] == "open" and pr["merged"] is False, "PR closed or merged")
     require(pr["head"]["sha"] == proof["head_sha"], "PR head moved after promotion")
     require(pr["base"]["sha"] == proof["base_sha"], "PR base moved after promotion")
+    require(pr["base"].get("ref") == "main", "PR no longer targets main")
+    require(
+        all(
+            isinstance(pr[side].get("repo"), dict)
+            and pr[side]["repo"].get("full_name") == proof["repository"]
+            for side in ("base", "head")
+        ),
+        "PR repository identity changed after promotion",
+    )
     artifact_id = os.environ["PROMOTION_ARTIFACT_ID"]
     require(
         re.fullmatch(r"[1-9][0-9]*", artifact_id) is not None, "Missing proof artifact"

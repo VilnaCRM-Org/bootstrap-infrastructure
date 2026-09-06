@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -13,7 +13,11 @@ import pulumi
 
 from .bootstrap_settings import BootstrapSettings
 from .config import settings as default_settings
-from .github_identity import expand_subjects, identity_conditions
+from .github_identity import (
+    expand_subjects,
+    identity_conditions,
+    validate_trust_policy_size,
+)
 from .platform_iam import _role_families, platform_iam_statements
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
@@ -642,7 +646,7 @@ def _automation_assume_role_policy(
 ) -> str:
     """Build the GitHub OIDC trust policy for fixed workflow automation."""
     subjects = [f"repo:{org}/{repo_name}:environment:{production_environment}"]
-    return json.dumps(
+    document = json.dumps(
         {
             "Version": "2012-10-17",
             "Statement": [
@@ -656,7 +660,10 @@ def _automation_assume_role_policy(
                                 "sts.amazonaws.com"
                             ),
                             "token.actions.githubusercontent.com:sub": expand_subjects(
-                                subjects, f"{org}/{repo_name}", repository_id, owner_id
+                                subjects,
+                                f"{org}/{repo_name}",
+                                repository_id,
+                                owner_id,
                             ),
                             **identity_conditions(repository_id, owner_id),
                             "token.actions.githubusercontent.com:ref": (
@@ -671,6 +678,7 @@ def _automation_assume_role_policy(
             ],
         }
     )
+    return validate_trust_policy_size(document)
 
 
 def _operations_alert_triage_role_name(
@@ -705,7 +713,7 @@ def _operations_alert_triage_assume_role_policy(
     owner_id: str | None = None,
 ) -> str:
     """Build the OIDC trust policy for the alert triage workflow only."""
-    return json.dumps(
+    document = json.dumps(
         {
             "Version": "2012-10-17",
             "Statement": [
@@ -742,6 +750,7 @@ def _operations_alert_triage_assume_role_policy(
             ],
         }
     )
+    return validate_trust_policy_size(document)
 
 
 def _operations_alert_triage_policy(
@@ -781,6 +790,7 @@ def _automation_policy(
         "StringEquals": {
             AWS_REQUEST_TAG_ENVIRONMENT_KEY: settings.environment,
             AWS_REQUEST_TAG_PURPOSE_KEY: kms_purposes,
+            "aws:RequestTag/Repository": repo_name,
         }
     }
     kms_alias_condition = {
@@ -1205,13 +1215,25 @@ def _validate_automation_managed_policy_documents(
         )
 
 
-def _validate_automation_policy_documents(documents: list[tuple[str, str]]) -> None:
-    """Validate split automation policy documents before provisioning."""
+def _validate_automation_policy_documents(
+    documents: list[tuple[str, str]],
+    *,
+    additional_inline_documents: Sequence[str] = (),
+) -> None:
+    """Apply managed limits separately and aggregate every supplied inline policy."""
     inline_policy_name, inline_policy_document = documents[0]
     _validate_automation_inline_policy_document(
         inline_policy_name, inline_policy_document
     )
-    _validate_automation_managed_policy_documents(documents)
+    if (
+        sum(
+            _policy_document_size(document)
+            for document in (inline_policy_document, *additional_inline_documents)
+        )
+        > IAM_ROLE_INLINE_POLICY_MAX_BYTES
+    ):
+        raise ValueError("automation aggregate inline policies exceed AWS size limit.")
+    _validate_automation_managed_policy_documents(documents[1:])
 
 
 def _automation_policy_documents(

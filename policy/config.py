@@ -114,6 +114,8 @@ def _reviewed_document_pins(value: object) -> dict[str, tuple[str, ...]]:
     for identity, hashes in _mapping(value, label="reviewed_iam_documents").items():
         key = _string_value(identity, "reviewed_iam_documents identity")
         digests = _string_list(hashes, f"reviewed_iam_documents[{key!r}]")
+        if not digests:
+            raise ValueError("reviewed IAM document pins must not be empty.")
         for digest in digests:
             if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
                 raise ValueError(

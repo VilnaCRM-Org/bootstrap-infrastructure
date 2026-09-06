@@ -12,7 +12,11 @@ import pulumi
 
 from .bootstrap_settings import BootstrapSettings
 from .config import settings as default_settings
-from .github_identity import expand_subjects, identity_conditions
+from .github_identity import (
+    expand_subjects,
+    identity_conditions,
+    validate_trust_policy_size,
+)
 from .utils.outputs import apply_output
 from .utils.tags import base_tags
 
@@ -38,7 +42,9 @@ class CiConfigurationArgs:
     bootstrap behaviour is preserved byte-for-byte (NFR6): the project, secret
     IDs and trust subjects all derive from ``settings.repo``. The governance
     loop passes an explicit ``repo`` per catalog entry so secret IDs and trust
-    subjects become repo-scoped (``/{repo-project}/ci/{suffix}``).
+    subjects become repo-scoped (``/{repo-project}/ci/{suffix}``). The caller
+    must supply settings already scoped to that repository, including its
+    default branch and immutable IDs; a mismatched override is rejected.
     """
 
     settings: BootstrapSettings | None = None
@@ -47,6 +53,7 @@ class CiConfigurationArgs:
     repo: str | None = None
     permissions_boundary: str | None = None
     manage_resources: bool = True
+    governed_service_workflows: bool = False
 
 
 # Secret-leaking reads denied on the config-read role (§5.3, FR22, D4). The
@@ -72,6 +79,17 @@ def _resolved_ci_repo(settings: BootstrapSettings, repo: str | None) -> str:
     if not resolved:
         raise ValueError("repoSlug config is required for AWS CI configuration.")
     return resolved
+
+
+def _validate_ci_repository_settings(
+    settings: BootstrapSettings, repo: str | None
+) -> None:
+    """Require identity-bearing callers to supply repository-scoped settings."""
+    if repo is not None and repo != settings.repo:
+        raise ValueError(
+            "Explicit CI repository must match settings.repo; supply repository-scoped "
+            "settings with its default branch and immutable repository/owner IDs."
+        )
 
 
 def _ci_config_project(settings: BootstrapSettings, repo: str | None = None) -> str:
@@ -171,10 +189,21 @@ def _github_actions_subjects(
 def _github_actions_workflows(
     settings: BootstrapSettings,
     suffix: str,
+    *,
+    governed_service_workflows: bool = False,
 ) -> list[str]:
     """Return allowed workflow names for one CI config suffix."""
     if not settings.repo:
         raise ValueError("repoSlug config is required for GitHub workflow names.")
+    # The governance caller opts into the committed service scaffold contract.
+    # Do not infer this scope from repository spelling or widen platform roles.
+    service_workflows = {
+        "test": ["Service Self Deploy", "Initialize Service Stack"],
+        "prod-preview": ["Service Self Deploy"],
+        "prod": ["Service Self Deploy", "Initialize Service Stack"],
+    }
+    if governed_service_workflows and suffix in service_workflows:
+        return service_workflows[suffix]
     workflows_by_suffix = {
         "test-pr": [
             PULUMI_PR_GUARDRAILS_WORKFLOW,
@@ -209,10 +238,13 @@ def _ci_config_read_assume_role_policy(
     settings: BootstrapSettings,
     suffix: str,
     repo: str | None = None,
+    *,
+    governed_service_workflows: bool = False,
 ) -> str:
     """Return trust policy for the GitHub AWS CI config read role."""
+    _validate_ci_repository_settings(settings, repo)
     resolved_repo = _resolved_ci_repo(settings, repo)
-    return json.dumps(
+    document = json.dumps(
         {
             "Version": "2012-10-17",
             "Statement": [
@@ -240,6 +272,13 @@ def _ci_config_read_assume_role_policy(
                                 settings.github_repository_id,
                                 settings.github_repository_owner_id,
                             ),
+                            "token.actions.githubusercontent.com:workflow": (
+                                _github_actions_workflows(
+                                    settings,
+                                    suffix,
+                                    governed_service_workflows=governed_service_workflows,
+                                )
+                            ),
                             **(
                                 {
                                     "token.actions.githubusercontent.com:ref": (
@@ -256,6 +295,7 @@ def _ci_config_read_assume_role_policy(
         },
         sort_keys=True,
     )
+    return validate_trust_policy_size(document)
 
 
 def _ci_config_read_policy(
@@ -362,11 +402,12 @@ class CiConfiguration(pulumi.ComponentResource):
         args: CiConfigurationArgs | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
-        super().__init__("bootstrap:ci:CiConfiguration", name, None, opts)
-
         config = args or CiConfigurationArgs()
-        self._settings = config.settings or default_settings
+        configured_settings = config.settings or default_settings
         repo = config.repo
+        _validate_ci_repository_settings(configured_settings, repo)
+        super().__init__("bootstrap:ci:CiConfiguration", name, None, opts)
+        self._settings = configured_settings
         provider_arn = (
             config.oidc_provider_arn or self._settings.github_oidc_provider_arn
         )
@@ -443,6 +484,7 @@ class CiConfiguration(pulumi.ComponentResource):
                         self._settings,
                         ci_suffix,
                         repo,
+                        governed_service_workflows=config.governed_service_workflows,
                     ),
                 ),
                 tags=base_tags(

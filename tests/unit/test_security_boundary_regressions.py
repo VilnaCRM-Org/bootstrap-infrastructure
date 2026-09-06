@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from infra.governance_automation import governance_backend_policy
 from test_governance_automation import inputs
+from test_pulumi_command_preflight import fixture_data
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import governance_promotion as promotion  # noqa: E402
@@ -114,13 +115,21 @@ def test_runner_cannot_claim_both_service_and_governance_scope(monkeypatch):
     monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "1")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "repository_dispatch")
     monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
-    monkeypatch.setattr(preflight, "read_request", dict)
-    monkeypatch.setattr(preflight, "collect_evidence", lambda request: {})
+    request, evidence = fixture_data()
+    monkeypatch.setattr(preflight, "read_request", lambda: request)
+    monkeypatch.setattr(preflight, "collect_intake_evidence", lambda _: evidence)
+    monkeypatch.setattr(preflight, "collect_evidence", lambda *a, **kw: evidence)
     reached = []
+    outputs = []
     monkeypatch.setattr(preflight, "validate_request", lambda *a, **kw: {})
     monkeypatch.setattr(preflight, "verify_environments", lambda *a, **kw: None)
     monkeypatch.setattr(preflight, "claim_request", lambda *a: reached.append(True))
-    monkeypatch.setattr(preflight, "write_outputs", lambda *a: None)
+    monkeypatch.setattr(
+        preflight, "write_outputs", lambda values, _: outputs.append(values)
+    )
     with pytest.raises(ValueError, match="Conflicting repository scopes"):
         preflight.main(["--service", "--governance"])
     assert reached == []
+    assert len(outputs) == 1
+    assert all(key.startswith("feedback_") for key in outputs[0])
+    assert outputs[0]["feedback_head_sha"] == request["head_sha"]
