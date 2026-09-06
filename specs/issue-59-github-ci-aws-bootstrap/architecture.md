@@ -7,11 +7,12 @@ active interpretation is defined by [the scoped successor verification](pr60-suc
 and the installed [trusted-controller contract](../trusted-controller-installation/prd.md)
 and [architecture](../trusted-controller-installation/architecture.md).
 Historical readiness scores, approvals and runs do not establish current-head
-acceptance. Ordinary workflows use the `workflow` claim; `job_workflow_ref` is
-reserved for reusable workflow trust. Current protected environments, immutable
-repository IDs, saved-plan replay and operator-only ownership supersede the
-older examples below. In particular, an unsaved `pulumi up` command below is
-historical and is not an executable recovery procedure.
+acceptance. Current purpose-specific CI/governor ordinary-workflow trusts use
+the `workflow` claim; `job_workflow_ref` is reserved for reusable workflow trust.
+Current protected environments, immutable repository IDs, saved-plan replay and
+operator-only ownership supersede the
+historical design. The operational procedure below uses reviewed saved-plan
+creation and exact replay; unsaved apply is not a recovery procedure.
 
 The successor ships the independent operator program, governor runner roles and
 immutable boundary prerequisites. Delegated governance resource construction,
@@ -20,15 +21,19 @@ hosted review, BMAD and live acceptance are recorded separately in the amendment
 
 ## Control Boundaries
 
-AWS is the only control plane for CI configuration and Pulumi secret encryption.
-The one-time bootstrap stack is run locally by a human with administrator access
-in each AWS account. After that setup, GitHub Actions receives short-lived AWS
-credentials only through GitHub OIDC and scoped IAM roles.
+AWS is the control plane for CI configuration and Pulumi secret encryption.
+The privileged operator needs a separately authorized short-lived identity in
+its exact account. Existing ordinary GitHub workflows receive short-lived AWS
+credentials through OIDC and scoped roles; they cannot modify the operator's
+own authority. This PR installs the operator program, not a privileged GitHub
+operator executor. Such an executor requires separately reviewed OIDC seeding
+and protected workflow installation; local root applies are not final GitHub
+deployment acceptance.
 
 ```text
-Human operator
-  -> AWS admin profile for test or prod
-  -> Pulumi CLI with S3 backend and AWS KMS secrets provider
+Privileged operator execution
+  -> separately authorized short-lived identity for test or prod
+  -> reviewed saved plan with the exact S3 backend and KMS secrets provider
   -> pulumi/github-ci-bootstrap stack
   -> AWS IAM OIDC provider, roles, policies, and Secrets Manager payloads
 
@@ -53,10 +58,14 @@ Pulumi Cloud and Pulumi ESC are not in the control path.
 
 ## Bootstrap Stack Contract
 
-The isolated Pulumi project lives at `pulumi/github-ci-bootstrap`. It imports the
-shared infrastructure component library and creates only CI bootstrap resources.
-It is not part of normal stack discovery and is applied manually before
-privileged CI can pass.
+The isolated project at `pulumi/github-ci-bootstrap` composes the shared
+`PlatformIamBoundaries`, `GitHubCiBootstrap`, `PlatformControlIam` and
+`GovernanceAutomation` components. It owns bootstrap CI resources, platform
+control IAM, immutable platform/service/replication boundaries and governor
+runner prerequisites. It is excluded from ordinary platform stack discovery.
+The delegated governance program, service construction and onboarding belong
+to PR78; platform and governor roles cannot provision their own operator roots
+of trust.
 
 | Stack | AWS account | CI suffixes | Special role |
 | --- | --- | --- | --- |
@@ -71,8 +80,17 @@ repair.
 
 ## AWS Trust Model
 
-Every GitHub-assumable role requires `aud=sts.amazonaws.com`, a repository
-subject, and an allowed `job_workflow_ref`.
+Current purpose-specific CI, configuration-reader and governor roles bind the
+audience, immutable repository/owner identity and allowed purpose context;
+ordinary-workflow trusts use the allowed `workflow` claim, while reusable-workflow
+trusts require the allowed `job_workflow_ref`. Legacy `PulumiAutomation` and
+`PulumiDeploy` trusts bind their protected environment, main ref and immutable
+repository/owner identity without a `workflow` claim; this legacy contract is
+not proof of a workflow-pinned operator executor and must not be broadened.
+A workflow name alone is not an attestation of source code. The simplified
+subjects below are
+historical categories; current generated policies also pin immutable repository
+and owner IDs and the applicable exact protected context.
 
 | Role type | Trusted subject |
 | --- | --- |
@@ -87,7 +105,8 @@ receive only the account-local mutation permissions needed by the Pulumi stack.
 
 ## AWS-Using CI Permission Inventory
 
-Each AWS-using workflow first assumes a config-read role that can read exactly
+Each platform workflow in the inventory below first assumes a config-read role
+that can read exactly
 one Secrets Manager CI payload. The workflow then assumes the second-stage role
 from that payload for the actual AWS operation.
 
@@ -154,19 +173,34 @@ repository:
 These variables are not secret material; they only let GitHub locate the
 account-local config-read roles.
 
-## Manual Secure Steps
+## Privileged operator saved-plan procedure
 
-1. Refresh the local administrator AWS profile for the test account and verify
-   the account ID with `aws sts get-caller-identity`.
-2. Log in Pulumi to the test S3 backend and select or initialize the `test`
-   stack with the AWS KMS secrets provider.
-3. Run `pulumi preview --stack test`, inspect the IAM and Secrets Manager diff,
-   then run `pulumi up --stack test --yes`.
-4. Repeat the same flow with the production administrator AWS profile and the
-   `prod` stack.
-5. Set the GitHub repository variables from the stack `githubVariables` outputs.
-6. If `writeSecretValues=false` was used, write the four CI payload versions
-   locally with `aws secretsmanager put-secret-value --secret-string
-   file://payload.json` without printing the JSON values.
-7. Rerun the privileged PR checks that previously failed because the test
-   config-read role did not exist.
+Follow the complete account, state, provider and replay bindings in the
+[operator guide](../../docs/github-ci-bootstrap-stack.md#reviewed-local-operator-procedure).
+The guide's historical local operator identity is distinct from the separately
+reviewed GitHub OIDC executor needed for final automation acceptance.
+
+1. Verify the authorized short-lived identity, expected account, source revision
+   and exact operator backend/project/stack. Preserve reviewed ownership and
+   encrypted backups of existing checkpoints before any mutation.
+2. Require the existing versioned operator checkpoint and KMS provider identity.
+   First-stack initialization is separate explicit setup; missing state never
+   triggers initialization, import, lock removal or direct-apply recovery.
+3. Use `make pulumi-plan` with `PULUMI_DIR=pulumi/github-ci-bootstrap` and the
+   explicit TEST stack, plus every account/backend/source binding from the guide.
+   Review the saved plan, full IAM policy/trust union, resource ownership and
+   deletion/replacement scope independently.
+4. Replay only that reviewed plan with `make pulumi-up-plan`, retaining its
+   exact source, checkpoint, provider, account and artifact bindings. Recheck
+   refreshed drift and actual resource metadata afterward. Never use an unsaved
+   apply or retry a failed plan against changed state.
+5. Repeat for PROD only after the required TEST and production review gates.
+   Final acceptance must include real GitHub/OIDC execution receipts; a local
+   root apply does not substitute for them.
+6. Verify and publish the nonsecret role/region variables from actual outputs.
+   If payload writing was intentionally disabled, reconcile the exact fixed
+   SecretVersions through a separate reviewed secret-management operation.
+   Never print payloads or provider key material.
+7. Rerun privileged CI and verify evidence enforcement, real comment-driven
+   TEST/PROD saved-plan apply/drift and post-deployment QA. Source installation
+   alone does not satisfy those acceptance gates.

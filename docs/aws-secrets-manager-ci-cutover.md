@@ -254,7 +254,7 @@ remain using current immutable-ID, exact workflow and ref contracts.
 
 Run `make pulumi-plan`, review exact account/backend/project/stack/source and
 policy evidence, then `make pulumi-up-plan`. Shared state uses the existing
-checkpoint's KMS encrypted data key: the saved-plan helper reconstructs private
+checkpoint's KMS-encrypted data key: the saved-plan helper reconstructs private
 stack configuration and verifies key owner/account before replay. A provider URL
 alone cannot supply cross-job encryption continuity. Never print encrypted or
 plaintext provider material, use a direct apply fallback, or cancel an unknown lock.

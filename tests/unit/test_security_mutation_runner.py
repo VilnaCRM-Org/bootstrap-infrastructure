@@ -22,7 +22,7 @@ def test_inventory_produces_valid_single_expression_security_mutants():
     assert len(mutants) >= 60
     assert {
         item.path for item in mutants
-    } == gate.GUARDS.keys() | gate.REQUIREMENTS.keys()
+    } == gate.GUARDS.keys() | gate.REQUIREMENTS.keys() | gate.SEMANTIC_TARGETS.keys()
     assert {
         "remove-immutable-identity-pin",
         "widen-iam-resource-scope",

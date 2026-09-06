@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import fnmatch
 import importlib
 import json
 import runpy
@@ -12,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from iam_statement_matcher import iam_statement_matches
 from infra.bootstrap_settings import BootstrapSettings
 from infra.governance_automation import (
     GovernanceAutomation,
@@ -382,14 +382,8 @@ def allows(document: str, action: str, resource: str) -> list[dict]:
     return [
         statement
         for statement in json.loads(document)["Statement"]
-        if statement["Effect"] == "Allow"
-        and any(
-            fnmatch.fnmatchcase(action.lower(), pattern.lower())
-            for pattern in statement["Action"]
-        )
-        and any(
-            fnmatch.fnmatchcase(resource, pattern) for pattern in statement["Resource"]
-        )
+        if iam_statement_matches(statement, action, resource)
+        and statement["Effect"] == "Allow"
     ]
 
 

@@ -704,12 +704,16 @@ def test_github_ci_bootstrap_stack_is_isolated_and_non_secret() -> None:
         assert stack_config["secretsprovider"].startswith("awskms://")  # nosec B101
 
 
-def test_operator_example_requires_public_identity_and_preserves_private_provider():
+def test_operator_example_requires_public_identity_and_preserves_private_provider() -> (
+    None
+):
     """An incomplete public template must not pretend to be deployable."""
     text = (ROOT / "pulumi/github-ci-bootstrap/Pulumi.example.yaml").read_text()
     config = yaml.safe_load(text)["config"]
-    assert config["github-ci-bootstrap:awsAccountId"] == "891377212104"
+    assert config["github-ci-bootstrap:awsAccountId"] == "891377212104"  # nosec B101
     for key in ("githubRepositoryId", "githubRepositoryOwnerId"):
-        assert config[f"github-ci-bootstrap:{key}"].startswith("REPLACE_WITH_VERIFIED_")
-    assert "Incomplete TEST example" in text
-    assert "encryptedkey" not in text and "secure:" not in text
+        assert config[  # nosec B101
+            f"github-ci-bootstrap:{key}"
+        ].startswith("REPLACE_WITH_VERIFIED_")
+    assert "Incomplete TEST example" in text  # nosec B101
+    assert "encryptedkey" not in text and "secure:" not in text  # nosec B101

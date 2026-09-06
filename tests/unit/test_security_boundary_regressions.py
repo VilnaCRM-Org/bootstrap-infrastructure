@@ -3,10 +3,10 @@
 import copy
 import json
 import sys
-from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
+from iam_statement_matcher import iam_statement_matches
 from infra.governance_automation import governance_backend_policy
 from test_governance_automation import inputs
 from test_pulumi_command_preflight import fixture_data
@@ -29,17 +29,19 @@ def test_retry_cannot_claim_a_new_command(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "fault",
+    "fault,message",
     [
-        "invalid-number",
-        "invalid-head",
-        "foreign-base",
-        "invalid-base",
-        "moved-head",
-        "moved-base",
+        ("invalid-number", "Invalid PR number"),
+        ("invalid-head", "Invalid PR SHA"),
+        ("foreign-base", "PR must target main"),
+        ("invalid-base", "Invalid base SHA"),
+        ("moved-head", "PR head or base moved"),
+        ("moved-base", "PR head or base moved"),
     ],
 )
-def test_scope_cannot_publish_for_invalid_or_moving_pr(monkeypatch, tmp_path, fault):
+def test_scope_cannot_publish_for_invalid_or_moving_pr(
+    monkeypatch, tmp_path, fault, message
+):
     """An allow result must refer to one well-formed, immutable main-based diff."""
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
     monkeypatch.setenv("GITHUB_SERVER_URL", "https://github.com")
@@ -73,7 +75,7 @@ def test_scope_cannot_publish_for_invalid_or_moving_pr(monkeypatch, tmp_path, fa
 
     monkeypatch.setattr(promotion, "gh", api)
     monkeypatch.setattr(promotion, "api_write", lambda *args: writes.append(args))
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match=message):
         promotion.report_scope()
     assert writes == []
 
@@ -119,17 +121,10 @@ def test_apply_can_update_checkpoint_without_an_overriding_deny(action):
         "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/"
         "governance/.pulumi/stacks/platform/test.json"
     )
-    matching = []
-    for statement in policy["Statement"]:
-        if action not in statement["Action"]:
-            continue
-        if "NotResource" in statement:
-            match = not any(fnmatchcase(resource, p) for p in statement["NotResource"])
-        else:
-            patterns = statement["Resource"]
-            patterns = [patterns] if isinstance(patterns, str) else patterns
-            match = any(fnmatchcase(resource, pattern) for pattern in patterns)
-        if match:
-            matching.append(statement["Effect"])
+    matching = [
+        statement["Effect"]
+        for statement in policy["Statement"]
+        if iam_statement_matches(statement, action, resource)
+    ]
     assert "Allow" in matching
     assert "Deny" not in matching
