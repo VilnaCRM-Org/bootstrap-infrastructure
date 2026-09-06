@@ -251,9 +251,9 @@ the old truncation could merge distinct events. Do not automatically fall back t
 v1 markers or close duplicates solely by matching old hashes. If the full stream
 identity is unavailable, retain that uncertainty and create a distinct v2 record
 rather than falsely claiming continuity. After the reviewed cutover, verify a real
-allowed alert and its redelivery update the intended v2 issue, while a different
-stable field after character200 produces a different stream. No live migration
-or notification is performed by the local tests.
+allowed alert and its redelivery update the intended v2 issue, while a stable
+field whose value differs only after the 200th character produces a different
+stream. No live migration or notification is performed by the local tests.
 
 Large batches show the first 10 sanitized occurrences, total message count and
 explicit omitted count, keeping even four-byte Unicode metadata below the body
