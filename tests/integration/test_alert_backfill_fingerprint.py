@@ -19,7 +19,9 @@ if str(SCRIPTS_DIR) not in sys.path:
 triage = importlib.import_module("operations_alert_triage")
 
 
-def run_backfill(tmp_path: Path, event: object, *, serialized: bool = False):
+def run_backfill(
+    tmp_path: Path, event: object, *, serialized: bool = False, complete: bool = False
+):
     """Run the actual preparation shell, stopping before renderer or GitHub calls."""
     workflow = yaml.safe_load(
         (ROOT / ".github/workflows/operations-alert-backfill.yml").read_text()
@@ -34,10 +36,21 @@ def run_backfill(tmp_path: Path, event: object, *, serialized: bool = False):
         "python3 scripts/operations_alert_triage.py"
     )
     assert boundary
+    binary_dir = tmp_path / "bin"
+    binary_dir.mkdir(exist_ok=True)
+    gh = binary_dir / "gh"
+    gh.write_text(
+        '#!/bin/sh\nprintf "attempted\\n" >> "$TMPDIR/github-writes"\nexit 99\n'
+    )
+    gh.chmod(0o755)
+    command = run if complete else preparation + '\ncat "${alerts_json}"'
     return subprocess.run(
-        ["bash", "-euo", "pipefail", "-c", preparation + '\ncat "${alerts_json}"'],
+        ["bash", "-euo", "pipefail", "-c", command],
+        cwd=ROOT,
         env={
-            "PATH": os.environ["PATH"],
+            "PATH": str(binary_dir) + os.pathsep + os.environ["PATH"],
+            "GH_REPO": "example/infra",
+            "OPERATIONS_ALERT_QUEUE_NAME": "reviewed-queue",
             "TMPDIR": str(tmp_path),
             "STABLE_EVENT_JSON": event if serialized else json.dumps(event),
             "MESSAGE_COUNT": "1",
@@ -203,3 +216,25 @@ def test_backfill_preserves_original_json_numeric_fingerprint(tmp_path, number_j
     assert json.loads(backfill["Body"])["Message"] == raw
     direct = {"Body": json.dumps({"Message": raw})}
     assert triage.message_fingerprint(backfill) == triage.message_fingerprint(direct)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"source":"aws.backup","source":"aws.health",'
+        '"detail-type":"AWS Health Event","detail":{}}',
+        '{"source":"aws.health","detail-type":"first",'
+        '"detail-type":"AWS Health Event","detail":{}}',
+        '{"source":"aws.health","detail-type":"AWS Health Event",'
+        '"detail":{},"detail":{"state":"FAILED"}}',
+        '{"source":"aws.health","detail-type":"AWS Health Event",'
+        '"detail":{"nested":{"value":1,"value":2}}}',
+        '{"source":"aws.health","detail-type":"AWS Health Event",'
+        '"detail":{"nested":[{"value":1,"value":2}]}}',
+    ],
+)
+def test_raw_duplicate_keys_fail_before_any_github_write(tmp_path, raw):
+    result = run_backfill(tmp_path, raw, serialized=True, complete=True)
+    assert result.returncode == 1
+    assert "duplicate-free valid JSON" in result.stderr
+    assert not (tmp_path / "github-writes").exists()

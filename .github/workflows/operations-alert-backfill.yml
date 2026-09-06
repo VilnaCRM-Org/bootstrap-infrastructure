@@ -97,6 +97,23 @@ jobs:
           fingerprint_file="$(mktemp)"
           issue_body_file="$(mktemp)"
 
+          # Use the same duplicate-key rejection as live intake without reserializing.
+          python3 -I - <<'PYTHON'
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          sys.path.insert(0, str(Path("scripts").resolve()))
+          from operations_alert_triage import _unique_object
+
+          try:
+              json.loads(os.environ["STABLE_EVENT_JSON"], object_pairs_hook=_unique_object)
+          except (ValueError, TypeError):
+              print("error: stable_event_json must be duplicate-free valid JSON.", file=sys.stderr)
+              raise SystemExit(1)
+          PYTHON
+
           printf '%s\n' "${STABLE_EVENT_JSON}" |
             jq -es '
               if length != 1 then
