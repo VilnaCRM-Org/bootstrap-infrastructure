@@ -582,7 +582,8 @@ def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
     ):
         assert re.search(r"make pulumi-up(?!-)", operator_doc) is None  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in setup_doc  # nosec B101
-    assert "separate #60" in setup_doc  # nosec B101
+    assert "github-ci-bootstrap-stack.md" in setup_doc  # nosec B101
+    assert "reviewed ownership/migration procedure" in setup_doc  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in github_setup_doc  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in readme  # nosec B101
     assert "aws-secrets-manager-ci-cutover.md" in docs_readme  # nosec B101

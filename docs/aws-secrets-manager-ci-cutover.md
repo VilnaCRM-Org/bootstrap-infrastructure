@@ -115,9 +115,10 @@ session tokens.
 
 ## Bootstrap Or Update AWS Resources
 
-**Separate prerequisite:** `pulumi/github-ci-bootstrap` is delivered by the #60
-successor, not this alert cutover. The commands below apply only in that approved
-operator checkout after exact state ownership and migration review. The platform
+**Operator prerequisite:** `pulumi/github-ci-bootstrap` is included in this source.
+Follow the [operator guide](github-ci-bootstrap-stack.md). The commands below
+apply only in an approved operator checkout after exact state ownership and
+migration review. The platform
 consumes existing control resources; do not create duplicate owners or attach
 `AdministratorAccess` to CI roles. Never use this section to rerun an old import
 or saved plan against an already migrated stack.

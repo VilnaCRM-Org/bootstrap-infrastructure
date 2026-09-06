@@ -8,7 +8,9 @@ scores and approvals do not prove current acceptance.
 
 Assembly source: `54d6f664250483c8d3b77a52964f5ac575f87899`.
 Initial actual main base after #193: `888b2424c2cc3fe475e1cf24c614004c49a4928e`.
-The final base must also include the merged #57 successor before publication.
+The provisional local base is the exact #57 source head
+`59d21e402a791d59f359a5879aa5be252391f1fe`. This is not a merged-main receipt.
+Rebase onto the actual #57 squash commit before publication and final validation.
 The assembly commit containing this amendment is the reviewable source revision;
 validation records below identify the checks performed on its source tree.
 
@@ -51,10 +53,15 @@ The original statement that fallback removal can wait until after bootstrap no
 longer applies: the installed controller already requires saved plans and rejects
 unsafe recovery. Nothing in this successor weakens that contract.
 
-## Local evidence
+## Historical local evidence before the #57 rebase
 
-- Exact-source hashes verified for all eight unadapted files and all ten
-  unchanged shared dependencies against the pinned assembly plan.
+The following checks were performed on the original #193-based assembly, not
+the provisional #57-based candidate. PR57 runtime, KMS, trust, workflow and
+alert documentation fixes are inherited from the provisional base; their newer
+shared dependency hashes supersede the older canonical hashes.
+
+- Exact-source hashes were verified for all eight unadapted additions and all ten
+  then-unchanged shared dependencies against the pinned assembly plan.
 - Focused operator/governor/account/trust/ownership/dependency/semantic-runner
   tests: 171 passed. Changed structural and delivery tests: 59 passed.
 - New operator entrypoint and governor runtime: 214 statements and 52 branches,
@@ -72,6 +79,29 @@ unsafe recovery. Nothing in this successor weakens that contract.
   guardrails. Combined coverage: 8972 statements and 2624 branches, 100%.
   The final #57-base battery remains pending until the actual merge is available.
 
+
+## Provisional #57-source rebase checks
+
+The provisional base is `59d21e402a791d59f359a5879aa5be252391f1fe`.
+The original candidate is preserved at local backup ref
+`backup/pr60-before-pr57-source-20260906` (`e5f235c`). Three conflicts in the
+GitHub secrets guide and two structural test files were resolved by preserving
+complete #57 content and adding operator-specific sections and tests. The
+operator prerequisite caveats now describe the included program while retaining
+independent ownership review and the deferred delegated governance program.
+
+- The remaining diff contains exactly 27 scoped paths. The only overlap with
+  #57 is four operator-facing docs and two structural test files. All #57 runtime,
+  KMS/trust, loader, controller and workflow files remain byte-identical.
+- All eight unadapted canonical additions remain byte-identical to the pinned
+  assembly source.
+- Focused operator/governor/ownership/trust and structural tests: 224 passed.
+  Existing KMS, CI trust and main-only regressions: 65 passed.
+- Changed Python Ruff lint, conflict-file formatting, scoped Ty and whitespace
+  checks passed. These checks did not collect or alter coverage.
+- No full battery, mutation campaign, hosted review or live operation was repeated
+  for this provisional rebase. Rebase onto actual merged #57 main and validate
+  that final source before publication.
 
 ## Deferred external acceptance
 
