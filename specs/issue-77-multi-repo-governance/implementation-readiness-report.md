@@ -68,8 +68,9 @@ source — now has a single, concrete, testable design. The forward-safe story q
 bottom-up with a golden parity gate protecting NFR6.
 
 This PASS is **not** a claim that the system can be applied to AWS now — it cannot, by design. The
-operator-only steps (one-time AdministratorAccess apply, protected-environment PUT, repo creation,
-cost-anomaly-ARN-matches-stack verification, per-account OIDC-ARN pinning) are enumerated below and
+operator-only steps (reviewed operator prerequisites through protected GitHub/OIDC
+saved plans, protected-environment controls, repo creation,
+cost-anomaly-ARN-matches-stack verification, verification of committed per-account OIDC ARNs) are enumerated below and
 are out of the implementer loop. The PASS means: **the CODE deliverables are fully specified, internally consistent, and
 testable without live credentials.**
 
@@ -80,7 +81,7 @@ testable without live credentials.**
 | Req | Covering story | Gating test / gate |
 |---|---|---|
 | FR1 config-driven repo list | E1.S6, E1.S7 | catalog resolves synthetic repo; `validate_repository_catalogs.py` |
-| FR2 preview/apply/drift trio + trust | E1.S2, E1.S4a | `test_governance.py`: 3N roles, subjects (apply==`environment:governance`, §5.1a) |
+| FR2 preview/apply/drift trio + trust | E1.S2, E1.S4a | `test_governance.py`: 3N roles, service apply subjects test/prod only; dedicated governor uses governance (§5.1a) |
 | FR3 deploy policy repo-scoped, no platform key | E1.S1, E1.S4a | `test_governance.py`: A≠B isolation; **no `pulumi-platform-bootstrap` in service docs** (AWS-SRE-1) |
 | FR4 config-read role + CI secret | E1.S3, E1.S4a | `test_governance.py`: own-ARN-only Allow + per-suffix trust |
 | FR5 per-repo S3 state bucket | E1.S4a | `test_governance.py`: primary+replica per repo/env |
@@ -91,15 +92,15 @@ testable without live credentials.**
 | FR10 CODEOWNERS → @Kravalg | E2.S1 | `test_codeowners.py`: globs→Kravalg, unrelated unowned, drift-equality (SECURITY-4) |
 | FR11 protected `governance` env | E2.S2 | `test_repository_controls.py`: 1 reviewer, `prevent_self_review`, branch-only |
 | FR12 governance apply under `environment: governance` | E1.S8, E3.S2 | workflow-lint: BOTH apply jobs `environment: governance` + `PULUMI_DIR=pulumi/governance` |
-| FR13 author gate to @Kravalg | E3.S1 (+E1.S8 runner re-check) | `test_pr_comment_gate.py` matrix; runner re-resolves author (SECURITY-1) |
+| FR13 current-write requester != @Kravalg | E3.S1 (+E1.S8 runner re-check) | `test_pr_comment_gate.py` matrix; runner re-resolves author (SECURITY-1) |
 | FR14 path-aware detection | E3.S2, E1.S6 | `governance_paths.py` predicate; intake dispatches dedicated event |
-| FR15 test→prod, success-before-merge | E2.S3, E1.S8 | required-check tuple **AND** runner posts status to head SHA (FEASIBILITY-1) |
+| FR15 test→prod, success-before-merge | E2.S3, E1.S8 | App-bound `Governance Promotion` **AND** verified all-four-stage publisher (FEASIBILITY-1) |
 | FR16 IaC-only apply (reject direct up) | E1.S8 | workflow uses `make pulumi-up-plan`; reject path reused |
 | FR17 AGENTS.md onboarding flow | E4.S1 | doc-presence test: PR-A/B/create/PR-C + CODE/OPERATOR labels |
-| FR18 operator runbook | E4.S2 | doc-presence: each operator step enumerated incl. OIDC-pin, monitor, break-glass |
+| FR18 operator runbook | E4.S2 | doc-presence: each operator step enumerated incl. committed OIDC-pin verification, monitor, separate break-glass authorization |
 | FR19 user-service scaffold | E5.S1 | asset-presence (structure only, **no preview**, FEASIBILITY-6) |
 | FR20 self-deploy uses bootstrap roles only | E5.S2 | template-lint: OIDC only, name-parity to rendered names (AWS-SRE-4) |
-| FR21 two-account correctness | E4.S2 | no account literal in component Python (`pulumi/infra/*.py`); test stack pins `891377212104`, prod pins `933245420672`; `costAnomalyMonitorArn` account matches its stack if present |
+| FR21 two-account correctness | E4.S2 | no account literal in component Python (`pulumi/infra/**/*.py`); test stack pins `891377212104`, prod pins `933245420672`; `costAnomalyMonitorArn` account matches its stack if present |
 | FR22 full secret-read Deny | E1.S3 | read-only/config-read Deny set; **apply-role surgical Deny** (SECURITY-5) |
 | FR23 no wildcard Allow; Analyzer+CrossGuard clean | E1.S4a, E6.S4 | `make test-policy`; `pulumi_ci_guardrails.py validate-iam` |
 | FR24 test coverage of contract | E6.S1 | `test_governance.py` full matrix + structural |
@@ -119,13 +120,13 @@ testable without live credentials.**
 ### SECURITY (verdict was FAIL → resolved)
 | # | Finding | Disposition |
 |---|---|---|
-| S1 | Author gate only in intake; runner never re-checks → bypassable via direct `repository_dispatch` | **fixed-in-architecture §7.2 / epics E1.S8**: governance runner re-derives author from `comment_id` (`==Kravalg`), recomputes scope server-side, drops `workflow_dispatch`; all `client_payload` untrusted. |
+| S1 | Author gate only in intake; runner never re-checks → bypassable via direct `repository_dispatch` | **fixed-in-architecture §7.2 / epics E1.S8**: governance runner re-derives author from `comment_id` (current-write requester `!=Kravalg`), recomputes scope server-side, drops `workflow_dispatch`; all `client_payload` untrusted. |
 | S2 | `test_apply` ungated; trust decoupled from env reviewer | **fixed-in-architecture §7.2 + §5.1a**: dedicated `pulumi-governance.yml` with BOTH apply jobs under static `environment: governance`; apply-role OIDC trust requires `sub==environment:governance` (no bare branch-ref). |
 | S3 | Stale review survives push (approve-then-swap) | **fixed-in-architecture §7.6 / epics E2.S2**: `dismiss_stale_reviews_on_push=True`, `require_last_push_approval=True`; plan-manifest SHA==approved SHA. |
 | S4 | Untrusted governance boolean; CODEOWNERS/glob drift; incomplete path set | **fixed-in-architecture §7.1/§7.2**: scope recomputed server-side; CODEOWNERS single-source with drift-equality CI failure; glob set expanded to all credential-bearing code. |
 | S5 | Full secret-read Deny omitted from apply role | **fixed-in-architecture §5.2a / epics E1.S3**: surgical apply-role Deny (`secretsmanager/ssm/ec2/lambda/ecr-auth/sts/cognito`) except own CI secret; keeps `kms:Decrypt`. |
 | S-KMS | Alias condition forgeable; region/key wildcard | **fixed (partial)+hardening §5.2**: region pinned eu-central-1; no alias-mutation grant on repo keys (tested); concrete-key-ARN scope recommended follow-up. |
-| S7 | Account-pinning not in trust; within-account cross-repo blast radius | **accepted-because** test↔prod are isolated by separate accounts (D1: test `891377212104`, prod `933245420672`), so only the narrower within-account cross-repo IAM blast radius remains — inherent to multi-tenant governance; documented residual risk §10 with recommended tag-scoping + cross-repo IAM test. |
+| S7 | Account-pinning not in trust; within-account cross-repo blast radius | **accepted-because** test↔prod are isolated by separate accounts (D1: test `891377212104`, prod `933245420672`), central authority is limited to exact catalog identities and operator-owned boundaries; service roles have no IAM administration (see current residual-risk tests). |
 
 ### AWS-SRE (verdict was CONCERNS → resolved)
 | # | Finding | Disposition |
@@ -140,7 +141,7 @@ testable without live credentials.**
 ### FEASIBILITY (verdict was FAIL → resolved)
 | # | Finding | Disposition |
 |---|---|---|
-| F1 | "Governance Apply" required check → permanently unmergeable | **fixed-in-architecture §7.5 / epics E1.S8,E2.S3**: runner posts commit status to head SHA via `gh api .../statuses/{sha}`; required check resolves. |
+| F1 | "Governance Apply" required check → permanently unmergeable | **fixed-in-architecture §7.5 / epics E1.S8,E2.S3**: dedicated App issues required `Governance Promotion` after all four apply/drift stages; `Governance Apply` remains informational. |
 | F2 | FR12 routing not a real GH Actions capability | **fixed** — same as A3: routing happens at intake via dedicated event type; "route to another workflow" framing removed. |
 | F3 | D1 assertion + eu-central-1 ARNs untestable under mocks | **fixed** — same as A5: parametric ARNs + injectable account/region. |
 | F4 | `_RepoCiContext` dual-context fragility / NFR6 | **fixed-in-architecture §3.1 / epics E1.S2**: extend existing `_BootstrapBuildContext` (single context); golden byte-equal parity fixture is the gate. |
@@ -151,16 +152,18 @@ testable without live credentials.**
 
 ## Residual risks (accepted / to monitor)
 
-1. **R-S7 (accepted, lower than originally framed): within-account cross-repo IAM blast radius.**
-   test↔prod blast radius is **isolated by separate accounts** (test `891377212104`, prod
-   `933245420672`) — a compromised test apply role cannot touch the prod account at all. The
-   remaining risk is narrower: repos that share an account (e.g. repoA-prod and repoB-prod both in
-   `933245420672`) share the apply role's account-global automation grants (OIDC-provider create,
-   account-level IAM — CrossGuard-exempt `Resource:*` Allows). FR3 isolation holds for **state
-   buckets + KMS keys**, NOT account-global IAM **within the same account**. *Recommended hardening
-   (not blocking):* `aws:RequestTag`/`aws:ResourceTag` binding created IAM/KMS to the repo + a test
-   that repo A's apply role cannot `iam:PutRolePolicy` on same-account `GitHubCi*-{repoB}-*`. Inherent
-   to multi-tenant governance (decided D1), now per-account scoped.
+1. **Central catalog authority remains privileged.** Platform roles, central
+   `GitHubGovernanceApply` roles and service apply roles are separate. The central
+   governor manages exact catalogued identities under operator-owned immutable
+   boundaries; it cannot change its own delegation or the shared OIDC provider.
+   Service apply roles are backend-only and have no account-global IAM grants.
+   Existing `test_governance_service_permissions.py` covers both environments and
+   forbids CreateRole/PutRolePolicy/AttachRolePolicy/UpdateAssumeRolePolicy/
+   CreatePolicyVersion/PassRole/CreateOpenIdProvider. `test_governance_automation.py`
+   checks exact managed-role resources, required GovernanceBoundary, boundary
+   deletion/provider-change denials and disjoint service boundaries. Live access
+   verification remains pending; this correction records no new human risk acceptance.
+
 2. **KMS sole-control residual:** until the governance stack plumbs the concrete per-repo key ARN
    into the deploy `Resource`, `kms:ResourceAliases` remains the primary control (now hardened: no
    alias-mutation grant, region-pinned). Concrete-key-ARN scoping is a recommended follow-up.
@@ -180,27 +183,24 @@ testable without live credentials.**
 
 ## Operator-only manual steps (out of the implementer loop; runbook = E4.S2 / arch §10)
 
-Ordered; each requires AWS admin or GitHub org/repo-admin creds:
+These are live prerequisites, separate from credential-free source readiness:
 
-1. **One-time governance bootstrap apply** (local, direct `pulumi up` allowed — no `GITHUB_ACTIONS`),
-   from a **hardware-MFA admin session, logged**; diff resulting roles vs committed program. Test
-   stack then prod stack.
-2. **Pin the per-account OIDC provider ARN** (`governance:githubOidcProviderArn`) into
-   `pulumi/governance/Pulumi.{test,prod}.yaml` from **each account's** bootstrap stack
-   `oidcProviderArn` output (test←`891377212104` provider, prod←`933245420672` provider) **before**
-   the first governance apply (the stack raises if unset — AWS-SRE-2).
-3. **Verify each stack's `costAnomalyMonitorArn` matches its account** (test→`891377212104`,
-   prod→`933245420672`; absence permitted) — both monitors already exist and are correct in the live
-   config; do NOT repoint prod away from `933245420672` (FEASIBILITY-6 / FR21).
-4. **Configure protected `governance` environment + branch protection** via
-   `configure_github_repository_controls.py --apply` (repo-admin token).
-5. **Set GitHub repo variables** from the governance `githubVariables` output (`gh variable set`).
-6. **Create `user-service-infrastructure` in `VilnaCRM-Org` + push scaffold** (org-admin).
-7. **Real AWS applies** (test then prod) via the gated PR-comment flow — @Kravalg comments
-   `/pulumi test up` then `/pulumi prod up`; capture real ARNs/outputs.
-8. **Break-glass (only if @Kravalg unavailable):** time-boxed temporary second reviewer on the
-   `governance` env (org-admin, logged, reverted), OR operator-local apply from a hardware-MFA admin
-   session with role-diff before re-enabling the PR-comment path.
+1. Verify operator-owned boundary/role inventory and exact account/backend/KMS bindings.
+   Explicit trusted state-only initialization may create a genuinely absent encrypted
+   empty checkpoint; it runs no Pulumi program and authorizes no local root apply.
+2. Verify already committed per-account OIDC provider ARNs against live metadata;
+   stop on mismatch instead of repinning configuration implicitly.
+3. Verify any configured cost-anomaly ARN matches its account; absence is permitted.
+4. Configure/read back protected environments and dedicated App-bound branch controls.
+5. Install verified nonsecret account-specific GitHub variables.
+6. Bind the real repository identity and publish the generated complete scaffold.
+7. A current-write requester other than Kravalg requests test/prod up; Kravalg
+   separately approves. Record real apply/drift evidence and Governance Promotion.
+8. If the sole reviewer is unavailable, halt. A break-glass proposal requires separate
+   explicit authorization and logged audit evidence; no local root apply or reviewer
+   change is authorized by this document.
+
+See `docs/governance-stack.md` for exact state-only setup and saved-plan safeguards.
 
 ---
 
@@ -210,8 +210,6 @@ The three lenses failed the **original** artifacts on five structurally non-buil
 gating, required-check source, OIDC ownership, KMS isolation, naming) plus high/critical
 least-privilege gaps. Every one is now a concrete, single-mechanism, testable design with an explicit
 gating test named in the story. No blocking finding is left as "implementer decides" — the two
-previously-open either/or items (import-linter, context refactor) are decided. The only un-fixed
-item (S7) is a documented, accepted property of multi-tenant governance — the within-account
-cross-repo IAM blast radius, now lower because test↔prod are isolated by separate accounts (decided
-D1) — not a defect of this increment, and carries a recommended hardening that does not block
-implementation.
+previously-open either/or items (import-linter, context refactor) are decided. The current source bounds central catalog authority and removes service IAM
+administration as described above. This historical design-readiness verdict is not
+a live AWS, SRE/DR, security-owner or production acceptance attestation.

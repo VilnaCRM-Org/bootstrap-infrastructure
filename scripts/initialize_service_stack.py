@@ -70,6 +70,27 @@ def contract(root: Path, environment: str, account: str) -> tuple[str, str, str]
     return project, backend, provider
 
 
+def _verify_checkpoint(
+    root: Path, environment: str, account: str, backend: str, provider: str
+) -> None:
+    """Verify remote state/provider continuity without replacing a configured key."""
+    from _pulumi_command_support import CommandContext
+    from _pulumi_stack_config import prepared_stack_configuration
+
+    context = CommandContext(
+        root_dir=root,
+        env={**os.environ, "AWS_ACCOUNT_ID": account, "PULUMI_BACKEND_URL": backend},
+        pulumi_dir=root / "pulumi",
+        policy_pack_dir=root / "policy",
+        plan_dir=root / ".artifacts/pulumi-plan",
+        preview_artifact_dir=root / ".artifacts/pulumi-preview",
+        backend_url=backend,
+        secrets_provider=provider,
+    )
+    with prepared_stack_configuration(context, environment):
+        pass
+
+
 def initialize(root: Path) -> dict:
     """List the exact project successfully before initializing an absent stack."""
     environment, account = trusted_context()
@@ -108,6 +129,7 @@ def initialize(root: Path) -> dict:
             "--secrets-provider",
             provider,
         )
+    _verify_checkpoint(root, environment, account, backend, provider)
     return {
         "schemaVersion": 1,
         "project": project,

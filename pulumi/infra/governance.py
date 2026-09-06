@@ -364,10 +364,13 @@ def _governance_backend_url(
     repo: ManagedRepository,
     override: str | None,
 ) -> str:
-    """Return the repo-scoped Pulumi backend URL for governance payloads."""
-    if override is not None:
-        return override
-    return f"s3://{settings.state_bucket_name_for_repo(repo.name)}"
+    """Keep service payloads within their derived, immutable backend scope."""
+    derived = f"s3://{settings.state_bucket_name_for_repo(repo.name)}"
+    if override is not None and override != derived:
+        raise ValueError(
+            "Managed repository backend override must equal its derived bucket URL"
+        )
+    return derived
 
 
 def _governance_secrets_provider(
@@ -475,6 +478,7 @@ class RepoGovernance(pulumi.ComponentResource):
         protect_resources: bool,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
+        _governance_backend_url(settings, repo, pulumi_backend_url)
         super().__init__("bootstrap:governance:RepoGovernance", name, None, opts)
 
         self._repo = repo
@@ -802,13 +806,14 @@ class GovernanceStack(pulumi.ComponentResource):
         args: GovernanceStackArgs | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
-        super().__init__("bootstrap:governance:GovernanceStack", name, None, opts)
-
         resolved = args or GovernanceStackArgs()
         settings = resolved.settings or BootstrapSettings.from_pulumi_config()
         catalog = resolved.repository_catalog or ManagedRepositoryCatalog.from_settings(
             settings
         )
+        for repo in catalog.repositories:
+            _governance_backend_url(settings, repo, resolved.pulumi_backend_url)
+        super().__init__("bootstrap:governance:GovernanceStack", name, None, opts)
         account_id = aws.get_caller_identity().account_id
         _assert_governance_account(account_id, resolved.expected_account_id)
         partition = aws.get_partition().partition

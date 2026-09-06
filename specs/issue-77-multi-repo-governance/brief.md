@@ -92,7 +92,10 @@ un-auditable approval path.
 Generalize the proven `github-ci-bootstrap` foundation into a **reusable, multi-repo,
 Kravalg-gated governance stack** driven by configuration alone. Onboarding any
 `*-infrastructure` repo becomes a documented, IaC-only, PR-comment-driven flow with a single
-approver — no manual admin action. This is an **extension** of existing components, not a
+approver for steady-state onboarding, after operator-owned boundary and role
+inventory, real repository identity, trusted state initialization and live acceptance
+prerequisites are complete. These prerequisites can still require separately
+authorized operator/GitHub administrator actions. This is an **extension** of existing components, not a
 rewrite: lift the bootstrap's role/policy/secret richness into a per-repo loop, compose the
 already-present gating primitives (protected environments, PR-comment runner, IaC-only apply
 guard) into a governance boundary, and add the missing `CODEOWNERS`, governance environment,
@@ -102,8 +105,8 @@ author gate, onboarding doc, and the first real consumer repo.
 
 | Persona | Who | What they need from this increment |
 |---|---|---|
-| **Platform / SRE (governance owner)** | `@Kravalg` (Yaroslav Kravtsov), sole approver of permission/role PRs | A single, auditable approval choke point: CODEOWNERS over governance/IAM paths, a protected `governance` Environment requiring them as sole reviewer, and `/pulumi up` on governance-touching PRs restricted to them. Least-privilege evidence (Access Analyzer + CrossGuard) on every role. |
-| **Platform / SRE (operator / PR author)** | `@dmytrocraft` opens governance PRs; operators run the one-time bootstrap apply | A repeatable onboarding runbook; clear separation of operator-only steps (AWS admin / GitHub org-admin) from pure code/IaC/docs deliverables; a self-service config-only path to add a repo. |
+| **Platform / SRE (governance owner)** | `@Kravalg` (Yaroslav Kravtsov), sole approver of permission/role PRs | A single, auditable approval choke point: CODEOWNERS over governance/IAM paths, a protected `governance` Environment requiring them as sole reviewer, and `/pulumi up` requested by a current-write maintainer other than the sole reviewer, with their separate protected-environment approval. Least-privilege evidence (Access Analyzer + CrossGuard) on every role. |
+| **Platform / SRE (operator / PR author)** | `@dmytrocraft` opens governance PRs; operators verify first-setup prerequisites; resource updates use protected GitHub OIDC saved plans | A repeatable onboarding runbook; clear separation of operator-only steps (AWS admin / GitHub org-admin) from pure code/IaC/docs deliverables; a self-service config-only path to add a repo. |
 | **Service teams** (consumers) | Teams owning `user-service`, `core-service`, and future `*-infrastructure` repos | Their repo's deploy/preview/apply/drift roles + OIDC trust + scoped state bucket/KMS provisioned for them by config, so their own GitHub Actions can `/pulumi test up` / `/pulumi prod up` without ever holding admin credentials. `user-service-infrastructure` is the first concrete consumer. |
 
 ## 4. Goals
@@ -117,7 +120,8 @@ author gate, onboarding doc, and the first real consumer repo.
    the governance path + IAM code to `@Kravalg`, plus a protected `governance` GitHub
    Environment requiring `@Kravalg` as sole reviewer — with other paths unaffected.
 3. **PR-comment deploy gating** for governance-touching PRs: `/pulumi test up` then
-   `/pulumi prod up` restricted to `@Kravalg`, run in test-then-prod order, success required
+   `/pulumi prod up` requested by a current-write maintainer other than `@Kravalg`,
+   separately approved by `@Kravalg`, run in test-then-prod order, success required
    before merge.
 4. **IaC-only apply** preserved end-to-end: humans never `pulumi up` deployment projects in
    CI; only GitHub OIDC Actions apply, via the existing saved-plan guard.
@@ -158,8 +162,8 @@ author gate, onboarding doc, and the first real consumer repo.
 |---|---|---|---|
 | SM1 | Config-only onboarding | Adding a `*-infrastructure` repo to the governance list provisions its full role/bucket/KMS set with **zero** code changes | A new repo added only to the governance config produces the expected per-repo resources in `pulumi preview`; structural/unit tests assert fan-out. |
 | SM2 | Single approval choke point | 100% of governance/IAM-path PRs require `@Kravalg` review; 0 unrelated paths require it | CODEOWNERS path-glob tests; protected-`governance`-environment reviewer = `@Kravalg`, `prevent_self_review=true`. |
-| SM3 | Author-gated deploy | `/pulumi … up` on a governance-touching PR by anyone other than `@Kravalg` is rejected; by `@Kravalg` runs test→prod | Author-gate unit tests over the intake parser + path signal; runner job-graph enforces test-before-prod and success-before-merge. |
-| SM4 | No manual admin onboarding | 0 `AdministratorAccess` actions required for steady-state onboarding (only the one-time bootstrap, clearly marked operator-only) | Onboarding runbook in `AGENTS.md`; CI rejects direct `pulumi up` when `GITHUB_ACTIONS=true`. |
+| SM3 | Author-gated deploy | `/pulumi … up` requires an original current-write requester other than `@Kravalg`; sole-reviewer and revoked-permission requests fail; @Kravalg separately approves test→prod | Author-gate unit tests over the intake parser + path signal; runner job-graph enforces test-before-prod and success-before-merge. |
+| SM4 | No manual admin onboarding | 0 `AdministratorAccess` actions required for steady-state onboarding after bounded operator inventory, repository identity, state initialization and live acceptance prerequisites | Onboarding runbook in `AGENTS.md`; CI rejects direct `pulumi up` when `GITHUB_ACTIONS=true`. |
 | SM5 | Least-privilege evidence | 0 IAM Access Analyzer `ERROR`/`SECURITY_WARNING` findings; 0 CrossGuard wildcard-`Allow` violations on deployment roles; full secret-read deny present on read-only/config-read roles | `validate-iam` over preview files; CrossGuard `iam-no-wildcards`; deny-set unit tests. |
 | SM6 | Quality gate | Full suite green: ruff (max-complexity 12), mypy, ty, import-linter, deptry, bandit, pip-audit, gitleaks, CrossGuard, mutation, structural, IAM validation; **100% combined coverage** | `make ci-pr` + coverage/mutation targets. |
 | SM7 | First consumer ready | `user-service-infrastructure` scaffolding + self-deploy workflow templates present and catalog entry active | Scaffold asset presence tests; catalog validation (`scripts/validate_repository_catalogs.py`). |
@@ -179,17 +183,11 @@ author gate, onboarding doc, and the first real consumer repo.
   CrossGuard exempts `Effect: Deny`; deployment roles carry no wildcard `Allow`.
 - Must work generically for any `-infrastructure` repo and for repos added later, via config.
 
-## 8. Open questions deferred to the Architect
+## 8. Historical questions resolved by architecture §0
 
-These were raised in research §8 and are not resolved here; the PRD encodes the **constraint
-decisions** but the *mechanism* is the architect's to finalize:
-
-1. Keep component code account-parametric across the two accounts (test `891377212104`, prod
-   `933245420672`); the live two-account config is already correct (R1, resolved 2026-06-13).
-2. New separate Pulumi project dir vs. a multi-repo *mode* of the existing bootstrap project.
-3. Whether to unify the weaker `PulumiDeploy-*` trust onto the stronger bootstrap shape (R2),
-   incl. import/replace handling.
-4. Exact CODEOWNERS path globs that hit governance/IAM only (R4).
-5. Author-gate mechanism: changed-path computation in intake + `--author-login` to the parser,
-   vs. relying solely on the protected-environment reviewer (or both).
-6. Whether new governance `infra` code gets its own import-linter contract (R8).
+The former research questions are resolved in [architecture §0](architecture.md):
+two account-parametric stacks, a separate governance project, unchanged legacy
+PulumiDeploy trust, explicit CODEOWNERS globs, current-write requester verification
+plus separate protected review, and a committed governance import contract.
+Live operator prerequisites and acceptance evidence remain open as recorded in the
+[successor verification ledger](pr78-successor-verification.md).

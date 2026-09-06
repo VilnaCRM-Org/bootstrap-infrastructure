@@ -24,7 +24,6 @@ defaults:
 
 env:
   INIT_ENVIRONMENT: ${{ inputs.environment }}
-  INIT_ACCOUNT_ID: ${{ inputs.environment == 'test' && vars.AWS_TEST_ACCOUNT_ID || vars.AWS_PROD_ACCOUNT_ID }}
   PULUMI_SKIP_UPDATE_CHECK: "true"
 
 jobs:
@@ -35,14 +34,34 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      account_id: ${{ steps.target.outputs.account_id }}
+      config_role: ${{ steps.target.outputs.config_role }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Resolve the selected account without cross-account fallback
+        id: target
+        env:
+          TEST_ACCOUNT_ID: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          PROD_ACCOUNT_ID: ${{ vars.AWS_PROD_ACCOUNT_ID }}
+          TEST_CONFIG_ROLE: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          PROD_CONFIG_ROLE: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
+        run: |
+          case "${INIT_ENVIRONMENT}" in
+            test) account_id="${TEST_ACCOUNT_ID}"; config_role="${TEST_CONFIG_ROLE}" ;;
+            prod) account_id="${PROD_ACCOUNT_ID}"; config_role="${PROD_CONFIG_ROLE}" ;;
+            *) echo "Invalid initialization environment" >&2; exit 1 ;;
+          esac
+          [[ "${account_id}" =~ ^[0-9]{12}$ ]] || { echo "Missing or invalid selected account" >&2; exit 1; }
+          [[ "${config_role}" =~ ^arn:aws:iam::${account_id}:role/[A-Za-z0-9+=,.@_/-]+$ ]] || { echo "Missing or mismatched selected config role" >&2; exit 1; }
+          printf 'account_id=%s\nconfig_role=%s\n' "${account_id}" "${config_role}" >> "${GITHUB_OUTPUT}"
       - name: Verify protected environments and trusted initialization context
         env:
           GH_TOKEN: ${{ github.token }}
+          INIT_ACCOUNT_ID: ${{ steps.target.outputs.account_id }}
         run: python3 scripts/initialize_service_stack.py verify
 
   initialize:
@@ -51,6 +70,8 @@ jobs:
     environment: ${{ inputs.environment }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      INIT_ACCOUNT_ID: ${{ needs.preflight.outputs.account_id }}
     permissions:
       contents: read
       id-token: write
@@ -64,8 +85,8 @@ jobs:
         uses: ./.github/actions/load-aws-ci-env
         with:
           environment: ${{ inputs.environment }}
-          config-role-arn: ${{ inputs.environment == 'test' && vars.AWS_TEST_CI_CONFIG_ROLE_ARN || vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
-          expected-account-id: ${{ env.INIT_ACCOUNT_ID }}
+          config-role-arn: ${{ needs.preflight.outputs.config_role }}
+          expected-account-id: ${{ needs.preflight.outputs.account_id }}
           aws-region: eu-central-1
           purpose: Explicit backend-only stack initialization
           required-keys: AWS_ACCOUNT_ID,AWS_APPLY_ROLE_ARN
@@ -73,7 +94,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
           role-to-assume: ${{ steps.config.outputs.aws-apply-role-arn }}
-          allowed-account-ids: ${{ env.INIT_ACCOUNT_ID }}
+          allowed-account-ids: ${{ needs.preflight.outputs.account_id }}
           aws-region: eu-central-1
       - name: Build pinned runtime
         run: make start

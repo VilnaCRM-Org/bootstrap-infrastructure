@@ -65,9 +65,9 @@ does not redesign from scratch. All `file:line` anchors trace to current code on
 | D1 | Account model (R1) | **Two accounts, region `eu-central-1`: the `test` stack asserts/deploys account `891377212104`, the `prod` stack asserts/deploys account `933245420672`.** `awsAccountId` is per-stack config; the component asserts `aws.get_caller_identity().account_id == configured awsAccountId` (no hardcoded literal in component code). Cross test↔prod blast radius is isolated by separate accounts (AWS best practice). The per-env KMS alias suffix (`-test`/`-prod`) and per-stack secrets providers are retained. |
 | D2 | Project shape (FR9) | **New separate Pulumi project `pulumi/governance/`**, parity with `pulumi/github-ci-bootstrap/`. The existing bootstrap project is left intact for backward compat (NFR6). The new project hosts a multi-repo loop built from the **same generalized component code** in `pulumi/infra/`. |
 | D3 | Trust unification (R2) | **Do NOT migrate the weak `PulumiDeploy-*` roles.** The governance project emits the *strong* trio (`GitHubCiPreview/Apply/Drift-*`) per repo using the bootstrap trust shape (`StringEquals` + `repository` pin + per-suffix subjects). `PulumiDeploy-*` is untouched (avoids import/replace churn). |
-| D4 | Deny scoping (R3) | The secret-read **Deny** attaches **only** to `read-only` (preview/drift) and `config-read` policy documents. `kms:Decrypt` is **excluded from the `read-only` Deny** because preview/drift roles also carry the pulumi-backend policy's alias-scoped `kms:Decrypt` Allow (needed to decrypt the stack's encrypted config during `pulumi preview`/drift); a broad `kms:Decrypt` Deny would override that Allow and break preview/drift on encrypted-secret stacks. The apply role and the pulumi-backend policy likewise keep `kms:Decrypt`. The `config-read` Deny keeps `kms:Decrypt` (config-read never decrypts a Pulumi key, so the Deny is harmless there). |
+| D4 | Deny scoping (R3) | The secret-read **Deny** attaches **only** to `read-only` (preview/drift) and `config-read` policy documents. `kms:Decrypt` is **excluded from the `read-only` Deny** because preview/drift roles also carry the pulumi-backend policy's alias-scoped `kms:Decrypt` Allow (needed to decrypt the stack's encrypted config during `pulumi preview`/drift); a broad `kms:Decrypt` Deny would override that Allow and break preview/drift on encrypted-secret stacks. The apply role and the pulumi-backend policy likewise keep `kms:Decrypt`. Config-read uses separate conditional Decrypt Denies requiring both the regional Secrets Manager service and the exact owned CI-secret encryption context; it adds no KMS Allow. |
 | D5 | CODEOWNERS precision (R4) | Exact globs in §7.1 scope **only** governance/IAM/policy paths to `@Kravalg`; no catch-all `*` line, so unrelated paths stay unowned. |
-| D6 | Author-gate mechanism (FR13/FR14) | **Both layers, defense-in-depth:** (a) path-aware + login-aware gate in `scripts/pulumi_pr_comment.py` rejects `up` on governance PRs unless author is `@Kravalg`; (b) governance apply jobs declare `environment: governance` so the protected-environment reviewer gate is the hard backstop. |
+| D6 | Author-gate mechanism (FR13/FR14) | **Both layers, defense-in-depth:** (a) path-aware + login-aware gate in `scripts/pulumi_pr_comment.py` rejects `up` from the sole reviewer `@Kravalg`; the trusted runner independently verifies that the original requester still has repository write permission; (b) governance apply jobs declare `environment: governance` so the protected-environment reviewer gate is the hard backstop. |
 | D7 | import-linter (R8) | **Add one new contract** binding the governance component family. Because `infra` is not currently a `root_package`, we add `pulumi/infra` packages to import-linter via a new forbidden contract keeping `infra.governance` free of `policy`/`app` and free of `scripts` (§9.4). Low-risk, additive. |
 
 ---
@@ -178,12 +178,13 @@ secretsprovider: awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central
 The account-assertion value (`governance:awsAccountId`) is **per-stack**: test→`891377212104`,
 prod→`933245420672`. The literal lives only in these stack config files, never in component code.
 
-**Governance stack's own backend (AWS-SRE non-blocking).** The governance stack's own Pulumi state
-lives in a dedicated bucket encrypted by `alias/pulumi-platform-bootstrap-{env}` (the
-`secretsprovider`/`governance:pulumiSecretsProvider` above). The per-repo buckets the stack *creates*
-are for the managed repos, not for itself. The operator runbook (§10) pins the governance stack's own
-backend to a dedicated bucket and ensures only the operator/governance-apply principal can read it;
-the platform-bootstrap key (which encrypts that state) is NOT granted to any service repo (§5.2).
+**Governance stack's own backend.** Each environment uses the existing bootstrap state
+bucket at exactly `s3://pulumi-bootstrap-infrastructure-{env}-state/governance`.
+The platform backend remains under `/state/{env}`. The governance checkpoint uses
+`awskms://alias/pulumi-platform-bootstrap-{env}?region=eu-central-1`; this state
+backend and platform KMS alias are not granted to service repositories. Dedicated
+governor principals receive only their purpose-specific governance backend access.
+The separate per-repository buckets and keys are service-owned resources.
 
 Key shape decisions:
 - The managed repo list is configured via **`governance:repositoryCatalogPath`** pointing at
@@ -435,7 +436,7 @@ helper (`github_oidc.py:64-75`) so suffixes stay unique and deterministic across
   The config-read role legitimately needs `secretsmanager:GetSecretValue` on **its own** CI
   secret ARN (the `Allow`), so the Deny here targets the *other* leaky reads only; do **not**
   deny `secretsmanager:GetSecretValue` in the config-read policy (it would override its own
-  Allow — Deny wins). The config-read Deny set is therefore: `kms:Decrypt`, `ssm:GetParameter*`,
+  Allow — Deny wins). The general config-read Deny set excludes `kms:Decrypt` and starts with `ssm:GetParameter*`,
   `lambda:GetFunction`, `ec2:GetPasswordData`, `*:GetAuthorizationToken`, `sts:GetSessionToken`,
   `cognito-identity:Get*` (see §5.3). `secretsmanager:GetSecretValue` Deny lives only in the
   **read-only** policy (§5.2), which has no Allow for it.
@@ -556,30 +557,28 @@ For repo `org/repo`, purpose `preview` in stack `test`:
 }
 ```
 Subjects per `_deployment_role_subjects` (`ci_bootstrap.py:244-257`): `apply`+`prod` →
-`["repo:org/repo:environment:prod"]` only; other `test` purposes → branch + `environment:test`;
+`["repo:org/repo:environment:prod"]` only; test apply → `environment:test` only;
+other `test` purposes also accept their defined branch/preview-environment subjects;
 default → branch ref. `repository` claim is pinned with `StringEquals` (FR2).
 
-### 5.1a Governance-apply subject set — environment-bound, no bare branch-ref (closes SECURITY-2)
+### 5.1a Service apply subjects and dedicated governor trust (closes SECURITY-2)
 
-The governance project does **not** reuse `_deployment_role_subjects` verbatim for the `apply`
-purpose, because that helper emits a bare branch-ref subject for the `test` apply, which lets an
-OIDC token assume the apply role without passing the `environment: governance` reviewer (the
-trust/gate decoupling SECURITY-2 flags). The governance loop builds apply-role subjects from a new
-helper `_governance_apply_subjects(repo, env)`:
+These are distinct role families. `RepoGovernance` uses `_deployment_role_subjects`
+for service `GitHubCiApply-{project}-test` and `GitHubCiApply-{project}-prod`:
+respectively `repo:org/repo:environment:test` and `repo:org/repo:environment:prod`.
+Neither service apply role has a bare branch-ref subject or IAM administration.
 
-| Role / env | Subjects (apply purpose) |
-|---|---|
-| `GitHubCiApply-{project}-test` | `["repo:org/repo:environment:governance"]` only |
-| `GitHubCiApply-{project}-prod` | `["repo:org/repo:environment:governance"]` only |
+The operator-owned `GovernanceAutomation` in `pulumi/infra/governance_automation.py`
+creates dedicated `GitHubGovernanceApply-{env}` roles for the bootstrap
+repository. Both require `environment:governance` and the trusted main governance
+workflow identity. Their catalog authority is capped by operator-owned boundaries.
+The protected environment requires separate approval by @Kravalg; this central
+reviewer gate must not be confused with service test/prod subjects.
 
-i.e. **both** governance applies (test stack and prod stack) require the
-`environment:governance` claim — which GitHub only mints after @Kravalg approves the protected
-environment (§7.2). `preview`/`drift` roles keep their existing subjects (they read state, never
-apply, and are not credential-minting for mutations). The `apply` role's trust therefore cannot be
-satisfied by a push to a branch or a raw `repository_dispatch`; it is satisfiable only through the
-env-gated apply job. This binds the IAM trust to the GitHub reviewer gate (the two were previously
-decoupled). FR2 verify is amended: the apply-role test asserts the `test` apply subject is
-`environment:governance` (NOT branch-ref + `environment:test`).
+`tests/unit/test_governance_service_permissions.py` verifies service backend-only
+permissions for both environments; `tests/unit/test_governance_automation.py`
+verifies exact central managed-role resources, required GovernanceBoundary and
+boundary/provider tampering denials.
 
 ### 5.2 Deploy / pulumi-backend policy (apply/preview/drift share) — repo-scoped (FR3)
 
@@ -698,9 +697,7 @@ Notes:
   and the drift check can decrypt the stack's encrypted config. An explicit `kms:Decrypt` Deny here
   (Resource `*`) wins over that Allow and would break preview/drift on any encrypted-secret stack.
   The alias-scoped Allow is the decryption boundary; the broad Deny was both redundant (the
-  read-only policy carries no broad `kms:Decrypt` Allow) and harmful. (The `config-read` Deny in
-  §5.4 keeps `kms:Decrypt` because the config-read role never decrypts a Pulumi key — the Deny is
-  harmless there.)
+  read-only policy carries no broad `kms:Decrypt` Allow) and harmful. (Config-read instead uses the conditional Decrypt Denies in §5.4.)
 - `ssm:GetParameter*` and `cognito-identity:Get*` are expanded to explicit action names
   (IAM Deny supports the `*` wildcard inside an action, but Access Analyzer prefers explicit;
   we keep `ssm:GetParameter*` / `cognito-identity:Get*` forms acceptable — implementer may use
@@ -712,23 +709,14 @@ Notes:
   — D4. Implementer wires the Deny into `_read_only_policy_document` (used by preview/drift) and
   into a new second statement of `_ci_config_read_policy` (config-read), per §3.3.
 
-### 5.4 Config-read role policy (per repo, per suffix) — reuse `_ci_config_read_policy`
+### 5.4 Config-read role policy — `_ci_config_read_policy`
 
-```json
-{"Version": "2012-10-17", "Statement": [
-  {"Sid": "ReadCiConfigurationSecrets", "Effect": "Allow",
-   "Action": ["secretsmanager:DescribeSecret","secretsmanager:GetSecretValue"],
-   "Resource": ["arn:aws:secretsmanager:*:{account_id}:secret:/{project}/ci/{suffix}-*"]},
-  {"Sid": "DenySecretLeakingReads", "Effect": "Deny",
-   "Action": ["kms:Decrypt","ssm:GetParameter*","lambda:GetFunction","ec2:GetPasswordData",
-              "ecr:GetAuthorizationToken","sts:GetSessionToken","cognito-identity:Get*"],
-   "Resource": "*"}
-]}
-```
-The Allow is scoped to **only this repo's** CI secret ARN pattern (FR4 cross-repo isolation);
-the Deny excludes `secretsmanager:GetSecretValue` (else it would void the role's own purpose).
-
----
+The role allows DescribeSecret/GetSecretValue only on its exact CI-secret scope.
+`DenySecretLeakingReads` excludes GetSecretValue and Decrypt to preserve that purpose.
+Two independent Decrypt Denies require BOTH regional Secrets Manager `kms:ViaService`
+and the exact owned `kms:EncryptionContext:SecretARN`; missing either context fails
+closed. The AWS-managed Secrets Manager key supplies service-mediated access; this
+policy adds no KMS Allow. Direct KMS decrypt and cross-secret decrypt remain denied.
 
 ## 6. IaC-only apply (FR16, D — reuse)
 
@@ -740,9 +728,9 @@ The governance project routes applies through the same guard. No new enforcement
 - The saved-plan manifest validation (`run_pulumi_command.py:378-397`), `awskms://`
   secrets-provider check (`:92-105`), and policy-pack prep (`:108-113`) apply unchanged because
   they are `PULUMI_DIR`-agnostic.
-- **Human path:** the *only* permitted direct `pulumi up` is the operator's one-time local
-  bootstrap of the governance stack (no `GITHUB_ACTIONS`), per §10 runbook. All steady-state
-  applies go through the gated PR-comment runner.
+- **First setup:** explicit trusted state-only initialization creates encrypted empty
+  checkpoint metadata without running the program. Resource updates require the protected
+  GitHub OIDC saved-plan path. This design does not authorize local root applies.
 
 ---
 
@@ -863,62 +851,34 @@ workflow" primitive** — the earlier framing is dropped. Instead the governance
    to the GitHub gate: an OIDC token cannot assume the governance apply role without passing the
    reviewer. See §5.1a for the governance-apply subject set.
 
-   **Which role the runner actually assumes (resolves the F2 credential-path gap).** A subtle but
-   load-bearing consequence: because the apply jobs run under `environment: governance`, the runner
-   token's `sub` is `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:governance`. The
-   **bootstrap repo's own** `GitHubCiConfigRead-*` config-read roles and `GitHubCiApply-*` deploy
-   roles trust `environment:test`/`environment:prod`/branch-ref — **NOT** `environment:governance` —
-   so the runner cannot assume them, and cannot even load the bootstrap CI-config secret from an
-   apply job. (The §5.1a `environment:governance` apply roles are the per-managed-repo roles the
-   governance program *creates* for downstream service repos; they are not the role that applies the
-   governance program itself.) The governance apply therefore assumes a **dedicated, per-account
-   governance automation role**:
-   - It is created by the **one-time operator bootstrap** (the privileged admin session, §10.2) — it
-     is the most privileged automation role in the account and is NOT minted by a non-privileged
-     agent. It is appropriate to add it to the privileged `github-ci-bootstrap` stack (which already
-     runs with admin and owns the OIDC provider) as a follow-up; until then it is operator-created.
-   - Its trust accepts **only** `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:governance`
-     for `token.actions.githubusercontent.com` (the same env-bound shape as §5.1a, but for the
-     bootstrap repo applying the governance program).
-   - Its permissions are scoped to apply the `pulumi/governance` program in that account: create/
-     update the per-repo IAM deploy + config-read roles, the per-repo S3 state buckets + replicas,
-     the per-repo KMS keys + aliases, and the per-repo CI-config secrets. Least privilege is kept:
-     no `Action:*`/unscoped `Resource:*` Allow.
-   - The runner references it via per-account repo variables: `AWS_GOVERNANCE_TEST_APPLY_ROLE_ARN`
-     (account `891377212104`) and `AWS_GOVERNANCE_PROD_APPLY_ROLE_ARN` (account `933245420672`). The
-     governance program's own backend + secrets provider are likewise supplied as repo variables
-     (`AWS_GOVERNANCE_{TEST,PROD}_BACKEND_URL`, `AWS_GOVERNANCE_{TEST,PROD}_SECRETS_PROVIDER`,
-     `AWS_GOVERNANCE_{TEST,PROD}_ACCOUNT_ID`) because the apply job cannot read them from a CI-config
-     secret. The plan/drift jobs do NOT run under `environment: governance` (their token carries the
-     branch-ref claim), so they keep using `load-aws-ci-env` + the existing config-read/preview/drift
-     roles unchanged.
-5. **Non-governance PRs are unchanged.** They still dispatch `pulumi-pr-command` to the existing
-   `pulumi-pr-command-runner.yml`; that runner is untouched except for the SECURITY-3 stale-review
-   hardening (§7.6) which is a controls change, not a runner change.
+   **Which roles the runner assumes.** The installed governance controller uses
+   dedicated operator-owned `GitHubGovernancePreview-{env}`,
+   `GitHubGovernanceApply-{env}` and `GitHubGovernanceDrift-{env}` roles, supplied
+   through the six `AWS_GOVERNANCE_{TEST,PROD}_*` variables per account. It does not
+   reuse platform CI-config loaders or service apply roles. Preview/drift run under
+   `governance-preview`; apply runs under `governance`. `GovernanceAutomation`
+   supplies the purpose-specific trust and exact catalog-bounded permissions.
+   This component is already installed source in the operator project; missing
+   live roles/boundaries require a separately reviewed protected OIDC installation,
+   not manual role JSON or local root applies. The variables also bind exact backend,
+   account and KMS provider. Live installation is distinct from source availability.
+5. **Non-governance routing remains separate.** Requests use `pulumi-pr-command`
+   and the platform controller; all up requests preserve current-write requester
+   verification and separation from the sole protected reviewer.
 
-### 7.3 PR-comment author gate (FR13, D6) — `scripts/pulumi_pr_comment.py`
+### 7.3 PR-comment requester gate (FR13, D6)
 
-Add two inputs and a governance branch to the parser:
-```python
-KRAVALG_LOGIN = "Kravalg"   # case-insensitive compare
+`scripts/pulumi_pr_comment.py:author_is_authorized` rejects every `up` request with
+an empty author login or login equal to `Kravalg` (case-insensitive), then applies
+the existing association rule. Plan requests retain association checks; they are
+not anonymous. Governance path detection selects the dedicated controller.
 
-def author_is_authorized(
-    author_association: str,
-    *,
-    author_login: str = "",
-    governance_touched: bool = False,
-    action: str = "",
-) -> bool:
-    if governance_touched and action == "up":
-        return author_login.strip().lower() == KRAVALG_LOGIN.lower()
-    return author_association.strip().upper() in AUTHORIZED_ASSOCIATIONS
-```
-- New CLI flags: `--author-login <login>` and `--governance-touched {true,false}` (or
-  `--governance-paths-touched`). `build_outputs` passes `command.action` and the flags through.
-- Decision matrix (FR13 verify): (gov + `Kravalg` + `up`) → authorized; (gov + non-Kravalg +
-  `up`) → rejected; (gov + anyone + `plan`) → existing association rule (plan is read-only, safe);
-  (non-gov) → existing association rule unchanged. `@dmytrocraft` may always **open** the PR and
-  run `plan`; only the governance `up` trigger is gated.
+The trusted main runner independently resolves the original comment, checks its
+command and current repository write permission, and verifies immutable PR/base/head
+and governance scope before credentials. A workflow dispatcher or association alone
+cannot substitute for the original requester. @dmytrocraft may request an apply;
+@Kravalg separately reviews the protected environment with `prevent_self_review`.
+Tests reject sole-reviewer, missing-login, revoked-permission and forged-scope input.
 
 ### 7.4 Path-aware detection (FR14) — `.github/workflows/pulumi-pr-commands.yml`
 
@@ -946,51 +906,26 @@ Reused unchanged: the governance runner job graph (§7.2) enforces `governance_t
 governance_prod_*` ordering and `prod` gated on `test_post_apply_drift` success, mirroring
 `pulumi-pr-command-runner.yml:325-731`.
 
-**Success-before-merge mechanism (closes FEASIBILITY-1).** The governance runner triggers on
-`repository_dispatch`, not `pull_request`, so its jobs do **not** natively post a commit status
-onto the PR head SHA. A required-status-check named after a job that never reports would make the
-PR permanently unmergeable. Therefore success-before-merge is implemented by the runner
-**explicitly posting a commit status** to the approved head SHA:
+**Success-before-merge mechanism.** `Governance Apply` is an informational status.
+The required check is `Governance Promotion`, issued only by the dedicated evidence
+App through the installed trusted-main publisher. Success requires authenticated
+preflight and all four successful stages: test apply, test post-apply drift, prod
+apply and prod post-apply drift. A successful prod apply alone is insufficient.
 
-- The governance runner's final job calls
-  `gh api -X POST repos/{repo}/statuses/{head_sha} -f state=success -f context="Governance Apply"`
-  on success of `governance_prod_apply` (and `state=failure`/`pending` on the corresponding
-  outcomes). It already has the verified `head_sha` from preflight and a checkout.
-- `REQUIRED_STATUS_CHECKS` (`_github_repository_controls.py:8-33`) gains the context
-  `"Governance Apply"`. Because the runner posts that exact context to the head SHA, the check
-  resolves to success and the PR becomes mergeable — it is not a phantom "expected, waiting" check.
-- The status is posted to the **SHA that carried the code-owner approval** (preflight verified the
-  live head SHA equals the requested SHA), tying the merge gate to the approved diff.
-
-E2.S3 / FR15 verify is amended: assert (a) the context string is in `REQUIRED_STATUS_CHECKS`, AND
-(b) the governance runner contains a `gh api .../statuses/{head_sha}` step posting that exact
-context. Do not rely on the tuple membership alone.
+The publisher verifies saved-plan artifacts, commit SHA and plan hashes, immutable
+base/head and source-run provenance. Repository controls pin the check to the
+verified App installation identity. Controls and workflow tests must verify both
+the required context/issuer and this complete dependency graph; an ordinary status
+named `Governance Apply` cannot satisfy the merge gate.
 
 ### 7.6 Branch-protection hardening: bind approval to the approved diff (closes SECURITY-3)
 
-`default_pull_request_rule()` (`scripts/_github_repository_controls.py:51-64`) currently sets
-`dismiss_stale_reviews_on_push=False` and `require_last_push_approval=False` with
-`require_code_owner_review=True`. With CODEOWNERS scoping IAM/governance to @Kravalg, that lets the
-PR author push commits *after* @Kravalg's approval (e.g. widen an IAM policy to a wildcard Allow)
-while the PR stays mergeable on a now-stale approval (the approve-then-swap escalation). Combined
-with the runner now re-checking author + scope (§7.2) and the apply role bound to
-`environment:governance` (§5.1a), the apply path is already hardened — but the **merge** path must
-also bind approval to the exact approved diff:
-
-- Set `dismiss_stale_reviews_on_push=True` and `require_last_push_approval=True` in
-  `default_pull_request_rule()`. Any push after approval dismisses the stale code-owner review and
-  requires fresh @Kravalg approval of the new head before merge.
-- Add a controls test asserting **both** flags are `True`.
-- The governance runner already passes `PULUMI_EXPECTED_SHA`; the saved-plan manifest is validated
-  against the head SHA (`run_pulumi_command.py:357-375`). E2.S3 adds an assertion that the
-  plan-manifest commit-SHA equals the head SHA that carried the approval, so an apply cannot run a
-  plan built against a different commit than the one approved.
-- Runbook (FR18) documents: any push after approval re-triggers code-owner review before
-  `/pulumi prod up` is accepted.
-
-This is a change to the **shared** branch rule (it applies to all PRs, not just governance). That is
-intentional and acceptable: requiring fresh approval after a push is a strict improvement for every
-protected-branch PR and does not narrow any existing behavior.
+`default_pull_request_rule()` already sets `dismiss_stale_reviews_on_push=True`,
+`require_last_push_approval=True` and `require_code_owner_review=True`. Current
+controls tests enforce those source values. The operator verifies live repository
+readback against this contract; source assertions alone do not prove live settings.
+Saved-plan and promotion validation bind evidence to the reviewed base/head and
+reject a changed head rather than inheriting old approvals.
 
 ---
 
@@ -1076,7 +1011,7 @@ ARNs `:73-75`). New `tests/unit/test_governance.py`:
 
 | FR | Assertion |
 |---|---|
-| FR2 | For N catalog repos, exactly **3N** deployment roles; names match `GitHubCi{Preview,Apply,Drift}-{project}-{env}` with `{project}`=full slug (e.g. `GitHubCiApply-user-service-infrastructure-test`); trust doc subjects + `repository` pin (`StringEquals`) per purpose/stack; **apply-role test subject is `environment:governance` (NOT branch-ref + `environment:test`)** (§5.1a). |
+| FR2 | For N catalog repos, exactly **3N** deployment roles; names match `GitHubCi{Preview,Apply,Drift}-{project}-{env}` with `{project}`=full slug (e.g. `GitHubCiApply-user-service-infrastructure-test`); trust doc subjects + `repository` pin (`StringEquals`) per purpose/stack; **service apply subjects are `environment:test` / `environment:prod`, with no bare branch ref** (§5.1a). |
 | FR3 | Render repo A vs repo B deploy policies; assert A references only A's bucket ARN + A's KMS alias; **no** substring of B's bucket/alias appears in A's doc; **assert no service repo's deploy doc references `pulumi-platform-bootstrap` at all** (AWS-SRE-1); ARNs use `{account_id}`/`eu-central-1`, no `891377212104` literal (FEAS-3). |
 | FR4 | Each repo's config-read policy Allow lists only that repo's `/{project}/ci/{suffix}-*` ARN; per-suffix trust subjects correct; Deny present, `secretsmanager:GetSecretValue` absent from Deny. |
 | FR5/FR6 | One primary + one replica bucket and one KMS key + alias per repo per env; deterministic names; replication region == `eu-west-1` (pinned). |
@@ -1105,13 +1040,14 @@ ARNs `:73-75`). New `tests/unit/test_governance.py`:
   - Detect catalog kind (by filename — `repositories.governance.json` → `governance`; otherwise
     `deployment`/`central`) or by a `kind` field, and apply a **governance-specific fanout** with its
     own thresholds: no central-stack resources; `iamRoles = 3 (trio) + config_read_count + 1
-    (replication)`; `managedPolicies ≈ 7 × repos` (the apply role attaches 5 automation groups +
-    pulumi-backend + iam-managed-policies = 7 of the 10 managed-policies-per-role limit); `secrets =
+    (replication)`; `managedPolicies = 2 × repos` (backend plus scoped secret-read policy; service
+    apply has no inherited platform automation groups); `secrets =
     suffix_count × repos`. Raising governance limits must NOT loosen the deployment-catalog guard.
   - Add an **account-quota headroom report**: assert per-repo IAM role count and customer-managed
     policy count against AWS account defaults (1000 roles, 1500 managed policies, 10
     managed-policies-per-role) with explicit headroom for the plausible ~30-repo `-infrastructure`
-    fleet. The apply role already consumes 7/10 of the per-role managed-policy limit — flag it.
+    fleet. The service apply role uses 2/10 managed-policy attachments; central governor
+    attachment limits and its four-repository ceiling are checked separately.
   - Add the **unique-`project` guard** (§4) AND a **role-name-length guard**: reject any catalog repo
     whose `sanitize_bucket_component(name) + "-prod-preview"` would exceed 64 chars at validation
     time (closes the FEASIBILITY-4 apply-time-raise trap — fail in CI, not at apply).
@@ -1187,79 +1123,51 @@ so saved plans validate (`run_pulumi_command.py:357-375`).
   `pulumi/Pulumi.prod.yaml` are already two-account-correct and unchanged.
 - All tests (§9). `make ci-pr` green; dry-run previews.
 
-### 10.2 Operator-only (AWS admin / GitHub org-admin) — runbook in `AGENTS.md`/`docs/governance-stack.md`
-1. **One-time governance bootstrap apply (local, direct `pulumi up` allowed — no `GITHUB_ACTIONS`):**
-   ```bash
-   pulumi -C pulumi/governance stack init test --secrets-provider awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1
-   AWS_PROFILE=admin pulumi -C pulumi/governance up --stack test
-   # then repeat for prod
-   pulumi -C pulumi/governance stack init prod --secrets-provider awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1
-   AWS_PROFILE=admin pulumi -C pulumi/governance up --stack prod
-   ```
-2. **Protected `governance` environment + branch protection (repo admin token):**
-   ```bash
-   python scripts/configure_github_repository_controls.py --repo VilnaCRM-Org/bootstrap-infrastructure --dry-run   # review
-   python scripts/configure_github_repository_controls.py --repo VilnaCRM-Org/bootstrap-infrastructure --apply
-   ```
-   (now emits/PUTs the `governance` environment requiring `@Kravalg`).
-3. **Set GitHub repo variables** from the governance `githubVariables` output:
-   ```bash
-   gh variable set AWS_TEST_CI_CONFIG_ROLE_ARN --body "<perRepo[...].configReadRoleArns.test>" --repo <repo>
-   # …and the rest of githubVariables per env.
-   ```
-4. **Create `user-service-infrastructure` in `VilnaCRM-Org` + push scaffold (org-admin):**
-   ```bash
-   gh repo create VilnaCRM-Org/user-service-infrastructure --private
-   # copy pulumi/user-service-infrastructure/** into the new repo, then git push
-   ```
-5. **Pin the per-account OIDC provider ARN into governance config (AWS-SRE-2):** read `oidcProviderArn`
-   from **each account's** bootstrap stack output and set `governance:githubOidcProviderArn`
-   per-stack — `Pulumi.test.yaml` ← the `891377212104` provider ARN, `Pulumi.prod.yaml` ← the
-   `933245420672` provider ARN — BEFORE the first governance apply. The governance stack raises if it
-   is unset (it never creates the provider).
-6. **Verify each stack's `costAnomalyMonitorArn` matches its account (FEASIBILITY-6 / FR21):**
-   there is **no single-account repoint** — both monitors already exist (the test stack's monitor in
-   `891377212104`, the prod stack's monitor in `933245420672`, both already correct in the live
-   config). Do NOT repoint prod away from `933245420672`. The only check: each stack's
-   `costAnomalyMonitorArn`, **if present**, has an account matching that stack's account
-   (test→`891377212104`, prod→`933245420672`); absence is permitted (the code path tolerates a
-   null/unset value). FR21 verify: a test asserts that **if** `costAnomalyMonitorArn` is present its
-   account equals the stack's account; absence is permitted. This is an OPERATOR apply-time
-   verification, NOT a code change.
-7. **Define a governance break-glass (AWS-SRE bus-factor non-blocking).** `@Kravalg` is the sole
-   reviewer with `prevent_self_review:true`; if unavailable, NO governance apply can proceed. The
-   runbook documents an explicit, audited break-glass: a time-boxed temporary second reviewer added to
-   the `governance` environment by an org-admin (logged), reverted immediately after; OR an
-   operator-local direct `pulumi up` from a hardware-MFA admin session (step 1), logged, with the
-   resulting roles diffed against the committed Pulumi program before any PR-comment apply is
-   re-enabled. The local bootstrap apply (step 1) is the single most privileged action in the system
-   (AdministratorAccess creating all trust roles) — it MUST run from a hardware-MFA admin session, be
-   logged, and the resulting roles diffed against the committed program.
-8. **Real AWS applies (test then prod) via the gated PR-comment flow** — `@Kravalg` comments
-   `/pulumi test up` then `/pulumi prod up` on the governance PR; capture real ARNs/outputs.
+### 10.2 Operator-only prerequisites and live verification
 
-**Residual-risk note (SECURITY-7, recorded, accepted):** test↔prod blast radius is **isolated by
-separate accounts** — a compromised test-stack apply role (in `891377212104`) cannot touch the prod
-account `933245420672` at all. The remaining residual risk is the narrower **within-account
-cross-repo IAM blast radius**: repos that share an account (e.g. `repoA`-prod and `repoB`-prod both
-in `933245420672`) share the apply role's account-global automation grants (OIDC-provider create,
-account-level IAM: `iam:CreateOpenIDConnectProvider`, `kms:CreateKey`, etc. — CrossGuard-exempt
-`Resource:*` Allows). Cross-repo isolation (FR3) holds for **state buckets and KMS keys**, NOT for
-account-global IAM **within the same account**. Where the automation surface allows, the implementer
-SHOULD add `aws:RequestTag`/`aws:ResourceTag` conditions binding created IAM/KMS resources to the
-specific repo, and add a test asserting repo A's apply role cannot
-`iam:PutRolePolicy`/`iam:AttachRolePolicy` on `GitHubCi*-{repoB}-*` roles in the same account. This
-narrower per-account residual risk is accepted/documented (not a blocker) — and is materially lower
-than originally framed now that prod is a separate account from test — see readiness residual risks.
+Follow [the governance runbook](../../docs/governance-stack.md) in order:
+
+1. Verify operator-owned dedicated governor roles, immutable boundary inventory,
+   account/backend/KMS bindings and real repository identity. Use an explicitly
+   authorized trusted state-only initializer for a genuinely absent checkpoint;
+   this does not execute the Pulumi program. Resource changes use protected GitHub
+   OIDC and reviewed saved plans; no local root apply is authorized.
+2. Configure and read back protected environments and App-bound branch controls
+   using `uv run --frozen python scripts/configure_github_repository_controls.py`
+   with the verified `--promotion-app-id`; review `--dry-run` before `--apply`.
+3. Install verified nonsecret GitHub variables from the matching account outputs.
+4. Publish the complete generated scaffold using
+   `scripts/scaffold_infrastructure_repository.py`, after binding the real repo ID.
+5. Verify the already committed per-account `githubOidcProviderArn` against live
+   metadata. A mismatch stops setup; it does not authorize changing the pin.
+6. Verify any configured `costAnomalyMonitorArn` matches its stack account. Absence
+   is permitted; do NOT repoint prod away from `933245420672`.
+7. If @Kravalg is unavailable, halt applies. Any emergency proposal requires separate
+   explicit authorization and an audit record; this runbook grants neither a local
+   root apply nor a reviewer change. Any authorized intervention must be logged.
+8. A current-write requester other than @Kravalg requests `/pulumi test up` and
+   `/pulumi prod up`; @Kravalg separately approves. Capture real apply/drift evidence
+   and App-issued Governance Promotion. Source tests do not satisfy live acceptance.
+
+**Residual authority.** Platform roles, dedicated central governor roles and service
+roles are distinct. Central `GitHubGovernanceApply` can manage the exact catalogued
+resources within operator-owned permission boundaries, not account-global IAM.
+It cannot remove boundaries, change its own delegation or create the shared OIDC
+provider. Service apply roles are backend-only with no IAM administration, including
+no `iam:PutRolePolicy`/`iam:AttachRolePolicy` on another repository's roles.
+`test_service_apply_is_backend_only_in_its_own_repository` and
+`test_governance_automation.py` enforce these distinctions. Central compromise still
+risks its bounded catalog within one account; protected review and saved-plan
+verification remain mandatory. This is not a new human risk acceptance.
 
 ---
 
 ## 11. Onboarding flow (for `AGENTS.md`, FR17) — service `X`
 
 1. **PR A — Grant deploy roles (governance):** add `X-infrastructure` to
-   `pulumi/repositories.governance.json` (CODE). `@Kravalg` reviews (CODEOWNERS), comments
-   `/pulumi test up` then `/pulumi prod up` (gated by author + `environment: governance`),
-   verifies, merges. The governance stack provisions X's state bucket, KMS key,
+   `pulumi/repositories.governance.json` (CODE). A current-write maintainer other than @Kravalg requests
+   `/pulumi test up` then `/pulumi prod up`; `@Kravalg` reviews CODEOWNERS and separately
+   approves `environment: governance`. Verified promotion precedes merge. The governance stack provisions X's state bucket, KMS key,
    preview/apply/drift roles, config-read role, OIDC trust. (OPERATOR triggers the gated apply.)
 2. **PR B — Bootstrap generic infra for `X-infrastructure`** using the PR-A roles (CODE; applied
    via the same gated flow).
@@ -1281,7 +1189,7 @@ Each step is labeled CODE vs OPERATOR in `AGENTS.md` per FR17/FR18.
 | R2 trust divergence | D3: governance uses the strong trust shape; `PulumiDeploy-*` untouched (no import/replace). |
 | R3 Deny/Allow collision | D4: Deny on read-only/config-read only; apply + backend keep `kms:Decrypt`; `secretsmanager:GetSecretValue` Deny excluded from config-read. |
 | R4 CODEOWNERS over-scope | D5: explicit globs, no catch-all; test asserts unrelated paths unowned. |
-| R5 single-approver/self-review | `prevent_self_review:true`; `@dmytrocraft` opens + runs `plan`; only governance `up` gated to `@Kravalg`. |
+| R5 single-approver/self-review | `prevent_self_review:true`; `@dmytrocraft` may request plan/up with current write permission; @Kravalg separately approves and cannot self-request `up`. |
 | R6 structural-test brittleness | §9.2 adds governance structural test; bootstrap test left intact. |
 | R7 coverage cliff | §9.4 exhaustive branch tests on `governance.py` + gate functions; account-assertion mock seam (§3.2 step 1) makes both branches reachable. |
 | R8 import-linter blind spot | D7: add `infra` to root_packages + forbidden contract `governance ↛ {policy, app, scripts}`; AST-test fallback if the graph destabilizes (§9.4, decided). |
@@ -1290,20 +1198,20 @@ Each step is labeled CODE vs OPERATOR in `AGENTS.md` per FR17/FR18.
 
 | Finding | Lens | Disposition |
 |---|---|---|
-| Author gate enforced only in intake; trusted runner never re-checks author | SECURITY-1 | **Fixed** §7.2: governance runner re-derives author from `comment_id` and asserts `==Kravalg`, recomputes scope server-side, drops `workflow_dispatch`; client_payload fully untrusted. |
+| Author gate enforced only in intake; trusted runner never re-checks author | SECURITY-1 | **Fixed** §7.2: governance runner re-derives author from `comment_id` and requires a current-write requester other than `Kravalg`, recomputes scope server-side, drops `workflow_dispatch`; client_payload fully untrusted. |
 | `test_apply` ungated by a protected environment | SECURITY-2 | **Fixed** §7.2/§5.1a: dedicated `pulumi-governance.yml` with BOTH `governance_test_apply` and `governance_prod_apply` under static `environment: governance`; apply-role OIDC trust bound to `environment:governance` (no bare branch-ref). |
 | Stale-review survives new pushes (approve-then-swap) | SECURITY-3 | **Fixed** §7.6: `dismiss_stale_reviews_on_push=True`, `require_last_push_approval=True`, plan-manifest SHA == approved SHA assertion. |
 | Governance scope is an untrusted boolean; CODEOWNERS/glob drift | SECURITY-4 | **Fixed** §7.1/§7.2: scope recomputed server-side; CODEOWNERS is single source, drift-equality test fails CI; glob set expanded to all credential-bearing code. |
 | Full secret-read Deny omitted from apply role | SECURITY-5 | **Fixed** §5.2a: surgical Deny on apply role (secretsmanager/ssm/ec2/lambda/ecr-auth/sts/cognito) except own CI secret; keeps `kms:Decrypt` on own key. |
 | KMS alias-condition forgeable + region/key wildcard | SECURITY-KMS-med | **Fixed (partial) + hardening** §5.2: region pinned to eu-central-1; no alias-mutation grant on repo keys (verified+tested); concrete-key-ARN scope recommended as follow-up. |
-| Account-pinning not enforced in trust; within-account cross-repo blast radius | SECURITY-7 | **Accepted + documented** §10 residual-risk note; test↔prod isolated by separate accounts (prod `933245420672` ≠ test `891377212104`); only within-account cross-repo IAM remains; tag-scoping + cross-repo IAM test recommended; materially lower than originally framed. |
+| Account-pinning not enforced in trust; within-account cross-repo blast radius | SECURITY-7 | **Accepted + documented** §10 residual-risk note; test↔prod isolated by separate accounts (prod `933245420672` ≠ test `891377212104`); central authority is restricted to exact catalog resources and immutable boundaries; service roles are backend-only, verified by existing permission tests. |
 | Platform-bootstrap KMS key decryptable by every repo (FR3 false) | AWS-SRE-1 | **Fixed** §3.1/§5.2: platform-bootstrap alias removed from per-repo deploy policies; reserved for governance stack's own apply role. |
 | Two stacks own the per-account OIDC provider | AWS-SRE-2 | **Fixed** §3.2 step 2: the OIDC provider is per-account; governance consumes its account's provider by pinned ARN via `.get()` (test→891 provider, prod→933 provider), zero create branch; structural test asserts no create. |
 | FR12 env-gating has no working mechanism | AWS-SRE-3/FEAS-2 | **Fixed** §7.2: dedicated event type + workflow + static env-gated jobs + `PULUMI_DIR=pulumi/governance`; routing-to-another-workflow framing dropped. |
 | Role-naming contradiction (slug vs project_name) | AWS-SRE-4/FEAS-4 | **Fixed** §4: canonical `{project}` = full sanitized repo slug everywhere; template names corrected; byte-equality test. |
 | 100%-coverage vs account happy-path under mocks | AWS-SRE-5/FEAS-3 | **Fixed** §3.2 step 1: injectable `expected_account_id`/`region`; both branches covered; ARNs interpolated. |
 | Fanout model wrong for governance project | AWS-SRE-6 | **Fixed** §9.2: per-catalog-kind fanout, governance-specific counts, quota-headroom report, no shared-constant relaxation. |
-| "Governance Apply" required check unmergeable | FEASIBILITY-1 | **Fixed** §7.5: runner posts commit status to head SHA via `gh api .../statuses/{sha}`; required check resolves. |
+| "Governance Apply" required check unmergeable | FEASIBILITY-1 | **Fixed** §7.5: dedicated App issues required `Governance Promotion` after all four apply/drift stages; `Governance Apply` remains informational. |
 | `_RepoCiContext` dual-context fragility / NFR6 | FEASIBILITY-4 | **Fixed** §3.1: extend existing `_BootstrapBuildContext`; golden byte-equal parity fixture is the gate. |
 | import-linter either/or unresolved | FEASIBILITY-5 | **Fixed** §9.4: decided sequence (add `infra` root pkg → contract, or AST-test fallback). |
 | Operator-only deps mislabeled deliverable-now | FEASIBILITY-6 | **Fixed** §8/§10: scaffold preview-blocked tagged; cost-anomaly monitor is an operator apply-time step; FR21 verify tolerates absence. |

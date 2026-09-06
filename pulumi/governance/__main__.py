@@ -30,15 +30,21 @@ write_secret_values = cfg.get_bool("writeSecretValues")
 protect_resources = cfg.get_bool("protectResources")
 managed_secret_values = True if write_secret_values is None else write_secret_values
 protected_resources = True if protect_resources is None else protect_resources
+expected_account_id = cfg.require("awsAccountId")
+oidc_provider_arn = cfg.require("githubOidcProviderArn")
+provider_region = aws.get_region().region
+configured_region = cfg.get("region")
+if configured_region is not None and configured_region != provider_region:
+    raise ValueError("Governance region must match the AWS provider region")
 
 governance = GovernanceStack(
     "governance",
     args=GovernanceStackArgs(
         settings=settings,
         repository_catalog=catalog,
-        expected_account_id=cfg.require("awsAccountId"),
-        oidc_provider_arn=cfg.get("githubOidcProviderArn"),
-        region=cfg.get("region") or aws.get_region().region,
+        expected_account_id=expected_account_id,
+        oidc_provider_arn=oidc_provider_arn,
+        region=provider_region,
         # PULUMI_DIR flows into each managed repo's generated CI-config payload
         # (governance.py -> _governance_payloads -> the per-repo CI secret), and
         # the managed repo's self-deploy resolves its own Pulumi project from

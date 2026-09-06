@@ -5,16 +5,15 @@ These assert that ``docs/governance-stack.md`` exists, is linked from
 OIDC provider, sole approver, IaC-only applies), and enumerates every operator
 step from architecture §10.2 — each tagged ``OPERATOR``:
 
-1. one-time governance bootstrap apply (local direct ``pulumi up``,
-   hardware-MFA admin session, test stack then prod stack);
-2. pin the per-account OIDC provider ARN before first apply
+1. explicit trusted state-only initialization, then protected saved-plan applies;
+2. verify the committed per-account OIDC provider ARN before first apply
    (test -> 891 provider, prod -> 933 provider; the stack raises if unset);
 3. verify each stack's ``costAnomalyMonitorArn`` matches its account
    (test -> 891377212104, prod -> 933245420672; do NOT repoint prod);
 4. configure the protected ``governance`` environment + branch protection;
 5. set GitHub repo variables from the governance ``githubVariables`` output;
 6. create ``user-service-infrastructure`` + push the scaffold;
-7. gated real applies via ``@Kravalg`` PR comments;
+7. current-write maintainer request and separate ``@Kravalg`` approval;
 8. audited break-glass if ``@Kravalg`` is unavailable.
 """
 
@@ -56,6 +55,7 @@ def test_runbook_states_sole_approver_and_iac_only() -> None:
     assert "@dmytrocraft" in runbook  # nosec B101
     assert "make pulumi-up-plan" in runbook  # nosec B101  (saved-plan, IaC-only)
     assert "Governance Apply" in runbook  # nosec B101
+    assert "Governance Promotion" in runbook  # nosec B101
 
 
 def test_runbook_step_one_requires_state_only_initialization_and_saved_plan() -> None:
@@ -80,17 +80,17 @@ def test_runbook_step_one_requires_state_only_initialization_and_saved_plan() ->
         "awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1",
     ):
         assert required in runbook
-    assert "pulumi/governance up --stack" not in runbook
+    assert "pulumi -C pulumi/governance up" not in runbook
     assert runbook.index("`/pulumi test up`") < runbook.index("`/pulumi prod up`")
 
 
-def test_runbook_step_two_oidc_arn_pin_is_operator() -> None:
-    """Step 2: pin per-account OIDC provider ARN before first apply; stack raises."""
+def test_runbook_step_two_oidc_arn_verification_is_operator() -> None:
+    """Step 2: verify committed OIDC pins; missing values still fail closed."""
     runbook = _runbook()
 
     assert (  # nosec B101
-        "Step 2 — Pin the per-account OIDC provider ARN before first apply [OPERATOR]"
-        in runbook
+        "Step 2 — Verify the committed per-account OIDC provider ARN "
+        "before first apply [OPERATOR]" in runbook
     )
     assert "githubOidcProviderArn" in runbook  # nosec B101
     assert "raises if the ARN is unset" in runbook  # nosec B101
@@ -127,6 +127,13 @@ def test_runbook_step_four_protected_environment_is_operator() -> None:
         "scripts/configure_github_repository_controls.py" in runbook
     )
     assert "--apply" in runbook  # nosec B101
+    assert (
+        runbook.count(
+            "uv run --frozen python scripts/configure_github_repository_controls.py"
+        )
+        == 2
+    )
+    assert '--promotion-app-id "$VERIFIED_PROMOTION_APP_ID"' in runbook
     assert "environments/governance" in runbook  # nosec B101
 
 
@@ -155,7 +162,7 @@ def test_runbook_step_six_repo_create_and_push_is_operator() -> None:
 
 
 def test_runbook_step_seven_gated_real_applies_is_operator() -> None:
-    """Step 7: gated real applies via @Kravalg PR comments."""
+    """Step 7: maintainer request and separate @Kravalg approval."""
     runbook = _runbook()
 
     assert (  # nosec B101
@@ -176,6 +183,8 @@ def test_runbook_step_eight_break_glass_is_operator() -> None:
     )
     assert "break-glass" in runbook  # nosec B101
     assert "logged" in runbook  # nosec B101
+    assert "separate explicit authorization" in runbook
+    assert "does not authorize local root applies" in runbook
 
 
 def test_runbook_enumerates_eight_operator_steps() -> None:
@@ -184,7 +193,8 @@ def test_runbook_enumerates_eight_operator_steps() -> None:
     step_headers = [
         "Step 1 — Trusted state initialization and reviewed governance apply "
         "[OPERATOR]",
-        "Step 2 — Pin the per-account OIDC provider ARN before first apply [OPERATOR]",
+        "Step 2 — Verify the committed per-account OIDC provider ARN "
+        "before first apply [OPERATOR]",
         "Step 3 — Verify each stack's cost-anomaly monitor matches its account "
         "[OPERATOR]",
         "Step 4 — Configure the protected governance environment + branch protection "

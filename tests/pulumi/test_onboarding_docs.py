@@ -70,9 +70,15 @@ def test_onboarding_states_two_account_isolation_and_sole_approver() -> None:
     assert "eu-central-1" in agents  # nosec B101
     assert "@Kravalg" in agents  # nosec B101
     assert "@dmytrocraft" in agents  # nosec B101
+    normalized = " ".join(agents.split())
+    assert (
+        "current write-permission maintainer other than `@Kravalg` requests"
+        in normalized
+    )
+    assert "`@Kravalg` reviews and approves the protected environment" in normalized
 
 
-def test_onboarding_describes_self_deploy_and_governance_apply_check() -> None:
+def test_onboarding_describes_self_deploy_and_governance_promotion_check() -> None:
     """Self-deploy hand-off and required Governance Promotion are documented."""
     agents = _agents_md()
 

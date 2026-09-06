@@ -239,33 +239,37 @@ any governance apply proceeds.
 
 ---
 
-## C. PR-comment deploy gating to `@Kravalg` (test-then-prod-before-merge)
+## C. Maintainer request and separate `@Kravalg` approval (test-then-prod-before-merge)
 
-### FR13 — Author gate: only `@Kravalg` may `/pulumi … up` on governance-touching PRs
-**[CODE]** For a PR that touches governance/IAM paths, `/pulumi test up` and `/pulumi prod up`
-SHALL be accepted **only** when the comment author login is `@Kravalg`; any other author SHALL be
-rejected. Non-governance PRs retain the existing association-based authorization.
+### FR13 — Current-write requester and separate protected reviewer
+**[CODE]** `/pulumi test up` and `/pulumi prod up` require an original comment author
+with current repository write permission whose login is not the sole reviewer
+`@Kravalg`. The intake association check is defense-in-depth; the trusted runner
+re-resolves the original comment and permission before credentials. Empty login,
+revoked write access and sole-reviewer requests SHALL fail closed. @dmytrocraft may
+request plan/up; @Kravalg separately approves the protected environment with
+`prevent_self_review=true`. Plan still requires existing association authorization.
 - **AC↔:** AC-4
-- **Foundation:** `scripts/pulumi_pr_comment.py` (`AUTHORIZED_ASSOCIATIONS` `:9`,
-  `author_is_authorized:43-44`) extended with a login input + a path-touched signal; intake
-  workflow `.github/workflows/pulumi-pr-commands.yml` extended to compute changed paths.
-- **Verify:** Unit tests over the parser: (governance path + author=`Kravalg` + `up`) → authorized;
-  (governance path + author≠`Kravalg` + `up`) → rejected; (non-governance path) → existing
-  association rule unchanged. `@dmytrocraft` opening the PR is allowed; only the `up` trigger is
-  gated (research R5).
+- **Foundation:** `scripts/pulumi_pr_comment.py`, the installed main preflight and
+  `.github/workflows/pulumi-pr-commands.yml`.
+- **Verify:** Reject Kravalg, missing login and revoked permission for up; accept a
+  verified current-write requester distinct from the reviewer. Recheck original
+  comment identity rather than trusting the workflow dispatcher. Scope still routes
+  governance PRs to their dedicated controller; non-governance up also preserves
+  the requester/reviewer separation.
 
 ### FR14 — Path-aware detection of governance-touching PRs
 **[CODE]** The intake workflow SHALL determine whether a PR touches the governance/IAM paths
 (the same path set as FR10) and pass that signal into the author gate (FR13).
 - **AC↔:** AC-4
-- **Foundation:** intake workflow has no diff step today (research §4.3); add a changed-paths
-  computation feeding the parser input.
+- **Foundation:** the installed intake computes changed paths and the trusted runner recomputes
+  scope independently; neither trusts a payload boolean alone.
 - **Verify:** Test asserts the path-detection logic flags PRs that modify any governance/IAM glob
   and does not flag PRs that touch only unrelated paths (shares the FR10 glob set — single source
   of truth).
 
 ### FR15 — Test-then-prod ordering with success required before merge
-**[CODE]** A governance deploy triggered by `@Kravalg` SHALL run `test` then `prod` in order,
+**[CODE]** A governance deploy requested by a verified maintainer and separately approved by `@Kravalg` SHALL run `test` then `prod` in order,
 with prod gated on test success, and the PR SHALL NOT be mergeable until the required governance
 deploy checks succeed.
 - **AC↔:** AC-4
@@ -274,8 +278,8 @@ deploy checks succeed.
   (`_github_repository_controls.py:8-33`). This requirement composes/reuses, plus adds the
   governance checks to the required set.
 - **Verify:** Workflow-graph test asserts `prod_*` jobs depend on `test_*` success; a controls
-  test asserts the governance apply check is in the required-status-checks set for the protected
-  branch.
+  test asserts App-issued `Governance Promotion` is required and needs all four successful
+  test/prod apply/drift stages. `Governance Apply` remains informational.
 
 ---
 
@@ -373,23 +377,26 @@ as-is.
   `Pulumi.prod.yaml` cost-anomaly ARN `933245420672`, `docs/github-ci-bootstrap-stack.md:75-76`
   already two-account-correct).
 - **Verify:** A test asserts no account-number literal appears in component Python under
-  `pulumi/infra/*.py`; the test stack config pins `891377212104` and the prod stack config pins
+  `pulumi/infra/**/*.py`; the test stack config pins `891377212104` and the prod stack config pins
   `933245420672`; if `costAnomalyMonitorArn` is present its account matches its stack's account
   (test→`891377212104`, prod→`933245420672`).
 
-### FR22 — Full secret-read deny set on read-only / config-read roles
-**[CODE]** The read-only and config-read roles SHALL carry an explicit `Effect: Deny` for the full
-secret-leaking surface: `secretsmanager:GetSecretValue`, `kms:Decrypt`, `ssm:GetParameter*`,
-`lambda:GetFunction`, `ec2:GetPasswordData`, `*:GetAuthorizationToken` (incl.
-`ecr:GetAuthorizationToken`), `sts:GetSessionToken`, `cognito-identity:Get*`. This deny SHALL NOT
-be attached to the apply/deploy backend roles (which legitimately need `kms:Decrypt`).
+### FR22 — Purpose-specific secret-read deny guards
+**[CODE]** Preview/drift SHALL deny secret-leaking reads including
+`secretsmanager:GetSecretValue`, parameter values, function code, password data and
+token-vending actions. The read-only Deny SHALL exclude `kms:Decrypt` so the
+alias-scoped Pulumi backend Allow can decrypt encrypted stack configuration.
+Config-read SHALL allow only its owned CI secret; its general Deny excludes
+GetSecretValue and Decrypt, while independent conditional Decrypt Denies require
+both regional Secrets Manager service and exact owned-secret encryption context.
+Apply SHALL retain its separate surgical secret-read Deny and owned backend KMS
+access. A broad shared Deny must not override these intended bounded operations.
 - **AC↔:** AC-7
-- **Foundation:** today only `secretsmanager:GetSecretValue` is denied
-  (`ci_bootstrap.py:355-380`, verified `_read_only_policy_document`); read-only ALLOW list
-  currently includes `kms:Get*`/`ecr:Get*` (`:73-74,82-84`) — Deny wins (research R3).
-- **Verify:** Unit test asserts every deny action is present in the read-only/config-read policy
-  documents AND absent (as a deny) from apply/deploy backend policies; a regression test asserts
-  the apply role retains its needed `kms:Decrypt` on the secrets key.
+- **Foundation:** `_read_only_policy_document`, `_ci_config_read_policy` and the
+  apply-role secret-read policy in the current component source.
+- **Verify:** Negative tests reject direct/cross-secret decryption and arbitrary
+  secret reads; positive tests preserve owned service-mediated config reads and
+  backend-key decryption for preview/drift/apply. Live acceptance remains separate.
 
 ### FR23 — No wildcard `Allow` on deployment roles; Access Analyzer + CrossGuard clean
 **[CODE]** No governance deployment role policy SHALL contain a wildcard `Allow` (`Action:*` or
@@ -512,14 +519,18 @@ SHALL be `awskms://`; CI-config secret values written only when explicitly enabl
 | `user-service-infrastructure` scaffold/templates + catalog entry + self-deploy template (FR19, FR20) | Create repo in `VilnaCRM-Org` + actual `git push`; set GitHub repo variables (runbook in FR18) |
 | Secret-deny set (FR22), no-wildcard validation (FR23), all tests (FR24), all NFRs | Real AWS applies + capturing real ARNs/outputs |
 
-## Architect decisions still open (carried from research §8)
+## Resolved architecture decisions
 
-1. Account-model correctness — keep component code account-parametric across the two accounts
-   (test `891377212104`, prod `933245420672`) (R1 / FR21).
-2. New project dir vs. multi-repo *mode* of the existing bootstrap project (FR9).
-3. Whether to unify `PulumiDeploy-*` onto the stronger bootstrap trust shape (R2) and how to
-   handle import/replace.
-4. Exact CODEOWNERS path globs (R4 / FR10) — must hit governance/IAM only.
-5. Author-gate mechanism: changed-path compute + `--author-login` vs. environment-reviewer only
-   (FR13/FR14).
-6. Whether new governance `infra` code gets its own import-linter contract (R8 / NFR3).
+Architecture §0 resolves the earlier research questions:
+
+1. Two accounts with runtime account assertions and no component account literals (D1/FR21).
+2. Separate `pulumi/governance` project (D2/FR9).
+3. Strong dedicated roles; legacy `PulumiDeploy-*` remains untouched (D3).
+4. Explicit credential-bearing CODEOWNERS globs and equality tests (D5/FR10).
+5. Path-aware routing, original current-write requester distinct from Kravalg, and
+   separate protected-environment review (D6/FR13–14).
+6. Governance import boundaries are enforced by the committed import-linter contract (D7/NFR3).
+
+Operator-owned boundary/role inventory, real repository identity, trusted state
+initialization and real test/prod apply/drift acceptance remain prerequisites; these
+are live verification obligations, not unresolved architecture choices.

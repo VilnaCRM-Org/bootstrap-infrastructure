@@ -49,7 +49,7 @@ this notice does not mark them complete.
 ## Orchestration log
 
 The BMAD Architect ran the implementation-readiness gate against the four planning artifacts
-(`research.md`, `prd.md`, `architecture.md`, `epics-stories.md`) and three adversarial critiques
+(`research.md`, `prd.md`, `architecture.md`, `epics.md`) and three adversarial critiques
 (SECURITY=FAIL, AWS-SRE=CONCERNS, FEASIBILITY=FAIL, 21 blocking findings total). Each finding was
 first verified against live code on `feat/multi-repo-governance` (runner triggers + preflight,
 `_deployment_role_subjects`, `default_pull_request_rule` flags, intake `client_payload` dispatch) —
@@ -59,7 +59,7 @@ stale-review hardening, rewritten §7.2 dedicated-event governance runner, §7.5
 success-before-merge, §3.1/§5.2 platform-bootstrap-key removal for FR3, §3.2 OIDC-by-ARN, §4
 canonical full-slug naming, §9.2 per-catalog-kind fanout, §9.4 decided import-linter + parametric
 account/region mock seam, §10 operator steps incl. cost-anomaly + break-glass, §12.1 disposition
-table) and `epics-stories.md` (split E1.S4→E1.S4a/E1.S4b, rewrote E1.S8 as the dedicated env-gated
+table) and `epics.md` (split E1.S4→E1.S4a/E1.S4b, rewrote E1.S8 as the dedicated env-gated
 governance runner, hardened E2.S2/E2.S3, redirected E3.S2/E3.S3 to dedicated-event dispatch, added
 the golden parity fixture to E1.S2, the apply-role Deny to E1.S3, the per-catalog fanout + length
 guard to E1.S7, preview-blocked to E5.S1, name-parity to E5.S2, and the no-provider-create structural
@@ -67,7 +67,7 @@ assertion to E6.S1; updated sequencing, dependencies, and AC traceability). The 
 finding (SECURITY-7 within-account cross-repo blast radius) is an accepted property of multi-tenant
 governance — now lower because test↔prod are isolated by separate accounts (test `891377212104`, prod
 `933245420672`) — documented as a residual risk with recommended hardening. **Verdict: PASS** (conditional
-amendments are now in the artifacts). `readiness.md` records the full traceability matrix, per-finding
+amendments are now in the artifacts). `implementation-readiness-report.md` records the full traceability matrix, per-finding
 disposition, residual risks, and operator-only steps.
 
 ## Final epic / story order (forward-safe; each leaves main green)
@@ -102,9 +102,10 @@ E6.S4  CrossGuard + IAM Access Analyzer + no-escape-hatch verification
 ## Stories needing operator access
 
 **None.** Every story is pure CODE / IaC / docs, implementable and testable with **no live AWS or
-GitHub-admin credentials** (the rule for all stories). All operator actions (one-time
-AdministratorAccess apply, protected-environment PUT, repo variables, OIDC-ARN pinning, cost-anomaly
-monitor creation, repo create + push, real applies, break-glass) are documented in the **E4.S2**
+GitHub-admin credentials** (the rule for all stories). Live prerequisites (operator-owned boundary/role inventory, trusted state-only
+initialization, protected-environment controls, verified repo variables and committed
+OIDC pins, optional monitor metadata verification, repo identity/publication,
+protected GitHub OIDC saved-plan applies and separately authorized break-glass) are documented in the **E4.S2**
 operator runbook and executed by the operator outside the implementer loop. E1.S5/E1.S8/E5.S1 are
 tagged "real apply / live env PUT / preview is N/A — operator runbook"; their **tests assert
 structure only** and never call live APIs or `pulumi preview`/`up`.

@@ -153,7 +153,8 @@ Covers FR1–FR9, FR21, FR22 (config-read half), FR23, NFR6, NFR7. Builds all re
     branch and the tag derivation).
   - negative: passing repo B context produces B-scoped bucket ARNs, never A's.
   - edge: `apply`+`prod` purpose yields only `environment:prod` subject; non-prod yields
-    branch-ref + `environment:test` (governance apply-role subject override is added in E1.S4, §5.1a).
+    `environment:test` only for test apply; prod apply uses `environment:prod` only
+    (§5.1a). Neither service apply subject accepts a bare branch ref.
 - **Dependencies:** E1.S1.
 - **Operator access:** NO.
 
@@ -166,9 +167,11 @@ Covers FR1–FR9, FR21, FR22 (config-read half), FR23, NFR6, NFR7. Builds all re
   - `~ pulumi/infra/ci_config.py` — add `repo` arg; when set, `_ci_config_project` uses
     `sanitize_bucket_component(repo)` (full slug, canonical, AWS-SRE-4), secret IDs and trust
     subjects become repo-scoped. Add second `Effect: Deny` statement `DenySecretLeakingReads`
-    (`kms:Decrypt`, `ssm:GetParameter*`, `lambda:GetFunction`, `ec2:GetPasswordData`,
+    (`ssm:GetParameter*`, `lambda:GetFunction`, `ec2:GetPasswordData`,
     `ecr:GetAuthorizationToken`, `sts:GetSessionToken`, `cognito-identity:Get*`) to
-    `_ci_config_read_policy`. Also add the **full** Deny set (including `secretsmanager:GetSecretValue`)
+    `_ci_config_read_policy`; preserve conditional Decrypt Denies for regional
+    Secrets Manager and exact owned-secret context. The general Deny excludes
+    Decrypt. Also add the read-only Deny set (excluding Decrypt) (including `secretsmanager:GetSecretValue`)
     to `_read_only_policy_document` in `ci_bootstrap.py`.
   - `~ pulumi/infra/ci_bootstrap.py` — replace the single-action Deny in `_read_only_policy_document`
     with the full Deny block (§5.3). **Add the surgical APPLY-role Deny (§5.2a, SECURITY-5):** a
@@ -191,26 +194,28 @@ Covers FR1–FR9, FR21, FR22 (config-read half), FR23, NFR6, NFR7. Builds all re
 - **Dependencies:** E1.S2.
 - **Operator access:** NO.
 
-### Story 1.4: [E1.S4a] `RepoGovernance` component + governance payload + apply-subject override
+### Story 1.4: [E1.S4a] `RepoGovernance` component + governance payload + service apply subjects
 
 - **Atomic scope:** The per-repo half of `governance.py` (split from the original E1.S4 — sizing
   note): one `RepoGovernance` wiring state bucket (FR5), KMS key/alias (FR6), CI-config secret +
   config-read role (FR4), preview/apply/drift trio (FR2/FR3), the governance CI-config payload
-  builder (no operations-triage requirement), and the **governance apply-subject override**
-  (`_governance_apply_subjects`, §5.1a: apply role trusts ONLY `environment:governance`, both test
-  and prod — SECURITY-2). Receives `provider_arn`/`account_id`/`region` as inputs (no provider
+  builder (no operations-triage requirement), and the **service apply subjects**
+  (`_deployment_role_subjects`, §5.1a: test uses `environment:test`, prod uses
+  `environment:prod`, without bare branch refs). Dedicated central governor roles
+  separately use `environment:governance` and exact bounded catalog authority. Receives `provider_arn`/`account_id`/`region` as inputs (no provider
   creation here).
 - **Files:**
   - `+ pulumi/infra/governance.py` (part 1) — `GovernanceStackArgs` (incl. `oidc_provider_arn`,
     injectable `region`), `RepoGovernance` (type token `bootstrap:governance:RepoGovernance`),
-    `_governance_payloads(...)`, `_governance_apply_subjects(repo, env)`. Delegating helpers keep
+    `_governance_payloads(...)`, existing `_deployment_role_subjects`. Delegating helpers keep
     ruff `max-complexity ≤ 12`. ARNs use `{account_id}`/`{region}` interpolation (no
     `891377212104`/`eu-central-1` literal — FEAS-3).
 - **Acceptance criteria:** FR2, FR3, FR4, FR5, FR6, FR23, SECURITY-1/2/5, NFR7. `make test-unit`
   green for a single synthetic repo under the Pulumi mocks.
 - **Test cases:**
   - positive: per-repo bucket+replica, KMS key+alias, 3 deploy roles + config-read; apply-role trust
-    subject == `environment:governance` ONLY (test AND prod).
+    subject == `environment:test` for test and `environment:prod` for prod; neither
+    service apply role has IAM administration.
   - negative: repo A deploy policy contains no substring of repo B's bucket/alias; no
     `pulumi-platform-bootstrap` reference (AWS-SRE-1); no `Effect:Allow` wildcard (FR23).
   - edge: `write_secret_values=False` → no secret-version resource; ARNs render under mock account
@@ -311,11 +316,11 @@ Covers FR1–FR9, FR21, FR22 (config-read half), FR23, NFR6, NFR7. Builds all re
   - `~ scripts/validate_repository_catalogs.py`:
     - Detect catalog kind (by filename `repositories.governance.json` → `governance`, else
       `deployment`/`central`) and apply a **separate** governance fanout — NO central-stack resources;
-      `iamRoles = 3 (trio) + config_read_count + 1 (replication)`; `managedPolicies ≈ 7 × repos`;
+      `iamRoles = 3 (trio) + config_read_count + 1 (replication)`; `managedPolicies = 2 × repos`;
       `secrets = suffix_count × repos`; with its own thresholds. Do NOT bump the shared
       `PER_ENVIRONMENT_FANOUT` used by `repositories.bootstrap.json`.
     - Add an account-quota headroom report (1000 roles, 1500 managed policies, 10
-      managed-policies-per-role; flag the apply role's 7/10 per-role usage).
+      managed-policies-per-role; report service apply's 2/10 usage separately from central governor limits).
     - Add unique-`project` structural check and the over-64-char role-name rejection.
 - **Acceptance criteria:** FR1, FR8, §4 uniqueness, AWS-SRE-6, FEASIBILITY-4.
   `python scripts/validate_repository_catalogs.py --fanout-report` succeeds for
@@ -345,7 +350,7 @@ Covers FR1–FR9, FR21, FR22 (config-read half), FR23, NFR6, NFR7. Builds all re
     - `on: repository_dispatch: types: [pulumi-governance-command]` only (no `workflow_dispatch`).
     - `preflight` job (no `id-token`): re-validate PR number/head SHA/open-not-merged/same-repo head;
       resolve `client_payload.comment_id` → author via `gh api .../issues/comments/{id}`, assert
-      `login==Kravalg`; recompute `governance_touched` server-side from head SHA changed files via
+      current write permission and `login!=Kravalg` for the original requester; recompute `governance_touched` server-side from head SHA changed files via
       `scripts/governance_paths.py`, reject if not governance. All `client_payload` fields treated as
       untrusted.
     - `governance_test_apply`: `environment: governance`, `PULUMI_DIR=pulumi/governance`,
@@ -354,18 +359,21 @@ Covers FR1–FR9, FR21, FR22 (config-read half), FR23, NFR6, NFR7. Builds all re
       (`needs: [governance_test_apply, governance_test_post_apply_drift]`, `environment: governance`,
       `PULUMI_DIR=pulumi/governance`, `make pulumi-up-plan` prod stack).
     - final `comment_result` / status job: `gh api -X POST repos/{repo}/statuses/{head_sha}`
-      with context `"Governance Apply"` (state from `governance_prod_apply` outcome) — the
-      success-before-merge mechanism (FR15, FEASIBILITY-1).
+      with informational context `"Governance Apply"`. The dedicated main-only evidence
+      App issues required `"Governance Promotion"` only after authenticated preflight
+      and all four test/prod apply/drift stages succeed, with verified saved-plan
+      artifacts and immutable base/head (FR15, FEASIBILITY-1).
 - **Acceptance criteria:** FR16, FR12 (env on BOTH apply jobs), FR13/SECURITY-1 (runner author
   re-check), SECURITY-2 (both applies gated), FEASIBILITY-1 (status posted to head SHA).
   actionlint/yamllint green; workflow lint test asserts: both apply jobs `environment: governance`
-  + `PULUMI_DIR=pulumi/governance`; preflight resolves comment author and asserts Kravalg; no
+  + `PULUMI_DIR=pulumi/governance`; preflight resolves the original comment author and verifies current write permission
+  plus requester != Kravalg; no
   `workflow_dispatch`; status-post step present with context `"Governance Apply"`.
 - **Test cases:**
   - positive: both apply jobs declare `environment: governance` and `PULUMI_DIR=pulumi/governance`;
     status-post step targets `{head_sha}` with context `"Governance Apply"`.
   - negative: workflow has no `workflow_dispatch`; does not invoke `make pulumi-up` (direct apply);
-    preflight rejects when resolved comment author ≠ Kravalg or recomputed scope is non-governance.
+    preflight rejects a sole-reviewer requester, revoked write permission or non-governance scope.
   - edge: `governance_prod_apply` depends on `governance_test_*` success (ordering preserved); plan
     job uploads the saved-plan artifact consumed by up-plan.
 - **Dependencies:** E1.S5 (project exists), E1.S6 (`governance_paths.py`), E2.S2 (the `governance`
@@ -401,9 +409,9 @@ Covers FR10, FR11, FR12 (control half), FR15 (required-check half), D5.
 - **Files:**
   - `~ scripts/_github_repository_controls.py` — add `GOVERNANCE_ENVIRONMENT = "governance"`,
     `governance_environment_payload(reviewer_id)`, `governance_environment_verification_blockers(...)`.
-    **Also harden `default_pull_request_rule()` (SECURITY-3, architecture §7.6):** set
-    `dismiss_stale_reviews_on_push=True` and `require_last_push_approval=True` (currently both
-    `False`, lines 57/59).
+    **Preserve `default_pull_request_rule()` hardening (SECURITY-3, architecture §7.6):**
+    `dismiss_stale_reviews_on_push=True` and `require_last_push_approval=True` are
+    already implemented and tested; live readback remains a separate prerequisite.
   - `~ scripts/configure_github_repository_controls.py` — emit
     `payloads["governanceEnvironment"]` in dry-run + apply branches; add
     `PUT repos/{repo}/environments/governance` to the apply branch; add a governance blocker to
@@ -420,29 +428,24 @@ Covers FR10, FR11, FR12 (control half), FR15 (required-check half), D5.
 - **Dependencies:** E2.S1 (Kravalg as the owner concept) — soft; can run independently of S1.
 - **Operator access:** NO (live `PUT` is N/A — operator runbook E4.S2).
 
-### Story 2.3: [E2.S3] Governance apply check: required-status + commit-status-post wiring
+### Story 2.3: [E2.S3] App-issued Governance Promotion merge gate
 
-- **Atomic scope:** Register the governance apply check context `"Governance Apply"` in
-  `REQUIRED_STATUS_CHECKS` AND confirm the governance runner actually **posts** that context to the
-  PR head SHA — because the runner triggers on `repository_dispatch` (not `pull_request`) it cannot
-  natively report a check, so a required check with no reporter would make the PR permanently
-  unmergeable (FEASIBILITY-1). The status-post step itself lives in E1.S8; this story binds the two
-  and asserts they agree.
-- **Files:**
-  - `~ scripts/_github_repository_controls.py` — add the `"Governance Apply"` context to
-    `REQUIRED_STATUS_CHECKS`.
-- **Acceptance criteria:** FR15, FEASIBILITY-1. `tests/unit/test_repository_controls.py` asserts the
-  governance check is in the required set; a workflow-graph test asserts `pulumi-governance.yml`
-  contains a `gh api .../statuses/{head_sha}` step posting the **byte-identical** context string
-  `"Governance Apply"`.
-- **Test cases:**
-  - positive: `"Governance Apply"` present in `REQUIRED_STATUS_CHECKS` AND posted by the runner to
-    the head SHA (context strings match exactly).
-  - negative: removing it from the tuple, OR a context-string mismatch between the tuple and the
-    runner's status-post, fails the test.
-  - edge: existing required checks remain (no regression to test/prod check list).
-- **Dependencies:** E2.S2, E1.S8 (the check name must match the runner's status-post context).
-- **Operator access:** NO.
+- **Atomic scope:** `REQUIRED_STATUS_CHECKS` requires `Governance Promotion` from
+  the verified dedicated evidence App. `Governance Apply` remains informational.
+  The installed main publisher resolves the source run, verifies saved-plan
+  artifacts and immutable base/head, and requires authenticated preflight plus
+  successful test apply, test post-apply drift, prod apply and prod post-apply drift.
+- **Files:** `scripts/_github_repository_controls.py`, trusted promotion publisher
+  and associated controls/workflow tests; E1.S8 supplies the governance run evidence.
+- **Acceptance criteria:** FR15, FEASIBILITY-1. The required context and App issuer
+  match the verified publisher. A successful prod apply alone cannot promote.
+- **Test cases:** positive — all four stages and bound artifacts allow promotion;
+  negative — wrong issuer, missing/skipped/failed stage, moved base/head or missing
+  artifact rejects success; edge — informational `Governance Apply` cannot satisfy
+  the required check and existing required checks remain intact.
+- **Dependencies:** E2.S2, E1.S8 and the installed trusted-main evidence App.
+- **Operator access:** NO for source validation; live App/control installation and
+  real apply/drift evidence remain explicit operator prerequisites.
 
 ---
 
@@ -454,23 +457,19 @@ control — the *trusted* governance runner (E1.S8) re-derives the comment autho
 governance scope server-side before assuming AWS credentials. A direct `repository_dispatch` cannot
 bypass the author check because the runner re-resolves it from `comment_id`.
 
-### Story 3.1: [E3.S1] Author/path gate in `scripts/pulumi_pr_comment.py`
+### Story 3.1: [E3.S1] Requester/path gate in `scripts/pulumi_pr_comment.py`
 
-- **Atomic scope:** Extend the parser so `/pulumi … up` on a governance-touching PR is accepted only
-  when the comment author is `@Kravalg`; non-governance PRs keep association-based auth; `plan` is
-  never gated (FR13, D6).
-- **Files:**
-  - `~ scripts/pulumi_pr_comment.py` — add `KRAVALG_LOGIN`, extend
-    `author_is_authorized(author_association, *, author_login="", governance_touched=False, action="")`,
-    add `--author-login` + `--governance-touched` CLI flags, thread through `build_outputs`.
-- **Acceptance criteria:** FR13, D6. `make test-unit` via `tests/unit/test_pulumi_pr_comment.py`
-  (extended) / new `tests/unit/test_pr_comment_gate.py`.
-- **Test cases:**
-  - positive: (governance + `Kravalg` + `up`) → authorized; (governance + anyone + `plan`) → assoc rule.
-  - negative: (governance + non-`Kravalg` + `up`) → rejected even if association is OWNER.
-  - edge: case-insensitive login compare (`kravalg` == `Kravalg`); non-governance + `up` keeps
-    existing association rule; missing `--author-login` defaults to rejected for governance `up`.
-- **Dependencies:** E1.S6 (gate semantics align with the path set).
+- **Atomic scope:** Intake rejects `up` with an empty login or the sole reviewer's
+  login `Kravalg`, then applies existing association checks. The trusted runner
+  independently verifies the original comment author's current write permission.
+  Plan retains association authorization; path detection selects the controller.
+- **Files:** parser and installed main preflight; no change to AGENTS requester rules.
+- **Acceptance criteria:** FR13, D6; current-write requester != protected reviewer.
+- **Test cases:** positive — verified dmytrocraft may request up and Kravalg separately
+  approves; negative — Kravalg, empty login, revoked permission or forged original
+  comment fails; edge — comparison is case-insensitive and non-governance up retains
+  requester/reviewer separation.
+- **Dependencies:** E1.S6 and trusted runner re-authorization in E1.S8.
 - **Operator access:** NO.
 
 ### Story 3.2: [E3.S2] Intake workflow computes changed paths + passes author login (FR14)
@@ -546,11 +545,11 @@ Covers FR17, FR18, FR21 (docs half).
 
 ### Story 4.2: [E4.S2] Operator runbook + account-model correctness verification (two accounts)
 
-- **Atomic scope:** Add the operator runbook (one-time bootstrap apply, branch/env config, repo
+- **Atomic scope:** Add the operator runbook (trusted state-only initialization, protected saved-plan apply, branch/env config, repo
   variables, repo create + push, gated real applies) and the account-model correctness work: keep
   component code account-parametric (no account literals) and verify the per-stack account facts
   (FR18, FR21 docs/verify half). There is **no** single-account reconciliation and no stripping of
-  `933245420672` — the live two-account config is already correct.
+  `933245420672` — committed account pins must be verified against live metadata.
 - **Files:**
   - `+ docs/governance-stack.md` — design + operator runbook (§10).
   - `~ AGENTS.md` — link the operator runbook section.
@@ -558,13 +557,13 @@ Covers FR17, FR18, FR21 (docs half).
     two-account-correct — left unchanged. Do NOT repoint the prod `costAnomalyMonitorArn` away from
     `933245420672`.)
 - **Acceptance criteria:** FR18, FR21, FEASIBILITY-6. Doc presence test asserts each operator step
-  (incl. per-account OIDC-ARN pinning, cost-anomaly-ARN-matches-stack verification, break-glass) is
+  (incl. verification of committed per-account OIDC ARNs, cost-anomaly-ARN-matches-stack verification, break-glass) is
   enumerated + tagged operator-only. A test asserts no account-number literal appears in component
-  Python under `pulumi/infra/*.py`; the test stack config pins `891377212104` and the prod stack
+  Python under `pulumi/infra/**/*.py`; the test stack config pins `891377212104` and the prod stack
   config pins `933245420672`.
 - **Test cases:**
-  - positive: runbook enumerates each operator step (one-time apply, env/branch config, repo vars,
-    per-account OIDC-ARN pin, cost-anomaly-ARN-matches-stack check, repo create+push, gated applies,
+  - positive: runbook enumerates each operator step (state-only init and saved-plan apply, env/branch config, repo vars,
+    committed per-account OIDC-ARN verification, cost-anomaly-ARN-matches-stack check, repo create+push, gated applies,
     break-glass) with a `gh api`/Pulumi command reference.
   - negative: no hardcoded `891377212104`/`933245420672` literal in component Python; **if**
     `costAnomalyMonitorArn` is present its account matches its stack (test→`891377212104`,
@@ -643,13 +642,13 @@ Covers FR24, NFR1–NFR5, NFR7, D7, plus the structural-shape lockstep (R6).
   add the governance structural test mirroring the bootstrap test (FR24, R6).
 - **Files:**
   - `+ tests/unit/test_governance.py` (FR2/FR3/FR4/FR5/FR6/FR7/FR8/FR22/FR23/FR1 fan-out + isolation;
-    plus the amended verifies: apply-subject==`environment:governance` (§5.1a), no
+    plus the amended verifies: service apply subjects == `environment:test` / `environment:prod` (§5.1a), no
     `pulumi-platform-bootstrap` in service deploy docs (AWS-SRE-1), apply-role surgical Deny
     (SECURITY-5), account-assertion both branches under mocks (AWS-SRE-5))
   - `~ tests/pulumi/test_project_structure.py` (add `test_governance_project_*`: name `governance`,
     stacks {example,test,prod}, `awskms://`, the test stack config pins `891377212104` and the prod
     stack config pins `933245420672` (each pins its own account), no account literal in component
-    Python under `pulumi/infra/*.py`; **assert the governance project registers ZERO
+    Python under `pulumi/infra/**/*.py`; **assert the governance project registers ZERO
     `aws.iam.OpenIdConnectProvider` create — provider consumed by `.get()` only** (AWS-SRE-2))
 - **Acceptance criteria:** FR24, FR7 (no-provider-create), NFR6 (bootstrap test intact + golden parity
   fixture from E1.S2). `make test-unit` + `make test-pulumi` green.

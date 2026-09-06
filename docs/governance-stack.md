@@ -84,14 +84,14 @@ CI secret.
 
 ## Operator Runbook
 
-The following steps require live AWS-admin or GitHub-org-admin credentials.
-Every step below is marked **OPERATOR** because none of them is a committable
-change a non-privileged agent makes; they are performed by the operator with
-real credentials. Pure code/IaC/docs changes are delivered through the gated
-PR-comment flow and are out of this runbook.
+The following **OPERATOR** steps involve live verification or explicitly authorized
+setup. Use only the privileges needed for each action; metadata reads do not
+require authority to apply infrastructure. Resource updates use protected GitHub
+OIDC and reviewed saved plans. No local root apply is authorized by this runbook.
 
-Before each AWS apply, remove inherited shell credentials and verify the exact
-account. Do not set empty AWS variables.
+Before metadata verification, remove inherited shell credentials and verify the
+exact account through the approved short-lived profile. Do not set empty AWS
+variables. These read-only probes do not authorize a subsequent local apply.
 
 ```bash
 unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_PROFILE
@@ -124,7 +124,7 @@ The bootstrap entrypoint requires `github-ci-bootstrap:awsAccountId` and checks
 the live caller account before allocating any infrastructure resource. The
 committed non-secret test configuration pins `891377212104`; prod pins
 `933245420672`. Missing, malformed or mismatched account IDs fail closed.
-Keep those assertions in any external local config used for an operator apply.
+Keep those assertions in the trusted runner's private runtime config.
 
 The operator stack is also the sole owner of the platform control identities:
 CI configuration secrets/read roles, CI deployment roles, the OIDC provider,
@@ -192,10 +192,11 @@ manage it; the governor cannot widen its own delegation. The current policy
 layout rejects more than four managed repositories instead of silently
 exceeding the default ten managed-policy attachment quota per runner role.
 
-Run the existing one-time bootstrap runbook in
+Follow the ownership and execution prerequisites in
 [GitHub CI AWS bootstrap](github-ci-bootstrap-stack.md) for test, then prod.
-Use a hardware-MFA administrator identity, inspect the preview, and record the
-reviewed commit and role/policy changes. The new component exports only
+Missing operator-owned resources require an explicitly reviewed protected GitHub
+OIDC saved-plan installation; do not substitute local root applies. Record the
+reviewed source and actual role/policy evidence. The component exports only
 non-secret setup metadata in `governanceGithubVariables`:
 
 ```bash
@@ -281,12 +282,13 @@ OIDC KMS creation/tagging and each bounded service config-reader must succeed
 before declaring onboarding usable. A metadata-only preview or operator receipt
 cannot satisfy those integration obligations.
 
-### Step 2 — Pin the per-account OIDC provider ARN before first apply [OPERATOR]
+### Step 2 — Verify the committed per-account OIDC provider ARN before first apply [OPERATOR]
 
 The governance stack **consumes** its account's OIDC provider by ARN and
 **raises if the ARN is unset** — it never creates the provider. Before the first
-apply in Step 1, read `oidcProviderArn` from **each account's** `github-ci-bootstrap`
-stack output and pin it into the matching governance stack config:
+protected saved-plan apply, read `oidcProviderArn` from **each account's**
+`github-ci-bootstrap` stack output and verify it matches the already committed
+governance config. Stop on any mismatch; this step does not authorize repinning:
 
 ```bash
 # test account 891377212104 -> Pulumi.test.yaml
@@ -310,9 +312,9 @@ vice versa.
 ### Step 3 — Verify each stack's cost-anomaly monitor matches its account [OPERATOR]
 
 There is **no single-account reconciliation** and no stripping of
-`933245420672`: the live two-account config is already correct. Both anomaly
-monitors already exist — the `test` stack's monitor in `891377212104` and the
-`prod` stack's monitor in `933245420672`. Verify that each stack's
+`933245420672`: the committed two-account bindings remain distinct. Verify current metadata
+for each configured monitor rather than treating a config ARN as proof of live
+existence. Verify that each stack's
 `costAnomalyMonitorArn`, **if present**, has an account matching that stack's
 account, and **do NOT repoint prod away from `933245420672`**:
 
@@ -332,13 +334,17 @@ Apply the protected `governance` GitHub Environment (sole reviewer `@Kravalg`,
 `prevent_self_review: true`, administrator bypass disabled, and exactly one
 custom deployment rule for the `main` branch) and the hardened branch
 ruleset (`dismiss_stale_reviews_on_push` + `require_last_push_approval`) with a
-repo-admin token. Review the dry-run payload first, then apply:
+repo-admin token. Set `VERIFIED_PROMOTION_APP_ID` from the independently verified
+dedicated evidence App installation; do not substitute an ordinary status issuer.
+Review the dry-run payload first, then apply:
 
 ```bash
-python scripts/configure_github_repository_controls.py \
-  --repo VilnaCRM-Org/bootstrap-infrastructure --dry-run   # review the governanceEnvironment payload
-python scripts/configure_github_repository_controls.py \
-  --repo VilnaCRM-Org/bootstrap-infrastructure --apply
+uv run --frozen python scripts/configure_github_repository_controls.py \
+  --repo VilnaCRM-Org/bootstrap-infrastructure \
+  --promotion-app-id "$VERIFIED_PROMOTION_APP_ID" --dry-run   # review the governanceEnvironment payload
+uv run --frozen python scripts/configure_github_repository_controls.py \
+  --repo VilnaCRM-Org/bootstrap-infrastructure \
+  --promotion-app-id "$VERIFIED_PROMOTION_APP_ID" --apply
 ```
 
 The `--apply` branch `PUT`s `repos/{repo}/environments/governance` (requiring
@@ -397,20 +403,13 @@ proof for the exact head SHA only after test apply, test drift, prod apply and p
 
 ### Step 8 — Audited break-glass if @Kravalg is unavailable [OPERATOR]
 
-`@Kravalg` is the sole reviewer with `prevent_self_review: true`; if unavailable,
-no governance apply can proceed. Use one of these explicit, audited break-glass
-paths, then revert immediately:
-
-- **Temporary second reviewer:** an org-admin adds a time-boxed temporary second
-  reviewer to the `governance` environment (logged), and removes it immediately
-  after the apply.
-- **Operator-local direct apply:** an operator runs the Step 1 local
-  `pulumi -C pulumi/governance up` from a hardware-MFA admin session (logged),
-  then diffs the resulting roles against the committed Pulumi program before any
-  PR-comment apply is re-enabled.
-
-Both paths must be logged. The local bootstrap apply (Step 1) is the single most
-privileged action in the system and is the break-glass of last resort.
+Halt governance applies while the sole protected reviewer is unavailable. Prepare
+an exact emergency proposal and obtain separate explicit authorization before any
+reviewer change or privileged repair. The proposal must bind the account, backend,
+source and reviewed saved plan, explain the emergency and specify restoration and
+verification steps. Any authorized intervention must be logged and independently
+reviewed. This runbook does not authorize local root applies or temporarily adding
+a reviewer; routine resource updates remain on protected GitHub OIDC saved plans.
 
 ## Residual Risk
 

@@ -16,7 +16,9 @@ The final rebase produced `eacd8bd7601e77bb55dac6e4618a4aff5da710c3` with all
 `e8c79ab3a0ce3651fb9b529c48e8b0cdbe0c1659`; both have Git tree
 `7f97a18d2282e228c541b16f1f20919419e65501`. The subsequent independent source
 review corrected the runtime integration described below and removed one unused
-private-function parameter. Rendered IAM policies and workflow source are unchanged.
+private-function parameter. The next review iteration tightens invalid configuration
+handling and the generated initializer workflow; supported-input IAM policy and
+trust builders retain their existing semantics.
 
 ## Required dependency closure
 
@@ -126,7 +128,13 @@ system Python for the shared helper. All six affected container recipes now
 use `uv run --frozen python`; host preparation and isolated credential-loader
 commands retain their existing contract. The 72 CLI tests and six actual
 network-disabled container precondition probes pass after this correction.
-No IAM permission or trust was widened. A fresh comment run remains required.
+No IAM permission or trust was widened. The replacement comment run
+`34041427160`, requested by original comment `5560123911`, passed TEST plan
+creation and upload at `aaae5196e3e193cc4ec09dd6ef848bee14d8f98d` after Kravalg's
+protected preview approval. It proposed 48 creates (40 AWS resources, two
+providers, five components and the stack), with no updates, deletes or imports.
+This is preview evidence; no apply was requested. Later review fixes require a
+new current-head plan before any saved-plan replay.
 
 Qlty's unused private parameter and test binding were removed. The S3 policy
 test now reuses the installed strict IAM statement matcher while retaining
@@ -134,3 +142,34 @@ explicit-Deny precedence; it does not claim to evaluate effective AWS access
 or IAM conditions. Explicit account/context parameters, ASCII account digits
 and the scaffold's reviewed file allowlist remain intentional. No scanner or
 quality threshold was disabled.
+
+The full AI review identified further configuration and scaffold edge cases.
+Managed-service backend overrides now accept only the exact derived bucket URL;
+the controller backend remains separate. Required account/provider configuration
+is read before AWS invokes, and any governance region override must match the
+actual provider region. Invalid inputs fail before resource allocation. The
+generated artifact binds its Python project and lock identity, publishes the
+complete staged directory without overwriting a concurrent writer, and forwards
+runner UID/GID into the image build. The initializer explicitly selects TEST or
+PROD account/role variables, rejects malformed or cross-account values, and
+verifies the existing checkpoint and encrypted provider after select or init.
+Read/select/provider failures never become permission to initialize another stack.
+
+The canonical specs and runbooks now distinguish service from controller
+backends, service protected-environment trust from governance trust, the required
+App-issued `Governance Promotion` proof from informational `Governance Apply`,
+and exact central catalog authority from the narrower service boundary. Routine
+delivery remains GitHub-comment based; local root Pulumi applies are not part of
+the accepted operator workflow. Source tests and live deployment/owner evidence
+remain separate requirements.
+
+The combined review correction passes 1,875 unit tests and retains 100% combined
+coverage across 9,546 statements and 2,766 branches. All 250 structural tests
+pass. The affected Python quality, architecture, dependency, repository hygiene
+and security gates pass without weakened thresholds. A new generated
+`billing-infrastructure` checkout builds with UID/GID 1001; its matching lock
+passes `uv lock --check --offline`. With networking disabled, the container writes
+its runner-owned workspace, imports the full command dependencies and verifies
+its account/project binding. All three actual plan/apply/drift Make precondition
+probes reject missing provider configuration. No AWS resource operation occurs
+in those local tests. Hosted final-head CI and live deployment remain required.

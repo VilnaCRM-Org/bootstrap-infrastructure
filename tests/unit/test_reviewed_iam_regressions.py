@@ -305,6 +305,28 @@ def test_repository_default_branch_is_pinned_for_all_role_builders(same_name):
     assert settings.github_branch == "main"
 
 
+@pytest.mark.parametrize("branch", ["main", "release"])
+def test_legacy_same_repo_preserves_pinned_ids_when_repo_ids_are_absent(branch):
+    settings = replace(
+        governor_inputs().settings,
+        github_repository_id="1098568429",
+        github_repository_owner_id="114362548",
+    )
+    repo = replace(
+        REPO,
+        name=settings.repo,
+        repository_id=None,
+        repository_owner_id=None,
+        default_branch=branch,
+    )
+    actual = governance.RepoGovernance._repo_settings(settings, repo)
+    assert actual.github_branch == branch
+    assert actual.github_repository_id == settings.github_repository_id
+    assert actual.github_repository_owner_id == settings.github_repository_owner_id
+    assert settings.github_branch == "main"
+    assert (actual is settings) == (branch == "main")
+
+
 @pytest.mark.parametrize(
     "provider",
     [

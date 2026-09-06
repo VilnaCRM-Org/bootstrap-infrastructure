@@ -14,7 +14,9 @@ PULUMI_ROOT = Path(__file__).resolve().parents[2] / "pulumi"
 ENTRYPOINT = PULUMI_ROOT / "governance/__main__.py"
 
 
-def entry_modules(monkeypatch, values, repositories, region="eu-central-1"):
+def entry_modules(
+    monkeypatch, values, repositories, region="eu-central-1", region_reads=None
+):
     """Intercept only the entrypoint's external resource composition boundaries."""
     allocations = []
     exports = {}
@@ -33,10 +35,13 @@ def entry_modules(monkeypatch, values, repositories, region="eu-central-1"):
         allocations.append((name, args))
         return component
 
+    def get_region():
+        if region_reads is not None:
+            region_reads.append(region)
+        return SimpleNamespace(region=region)
+
     modules = {
-        "pulumi_aws": SimpleNamespace(
-            get_region=lambda: SimpleNamespace(region=region)
-        ),
+        "pulumi_aws": SimpleNamespace(get_region=get_region),
         "pulumi": SimpleNamespace(
             Config=lambda: config,
             export=lambda key, value: exports.update({key: value}),
@@ -68,6 +73,7 @@ def test_governance_entrypoint_executes_complete_contract(
         "githubRepositoryId": "1098568429",
         "githubRepositoryOwnerId": "114362548",
         "awsAccountId": "891377212104",
+        "githubOidcProviderArn": "pinned-provider",
     }
     if overrides:
         values.update(
@@ -87,7 +93,10 @@ def test_governance_entrypoint_executes_complete_contract(
         ]
     )
     allocations, exports, settings, catalog, component = entry_modules(
-        monkeypatch, values, repositories
+        monkeypatch,
+        values,
+        repositories,
+        region="eu-west-1" if overrides else "eu-central-1",
     )
     path = [item for item in sys.path if item != str(PULUMI_ROOT)]
     if overrides:
@@ -120,7 +129,13 @@ def test_governance_entrypoint_executes_complete_contract(
 
 
 @pytest.mark.parametrize(
-    "missing", ["githubRepositoryId", "githubRepositoryOwnerId", "awsAccountId"]
+    "missing",
+    [
+        "githubRepositoryId",
+        "githubRepositoryOwnerId",
+        "awsAccountId",
+        "githubOidcProviderArn",
+    ],
 )
 def test_governance_entrypoint_missing_required_identity_never_allocates(
     monkeypatch, missing
@@ -129,13 +144,18 @@ def test_governance_entrypoint_missing_required_identity_never_allocates(
         "githubRepositoryId": "1098568429",
         "githubRepositoryOwnerId": "114362548",
         "awsAccountId": "891377212104",
+        "githubOidcProviderArn": "pinned-provider",
     }
     del values[missing]
-    allocations, exports, *_ = entry_modules(monkeypatch, values, [])
+    region_reads = []
+    allocations, exports, *_ = entry_modules(
+        monkeypatch, values, [], region_reads=region_reads
+    )
     with pytest.raises(KeyError, match=missing):
         runpy.run_path(str(ENTRYPOINT))
     assert allocations == []
     assert exports == {}
+    assert region_reads == []
 
 
 @pytest.mark.parametrize("missing", ["repository_id", "repository_owner_id"])
@@ -158,7 +178,26 @@ def test_governance_defaults_to_actual_provider_region(monkeypatch):
         "githubRepositoryId": "1098568429",
         "githubRepositoryOwnerId": "114362548",
         "awsAccountId": "891377212104",
+        "githubOidcProviderArn": "pinned-provider",
     }
     allocations, *_ = entry_modules(monkeypatch, values, [], region="ap-south-1")
     runpy.run_path(str(ENTRYPOINT))
     assert allocations[0][1]["region"] == "ap-south-1"
+
+
+@pytest.mark.parametrize(
+    "configured", ["eu-west-1", "", " eu-central-1", "EU-CENTRAL-1"]
+)
+def test_governance_rejects_region_different_from_provider(monkeypatch, configured):
+    values = {
+        "githubRepositoryId": "1098568429",
+        "githubRepositoryOwnerId": "114362548",
+        "awsAccountId": "891377212104",
+        "githubOidcProviderArn": "pinned-provider",
+        "region": configured,
+    }
+    allocations, exports, *_ = entry_modules(monkeypatch, values, [])
+    with pytest.raises(ValueError, match="match the AWS provider region"):
+        runpy.run_path(str(ENTRYPOINT))
+    assert allocations == []
+    assert exports == {}

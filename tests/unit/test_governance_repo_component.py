@@ -124,10 +124,9 @@ def _build_repo_governance(
 def _resources_created_since(pulumi_mocks, start: int):
     """Return only resources this test created (after the ``start`` snapshot).
 
-    ``pulumi_mocks.resources`` is session-scoped: it accumulates every resource
-    registered by every test in the run. Slicing from a per-test snapshot keeps
-    each scan scoped to the component under test, so prior tests' resources can
-    never be matched by ``Sid``/type/name.
+    The function-scoped fixture accumulates resources registered within this
+    test. Slicing from a snapshot isolates the component under test from other
+    components created earlier in the same test.
     """
     return pulumi_mocks.resources[start:]
 
@@ -217,16 +216,41 @@ def test_governance_payloads_uses_repo_scoped_backend_and_secrets_provider():
     assert payloads["test"]["PULUMI_DRIFT_STACKS"] == "test"  # nosec B101
 
 
-def test_governance_backend_url_returns_explicit_override():
-    """An explicit backend-URL override is returned verbatim (override path)."""
-    settings = _governance_settings("test")
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_governance_backend_url_accepts_only_derived_scope(environment, explicit):
+    """Default and exact override agree with the bounded service bucket."""
+    settings = _governance_settings(environment)
     repo = _synthetic_repo("user-service-infrastructure")
-
+    expected = f"s3://{settings.state_bucket_name_for_repo(repo.name)}"
     url = governance._governance_backend_url(
-        settings, repo, "s3://pulumi-custom-override-state"
+        settings, repo, expected if explicit else None
     )
+    assert url == expected
 
-    assert url == "s3://pulumi-custom-override-state"  # nosec B101
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize(
+    "override",
+    [
+        "",
+        "s3://foreign-bucket",
+        "s3://pulumi-bootstrap-infrastructure-test-state/governance",
+        "s3://pulumi-user-service-infrastructure-{env}-state/",
+        "s3://pulumi-user-service-infrastructure-{env}-state/state",
+        "s3://pulumi-user-service-infrastructure-{env}-state?region=us-east-1",
+        " s3://pulumi-user-service-infrastructure-{env}-state",
+    ],
+)
+def test_governance_backend_url_rejects_unbounded_or_noncanonical_override(
+    environment, override
+):
+    with pytest.raises(ValueError, match="derived bucket URL"):
+        governance._governance_backend_url(
+            _governance_settings(environment),
+            _synthetic_repo("user-service-infrastructure"),
+            override.format(env=environment),
+        )
 
 
 def test_governance_secrets_provider_ignores_controller_override():
@@ -804,3 +828,25 @@ def test_governor_key_ownership_conditions_match_actual_resource_graph(
                 equals[f"aws:ResourceTag/{name}"] == value
                 for name, value in expected_tags.items()
             )
+
+
+def test_invalid_backend_rejected_before_direct_component_allocation(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid backend must fail before component allocation")
+
+    monkeypatch.setattr(governance.pulumi.ComponentResource, "__init__", forbidden)
+    with pytest.raises(ValueError, match="derived bucket URL"):
+        RepoGovernance(
+            "invalid",
+            repo=_synthetic_repo("user-service-infrastructure"),
+            settings=_governance_settings("test"),
+            provider_arn=_MOCK_PROVIDER_ARN,
+            account_id="123456789012",
+            partition="aws",
+            region="us-east-1",
+            pulumi_dir="pulumi",
+            pulumi_backend_url="s3://foreign-bucket",
+            pulumi_secrets_provider=None,
+            write_secret_values=True,
+            protect_resources=True,
+        )

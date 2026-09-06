@@ -3,7 +3,7 @@
 These assert the two-account model facts (architecture §0/D1, §2.2, §10.2):
 
 - NO account-number literal (``891377212104``/``933245420672``) is hardcoded as
-  a runtime value in any ``pulumi/infra/*.py`` component module. The literal must
+  a runtime value in any ``pulumi/infra/**/*.py`` component module. The literal must
   live only in the per-stack config files, never in component code. Explanatory
   docstrings may mention the accounts (they document *that* the literal does not
   live in code), so the check inspects executable string/number literals only and
@@ -71,12 +71,12 @@ def _arn_account(arn: str) -> str | None:
 
 
 def test_no_account_literal_in_infra_component_python() -> None:
-    """No 891377212104/933245420672 runtime literal in any pulumi/infra/*.py."""
+    """No 891377212104/933245420672 runtime literal in any pulumi/infra/**/*.py."""
     offenders: list[str] = []
-    for module in sorted(INFRA_DIR.glob("*.py")):
+    for module in sorted(INFRA_DIR.rglob("*.py")):
         for literal in _executable_literals(module.read_text()):
             if any(account in literal for account in ACCOUNT_IDS):
-                offenders.append(f"{module.name}: {literal!r}")
+                offenders.append(f"{module.relative_to(INFRA_DIR)}: {literal!r}")
 
     assert not offenders, (  # nosec B101
         "account-number literal hardcoded in component code: " + "; ".join(offenders)

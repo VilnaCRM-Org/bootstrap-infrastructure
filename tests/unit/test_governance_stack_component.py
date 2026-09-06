@@ -16,6 +16,8 @@ value drives the raise branch — both reachable under mocks, with no hardcoded
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from infra import ci_config, config, governance, pulumi_secrets, pulumi_state
 from infra.governance import (
@@ -213,6 +215,7 @@ def test_stack_registers_zero_oidc_provider_create(pulumi_mocks, monkeypatch):  
         if typ == "aws:iam/openIdConnectProvider:OpenIdConnectProvider"
     ]
     create_only_inputs = {"clientIdLists", "thumbprintLists", "url"}
+    assert provider_states
     for state in provider_states:
         assert create_only_inputs.isdisjoint(state)  # nosec B101
 
@@ -370,3 +373,21 @@ def test_stack_github_variables_use_injected_region(pulumi_mocks, monkeypatch): 
 def test_stack_default_region_is_eu_central_1():
     """``GovernanceStackArgs`` keeps the ``eu-central-1`` default for real applies."""
     assert GovernanceStackArgs().region == "eu-central-1"  # nosec B101
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_invalid_service_backend_rejected_before_stack_allocation_or_aws(
+    monkeypatch, environment
+):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid service backend must fail before allocation or AWS")
+
+    monkeypatch.setattr(governance.pulumi.ComponentResource, "__init__", forbidden)
+    monkeypatch.setattr(governance.aws, "get_caller_identity", forbidden)
+    monkeypatch.setattr(governance.aws, "get_partition", forbidden)
+    args = replace(
+        _stack_args(environment=environment),
+        pulumi_backend_url="s3://pulumi-bootstrap-infrastructure-prod-state/governance",
+    )
+    with pytest.raises(ValueError, match="derived bucket URL"):
+        GovernanceStack("invalid", args=args)

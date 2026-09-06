@@ -139,10 +139,16 @@ def test_entrypoint_builds_governance_stack_and_exports_outputs() -> None:
 
     assert "GovernanceStack" in entrypoint  # nosec B101
     assert "GovernanceStackArgs" in entrypoint  # nosec B101
-    assert 'expected_account_id=cfg.require("awsAccountId")' in entrypoint  # nosec B101
-    assert (  # nosec B101
-        'oidc_provider_arn=cfg.get("githubOidcProviderArn")' in entrypoint
-    )
+    account_binding = 'expected_account_id = cfg.require("awsAccountId")'
+    provider_binding = 'oidc_provider_arn = cfg.require("githubOidcProviderArn")'
+    region_lookup = "aws.get_region()"
+    assert account_binding in entrypoint
+    assert provider_binding in entrypoint
+    assert region_lookup in entrypoint
+    assert entrypoint.index(account_binding) < entrypoint.index(region_lookup)
+    assert entrypoint.index(provider_binding) < entrypoint.index(region_lookup)
+    assert "expected_account_id=expected_account_id" in entrypoint
+    assert "oidc_provider_arn=oidc_provider_arn" in entrypoint
     for export_name in ("perRepo", "oidcProviderArn", "managedRepositories"):
         assert f'pulumi.export("{export_name}"' in entrypoint  # nosec B101
 

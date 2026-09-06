@@ -101,6 +101,7 @@ def test_flow_mirrors_bootstrap_preflight_test_then_prod() -> None:
     # Test stages precede prod; prod stages depend on the test stages.
     assert "test_preview" in jobs  # nosec B101
     assert "test_apply" in jobs  # nosec B101
+    assert "prod_preview" in jobs  # nosec B101
     assert "prod_apply" in jobs  # nosec B101
 
     def _needs(job: str) -> list[str]:

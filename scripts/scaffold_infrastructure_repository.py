@@ -36,6 +36,23 @@ RUNTIME_FILES = (
 )
 
 
+def _bind_python_project(staged: Path, repository: str) -> None:
+    """Rename only the virtual project while preserving locked dependencies."""
+    for relative, section in (
+        ("pyproject.toml", r"\[project\]"),
+        ("uv.lock", r"\[\[package\]\]"),
+    ):
+        path = staged / relative
+        contents, count = re.subn(
+            rf'(?m)^({section}\nname = )"bootstrap-infrastructure"$',
+            rf'\g<1>"{repository}"',
+            path.read_text(),
+        )
+        if count != 1:
+            raise ValueError("Expected exactly one bootstrap Python project identity")
+        path.write_text(contents)
+
+
 def generate(root: Path, destination: Path, repository: str) -> dict:
     """Assemble an audited dependency closure without merging into existing data."""
     if not re.fullmatch(r"[a-z][a-z0-9-]*-infrastructure", repository):
@@ -65,6 +82,7 @@ def generate(root: Path, destination: Path, repository: str) -> dict:
             staged / "policy",
             ignore=shutil.ignore_patterns(".venv", "__pycache__", "*.pyc"),
         )
+        _bind_python_project(staged, repository)
         manifest = {
             "schemaVersion": 1,
             "repository": repository,
@@ -82,9 +100,10 @@ def generate(root: Path, destination: Path, repository: str) -> dict:
         (staged / "scaffold-manifest.json").write_text(
             json.dumps(manifest, indent=2) + "\n"
         )
-        # mkdir(exist_ok=False) closes the check/create race and refuses symlinks.
+        # Reserve an absent destination. Atomic directory rename refuses a
+        # nonempty destination if a concurrent writer adds data after reservation.
         destination.mkdir()
-        shutil.copytree(staged, destination, dirs_exist_ok=True)
+        staged.rename(destination)
     return manifest
 
 

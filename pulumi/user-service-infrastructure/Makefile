@@ -1,4 +1,8 @@
 COMPOSE ?= docker compose
+UID ?= $(shell id -u)
+GID ?= $(shell id -g)
+export UID
+export GID
 .PHONY: start pulumi-plan pulumi-up-plan test-drift test-destructive-diff initialize-stack
 start:
 	$(COMPOSE) build

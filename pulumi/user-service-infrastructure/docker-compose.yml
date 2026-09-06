@@ -3,6 +3,10 @@ services:
     build:
       context: .
       target: dev
+      args:
+        UID: "${UID:-1000}"
+        GID: "${GID:-1000}"
+        USERNAME: dev
     working_dir: /workspace
     volumes:
       - .:/workspace

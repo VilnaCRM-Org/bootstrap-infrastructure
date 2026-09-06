@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import shlex
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -40,6 +42,10 @@ def test_generation_is_complete_and_hashes_every_input(tmp_path):
             hashlib.sha256((destination / relative).read_bytes()).hexdigest() == digest
         )
     assert set(scaffold.RUNTIME_FILES) <= set(manifest["files"])
+    for relative in ("pyproject.toml", "uv.lock"):
+        contents = (destination / relative).read_text()
+        assert 'name = "billing-infrastructure"' in contents
+        assert 'name = "bootstrap-infrastructure"' not in contents
     for relative in (
         "Makefile",
         "docker-compose.yml",
@@ -115,6 +121,37 @@ def test_generator_never_overwrites_existing_destination(tmp_path, existing):
         destination.symlink_to(tmp_path / "missing")
     with pytest.raises(FileExistsError):
         scaffold.generate(ROOT, destination, "billing-infrastructure")
+
+
+def test_generator_never_overwrites_data_written_after_reservation(
+    tmp_path, monkeypatch
+):
+    """A concurrent writer keeps its file; publication refuses a nonempty target."""
+    destination = tmp_path / "service"
+    rename = Path.rename
+
+    def concurrent_write(staged, target):
+        (target / "precious.txt").write_text("concurrent data")
+        return rename(staged, target)
+
+    monkeypatch.setattr(Path, "rename", concurrent_write)
+    with pytest.raises(OSError):
+        scaffold.generate(ROOT, destination, "billing-infrastructure")
+    assert (destination / "precious.txt").read_text() == "concurrent data"
+    assert list(destination.iterdir()) == [destination / "precious.txt"]
+
+
+@pytest.mark.parametrize("invalid", ["pyproject.toml", "uv.lock"])
+def test_generator_rejects_unexpected_python_project_identity(tmp_path, invalid):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "bootstrap-infrastructure"\n'
+    )
+    (tmp_path / "uv.lock").write_text(
+        '[[package]]\nname = "bootstrap-infrastructure"\n'
+    )
+    (tmp_path / invalid).write_text('name = "different-project"\n')
+    with pytest.raises(ValueError, match="exactly one bootstrap Python project"):
+        scaffold._bind_python_project(tmp_path, "billing-infrastructure")
 
 
 def test_generated_compose_forwards_account_to_checkpoint_binding(tmp_path):
@@ -212,6 +249,7 @@ def initialization(monkeypatch):
         "version": "v3.223.0",
         "caller": '{"Account":"891377212104"}',
         "list": "[]",
+        "checkpoint_verifications": [],
     }
 
     def execute(*args):
@@ -228,6 +266,11 @@ def initialization(monkeypatch):
         return ""
 
     monkeypatch.setattr(initializer, "execute", execute)
+    monkeypatch.setattr(
+        initializer,
+        "_verify_checkpoint",
+        lambda *args: responses["checkpoint_verifications"].append(args),
+    )
     return calls, responses
 
 
@@ -250,6 +293,56 @@ def test_initialization_only_creates_after_successful_exact_project_listing(
     assert ("init" in calls[-1]) is created
     assert "--project" in calls[-2]
     assert all("up" not in call and "preview" not in call for call in calls)
+    assert responses["checkpoint_verifications"] == [
+        (
+            TEMPLATE,
+            "test",
+            "891377212104",
+            "s3://pulumi-user-service-infrastructure-test-state",
+            "awskms://alias/pulumi-user-service-infrastructure-test-secrets?region=eu-central-1",
+        )
+    ]
+
+
+def test_existing_stack_provider_failure_never_falls_back_to_init(
+    initialization, monkeypatch
+):
+    calls, responses = initialization
+    responses["list"] = '[{"name":"test"}]'
+
+    def invalid_provider(*args):
+        raise ValueError("Checkpoint provider mismatch")
+
+    monkeypatch.setattr(initializer, "_verify_checkpoint", invalid_provider)
+    with pytest.raises(ValueError, match="Checkpoint provider mismatch"):
+        initializer.initialize(TEMPLATE)
+    assert all("init" not in call for call in calls)
+
+
+def test_checkpoint_verification_uses_exact_shared_provider_guard(
+    tmp_path, monkeypatch
+):
+    import _pulumi_stack_config
+
+    seen = []
+
+    @contextmanager
+    def verified(context, stack):
+        seen.append((context, stack))
+        yield context
+
+    monkeypatch.setattr(_pulumi_stack_config, "prepared_stack_configuration", verified)
+    initializer._verify_checkpoint(
+        tmp_path, "test", "891377212104", "s3://owned-state", "awskms://alias/owned"
+    )
+    context, stack = seen[0]
+    assert stack == "test"
+    assert context.pulumi_dir == tmp_path / "pulumi"
+    assert context.env["AWS_ACCOUNT_ID"] == "891377212104"
+    assert (
+        context.backend_url == context.env["PULUMI_BACKEND_URL"] == "s3://owned-state"
+    )
+    assert context.secrets_provider == "awskms://alias/owned"
 
 
 @pytest.mark.parametrize(
@@ -338,12 +431,103 @@ def test_initializer_workflow_is_main_only_with_gated_account_pinned_credentials
                 assert step["with"]["ref"] == "${{ github.sha }}"
             if "configure-aws-credentials@" in step.get("uses", ""):
                 assert (
-                    step["with"]["allowed-account-ids"] == "${{ env.INIT_ACCOUNT_ID }}"
+                    step["with"]["allowed-account-ids"]
+                    == "${{ needs.preflight.outputs.account_id }}"
                 )
     job = workflow["jobs"]["initialize"]
     assert job["environment"] == "${{ inputs.environment }}"
     assert job["needs"] == "preflight"
     assert "head_sha" not in str(workflow)
+    assert job["env"]["INIT_ACCOUNT_ID"] == "${{ needs.preflight.outputs.account_id }}"
+    assert workflow["jobs"]["preflight"]["outputs"] == {
+        "account_id": "${{ steps.target.outputs.account_id }}",
+        "config_role": "${{ steps.target.outputs.config_role }}",
+    }
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        None,
+        "empty-account",
+        "invalid-account",
+        "empty-role",
+        "wrong-role-account",
+        "empty-role-name",
+        "newline-role",
+    ],
+)
+def test_initializer_target_resolution_never_falls_back(
+    tmp_path, environment, corruption
+):
+    """Execute the real resolver; a valid opposite account never masks bad input."""
+    workflow = yaml.safe_load(
+        (TEMPLATE / ".github/workflows/initialize-stack.yml").read_text()
+    )
+    resolver = next(
+        step
+        for step in workflow["jobs"]["preflight"]["steps"]
+        if step.get("id") == "target"
+    )
+    output = tmp_path / "outputs"
+    env = {
+        "PATH": os.defpath,
+        "INIT_ENVIRONMENT": environment,
+        "GITHUB_OUTPUT": str(output),
+        "TEST_ACCOUNT_ID": "891377212104",
+        "PROD_ACCOUNT_ID": "933245420672",
+        "TEST_CONFIG_ROLE": "arn:aws:iam::891377212104:role/GitHubCiConfigRead-test",
+        "PROD_CONFIG_ROLE": "arn:aws:iam::933245420672:role/GitHubCiConfigRead-prod",
+    }
+    selected = environment.upper()
+    mutations = {
+        "empty-account": ("ACCOUNT_ID", ""),
+        "invalid-account": ("ACCOUNT_ID", "１２３４５６７８９０１２"),
+        "empty-role": ("CONFIG_ROLE", ""),
+        "wrong-role-account": ("CONFIG_ROLE", "arn:aws:iam::123456789012:role/wrong"),
+        "empty-role-name": (
+            "CONFIG_ROLE",
+            f"arn:aws:iam::{env[selected + '_ACCOUNT_ID']}:role/",
+        ),
+        "newline-role": (
+            "CONFIG_ROLE",
+            env[selected + "_CONFIG_ROLE"] + "\ninjected=true",
+        ),
+    }
+    if corruption:
+        key, value = mutations[corruption]
+        env[f"{selected}_{key}"] = value
+    result = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", resolver["run"]],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if corruption:
+        assert result.returncode != 0
+        assert not output.exists()
+    else:
+        assert result.returncode == 0, result.stderr
+        assert output.read_text() == (
+            f"account_id={env[selected + '_ACCOUNT_ID']}\n"
+            f"config_role={env[selected + '_CONFIG_ROLE']}\n"
+        )
+
+
+def test_template_build_preserves_runner_user_identity():
+    """Container writes use the runner UID/GID for its mounted checkout."""
+    makefile = (TEMPLATE / "Makefile").read_text()
+    assert "UID ?= $(shell id -u)" in makefile
+    assert "GID ?= $(shell id -g)" in makefile
+    assert "export UID\nexport GID" in makefile
+    compose = yaml.safe_load((TEMPLATE / "docker-compose.yml").read_text())
+    assert compose["services"]["pulumi"]["build"]["args"] == {
+        "UID": "${UID:-1000}",
+        "GID": "${GID:-1000}",
+        "USERNAME": "dev",
+    }
 
 
 def test_generator_cli_creates_reviewable_artifact(tmp_path):
