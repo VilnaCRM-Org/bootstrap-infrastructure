@@ -33,11 +33,7 @@ class IssueContext:
 
 
 def _nonempty_text(value: object) -> bool:
-    return (
-        isinstance(value, str)
-        and bool(value.strip())
-        and all(ord(character) >= 32 for character in value)
-    )
+    return isinstance(value, str) and bool(value.strip()) and value.isprintable()
 
 
 def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:

@@ -687,3 +687,42 @@ def test_rendered_body_keeps_marker_and_visible_canonical_fingerprint():
         triage.IssueContext("queue", "123456789012", "eu-central-1", "\x00"),
     )
     assert "Canonical fingerprint: <code>unknown</code>" in sanitized.splitlines()
+
+
+@pytest.mark.parametrize(
+    "character",
+    [
+        "\x00",
+        "\t",
+        "\n",
+        "\x7f",
+        "\x85",
+        "\x9f",
+        "\u200b",
+        "\u202e",
+        "\ud800",
+        "\u2028",
+    ],
+)
+def test_nonempty_metadata_rejects_nonprinting_characters(character):
+    value = "valid" + character + "suffix"
+    assert not triage._nonempty_text(value)
+    item = {
+        "Body": json.dumps({"Message": '{"source":"aws.health"}'}),
+        "ReceiptHandle": value,
+    }
+    context = triage.IssueContext("queue", "123456789012", "eu-central-1", "")
+    actionable, ack, audit = triage.classified_alerts(
+        {"Messages": [item]},
+        context,
+        "arn:aws:sns:eu-central-1:123456789012:alerts",
+    )
+    assert actionable == ack == {"Messages": []}
+    assert audit["records"][0]["reason"] == "invalid_receipt"
+
+
+@pytest.mark.parametrize(
+    "value", ["aws.backup", "Backup Job State Change", "é漢字", "text with spaces"]
+)
+def test_nonempty_metadata_preserves_printable_text(value):
+    assert triage._nonempty_text(value)
