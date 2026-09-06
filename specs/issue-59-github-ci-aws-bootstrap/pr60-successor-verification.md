@@ -8,9 +8,12 @@ scores and approvals do not prove current acceptance.
 
 Assembly source: `54d6f664250483c8d3b77a52964f5ac575f87899`.
 Initial actual main base after #193: `888b2424c2cc3fe475e1cf24c614004c49a4928e`.
-The provisional local base is the exact #57 source head
-`59d21e402a791d59f359a5879aa5be252391f1fe`. This is not a merged-main receipt.
-Rebase onto the actual #57 squash commit before publication and final validation.
+The actual main base after #57 is
+`e37eb3ff86105581b751df4526c1720dd469b0d2` (merged 2026-09-06).
+Its tree is byte-identical to the validated #57 source head
+`59d21e402a791d59f359a5879aa5be252391f1fe`. All four local operator commits
+were replayed onto this actual squash commit without conflicts. The provisional
+candidate is preserved at `backup/pr60-before-pr57-squash-20260906` (`d8cb30a`).
 The assembly commit containing this amendment is the reviewable source revision;
 validation records below identify the checks performed on its source tree.
 
@@ -80,7 +83,7 @@ shared dependency hashes supersede the older canonical hashes.
   The final #57-base battery remains pending until the actual merge is available.
 
 
-## Provisional #57-source rebase checks
+## Prior provisional #57-source rebase checks
 
 The provisional base is `59d21e402a791d59f359a5879aa5be252391f1fe`.
 The original candidate is preserved at local backup ref
@@ -100,8 +103,8 @@ independent ownership review and the deferred delegated governance program.
 - Changed Python Ruff lint, conflict-file formatting, scoped Ty and whitespace
   checks passed. These checks did not collect or alter coverage.
 - No full battery, mutation campaign, hosted review or live operation was repeated
-  for this provisional rebase. Rebase onto actual merged #57 main and validate
-  that final source before publication.
+  for that provisional rebase. The actual-main rebase is now complete; final
+  validation must bind the frozen candidate commit before publication.
 
 ## Deferred external acceptance
 
