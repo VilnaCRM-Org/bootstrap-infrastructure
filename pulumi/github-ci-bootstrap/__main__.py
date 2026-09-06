@@ -48,7 +48,7 @@ for repository in platform_catalog:
         raise ValueError("Platform catalog repositories require pinned GitHub IDs.")
     if repository.name != settings.repo:
         raise ValueError("Platform catalog must contain only the bootstrap repository.")
-    if repository.default_branch != settings.github_branch:
+    if repository.default_branch != (settings.github_branch or "main"):
         raise ValueError(
             "Bootstrap config and platform catalog default branches differ."
         )

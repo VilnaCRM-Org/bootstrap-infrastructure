@@ -14,8 +14,9 @@ Its tree is byte-identical to the validated #57 source head
 `59d21e402a791d59f359a5879aa5be252391f1fe`. All four local operator commits
 were replayed onto this actual squash commit without conflicts. The provisional
 candidate is preserved at `backup/pr60-before-pr57-squash-20260906` (`d8cb30a`).
-The assembly commit containing this amendment is the reviewable source revision;
-validation records below identify the checks performed on its source tree.
+The records below bind checks to explicitly named historical revisions. For a
+later revision, use that commit's CI and review receipts; publication alone does
+not establish validation or acceptance.
 
 The six isolated operator project files preserve project/stack names and the
 complete `PlatformIamBoundaries` → `GitHubCiBootstrap` → `PlatformControlIam`
@@ -27,15 +28,17 @@ onboarding implementation is added. Those remain #78 work. Existing controller,
 trusted loader, IAM documents, content pins, provider/adoption dependencies and
 neutral account helper remain installed unchanged.
 
-Eight added exact-source files retain their canonical bytes: project manifest,
-TEST/PROD public config, operator entrypoint, operator requirements, governor
-module, governance catalog and governor tests. The example deliberately remains
-incomplete until both verified GitHub identity placeholders are supplied. The
-other changes are selected tests, additive mutation targets and corrected docs.
-A bounded 27th path adds the exact canonical deployment-evidence exclusion for
-`repositories.governance.json`. The first full battery exposed this dependency;
-the existing evidence expectation is preserved, and governance remains validated
-by the separate per-kind catalog/fanout validator.
+Five added files retain their canonical bytes: the operator project manifest,
+TEST/PROD public config, operator requirements and governance catalog. The
+operator entrypoint, governor module and governor tests were initially copied
+from canonical source, then deliberately corrected during review; they are no
+longer byte-identical. The corrections reject invalid operator inputs before
+registration and strengthen independent regression checks without widening IAM
+grants. The example remains incomplete until both verified GitHub identity
+placeholders are supplied. Other changes include selected tests, additive
+mutation targets and corrected docs. The deployment-evidence exclusion now uses
+the shared governance catalog constant; governance remains validated by its
+separate per-kind catalog/fanout validator.
 
 ## Requirement and story reconciliation
 
@@ -83,7 +86,7 @@ shared dependency hashes supersede the older canonical hashes.
   The actual-main battery is recorded separately below.
 
 
-## Prior provisional #57-source rebase checks
+## Historical provisional #57-source rebase checks
 
 The provisional base is `59d21e402a791d59f359a5879aa5be252391f1fe`.
 The original candidate is preserved at local backup ref
@@ -106,9 +109,9 @@ independent ownership review and the deferred delegated governance program.
   for that provisional rebase. The actual-main rebase and its validation are
   recorded below.
 
-## Actual-main verification (2026-09-06)
+## Historical actual-main candidate (2026-09-06)
 
-Frozen candidate `e1b3574cdaa8113e8bfc9a50d05360ee2b16e846` was validated and
+The previously published candidate `e1b3574cdaa8113e8bfc9a50d05360ee2b16e846` was validated and
 published on actual #57 squash base `e37eb3ff86105581b751df4526c1720dd469b0d2`.
 `make ci-pr-unprivileged` passed: 1594 unit, 188 structural, 120 policy,
 173 integration and 72 CLI tests; 9206 statements and 2702 branches at 100%.
@@ -120,19 +123,22 @@ SHA-256: `5ae4b333fa230e7913f24cd40b58231f60e40525f14649e46bc9ec4d298cdbe7`.
 The local validation receipt SHA-256 is
 `3f04ca934ad7ba157d36eb5cfe50c45a2eb6e05ed3257a5bbd31e687387ee8c8`.
 
-The current review corrections add pre-allocation catalog/backend/protection/
-branch validation and strengthen independent regression assertions. They supersede
-the earlier exact-byte claim for the governor module, entrypoint and their tests.
-The e1b3574 results remain historical evidence; the correction revision requires
-its own focused and final combined validation before publication. These source
-checks do not establish operator deployment or full acceptance.
+These results apply only to `e1b3574`, before the review corrections described
+in Source and ownership. They do not validate a later commit. The subsequent
+`7e2ae3b4f0adf1ba56676d74cb0cceca798c3bb4` local battery passed with 1613 unit,
+188 structural, 120 policy, 173 integration and 72 CLI tests and 100% coverage
+across 9226 statements and 2714 branches. Its source review and mutation-input
+identity were recorded separately. Later commits require their own relevant CI
+and review evidence. These dated source results do not establish an operator
+resource deployment, owner acceptance or full BMAD PASS.
 
 ## Deferred external acceptance
 
-No AWS or GitHub mutation occurred during this local assembly. No fresh hosted
-AI approval, formal BMAD pass, actual comment deployment, TEST/PROD operator
-replay or full acceptance is claimed. Historical BMALPH evidence remains dated
-2026-05-25 and cannot establish this revision's readiness.
+The initial source assembly was local-only; subsequent publication and review
+are recorded by GitHub against their specific commits. This amendment's local
+source results do not substitute for current hosted approvals, real TEST/PROD
+comment deployment and post-deployment acceptance. Historical BMALPH evidence
+remains dated 2026-05-25 and cannot establish a later revision's readiness.
 
 Operator paths correctly classify this change as governance. The installed
 controller cannot apply the privileged operator project, while the delegated

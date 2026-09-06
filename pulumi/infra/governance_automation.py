@@ -581,6 +581,8 @@ def _validate_catalog(args: GovernanceAutomationArgs) -> None:
         raise ValueError("governance catalog must exclude bootstrap projects")
     if 2 + 2 * len(names) > 10:
         raise ValueError("governance role exceeds the default 10 policy attachments")
+    for repo in args.repositories:
+        _role_resources(args, repo)
 
 
 class GovernanceAutomation(pulumi.ComponentResource):

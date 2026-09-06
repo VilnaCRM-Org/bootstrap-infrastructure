@@ -133,6 +133,7 @@ def test_entrypoint_asserts_account_before_first_resource(
         assert len(allocated) == 1
 
 
+@pytest.mark.parametrize("github_branch", [None, "main"])
 @pytest.mark.parametrize("overrides", [False, True])
 @pytest.mark.parametrize(
     "catalog_change",
@@ -146,12 +147,13 @@ def test_entrypoint_asserts_account_before_first_resource(
     ],
 )
 def test_entrypoint_wires_complete_bootstrap_and_governance(
-    monkeypatch, overrides, catalog_change
+    monkeypatch, overrides, catalog_change, github_branch
 ):
     """The operator entrypoint keeps account, provider, backend and outputs aligned."""
     environment = "prod" if overrides else "test"
     settings = dataclasses.replace(
         inputs(environment).settings,
+        github_branch=github_branch,
         github_repository_id="12345",
         github_repository_owner_id="67890",
     )
@@ -738,3 +740,34 @@ def test_catalog_namespace_collisions_fail_before_allocation(monkeypatch, repos)
     monkeypatch.setattr(pulumi.ComponentResource, "__init__", forbidden)
     with pytest.raises(ValueError, match="catalog"):
         GovernanceAutomation("collision", args=inputs(repositories=repos))
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("size", ["maximum", "config-over", "deploy-over"])
+def test_catalog_role_lengths_checked_before_allocation(monkeypatch, environment, size):
+    """Use real naming helpers before any ComponentResource is registered."""
+    import pulumi
+
+    suffix = "test-pr" if environment == "test" else "prod-preview"
+    length = 64 - len(f"GitHubCiConfigRead--{suffix}")
+    if size == "config-over":
+        length += 1
+    elif size == "deploy-over":
+        length = 65 - len(f"GitHubCiPreview--{environment}")
+    repo = dataclasses.replace(REPO, name="a" * length)
+    allocations = []
+
+    def first_resource(*args, **kwargs):
+        allocations.append(True)
+        raise RuntimeError("first resource")
+
+    monkeypatch.setattr(pulumi.ComponentResource, "__init__", first_resource)
+    args = inputs(environment, repositories=[repo])
+    if size == "maximum":
+        with pytest.raises(RuntimeError, match="first resource"):
+            GovernanceAutomation("maximum-name", args=args)
+        assert allocations == [True]
+    else:
+        with pytest.raises(ValueError, match="longer than 64 characters"):
+            GovernanceAutomation("too-long-name", args=args)
+        assert allocations == []
