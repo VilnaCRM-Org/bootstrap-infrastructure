@@ -106,9 +106,19 @@ create or update the canonical fingerprinted issue from SRE-confirmed stable
 fields before running legacy reconciliation. The backfill workflow runs behind
 the same `operations-alert-reconcile` GitHub Environment, requires an HTTPS
 `sre_confirmation_reference`, accepts one `stable_event_json` object containing
-the confirmed EventBridge `source`, `detailType`, `state`, `resourceArn`,
-optional AWS Backup stable fields, optional `detail`, and optional `resources`,
-and requires this exact confirmation sentence:
+the exact SRE-confirmed stable EventBridge projection: nonempty `source` and
+`detail-type` strings, the original `detail` object, and optional `resources`.
+Preserve every stable detail field and value, including state versus status,
+Backup IDs, nested/empty values and nulls. Preserve whether `resources` is absent,
+null or an array; these shapes must not be reconstructed from flattened fields.
+Only those four top-level keys are accepted. This is a stable projection, not a
+full raw event envelope: omit top-level occurrence metadata such as `id` and
+`time`. Flattened aliases (`detailType`, `state`, `resourceArn`, Backup IDs) are
+rejected even if they match detail, because silently adding or replacing fields
+can change the live v2 fingerprint. Backfill wraps this projection unchanged and
+uses the same v2 fingerprint function as direct intake. Confirm its shape against
+the actual SRE mapping before dispatch; no receipt is inferred by this contract.
+The workflow requires this exact confirmation sentence:
 
 ```text
 I confirm these stable fields represent the canonical operations alert stream

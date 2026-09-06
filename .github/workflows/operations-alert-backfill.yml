@@ -108,16 +108,14 @@ jobs:
                 error("stable_event_json must be an object")
               elif (has_text("source") | not) then
                 error("stable_event_json.source is required")
-              elif ((.detailType // .detail_type // "") | type != "string" or length == 0) then
-                error("stable_event_json.detailType is required")
-              elif (has_text("state") | not) then
-                error("stable_event_json.state is required")
-              elif (((.resourceArn // .resource_arn // "") | type != "string") or ((.resourceArn // .resource_arn // "") | length == 0)) then
-                error("stable_event_json.resourceArn is required")
-              elif ((.detail // {}) | type != "object") then
+              elif ((keys - ["source", "detail-type", "detail", "resources"]) | length > 0) then
+                error("stable_event_json allows only source, detail-type, detail and resources")
+              elif (has_text("detail-type") | not) then
+                error("stable_event_json.detail-type is required")
+              elif (.detail | type != "object") then
                 error("stable_event_json.detail must be an object")
-              elif ((.resources // []) | type != "array") then
-                error("stable_event_json.resources must be an array")
+              elif (has("resources") and (.resources != null) and (.resources | type != "array")) then
+                error("stable_event_json.resources must be null or an array when present")
               else
                 .
               end' > "${stable_event_file}"
@@ -133,28 +131,8 @@ jobs:
                   Body: ({
                     MessageId: "backfill-sre-confirmed",
                     Timestamp: $reviewed_at,
-                    Message: (($stable_event[0]) as $event | {
-                      source: $event.source,
-                      "detail-type": ($event.detailType // $event.detail_type),
-                      time: $reviewed_at,
-                      resources: ($event.resources // []),
-                      detail: (
-                        ($event.detail // {}) + {
-                          state: $event.state,
-                          backupVaultName: (
-                            $event.backupVaultName // $event.backup_vault_name // ""
-                          ),
-                          backupPlanId: (
-                            $event.backupPlanId // $event.backup_plan_id // ""
-                          ),
-                          backupRuleId: (
-                            $event.backupRuleId // $event.backup_rule_id // ""
-                          ),
-                          resourceArn: ($event.resourceArn // $event.resource_arn)
-                        }
-                        | with_entries(select(.value != ""))
-                      )
-                    } | tostring)
+                    # Wrap the confirmed projection without rebuilding its fields.
+                    Message: ($stable_event[0] | tostring)
                   } | tostring)
                 }
               ]

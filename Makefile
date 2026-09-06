@@ -178,7 +178,8 @@ test-integration-unprivileged: ## Execute credential-free integration contracts.
 	$(COMPOSE) run --rm $(INTEGRATION_COVERAGE_ENV) \
 		$(COMPOSE_SERVICE) uv run coverage run --parallel-mode -m pytest -q \
 		tests/integration/test_guardrail_contracts.py \
-		tests/integration/test_backup_alert_acknowledgment.py
+		tests/integration/test_backup_alert_acknowledgment.py \
+		tests/integration/test_alert_backfill_fingerprint.py
 	$(COMPOSE) run --rm -e COVERAGE_FILE=/workspace/.coverage.integration \
 		-e COVERAGE_RCFILE=/workspace/.coveragerc \
 		$(COMPOSE_SERVICE) uv run coverage combine
