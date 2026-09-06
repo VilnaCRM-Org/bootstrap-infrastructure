@@ -29,10 +29,10 @@ def test_inventory_produces_valid_single_expression_security_mutants():
         "drop-promotion-status-predicate",
         "remove-checkpoint-deny",
     } <= {item.operator for item in mutants}
-    assert len(mutants) == 82
+    assert len(mutants) == 83
     assert (
         sum(item.path == "pulumi/infra/governance_automation.py" for item in mutants)
-        == 13
+        == 14
     )
     assert "pulumi/infra/iam/account.py" in gate.GUARDS
     assert "tests/unit/test_platform_entrypoint_boundary.py" in gate.TARGETS
