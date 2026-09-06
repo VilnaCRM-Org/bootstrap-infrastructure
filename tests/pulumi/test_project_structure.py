@@ -300,12 +300,92 @@ def test_alert_route_docs_keep_queue_depth_observation_only() -> None:
     """Avoid baking volatile SQS queue depth into retained review evidence."""
     alert_doc = (ROOT / "docs" / "alert-routing-evidence.md").read_text()
     operating_doc = (ROOT / "docs" / "operating-review-2026-05-09.md").read_text()
+    ci_guardrails = (ROOT / "docs" / "ci-guardrails.md").read_text()
+    setup_doc = (ROOT / "docs" / "github-actions-secrets.md").read_text()
+    reconcile_workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "operations-alert-reconcile.yml").read_text()
+    )
+    backfill_workflow = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "operations-alert-backfill.yml").read_text()
+    )
+    reconcile_triggers = reconcile_workflow.get("on", reconcile_workflow.get(True, {}))
+    backfill_triggers = backfill_workflow.get("on", backfill_workflow.get(True, {}))
+    reconcile_run = reconcile_workflow["jobs"]["reconcile"]["steps"][0]["run"]
+    backfill_run = backfill_workflow["jobs"]["backfill"]["steps"][1]["run"]
     docs = f"{alert_doc}\n{operating_doc}"
 
     assert "observation-only metadata" in alert_doc  # nosec B101
+    assert "Legacy operations-alert issues" in alert_doc  # nosec B101
+    assert "Operations Alert Canonical Backfill" in alert_doc  # nosec B101
+    assert "workflow searches issue bodies for the marker" in alert_doc  # nosec B101
+    assert "Operations Alert Legacy Reconcile" in alert_doc  # nosec B101
+    assert "operations-alert-reconcile" in alert_doc  # nosec B101
+    assert (
+        "I confirm these stable fields represent the canonical operations alert stream"
+        in alert_doc
+    )  # nosec B101
+    assert (
+        "I confirm these legacy issues match the canonical operations alert stream"
+        in alert_doc
+    )  # nosec B101
+    assert "sre_confirmation_reference" in alert_doc  # nosec B101
+    assert "sanitized SRE confirmation" in alert_doc  # nosec B101
+    assert "sre_confirmation_reference" in ci_guardrails  # nosec B101
+    assert "sre_confirmation_reference" in setup_doc  # nosec B101
     assert "stable SNS/SQS route metadata" in operating_doc  # nosec B101
     assert "ApproximateNumberOfMessages=" not in docs  # nosec B101
     assert "two visible messages" not in docs  # nosec B101
+    assert "workflow_dispatch" in reconcile_triggers  # nosec B101
+    assert reconcile_workflow["jobs"]["reconcile"]["environment"] == (  # nosec B101
+        "operations-alert-reconcile"
+    )
+    assert reconcile_workflow["permissions"] == {  # nosec B101
+        "contents": "read",
+        "issues": "write",
+    }
+    assert "id-token" not in reconcile_workflow["permissions"]  # nosec B101
+    assert "operations-alert:fingerprint=" in reconcile_run  # nosec B101
+    assert reconcile_triggers["workflow_dispatch"]["inputs"][  # nosec B101
+        "sre_confirmation_reference"
+    ]["required"]
+    assert reconcile_workflow["jobs"]["reconcile"]["steps"][0]["shell"] == "bash"  # nosec B101
+    assert "workflow_dispatch" in backfill_triggers  # nosec B101
+    assert backfill_workflow["jobs"]["backfill"]["environment"] == (  # nosec B101
+        "operations-alert-reconcile"
+    )
+    assert backfill_workflow["permissions"] == {  # nosec B101
+        "contents": "read",
+        "issues": "write",
+    }
+    assert "id-token" not in backfill_workflow["permissions"]  # nosec B101
+    backfill_inputs = backfill_triggers["workflow_dispatch"]["inputs"]
+    assert len(backfill_inputs) <= 10  # nosec B101
+    assert "stable_event_json" in backfill_inputs  # nosec B101
+    assert "sre_confirmation_reference" in backfill_run  # nosec B101
+    assert "stable_event_json must be an object" in backfill_run  # nosec B101
+    assert "operations-alert:fingerprint=${fingerprint} in:body" in backfill_run  # nosec B101
+    assert "python3 scripts/operations_alert_triage.py" in backfill_run  # nosec B101
+    assert "GH_REPO: ${{ github.repository }}" in yaml.safe_dump(  # nosec B101
+        reconcile_workflow["jobs"]["reconcile"]["env"]
+    )
+    assert '--repo "${GH_REPO}"' in reconcile_run  # nosec B101
+    assert "declare -A seen_issues" in reconcile_run  # nosec B101
+    assert "legacy_issue_ids" in reconcile_run  # nosec B101
+    assert "provide at least one legacy issue number" in reconcile_run  # nosec B101
+    assert "SRE_CONFIRMATION_REFERENCE" in reconcile_run  # nosec B101
+    assert "sre_confirmation_reference must be an HTTPS URL" in reconcile_run  # nosec B101
+    assert "canonical_state" in reconcile_run  # nosec B101
+    assert "canonical_title" in reconcile_run  # nosec B101
+    assert "canonical issue ${canonical} is not open" in reconcile_run  # nosec B101
+    assert (
+        "canonical issue ${canonical} is not an operations alert issue" in reconcile_run
+    )  # nosec B101
+    assert "gh issue close" in reconcile_run  # nosec B101
+    assert "--duplicate-of" in reconcile_run  # nosec B101
+    assert "SRE confirmation reference: ${sre_reference}" in reconcile_run  # nosec B101
+    assert reconcile_run.index("sre_confirmation_reference must") < (  # nosec B101
+        reconcile_run.index("gh issue close")
+    )
 
 
 def test_completion_audit_avoids_self_stale_exact_head_metadata() -> None:
@@ -406,3 +486,180 @@ def test_removed_legacy_scaffold_paths_stay_absent() -> None:
 def test_qlty_cloud_uses_committed_repository_config() -> None:
     assert (ROOT / ".qlty" / "qlty.toml").is_file()  # nosec B101
     assert (ROOT / ".qlty" / ".gitignore").is_file()  # nosec B101
+
+
+def test_ci_guardrails_manual_follow_up_completes_aws_ci_cutover() -> None:
+    """Keep the issue 20 operator checklist aligned with the cleanup path."""
+    ci_guardrails = (ROOT / "docs" / "ci-guardrails.md").read_text()
+
+    assert "apply the Pulumi test and production stacks" in ci_guardrails  # nosec B101
+    assert "AWS Secrets Manager" in ci_guardrails  # nosec B101
+    assert "GitHubCiConfigRead" in ci_guardrails  # nosec B101
+    assert "GitHub Environment Legacy Variable Cleanup" in ci_guardrails  # nosec B101
+    assert "GH_ENVIRONMENT_ADMIN_TOKEN" in ci_guardrails  # nosec B101
+    assert "no stale AWS trust subjects" in ci_guardrails  # nosec B101
+    assert "protected `prod` approval boundary" in ci_guardrails  # nosec B101
+    assert "operations-alert-reconcile" in ci_guardrails  # nosec B101
+
+
+def test_issue20_cutover_manual_is_secret_safe_and_actionable() -> None:
+    """Keep the human AWS-only cutover runbook explicit and source-of-truth safe."""
+    manual = "\n".join(
+        ((ROOT / "docs" / "aws-secrets-manager-ci-cutover.md").read_text(),)
+    )
+    setup_doc = (ROOT / "docs" / "github-actions-secrets.md").read_text()
+    github_setup_doc = (ROOT / ".github" / "github-actions-secrets.md").read_text()
+    readme = (ROOT / "README.md").read_text()
+    docs_readme = (ROOT / "docs" / "README.md").read_text()
+    sre_operations = (ROOT / "docs" / "sre-operations.md").read_text()
+    security_baseline = (ROOT / "docs" / "security-baseline.md").read_text()
+    pulumi_guardrails = (ROOT / "docs" / "pulumi-guardrails.md").read_text()
+    env_dist = (ROOT / ".env.dist").read_text()
+
+    for phrase in (
+        "does not require Pulumi Cloud or Pulumi ESC",
+        "Required GitHub Variables",
+        "Required Secrets Manager Payloads",
+        "put-secret-value",
+        "Do not use `get-secret-value` for verification",
+        "Fix Local AWS CLI For Test",
+        "pulumi/github-ci-bootstrap",
+        "GitHubCiConfigRead",
+        "GitHubCiPreview",
+        "GitHubCiApply",
+        "GitHubCiDrift",
+        "AdministratorAccess",
+        "githubCiConfigReadRoleArns",
+        "GH_ENVIRONMENT_ADMIN_TOKEN",
+        "Operations Alert Legacy Reconcile",
+        "sre_confirmation_reference",
+        "I confirm AWS Secrets Manager-backed privileged CI is green",
+        "I confirm these legacy issues match the canonical operations alert stream",
+    ):
+        assert phrase in manual  # nosec B101
+
+    for github_var in (
+        "AWS_TEST_PR_CI_CONFIG_ROLE_ARN",
+        "AWS_TEST_CI_CONFIG_ROLE_ARN",
+        "AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN",
+        "AWS_PROD_CI_CONFIG_ROLE_ARN",
+    ):
+        assert github_var in manual  # nosec B101
+
+    for secret_id in (
+        "/bootstrap-infrastructure/ci/test-pr",
+        "/bootstrap-infrastructure/ci/test",
+        "/bootstrap-infrastructure/ci/prod-preview",
+        "/bootstrap-infrastructure/ci/prod",
+    ):
+        assert secret_id in manual  # nosec B101
+
+    for variable_name in (
+        "AWS_ACCOUNT_ID",
+        "AWS_PREVIEW_ROLE_ARN",
+        "AWS_APPLY_ROLE_ARN",
+        "AWS_DRIFT_ROLE_ARN",
+        "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN",
+        "OPERATIONS_ALERT_QUEUE_NAME",
+        "OPERATIONS_TOPIC_ARN",
+        "OPERATIONS_CLOUDTRAIL_NAME",
+        "PULUMI_BACKEND_URL",
+        "PULUMI_SECRETS_PROVIDER",
+        "PULUMI_PREVIEW_STACKS",
+        "PULUMI_DRIFT_STACKS",
+    ):
+        assert variable_name in manual  # nosec B101
+
+    assert "SecretAccessKey" not in manual  # nosec B101
+    assert "secretAccessKey" not in manual  # nosec B101
+    assert "PULUMI_ACCESS_TOKEN" not in env_dist  # nosec B101
+    for operator_doc in (
+        readme,
+        docs_readme,
+        sre_operations,
+        security_baseline,
+        pulumi_guardrails,
+    ):
+        assert re.search(r"make pulumi-up(?!-)", operator_doc) is None  # nosec B101
+    assert "aws-secrets-manager-ci-cutover.md" in setup_doc  # nosec B101
+    assert "separate #60" in setup_doc  # nosec B101
+    assert "aws-secrets-manager-ci-cutover.md" in github_setup_doc  # nosec B101
+    assert "aws-secrets-manager-ci-cutover.md" in readme  # nosec B101
+    assert "aws-secrets-manager-ci-cutover.md" in docs_readme  # nosec B101
+
+
+def test_issue20_closeout_evidence_tracks_external_manual_steps() -> None:
+    """Keep current issue 20 closeout evidence explicit and secret-safe."""
+    closeout = (
+        ROOT
+        / "specs"
+        / "issue-20-pulumi-esc-ci-config"
+        / "current-closeout-evidence-2026-05-25.md"
+    ).read_text()
+
+    for phrase in (
+        "AWS Secrets Manager remains the source of truth",
+        "Pulumi Cloud and Pulumi ESC are not used",
+        "AWS-only setup removes that Pulumi Cloud token exchange path",
+        "1470d28",
+        "`pulumi up` is disabled whenever `GITHUB_ACTIONS=true`",
+        "removes the silent pull-request fallback",
+        "PR config-read role variable is missing",
+        "invalid organization vilnacrm-org",
+        "access_key: env",
+        "config-role-arn must be an AWS IAM role ARN",
+        "Not authorized to perform sts:AssumeRoleWithWebIdentity",
+        "No test-account profile is configured locally yet",
+        "ResourceNotFoundException",
+        "NoSuchEntityException",
+        "canonical fingerprinted issue",
+        "SRE confirms",
+        "sre_confirmation_reference",
+        "Manual secure setup required",
+        "Generated BMAD/BMALPH/Ralph framework state remains intentionally uncommitted",
+    ):
+        assert phrase in closeout  # nosec B101
+
+    for issue in ("#20", "#49", "#50", "#52", "#53", "#54", "#55", "#56", "#58"):
+        assert issue in closeout  # nosec B101
+
+    assert "No secret values" in closeout  # nosec B101
+    assert "SecretAccessKey" not in closeout  # nosec B101
+
+
+def test_github_environment_cleanup_is_manual_and_guarded() -> None:
+    """Keep post-AWS-cutover GitHub Environment cleanup explicit and non-AWS."""
+    cleanup_workflow = yaml.safe_load(
+        (
+            ROOT / ".github" / "workflows" / "github-environment-legacy-cleanup.yml"
+        ).read_text()
+    )
+    cleanup_triggers = cleanup_workflow.get("on", cleanup_workflow.get(True, {}))
+    cleanup_run = cleanup_workflow["jobs"]["cleanup"]["steps"][0]["run"]
+    setup_doc = (ROOT / "docs" / "github-actions-secrets.md").read_text()
+
+    assert "workflow_dispatch" in cleanup_triggers  # nosec B101
+    assert cleanup_workflow["permissions"] == {  # nosec B101
+        "contents": "read",
+    }
+    assert "actions" not in cleanup_workflow["permissions"]  # nosec B101
+    assert "id-token" not in cleanup_workflow["permissions"]  # nosec B101
+    assert cleanup_triggers["workflow_dispatch"]["inputs"]["dry_run"][  # nosec B101
+        "default"
+    ]
+    assert cleanup_workflow["jobs"]["cleanup"]["steps"][0]["shell"] == "bash"  # nosec B101
+    assert "GH_ENVIRONMENT_ADMIN_TOKEN" in cleanup_run  # nosec B101
+    assert "github.token" not in yaml.safe_dump(cleanup_workflow)  # nosec B101
+    assert "legacy GitHub Environment variables can be removed" in cleanup_run  # nosec B101
+    assert "gh variable delete" in cleanup_run  # nosec B101
+    assert '--env "${environment_name}"' in cleanup_run  # nosec B101
+    assert "AWS_ACCOUNT_ID" in cleanup_run  # nosec B101
+    assert "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN" in cleanup_run  # nosec B101
+    assert "PULUMI_BACKEND_URL" in cleanup_run  # nosec B101
+    assert "PULUMI_PR_BACKEND_URL" in cleanup_run  # nosec B101
+    assert "PULUMI_PR_PREVIEW_STACKS" in cleanup_run  # nosec B101
+    assert "remaining_names" in cleanup_run  # nosec B101
+    assert "GitHub Environment Legacy Variable Cleanup" in setup_doc  # nosec B101
+    assert "repository **Environments** write permission" in setup_doc  # nosec B101
+    assert "`PULUMI_PR_*`" in setup_doc  # nosec B101
+    assert "dry_run=false" in setup_doc  # nosec B101

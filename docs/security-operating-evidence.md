@@ -157,3 +157,23 @@ existing Markdown or JSON attestation artifact.
 | Live GuardDuty/Security Hub/AWS Config posture | Closed for current test stack | Security reviewer plus SRE | Monthly after apply | Metadata-only checks on 2026-05-09 UTC proved detector, hub, recorder, and delivery channel posture; refresh after security-account changes. |
 | Test stack secrets-provider migration | Closed for current local evidence | Maintainer plus security reviewer | Per stack backend or secrets-provider change | Guarded local plan/apply and drift used the configured AWS KMS provider; managed workflow run `25606158994` remains historical evidence of why KMS-provider validation is required. |
 | Permissions boundary or exemption attestation | Open external control | Security reviewer | Before final 5/5 claim | Record administrator-owned boundary ARN or approved exemption. |
+
+## September 2026 Source Amendment
+
+AWS Secrets Manager stores account-local CI configuration in the fixed suffixes
+`test-pr`, `test`, `prod-preview`, and `prod`. Independently pinned repository
+variables `AWS_TEST_ACCOUNT_ID` and `AWS_PROD_ACCOUNT_ID` are validated before
+configuration-role assumption; all returned role/backend/KMS values must agree.
+The protected `test`, `test-preview`, `prod-preview`, `prod`, `governance`,
+`governance-preview`, and `operations-alert-reconcile` environments remain in use.
+Configuration suffixes do not replace approval or main-only branch restrictions.
+The installed trusted main controller validates original comments, current
+permissions, scope, fresh PR head and verified same-head deployment evidence.
+No apply/drift role fallback is permitted.
+
+The preceding dated observations remain historical evidence and do not attest
+current accounts or waive external owner controls. The operator owns immutable
+control roles and boundaries; this successor does not change IAM documents.
+See [the cutover manual](aws-secrets-manager-ci-cutover.md) for current setup.
+Neither a source merge nor local tests prove a live alert, restored object,
+current BMAD approval, or final Well-Architected readiness.

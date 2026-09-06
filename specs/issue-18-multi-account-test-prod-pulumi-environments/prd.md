@@ -1,5 +1,13 @@
 # PRD: Multi-Account Pulumi Environments
 
+> **Configuration source superseded by issue 20.** Account configuration now uses
+> fixed AWS Secrets Manager suffixes with independent repository account pins.
+> Protected `test`, `test-preview`, `prod-preview`, `prod` and the installed
+> governance/reconciliation environments remain required. See the
+> [PR57 successor contract](../issue-20-pulumi-esc-ci-config/pr57-successor-verification.md).
+> Historical removal or environment-variable setup instructions below are not
+> the current execution contract.
+
 ## Executive Summary
 This change makes the bootstrap infrastructure repository deployable across separate AWS test and production accounts with GitHub environment-scoped configuration, OIDC-only credentials, S3 Pulumi backends, and AWS KMS Pulumi secrets providers. The primary users are maintainers and SREs who need auditable preview, apply, drift, and smoke-validation paths without sharing state or credentials between environments.
 

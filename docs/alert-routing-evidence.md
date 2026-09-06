@@ -67,15 +67,66 @@ service-event injection.
 
 ## Human Consumption Route
 
+The following describes the successor source contract. Its merge alone does not
+prove deployed routing, successful live consumption, or SRE reconciliation.
+
 Operations alerts are consumed by the scheduled
-`.github/workflows/operations-alert-triage.yml` workflow. The workflow assumes
-the dedicated test account operations alert triage role through GitHub OIDC,
-reads metadata-only messages from `bootstrap-test-operations-alerts`, creates a
-GitHub issue in
-`VilnaCRM-Org/bootstrap-infrastructure` with sanitized SNS/EventBridge source,
-detail type, and event-time metadata, and deletes messages only after the issue
-is created. It must not write raw alert payloads, stack exports, credentials,
-tokens, or private incident notes to GitHub.
+`.github/workflows/operations-alert-triage.yml` workflow. The workflow loads the
+fixed `/bootstrap-infrastructure/ci/test` AWS Secrets Manager CI secret, assumes the
+dedicated test account operations alert triage role through GitHub OIDC, reads
+metadata-only messages from `bootstrap-test-operations-alerts`, and writes
+sanitized GitHub issue records in `VilnaCRM-Org/bootstrap-infrastructure`.
+
+The issue body includes an `operations-alert:fingerprint=<hash>` marker built
+from stable event fields such as source, detail type, state, backup vault,
+backup plan, backup rule, and resource ARN. Repeated notifications for the same
+underlying route update the open canonical issue with a comment instead of
+creating duplicate issues. The workflow deletes SQS messages only after the
+GitHub issue create or comment operation succeeds. It must not write raw alert
+payloads, stack exports, credentials, tokens, or private incident notes to
+GitHub.
+
+Legacy operations-alert issues that predate the fingerprint marker are not
+automatically absorbed by the search query. Treat the first post-merge
+fingerprinted issue as the canonical record for that alert stream, then link
+and close older duplicate issues only after an SRE confirms the sanitized
+events share the same underlying AWS Backup state, vault, plan or rule, and
+protected resource. A comment on a legacy issue is not enough for future
+workflow dedupe because the workflow searches issue bodies for the marker.
+If the original SQS messages were already drained and no new matching alert
+arrives, use the manual **Operations Alert Canonical Backfill** workflow to
+create or update the canonical fingerprinted issue from SRE-confirmed stable
+fields before running legacy reconciliation. The backfill workflow runs behind
+the same `operations-alert-reconcile` GitHub Environment, requires an HTTPS
+`sre_confirmation_reference`, accepts one `stable_event_json` object containing
+the confirmed EventBridge `source`, `detailType`, `state`, `resourceArn`,
+optional AWS Backup stable fields, optional `detail`, and optional `resources`,
+and requires this exact confirmation sentence:
+
+```text
+I confirm these stable fields represent the canonical operations alert stream
+```
+
+After SRE confirmation, use the manual **Operations Alert Legacy Reconcile**
+workflow to close legacy duplicates. The workflow requires a canonical issue
+whose body already contains `operations-alert:fingerprint=`, accepts only
+unmarked open `Operations alerts queued:` issues as legacy duplicates, requires
+an HTTPS SRE confirmation reference, and uses GitHub duplicate closure
+semantics. It runs behind the
+`operations-alert-reconcile` GitHub Environment so repository administrators can
+require SRE or reviewer approval before any duplicate closure. It does not
+request AWS or GitHub OIDC credentials; it only writes issue comments and
+duplicate closures.
+
+The workflow confirmation input must exactly match this sentence, and the
+`sre_confirmation_reference` input must point to the sanitized SRE confirmation
+comment or ticket. Do not put raw alert payloads, credentials, stack exports,
+tokens, or private incident notes in that referenced record.
+
+```text
+I confirm these legacy issues match the canonical operations alert stream
+```
+
 The shared Pulumi automation role carries an explicit deny for alert-queue
 `sqs:ReceiveMessage` and `sqs:DeleteMessage`; only the dedicated triage role
 may drain alert messages.
@@ -110,7 +161,11 @@ The `Well-Architected Evidence` workflow now runs on pull requests, pushes to
 Scheduled runs remain advisory even if evidence enforcement is enabled, upload
 the metadata-only evidence bundle, and retain the artifact for 90 days. The
 separate operations alert triage workflow creates GitHub issues from queued
-alert metadata every 30 minutes.
+alert metadata every 30 minutes. Mixed SQS batches are split by stable alert
+stream before GitHub issue search/create/comment operations, so unrelated
+streams do not collapse into one duplicate marker. Legacy issues without the
+`operations-alert:fingerprint=` marker still require SRE confirmation and an
+HTTPS `sre_confirmation_reference` before backfill or closure.
 
 After a scheduled or manual collector run, SRE can render a dated observation
 record from `.artifacts/well-architected/evidence.json`:
@@ -159,3 +214,71 @@ accepted values.
   public-endpoint metrics.
 - Add a new row before merging any new alert source, metric alarm, dashboard,
   downstream subscriber, runtime compute, or public endpoint.
+
+
+### Fingerprint version 2 cutover (2026-09-06 source correction)
+
+The reviewed renderer now hashes versioned, canonical JSON of the **complete**
+stable event fields. Display sanitization (backticks/newlines and the 200-character
+field limit) no longer changes hash input. Volatile occurrence identifiers stay
+excluded. The grouped metadata reports `fingerprintVersion: 2`; the issue marker
+remains `operations-alert:fingerprint=<24-hex-digest>` for workflow compatibility.
+All earlier version-1 stream hashes change, including short events. This source
+change does not claim that existing issues were migrated or redelivery QA passed.
+
+Before enabling the corrected triage workflow, the SRE must reconcile each existing
+canonical issue using independently verified full stable event metadata, record
+its v1-to-v2 mapping and evidence, and update/backfill the intended canonical record
+through the protected procedure. A v1 hash alone cannot identify the right stream:
+the old truncation could merge distinct events. Do not automatically fall back to
+v1 markers or close duplicates solely by matching old hashes. If the full stream
+identity is unavailable, retain that uncertainty and create a distinct v2 record
+rather than falsely claiming continuity. After the reviewed cutover, verify a real
+allowed alert and its redelivery update the intended v2 issue, while a different
+stable field after character200 produces a different stream. No live migration
+or notification is performed by the local tests.
+
+Large batches show the first 10 sanitized occurrences, total message count and
+explicit omitted count, keeping even four-byte Unicode metadata below the body
+size budget. Omitted IDs are not claimed to appear in an uploaded artifact. The
+workflow must still create/update the issue successfully before deleting the full
+processed SQS group. Counted omission is display policy, not proof that an incident
+was resolved or that all occurrences were individually investigated.
+
+### Typed backup classification before acknowledgment
+
+The EventBridge backup rule is a conservative first filter. AWS's
+`TestEventPattern` API confirms that `anything-but: ""` also matches null; nested
+conditions on the same field do not provide a reliable string-type conjunction.
+The triage consumer therefore validates Backup, Copy, and Restore job events
+before deciding whether they need an issue or can be acknowledged as benign.
+This is a staged filter contract, not a claim that the EventBridge pattern alone
+excludes every malformed event.
+
+The trusted CI configuration supplies `OPERATIONS_TOPIC_ARN`. For known backup
+job events, the consumer requires that exact SNS Notification topic, the expected
+account and region, event and job identifiers, message IDs, a valid receipt,
+and scalar `state`/`status` fields that agree when both are present. A completed
+job with absent, null, or empty-string `statusMessage` is benign. A nonempty
+string (including whitespace) is actionable, as are FAILED, ABORTED, and EXPIRED
+states. Nonstring messages, malformed metadata, conflicting states, unexpected
+job states, and duplicate receipt handles are quarantined. Here quarantine means
+retaining the existing SQS message for investigation; no new queue or automatic
+redrive is implied. Unknown and nonbackup alerts retain their existing issue and
+fingerprint behavior when their receipt is valid.
+
+The workflow first creates or updates every actionable issue. It then publishes
+a sanitized classification artifact containing only message hashes, dispositions,
+and fixed reason codes. Receipt handles and event payloads stay in private runner
+files. Only successful issue handling **and** successful audit upload permit the
+later deletion step to use the explicit acknowledgment allowlist. No quarantined
+receipt appears in that allowlist. Any quarantine leaves the workflow failed and
+visible after the safe receipts are acknowledged. Failure to publish the audit
+or create an issue prevents all acknowledgment in that run.
+
+The seven-day artifact is a classification record, not evidence of successful
+backup, restore, rule deployment, or SNS/SQS delivery. The local integration test
+executes the actual acknowledgment shell against a local AWS stub and proves that
+only actionable and validated-benign receipts are selected; it performs no live
+queue or issue operations. Actual end-to-end acceptance still requires the
+reviewed consumer to be deployed and observed through the authorized workflow.

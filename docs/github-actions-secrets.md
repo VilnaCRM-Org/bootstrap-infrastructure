@@ -1,139 +1,120 @@
 # GitHub Actions Secrets and Variables
 
-The hardened CI/CD layer in this repository is OIDC-first. Preview, IAM
-validation, PR-comment plan/apply commands, and nightly drift detection are
-designed to use short-lived AWS credentials issued through GitHub Actions OIDC.
-Do not add long-lived static AWS access keys for these workflows.
+Privileged Pulumi workflows use GitHub OIDC and AWS Secrets Manager. Pulumi
+Cloud and Pulumi ESC are not used for CI configuration.
 
-## GitHub environments
+Release workflows may use `REPO_GITHUB_TOKEN` when present and fall back to `GITHUB_TOKEN`
+for repository-scoped release automation.
 
-Privileged infrastructure workflows use GitHub environments as the account
-boundary. This environment-scoped configuration keeps test and production
-account values out of repository-wide variables. Configure these environments
-under **Settings -> Environments**:
+## Source Of Truth
 
-| Environment | Purpose | Protection |
-| --- | --- | --- |
-| `test` | Trusted PR previews, PR-comment test commands, merge-to-main test applies, and test drift checks | No production approval; keep branch scope limited to protected branches for apply jobs |
-| `prod-preview` | PR-comment production plans, production previews, and production drift checks with read-only or preview-only AWS access | No apply permissions |
-| `prod` | Production apply only | Require reviewers and restrict deployment branches |
+AWS Secrets Manager is the account-configuration boundary and stores
+account-local CI values. GitHub stores only non-secret metadata needed to find
+and read those values:
 
-Fork pull requests must stay unprivileged. Same-repo privileged jobs should fail
-fast when required environment variables are missing.
+- `AWS_TEST_REGION`
+- `AWS_TEST_ACCOUNT_ID`
+- `AWS_TEST_PR_CI_CONFIG_ROLE_ARN`
+- `AWS_TEST_CI_CONFIG_ROLE_ARN`
+- `AWS_PROD_REGION`
+- `AWS_PROD_ACCOUNT_ID`
+- `AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN`
+- `AWS_PROD_CI_CONFIG_ROLE_ARN`
 
-## Environment variables
+The role ARNs and account IDs are not secret. Each role is trusted by GitHub OIDC
+and scoped to one fixed CI secret suffix. The loader checks the independently
+configured account ID before assuming the role, then verifies the returned CI
+configuration belongs to that same account.
 
-Add account-specific values under each GitHub environment's **Variables** tab.
-Do not store AWS account configuration as repository-wide variables when it
-differs between test and production.
+The installed trusted controller retains separate governance routing. The operator
+and governance programs are separate successor work; this alert cutover does not
+provision their roles or broaden platform permissions.
 
-| Variable | Purpose | Notes |
-| --- | --- | --- |
-| `AWS_ACCOUNT_ID` | Expected 12-digit AWS account ID for the environment | Used with OIDC account allow-listing and evidence |
-| `AWS_REGION` | Region used by `configure-aws-credentials` and Pulumi | Optional only when the workflow has a safe default |
-| `AWS_PREVIEW_ROLE_ARN` | OIDC role used by preview and IAM validation jobs | Required for `test` and `prod-preview` |
-| `AWS_APPLY_ROLE_ARN` | OIDC role used by apply jobs | Required only for `test` and `prod` |
-| `AWS_DRIFT_ROLE_ARN` | OIDC role used by drift jobs | Required for `prod-preview`; `test` can fall back to `AWS_PREVIEW_ROLE_ARN` |
-| `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` | Dedicated OIDC role used only by operations alert issue triage | Required for `test` when alert triage is enabled |
-| `PULUMI_BACKEND_URL` | Account-specific shared Pulumi backend | Required for privileged jobs |
-| `PULUMI_SECRETS_PROVIDER` | AWS KMS Pulumi secrets provider URI | Required; use an `awskms://...` URI |
-| `PULUMI_PREVIEW_STACKS` | Comma-separated stack list for preview jobs | Use `test` in `test`; use `prod` in `prod-preview` |
-| `PULUMI_DRIFT_STACKS` | Comma-separated stack list for drift jobs | Use explicit account-local stacks |
+Every command environment allows exactly the `main` branch through a custom
+deployment branch rule. Administrator bypass is disabled; the sole reviewer is
+`Kravalg`, with self-review prevented. The evidence signing-key environment also
+allows only `main`, with no reviewer gate because it publishes verified results
+after the protected apply jobs. Verify the actual deployment branch rules through
+the separate GitHub API endpoint; the environment mode alone is insufficient.
 
-Optional PR-only overrides for the `test` environment:
+## Fixed Secret IDs
 
-| Variable | Purpose |
+| CI suffix | AWS Secrets Manager secret ID |
 | --- | --- |
-| `PULUMI_PR_BACKEND_URL` | Backend used by trusted PR previews and test deploys when `PULUMI_BACKEND_URL` is not populated |
-| `PULUMI_PR_PREVIEW_STACKS` | Stack list used by trusted PR previews and test deploys when shared preview/drift stack lists are not populated |
+| `test-pr` | `/bootstrap-infrastructure/ci/test-pr` |
+| `test` | `/bootstrap-infrastructure/ci/test` |
+| `prod-preview` | `/bootstrap-infrastructure/ci/prod-preview` |
+| `prod` | `/bootstrap-infrastructure/ci/prod` |
 
-`Pulumi Test Deploy` can also fall back from `AWS_APPLY_ROLE_ARN` and
-`AWS_DRIFT_ROLE_ARN` to `AWS_PREVIEW_ROLE_ARN` in `test` while a single
-environment-scoped bootstrap role is being expanded by the stack itself.
+The separately reviewed operator stack owns `test-pr` and `test` in the test
+account, and `prod-preview` and `prod` in production. The platform consumes
+references and must not take duplicate ownership. Operator stack outputs include
+`ciConfigurationSecretIds`, `ciConfigurationSecretArns`, and
+`githubCiConfigReadRoleArns`.
 
-Use separate AWS roles per account and purpose. Preview roles should be unable
-to mutate production resources. Apply roles should be scoped to the exact
-resources Pulumi manages in that account.
+## Runtime Contract
 
-## PR comment commands
+`.github/actions/load-aws-ci-env`:
 
-Repository owners, members, and collaborators can request Pulumi operations from
-same-repository pull requests:
+1. derives the fixed Secrets Manager secret ID from the workflow input suffix;
+2. assumes the matching `GitHubCiConfigRead-*` role through GitHub OIDC;
+3. reads the JSON payload with AWS CLI;
+4. validates required keys and account ID without printing values;
+5. exports the validated environment variables for later workflow steps.
 
-```text
-/pulumi test plan
-/pulumi test up
-/pulumi prod plan
-/pulumi prod up
-```
+Workflows must not accept account, role, backend, stack, or secret-provider
+values from pull request text, issue comments, repository dispatch payloads, or
+GitHub Environment variables.
 
-`/pulumi plan` and `/pulumi up` are compatibility aliases for the `test`
-environment. Fork pull requests are rejected before any AWS credentials are
-requested.
+## Required JSON Keys
 
-The comment intake workflow dispatches a trusted runner with the PR number,
-exact head SHA, target environment, and command. The runner revalidates that the
-PR head is still the queued SHA before checkout. Production commands always run
-the test account first: they save and validate a test plan, apply it to `test`,
-run post-apply drift detection, and only then continue to `prod-preview` or the
-protected `prod` environment for the same SHA.
+Common keys:
 
-## Optional environment secrets
+- `AWS_ACCOUNT_ID`
+- `AWS_REGION`
+- `PULUMI_BACKEND_URL`
+- `PULUMI_SECRETS_PROVIDER`
 
-Add these under the GitHub environment's **Secrets** tab only when needed.
+Purpose-specific keys:
 
-| Secret | Purpose | Notes |
-| --- | --- | --- |
-| `PULUMI_ACCESS_TOKEN` | Authenticate against the Pulumi Service backend | Only required when the backend is Pulumi Cloud |
+- `AWS_PREVIEW_ROLE_ARN`
+- `AWS_APPLY_ROLE_ARN`
+- `AWS_DRIFT_ROLE_ARN`
+- `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN`
+- `PULUMI_PREVIEW_STACKS`
+- `PULUMI_DRIFT_STACKS`
+- `OPERATIONS_ALERT_QUEUE_NAME`
+- `OPERATIONS_TOPIC_ARN`
+- `OPERATIONS_CLOUDTRAIL_NAME`
 
-Shared Pulumi backends should use an AWS KMS-backed secrets provider rather
-than a passphrase-managed stack secret flow.
+## Operator Runbook
 
-## OIDC role setup
+Follow [AWS Secrets Manager CI cutover manual](aws-secrets-manager-ci-cutover.md)
+to refresh AWS CLI credentials, apply Pulumi stacks, populate Secrets Manager
+payloads, set GitHub variables, verify privileged CI, and remove legacy GitHub
+Environment variables.
+The operator program at `pulumi/github-ci-bootstrap` is a separate #60
+successor dependency, not included in this change. Use only its independently
+reviewed checkout and ownership/migration procedure; do not recreate live roles.
 
-1. Create an IAM OIDC identity provider for `https://token.actions.githubusercontent.com` in each AWS account if it does not already exist.
-2. Create separate preview, apply, drift, and operations alert triage roles where the environment needs them.
-3. Scope trust policies to this repository, the `sts.amazonaws.com` audience, and the relevant GitHub environment subject.
-4. Store the role ARNs as `AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`, or `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` in the matching GitHub environment.
-5. Configure workflows to use `allowed-account-ids` with `AWS_ACCOUNT_ID`.
+Never paste secret payloads into chat, GitHub issues, workflow logs, docs, or
+Pulumi config. Use `put-secret-value` with a private local JSON file, and use
+`describe-secret` for metadata-only verification.
 
-See the dedicated [CI guardrails guide](ci-guardrails.md) for an example trust policy and the documented `sub` claim formats.
+## Legacy GitHub Environment Cleanup
 
-For environment-bound jobs, the trusted subject has this shape:
+After AWS-only privileged CI is green, run **GitHub Environment Legacy Variable Cleanup**
+with `dry_run=true`. The workflow needs a
+`GH_ENVIRONMENT_ADMIN_TOKEN` with repository **Environments** write permission.
+Store it only in the protected `governance` environment, never as a repository
+secret. The cleanup job is restricted to `main` and waits for the environment
+reviewer before receiving this token. Remove the temporary token after cutover.
+Review the planned deletion of legacy keys, including old `PULUMI_PR_*`
+variables, then rerun with `dry_run=false` and the documented confirmation
+sentence from the cutover manual.
 
-```text
-repo:VilnaCRM-Org/bootstrap-infrastructure:environment:<environment>
-```
-
-Use `environment:test`, `environment:prod-preview`, or `environment:prod` as
-appropriate. Avoid broad branch-only trust for production apply roles.
-The operations alert triage role should also bind
-`token.actions.githubusercontent.com:job_workflow_ref` to
-`VilnaCRM-Org/bootstrap-infrastructure/.github/workflows/operations-alert-triage.yml@refs/heads/main`.
-
-## Release Automation Secrets
-
-| Secret | Purpose | Notes |
-| --- | --- | --- |
-| `REPO_GITHUB_TOKEN` | Publish changelog-based releases | Optional; if unset, workflows fall back to `GITHUB_TOKEN` with `contents:write`. |
-
-## Template Sync Secrets
-
-Choose one authentication strategy for the template sync workflows:
-
-| Secret | Purpose | Notes |
-| --- | --- | --- |
-| `PERSONAL_ACCESS_TOKEN` | Authenticate template sync (PAT workflow) | Required by `.github/workflows/template-sync-pat.yml`. Needs repo write access. |
-| `VILNACRM_APP_ID` | GitHub App ID for template sync | Required by `.github/workflows/template-sync-app.yml`. |
-| `VILNACRM_APP_PRIVATE_KEY` | GitHub App private key for template sync | Required by `.github/workflows/template-sync-app.yml`. Store the PEM contents. |
-
-## Setting Secrets and Variables
-
-1. Navigate to **Settings → Secrets and variables → Actions** in your GitHub repository.
-2. Create `test`, `prod-preview`, and `prod` under **Environments**.
-3. Add the environment variables listed above to each environment with account-local values.
-4. Add `PULUMI_ACCESS_TOKEN` as an environment secret only when the selected backend requires it.
-5. Keep release and template-sync credentials as repository or organization secrets because they are not account-specific deploy credentials.
-6. Require reviewers and deployment branch restrictions on `prod` before enabling production apply.
-
-Rotate credentials regularly and audit workflow runs for unexpected usage.
+If legacy operations-alert issues need reconciliation and no new queued alert
+exists to create a canonical issue, use **Operations Alert Canonical Backfill**
+with an SRE-confirmed `stable_event_json` object first. Then use
+**Operations Alert Legacy Reconcile** and provide the required
+`sre_confirmation_reference`.

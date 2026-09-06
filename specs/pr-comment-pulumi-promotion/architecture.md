@@ -21,9 +21,9 @@
 - The issue-comment workflow does not check out PR code.
 - AWS credentials exist only in the trusted runner jobs bound to GitHub
   environments.
-- Each OIDC job uses the environment role configured for its stage: preview,
-  apply, or drift, with apply/drift optionally falling back to the preview role
-  when dedicated role variables are not set.
+- Each OIDC job uses the explicit account-local AWS Secrets Manager value for
+  its stage: preview, apply, or drift. Missing role values fail before AWS
+  credentials are requested.
 - Production jobs are impossible unless the same workflow run has already
   completed test apply and test post-apply drift successfully for that PR head
   SHA.

@@ -254,7 +254,14 @@ def _event_patterns() -> dict[str, dict[str, object]]:
                 "Copy Job State Change",
                 "Restore Job State Change",
             ],
-            "detail": {"state": ["FAILED", "ABORTED", "EXPIRED"]},
+            "detail": {
+                "$or": [
+                    {"state": ["FAILED", "ABORTED", "EXPIRED"]},
+                    {"status": ["FAILED", "ABORTED", "EXPIRED"]},
+                    {"state": ["COMPLETED"], "statusMessage": [{"anything-but": ""}]},
+                    {"status": ["COMPLETED"], "statusMessage": [{"anything-but": ""}]},
+                ]
+            },
         },
         "kms-risk": _cloudtrail_api_event_pattern(
             source="aws.kms",

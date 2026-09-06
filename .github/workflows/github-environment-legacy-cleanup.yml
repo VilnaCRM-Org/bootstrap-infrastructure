@@ -1,0 +1,146 @@
+name: GitHub Environment Legacy Variable Cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Report variables that would be deleted without changing GitHub
+        required: true
+        type: boolean
+        default: true
+      confirmation:
+        description: Type the documented confirmation sentence
+        required: true
+        type: string
+
+concurrency:
+  group: github-environment-legacy-variable-cleanup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    if: github.ref == 'refs/heads/main'
+    environment: governance
+    name: Remove Legacy Account Variables
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_ENVIRONMENT_ADMIN_TOKEN: ${{ secrets.GH_ENVIRONMENT_ADMIN_TOKEN }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      CONFIRMATION: ${{ inputs.confirmation }}
+    steps:
+      - name: Remove legacy GitHub Environment variables
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected="I confirm AWS Secrets Manager-backed privileged CI is green and legacy GitHub Environment variables can be removed"
+          if [[ "${CONFIRMATION}" != "${expected}" ]]; then
+            echo "error: confirmation sentence does not match the documented value." >&2
+            exit 1
+          fi
+
+          if [[ -z "${GH_ENVIRONMENT_ADMIN_TOKEN}" ]]; then
+            echo "error: GH_ENVIRONMENT_ADMIN_TOKEN is required for GitHub Environment variable cleanup." >&2
+            exit 1
+          fi
+          export GH_TOKEN="${GH_ENVIRONMENT_ADMIN_TOKEN}"
+
+          if [[ "${DRY_RUN}" != "true" && "${DRY_RUN}" != "false" ]]; then
+            echo "error: dry_run must be true or false." >&2
+            exit 1
+          fi
+
+          environments=(
+            "test"
+            "prod-preview"
+            "prod"
+          )
+          legacy_variables=(
+            "AWS_ACCOUNT_ID"
+            "AWS_APPLY_ROLE_ARN"
+            "AWS_DRIFT_ROLE_ARN"
+            "AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN"
+            "AWS_PREVIEW_ROLE_ARN"
+            "AWS_REGION"
+            "OPERATIONS_ALERT_QUEUE_NAME"
+            "OPERATIONS_CLOUDTRAIL_NAME"
+            "OPERATIONS_TOPIC_ARN"
+            "PULUMI_BACKEND_URL"
+            "PULUMI_DRIFT_STACKS"
+            "PULUMI_PR_BACKEND_URL"
+            "PULUMI_PR_PREVIEW_STACKS"
+            "PULUMI_PREVIEW_STACKS"
+            "PULUMI_SECRETS_PROVIDER"
+          )
+
+          list_environment_variables() {
+            local environment_name="$1"
+            gh variable list \
+              --repo "${GH_REPO}" \
+              --env "${environment_name}" \
+              --json name \
+              --jq '.[].name'
+          }
+
+          overall_status=0
+          for environment_name in "${environments[@]}"; do
+            echo "::group::${environment_name}"
+            if ! existing_names="$(list_environment_variables "${environment_name}")"; then
+              if [[ "${DRY_RUN}" == "true" ]]; then
+                echo "::notice::GitHub Environment '${environment_name}' is not readable; skipping."
+              else
+                echo "error: GitHub Environment '${environment_name}' is not readable." >&2
+                overall_status=1
+              fi
+              echo "::endgroup::"
+              continue
+            fi
+
+            found_legacy="false"
+            for variable_name in "${legacy_variables[@]}"; do
+              if ! grep -Fxq "${variable_name}" <<< "${existing_names}"; then
+                continue
+              fi
+              found_legacy="true"
+
+              if [[ "${DRY_RUN}" == "true" ]]; then
+                echo "::notice::Would delete ${variable_name} from ${environment_name}."
+                continue
+              fi
+
+              if gh variable delete "${variable_name}" \
+                  --repo "${GH_REPO}" \
+                  --env "${environment_name}"; then
+                echo "::notice::Deleted ${variable_name} from ${environment_name}."
+              else
+                echo "error: failed to delete ${variable_name} from ${environment_name}." >&2
+                overall_status=1
+              fi
+            done
+
+            if [[ "${found_legacy}" == "false" ]]; then
+              echo "::notice::No allowlisted legacy variables found in ${environment_name}."
+            fi
+
+            if [[ "${DRY_RUN}" == "false" ]]; then
+              if ! remaining_names="$(list_environment_variables "${environment_name}")"; then
+                echo "error: could not verify ${environment_name} after cleanup." >&2
+                overall_status=1
+              else
+                for variable_name in "${legacy_variables[@]}"; do
+                  if grep -Fxq "${variable_name}" <<< "${remaining_names}"; then
+                    echo "error: ${variable_name} still exists in ${environment_name}." >&2
+                    overall_status=1
+                  fi
+                done
+              fi
+            fi
+            echo "::endgroup::"
+          done
+
+          exit "${overall_status}"

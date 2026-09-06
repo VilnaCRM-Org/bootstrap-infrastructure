@@ -214,7 +214,8 @@ Coverage:
 - `make all`
 - `make start`
 - `make pulumi-preview`
-- `make pulumi-up`
+- `make pulumi-plan`
+- `make pulumi-up-plan`
 - `make pulumi-refresh`
 - `make pulumi-destroy`
 - `make sh`
