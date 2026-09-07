@@ -476,6 +476,9 @@ jobs:
           retention-days: 7
   publish_promotion:
     name: publish_promotion
+    concurrency:
+      group: promotion-status-${{ needs.preflight.outputs.pull_request_number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: governance-evidence
