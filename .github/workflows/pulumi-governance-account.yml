@@ -159,7 +159,11 @@ jobs:
           [[ "${account_id}" =~ ^[0-9]{12}$ ]]
           [[ "${region}" =~ ^[a-z]{2}-[a-z]+-[0-9]+$ ]]
           [[ "${backend}" =~ ^s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]/governance$ ]]
-          [[ "${secrets_provider}" =~ ^awskms://[^[:space:]]+$ ]]
+          AWS_ACCOUNT_ID="${account_id}" AWS_REGION="${region}" \
+            PULUMI_SECRETS_PROVIDER="${secrets_provider}" \
+            python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/validate_ci_environment.py" \
+              --purpose governance-account \
+              --required-keys AWS_ACCOUNT_ID,AWS_REGION,PULUMI_SECRETS_PROVIDER
           roles=("${preview_role}")
           case "${COMMAND}" in
             plan) apply_role=''; drift_role='' ;;
@@ -244,7 +248,9 @@ jobs:
           test "${PULUMI_PREVIEW_STACKS}" = "${ACCOUNT}"
           test "${PULUMI_DRIFT_STACKS}" = "${ACCOUNT}"
           [[ "${PULUMI_BACKEND_URL}" =~ ^s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]/governance$ ]]
-          [[ "${PULUMI_SECRETS_PROVIDER}" =~ ^awskms://[^[:space:]]+$ ]]
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/validate_ci_environment.py" \
+            --purpose governance-account \
+            --required-keys AWS_ACCOUNT_ID,AWS_REGION,PULUMI_SECRETS_PROVIDER
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
@@ -394,7 +400,9 @@ jobs:
           test "${PULUMI_PREVIEW_STACKS}" = "${ACCOUNT}"
           test "${PULUMI_DRIFT_STACKS}" = "${ACCOUNT}"
           [[ "${PULUMI_BACKEND_URL}" =~ ^s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]/governance$ ]]
-          [[ "${PULUMI_SECRETS_PROVIDER}" =~ ^awskms://[^[:space:]]+$ ]]
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/validate_ci_environment.py" \
+            --purpose governance-account \
+            --required-keys AWS_ACCOUNT_ID,AWS_REGION,PULUMI_SECRETS_PROVIDER
       - name: Configure AWS preview credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
@@ -483,7 +491,9 @@ jobs:
           test "${PULUMI_PREVIEW_STACKS}" = "${ACCOUNT}"
           test "${PULUMI_DRIFT_STACKS}" = "${ACCOUNT}"
           [[ "${PULUMI_BACKEND_URL}" =~ ^s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]/governance$ ]]
-          [[ "${PULUMI_SECRETS_PROVIDER}" =~ ^awskms://[^[:space:]]+$ ]]
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/validate_ci_environment.py" \
+            --purpose governance-account \
+            --required-keys AWS_ACCOUNT_ID,AWS_REGION,PULUMI_SECRETS_PROVIDER
       - name: Configure AWS apply credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
@@ -621,7 +631,9 @@ jobs:
           test "${PULUMI_PREVIEW_STACKS}" = "${ACCOUNT}"
           test "${PULUMI_DRIFT_STACKS}" = "${ACCOUNT}"
           [[ "${PULUMI_BACKEND_URL}" =~ ^s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]/governance$ ]]
-          [[ "${PULUMI_SECRETS_PROVIDER}" =~ ^awskms://[^[:space:]]+$ ]]
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/validate_ci_environment.py" \
+            --purpose governance-account \
+            --required-keys AWS_ACCOUNT_ID,AWS_REGION,PULUMI_SECRETS_PROVIDER
       - name: Configure AWS drift credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
