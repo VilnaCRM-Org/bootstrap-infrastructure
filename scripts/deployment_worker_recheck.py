@@ -56,11 +56,11 @@ def _verify_controller_run(controller: ControllerMetadata) -> None:
             and repository["id"] == REPOSITORY_ID,
             "Controller repository identity differs",
         )
-    owner = _object(run["repository"].get("owner"), "Controller repository owner")
-    preflight.require(
-        type(owner.get("id")) is int and owner["id"] == OWNER_ID,
-        "Controller owner identity differs",
-    )
+        owner = _object(repository.get("owner"), "Controller repository owner")
+        preflight.require(
+            type(owner.get("id")) is int and owner["id"] == OWNER_ID,
+            "Controller owner identity differs",
+        )
 
 
 def _recheck_selection(contract: DeploymentContract) -> None:

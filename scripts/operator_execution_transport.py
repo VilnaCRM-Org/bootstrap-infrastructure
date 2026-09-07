@@ -26,6 +26,7 @@ from operator_plan_envelope import (
     ProviderBinding,
     _validate_execution,
 )
+from operator_plan_validation import validate_operator_configuration
 
 MAX_BYTES = 48 * 1024 * 1024
 AWS = "/usr/local/bin/aws"
@@ -75,6 +76,13 @@ def private_write(path, raw, *, child=False):
         handle.write(raw)
     if child:
         os.chown(path, 2000, 2000)
+
+
+def protected_write(path, raw):
+    """Keep verifier-owned inputs readable, never writable, by the PR UID."""
+    private_write(path, raw)
+    os.chown(path, 0, 2000)
+    path.chmod(0o440)
 
 
 def private_read(path):
@@ -205,6 +213,9 @@ class OperatorTransport:
         self.work = area / "program"
         self.work.mkdir(mode=0o700)
         os.chown(self.work, 2000, 2000)
+        self.inputs = area / "inputs"
+        self.inputs.mkdir(mode=0o710)
+        os.chown(self.inputs, 0, 2000)
         # The PR process cannot inspect the root verifier's environment or files.
         area.chmod(0o711)
         self.child_env = {
@@ -425,9 +436,16 @@ class OperatorTransport:
             secrets_provider=self.uri,
         )
         config = _configuration(context, self.environment, snapshot.provider)
-        config_path = self.work / (stage + "-config.yaml")
-        private_write(config_path, yaml.safe_dump(config).encode(), child=True)
-        plan_path = self.work / (stage + ".plan")
+        require(
+            config.keys() <= {"config", "secretsprovider", "encryptedkey"},
+            "operator-config-source",
+        )
+        validate_operator_configuration(
+            config.get("config", {}), account_id=self.account, region="eu-central-1"
+        )
+        config_path = self.inputs / (stage + "-config.yaml")
+        protected_write(config_path, yaml.safe_dump(config).encode())
+        plan_path = (self.inputs if stage == "apply" else self.work) / (stage + ".plan")
         command = [
             PULUMI,
             "-C",
@@ -444,7 +462,7 @@ class OperatorTransport:
         ]
         if stage == "apply":
             require(type(plan) is bytes, "saved-plan-required")
-            private_write(plan_path, plan, child=True)
+            protected_write(plan_path, plan)
             command += ["--yes", "--plan", str(plan_path)]
         else:
             command += [

@@ -811,3 +811,12 @@ def test_active_verifier_reuses_complete_inventory_and_config_freeze(kind):
         observed = replace(observed, principals=observed.principals[1:])
     with pytest.raises(registry.RegistryError):
         registry.verify_active_enrollment(expected, observed)
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("executor_index", [0, 1, 2])
+def test_duplicate_executor_rejected(environment, executor_index):
+    expected = build(environment)
+    executor = [p for p in expected.principals if not p.existing][executor_index]
+    with pytest.raises(ValueError, match="Expected 24 principals"):
+        registry._validate_closure(expected.policies, expected.principals + (executor,))

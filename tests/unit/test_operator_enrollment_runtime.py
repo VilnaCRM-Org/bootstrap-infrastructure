@@ -58,6 +58,10 @@ class Reader:
         self.calls = []
         self.caller = {
             "Account": expected.account_id,
+            "UserId": self.role_id(
+                f"GitHubOperator{purpose.title()}-{expected.environment}"
+            )
+            + ":session-1",
             "Arn": f"arn:aws:sts::{expected.account_id}:assumed-role/"
             f"GitHubOperator{purpose.title()}-{expected.environment}/session-1",
         }
@@ -82,6 +86,11 @@ class Reader:
             else {}
             for name, p in self.roles.items()
         }
+
+    @staticmethod
+    def role_id(name):
+        """Deterministic synthetic IAM metadata, never an enrollment baseline."""
+        return "AROA" + hashlib.sha256(name.encode()).hexdigest()[:17].upper()
 
     def encode(self, document):
         """Model boto3 mappings, raw JSON and IAM's RFC3986-encoded JSON."""
@@ -146,7 +155,13 @@ class Reader:
             )
         if principal.frozen_config:
             trust = json.loads(principal.frozen_config.trust_json)
-        role = {"Arn": principal.arn, "AssumeRolePolicyDocument": self.encode(trust)}
+        name = principal.arn.rsplit("/", 1)[-1]
+        role = {
+            "Arn": principal.arn,
+            "RoleName": name,
+            "RoleId": self.role_id(name),
+            "AssumeRolePolicyDocument": self.encode(trust),
+        }
         if principal.boundary_arn:
             role["PermissionsBoundary"] = {
                 "PermissionsBoundaryType": "Policy",
@@ -227,7 +242,12 @@ def test_complete_collection_all_accounts_and_modes(environment, purpose, encodi
         == hashlib.sha256(aws_bytes).hexdigest()
     )
     assert reader.calls[0] == ("sts", "get_caller_identity", {})
-    assert reader.calls[1][0:2] == ("kms", "describe_key")
+    assert reader.calls[1] == (
+        "iam",
+        "get_role",
+        {"RoleName": f"GitHubOperator{purpose.title()}-{environment}"},
+    )
+    assert reader.calls[2][0:2] == ("kms", "describe_key")
     pointers = Counter(
         args["PolicyArn"]
         for _, operation, args in reader.calls
@@ -291,7 +311,7 @@ def test_invalid_purpose_and_forged_registry_fail_before_any_aws_read():
 
 
 @pytest.mark.parametrize("value", [None, 123, "foreign-key"])
-def test_missing_or_changed_key_metadata_fails_before_iam(value):
+def test_bad_key_stops_before_broad_metadata(value):
     expected = build()
     reader = Reader(expected)
     reader.key["Arn"] = value
@@ -299,7 +319,7 @@ def test_missing_or_changed_key_metadata_fails_before_iam(value):
         registry.RegistryError, match="metadata string|seed key mismatch"
     ):
         runtime.collect_enrollment(expected, purpose="preview", call=reader)
-    assert [service for service, _, _ in reader.calls] == ["sts", "kms"]
+    assert [service for service, _, _ in reader.calls] == ["sts", "iam", "kms"]
 
 
 @pytest.mark.parametrize("encoding", ["object", "json", "encoded"])
@@ -498,3 +518,70 @@ def test_bad_role_metadata(operation, field, value, match):
 
     with pytest.raises(registry.RegistryError, match=match):
         runtime._role(modified, principal.arn)
+
+
+@pytest.mark.parametrize(
+    "user_id",
+    [None, 123, "", "AROA" + "Z" * 17 + ":session-1", "session-1"],
+)
+def test_caller_requires_live_role_id(user_id):
+    expected = build()
+    reader = Reader(expected)
+    reader.caller["UserId"] = user_id
+    with pytest.raises(registry.RegistryError, match="immutable role identity"):
+        runtime.collect_enrollment(expected, purpose="preview", call=reader)
+    assert [operation for _, operation, _ in reader.calls] == [
+        "get_caller_identity",
+        "get_role",
+    ]
+
+
+def test_caller_requires_same_session():
+    expected = build()
+    reader = Reader(expected)
+    reader.caller["UserId"] = reader.role_id("GitHubOperatorPreview-test") + ":other"
+    with pytest.raises(registry.RegistryError, match="immutable role identity"):
+        runtime.collect_enrollment(expected, purpose="preview", call=reader)
+    assert len(reader.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("Arn", "arn:aws:iam::891377212104:role/foreign"),
+        ("RoleName", "GitHubOperatorApply-test"),
+        ("RoleId", None),
+        ("RoleId", 123),
+        ("RoleId", "AIDA" + "A" * 17),
+        ("RoleId", "AROAshort"),
+        ("RoleId", "AROA" + "a" * 17),
+    ],
+)
+def test_caller_role_metadata_is_bound(field, value):
+    expected = build()
+    reader = Reader(expected)
+
+    def read(service, operation, arguments):
+        result = reader(service, operation, arguments)
+        if operation == "get_role":
+            result["Role"][field] = value
+        return result
+
+    with pytest.raises(registry.RegistryError, match="Live operator role metadata"):
+        runtime.collect_enrollment(expected, purpose="preview", call=read)
+    assert len(reader.calls) == 2
+
+
+def test_same_name_replacement_rejects_stale_session():
+    expected = build()
+    reader = Reader(expected)
+
+    def read(service, operation, arguments):
+        result = reader(service, operation, arguments)
+        if operation == "get_role":
+            result["Role"]["RoleId"] = "AROA" + "Z" * 17
+        return result
+
+    with pytest.raises(registry.RegistryError, match="immutable role identity"):
+        runtime.collect_enrollment(expected, purpose="preview", call=read)
+    assert len(reader.calls) == 2

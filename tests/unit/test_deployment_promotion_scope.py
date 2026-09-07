@@ -566,8 +566,20 @@ def test_observed_pull_request_target_run_head_is_pr_source(scope_context):
 
 
 @pytest.mark.parametrize("head_ref", [None, "", "bad\nref", 42])
-def test_scope_context_rejects_bad_event_ref(scope_context, head_ref):
+def test_scope_context_rejects_invalid_event_ref(scope_context, head_ref):
     scope_context.event["pull_request"]["head"]["ref"] = head_ref
     scope_context.path.write_text(json.dumps(scope_context.event))
     with pytest.raises(ValueError, match="head ref"):
         scope._context()
+
+
+@pytest.mark.parametrize("receipt_data", [PLATFORM_ONLY], indirect=True)
+@pytest.mark.parametrize("corruption", ["invalid", "truncated"])
+def test_corrupt_archive_stays_pending(verified_publication, corruption):
+    state = verified_publication
+    state.raw = b"invalid archive" if corruption == "invalid" else state.raw[:-16]
+    metadata = state.state.github.overrides[f"{scope.BASE}/actions/artifacts/301"]
+    metadata["digest"] = "sha256:" + hashlib.sha256(state.raw).hexdigest()
+    metadata["size_in_bytes"] = len(state.raw)
+    assert scope.verify_current_promotion(78)["state"] == "pending"
+    assert not state.api.writes

@@ -15,9 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import operator_execution_runtime as runtime  # noqa: E402
 from operator_execution_transport import Snapshot, encode  # noqa: E402
+from operator_plan_validation import INLINE  # noqa: E402
 from test_deployment_controller import build as contract_for  # noqa: E402
 from test_operator_plan_envelope import FakeKms, execution  # noqa: E402
-from test_operator_plan_validation import fixture  # noqa: E402
+from test_operator_plan_validation import change, fixture, validate  # noqa: E402
 from test_seed_policy_registry import key_for  # noqa: E402
 
 
@@ -380,6 +381,34 @@ def test_iam_handles_absent_goals_without_inventing_documents(scenario):
         scenario.transport,
     )
     assert "iam" not in scenario.events
+
+
+def test_analyzer_uses_validated_replacement_diff_base(scenario, monkeypatch):
+    data = scenario.data
+    document = '{"Statement":{"Effect":"Deny","Action":"*","Resource":"*"}}'
+    replacement = change(
+        data,
+        INLINE,
+        {"policy": document},
+        ("delete-replaced", "replace", "create-replacement"),
+    )
+    goal = data["plan"]["resourcePlans"][replacement["urn"]]["goal"]
+    goal["deleteBeforeReplace"] = True
+    goal["inputDiff"] = {"adds": replacement["inputs"]}
+    for step in data["preview"]["steps"]:
+        if step["urn"] == replacement["urn"] and step["op"] in {
+            "delete-replaced",
+            "replace",
+        }:
+            step["oldState"]["delete"] = True
+    assert validate(data).changed_urns == (replacement["urn"],)
+    documents = []
+    monkeypatch.setattr(
+        runtime, "_analyze", lambda value, key, _: documents.append((value, key))
+    )
+    runtime._iam(encode(data["plan"]), encode(data["checkpoint"]), scenario.transport)
+    assert (document, "policy") in documents
+    assert documents.count((document, "policy")) == 1
 
 
 @pytest.mark.parametrize(
