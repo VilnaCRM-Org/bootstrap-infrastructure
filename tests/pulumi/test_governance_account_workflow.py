@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -299,10 +300,20 @@ def test_receipt_accepts_actual_results_only_and_has_no_credentials_or_promotion
 
 
 def run_shell(tmp_path, command, environment):
+    trusted = tmp_path / ".trusted/scripts"
+    trusted.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(
+        ROOT / "scripts/validate_ci_environment.py",
+        trusted / "validate_ci_environment.py",
+    )
     return subprocess.run(
         ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command],
         cwd=tmp_path,
-        env={"PATH": os.environ["PATH"], **environment},
+        env={
+            "PATH": os.environ["PATH"],
+            "GITHUB_WORKSPACE": str(tmp_path),
+            **environment,
+        },
         check=False,
         capture_output=True,
         text=True,
@@ -442,6 +453,8 @@ def test_precredential_boundary_rejects_other_projects_stacks_or_backends(
 ):
     environment = {
         "ACCOUNT": "test",
+        "AWS_ACCOUNT_ID": "111111111111",
+        "AWS_REGION": "eu-central-1",
         "PULUMI_DIR": "pulumi/governance",
         "PULUMI_STACK": "test",
         "PULUMI_PREVIEW_STACKS": "test",
@@ -452,3 +465,103 @@ def test_precredential_boundary_rejects_other_projects_stacks_or_backends(
     command = script(job, 'test "${PULUMI_DIR}"')["run"]
     assert run_shell(tmp_path, command, environment).returncode == 0
     assert run_shell(tmp_path, command, {**environment, field: value}).returncode != 0
+
+
+@pytest.mark.parametrize("job", ["resolve", *CREDENTIAL_JOBS])
+def test_kms_validation_uses_isolated_trusted_helper_before_credentials(job):
+    step = (
+        next(step for step in JOBS[job]["steps"] if step.get("id") == "account")
+        if job == "resolve"
+        else script(job, 'test "${PULUMI_DIR}"')
+    )
+    assert (
+        'python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/'
+        'validate_ci_environment.py"' in step["run"]
+    )
+    assert (
+        "--required-keys AWS_ACCOUNT_ID,AWS_REGION,PULUMI_SECRETS_PROVIDER"
+        in step["run"]
+    )
+    if job == "resolve":
+        assert 'AWS_ACCOUNT_ID="${account_id}" AWS_REGION="${region}"' in step["run"]
+        assert 'PULUMI_SECRETS_PROVIDER="${secrets_provider}"' in step["run"]
+        assert step["run"].index("validate_ci_environment.py") < step["run"].index(
+            "printf 'aws_account_id="
+        )
+    else:
+        assert JOBS[job]["env"]["AWS_ACCOUNT_ID"] == (
+            "${{ needs.resolve.outputs.aws_account_id }}"
+        )
+        assert (
+            JOBS[job]["env"]["AWS_REGION"] == "${{ needs.resolve.outputs.aws_region }}"
+        )
+
+
+def kms_configuration(tmp_path, job, provider):
+    if job == "resolve":
+        result, values = account_configuration(
+            tmp_path, "prod", PROD_SECRETS_PROVIDER=provider
+        )
+        return result, values
+    environment = {
+        "ACCOUNT": "prod",
+        "AWS_ACCOUNT_ID": "222222222222",
+        "AWS_REGION": "eu-central-1",
+        "PULUMI_DIR": "pulumi/governance",
+        "PULUMI_STACK": "prod",
+        "PULUMI_PREVIEW_STACKS": "prod",
+        "PULUMI_DRIFT_STACKS": "prod",
+        "PULUMI_BACKEND_URL": "s3://bucket/governance",
+        "PULUMI_SECRETS_PROVIDER": provider,
+    }
+    command = script(job, 'test "${PULUMI_DIR}"')["run"]
+    return run_shell(tmp_path, command, environment), {}
+
+
+@pytest.mark.parametrize("job", ["resolve", *CREDENTIAL_JOBS])
+@pytest.mark.parametrize(
+    "provider",
+    [
+        "awskms://alias/bootstrap-prod?region=us-east-1",
+        "awskms://alias/bootstrap-prod?region=eu-central-1#fragment",
+        "awskms://alias/bootstrap-prod",
+        "awskms://alias/bootstrap-prod?region=",
+        "awskms://alias/bootstrap-prod?region=eu-central-1&region=eu-central-1",
+        "awskms://alias/bootstrap-prod?region=eu-central-1&profile=other",
+        "awskms://?region=eu-central-1",
+        "awskms://[",
+        "awskms://alias/%00?region=eu-central-1",
+        "awskms://alias/bootstrap-prod?region=eu-central-1\n",
+        "awskms://arn:aws:kms:us-east-1:222222222222:key/existing?region=eu-central-1",
+        "awskms://arn:aws:kms:eu-central-1:111111111111:key/existing?region=eu-central-1",
+        "awskms://arn:aws-cn:kms:eu-central-1:222222222222:key/existing?region=eu-central-1",
+    ],
+)
+def test_kms_region_fragment_and_explicit_account_mismatch_fail_before_oidc(
+    tmp_path, job, provider
+):
+    result, values = kms_configuration(tmp_path, job, provider)
+    assert result.returncode != 0
+    assert values == {}
+    assert provider not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("job", ["resolve", *CREDENTIAL_JOBS])
+@pytest.mark.parametrize(
+    "identifier",
+    [
+        "alias/bootstrap-prod",
+        "12345678-1234-1234-1234-123456789012",
+        "arn:aws:kms:eu-central-1:222222222222:key/existing",
+        "arn:aws:kms:eu-central-1:222222222222:alias/bootstrap-prod",
+        "arn%3Aaws%3Akms%3Aeu-central-1%3A222222222222%3Aalias/bootstrap-prod",
+    ],
+)
+def test_existing_supported_kms_identifiers_keep_exact_region_context(
+    tmp_path, job, identifier
+):
+    provider = f"awskms://{identifier}?region=eu-central-1"
+    result, values = kms_configuration(tmp_path, job, provider)
+    assert result.returncode == 0, result.stderr
+    if job == "resolve":
+        assert values["secrets_provider"] == provider
