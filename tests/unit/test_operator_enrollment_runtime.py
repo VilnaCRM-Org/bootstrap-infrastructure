@@ -311,7 +311,7 @@ def test_invalid_purpose_and_forged_registry_fail_before_any_aws_read():
 
 
 @pytest.mark.parametrize("value", [None, 123, "foreign-key"])
-def test_bad_key_stops_before_broad_metadata(value):
+def test_invalid_key_stops_before_broad_metadata(value):
     expected = build()
     reader = Reader(expected)
     reader.key["Arn"] = value

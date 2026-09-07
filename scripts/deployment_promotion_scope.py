@@ -20,6 +20,7 @@ import json  # noqa: E402
 import lzma  # noqa: E402
 import os  # noqa: E402
 import re  # noqa: E402
+import struct  # noqa: E402
 import zipfile  # noqa: E402
 import zlib  # noqa: E402
 from dataclasses import asdict  # noqa: E402
@@ -169,6 +170,8 @@ def _artifact_document(
         document = _contract_bytes(raw, member_name=member)
     except (
         zipfile.BadZipFile,
+        OSError,
+        struct.error,
         EOFError,
         NotImplementedError,
         zlib.error,

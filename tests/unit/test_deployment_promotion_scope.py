@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
+import struct
 import sys
+import zipfile
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -574,12 +577,33 @@ def test_scope_context_rejects_invalid_event_ref(scope_context, head_ref):
 
 
 @pytest.mark.parametrize("receipt_data", [PLATFORM_ONLY], indirect=True)
-@pytest.mark.parametrize("corruption", ["invalid", "truncated"])
+@pytest.mark.parametrize("corruption", ["invalid", "truncated", "bzip2"])
 def test_corrupt_archive_stays_pending(verified_publication, corruption):
     state = verified_publication
-    state.raw = b"invalid archive" if corruption == "invalid" else state.raw[:-16]
+    if corruption == "bzip2":
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_BZIP2) as archive:
+            archive.writestr("proof.json", b"{}")
+        raw = bytearray(buffer.getvalue())
+        start = 30 + len("proof.json")
+        raw[start : start + 3] = b"BAD"
+        state.raw = bytes(raw)
+        with pytest.raises(OSError, match="Invalid data stream"):
+            scope._contract_bytes(state.raw, member_name="proof.json")
+    else:
+        state.raw = b"invalid archive" if corruption == "invalid" else state.raw[:-16]
     metadata = state.state.github.overrides[f"{scope.BASE}/actions/artifacts/301"]
     metadata["digest"] = "sha256:" + hashlib.sha256(state.raw).hexdigest()
     metadata["size_in_bytes"] = len(state.raw)
     assert scope.verify_current_promotion(78)["state"] == "pending"
     assert not state.api.writes
+
+
+@pytest.mark.parametrize("receipt_data", [PLATFORM_ONLY], indirect=True)
+def test_struct_error_stays_pending(verified_publication, monkeypatch):
+    def reject_archive(*args, **kwargs):
+        raise struct.error("Invalid archive structure")
+
+    monkeypatch.setattr(scope, "_contract_bytes", reject_archive)
+    assert scope.verify_current_promotion(78)["state"] == "pending"
+    assert not verified_publication.api.writes
