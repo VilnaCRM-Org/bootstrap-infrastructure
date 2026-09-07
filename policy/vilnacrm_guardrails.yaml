@@ -34,9 +34,9 @@ reviewed_iam_documents:
   "aws:iam/policy:Policy|PlatformBoundary-backup-test":
     - fd88c4dbc54b63344d698dfbfc46109355e9bb195ec6d006cdd7668a43e2c7a1
   "aws:iam/policy:Policy|PlatformBoundary-control-prod":
-    - 305dd647eb8cc2ef7a6170cb81a0e617ef79fc181745640c5df99ec271397fbf
+    - a2db12c905eb7210ca45f712e0460f906461605bf904fbed0e2f05e182324a89
   "aws:iam/policy:Policy|PlatformBoundary-control-test":
-    - 47cfe15f3d18b8cfccc7855bb58bd4014042e949719bfc3bb493cb8b341c715d
+    - bd5715c0fe203cc627ab426eaad7effb4bd07aa7457d3495421945d60e8d5081
   "aws:iam/policy:Policy|github-automation-iam-boundary-policy":
     - 2df03c2d3f35d1c4810784de9cd4d0aa181a61f36261c61fbf7e94bd9f59fc26
     - 1c755fb7383d78b55dcf5395a161845cca03dcfe5d9826a1cf1946cd7b2eb976

@@ -402,8 +402,8 @@ def _compress_sensitive_statements(statements: list[dict[str, Any]]) -> None:
 
 def _boundary_statement_group(statement: dict[str, Any], actions: list[str]) -> str:
     """Choose a compaction group while preserving sensitive conditions."""
-    if actions == ["secretsmanager:DescribeSecret"]:
-        return "global"
+    if "secretsmanager:DescribeSecret" in actions:
+        return "sensitive"
     service_allow = statement["Effect"] == "Allow" and all(
         not action.startswith(("iam:", "sts:", "kms:", "ce:")) for action in actions
     )
@@ -429,6 +429,28 @@ _GUARD_ONLY_IAM_DENIALS = (
 )
 
 
+def _compact_ci_secret_resources(resources: list[str]) -> list[str]:
+    """Remove only ARN patterns already covered by another trailing wildcard."""
+    return [
+        resource
+        for resource in resources
+        if not any(
+            other != resource
+            and other.endswith("*")
+            and resource.startswith(other[:-1])
+            for other in resources
+        )
+    ]
+
+
+def _boundary_source_statement(statement: dict[str, Any]) -> dict[str, Any]:
+    """Preserve scoped metadata reads while removing redundant boundary bytes."""
+    result = {key: value for key, value in statement.items() if key != "Sid"}
+    if statement["Sid"] == "ReadPlatformCiSecrets":
+        result["Resource"] = _compact_ci_secret_resources(result["Resource"])
+    return result
+
+
 def _boundary_source_groups(
     source: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], set[str], set[str], set[str]]:
@@ -449,7 +471,7 @@ def _boundary_source_groups(
             *_GUARD_ONLY_IAM_DENIALS,
         ):
             continue
-        result = {key: value for key, value in statement.items() if key != "Sid"}
+        result = _boundary_source_statement(statement)
         actions = result.get("Action", [])
         actions = [actions] if isinstance(actions, str) else actions
         group = _boundary_statement_group(result, actions)

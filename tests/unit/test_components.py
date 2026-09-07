@@ -2379,7 +2379,8 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     assert "CreateBootstrapCiSecrets" not in statements
     assert "ManageBootstrapCiSecrets" not in statements
     assert statements["ReadPlatformCiSecrets"]["Action"] == [
-        "secretsmanager:DescribeSecret"
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
     ]
     assert statements["ReadPlatformCiSecrets"]["Resource"] == [
         "arn:aws:secretsmanager:*:123456789012:secret:/bootstrap-infrastructure/ci/test-pr-*",
