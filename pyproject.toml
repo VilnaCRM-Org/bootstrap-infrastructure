@@ -67,6 +67,7 @@ known_first_party = [
     "deployment_controller",
     "deployment_controller_runtime",
     "deployment_input_validation",
+    "deployment_promotion_proof",
     "deployment_receipt_runtime",
     "deployment_schedule",
     "deployment_scopes",

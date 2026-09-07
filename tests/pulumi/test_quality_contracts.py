@@ -67,6 +67,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "deployment_controller",
         "deployment_controller_runtime",
         "deployment_input_validation",
+        "deployment_promotion_proof",
         "deployment_receipt_runtime",
         "deployment_schedule",
         "deployment_scopes",

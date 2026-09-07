@@ -158,6 +158,18 @@ def test_receipt_archive_has_one_exact_file():
         )
 
 
+@pytest.mark.parametrize("account", ["test", "prod"])
+def test_barrier_zip_is_account_bound(account):
+    name = f"{account}.json"
+    raw = make_zip([(name, b"{}\n")])
+    assert runtime._contract_bytes(raw, member_name=name) == b"{}\n"
+    other = "prod" if account == "test" else "test"
+    with pytest.raises(ValueError, match="Artifact member must be"):
+        runtime._contract_bytes(raw, member_name=f"{other}.json")
+    with pytest.raises(ValueError, match="Artifact member must be contract.json"):
+        runtime._contract_bytes(raw)
+
+
 @pytest.mark.parametrize("name", ["../receipt.json", "request.json", "", None])
 def test_unknown_member_kind_is_rejected(name):
     with pytest.raises(ValueError, match="Unsupported artifact member"):

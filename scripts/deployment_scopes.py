@@ -72,6 +72,7 @@ CENTRAL_EXECUTION_FILES = frozenset(
         "scripts/deployment_receipt_runtime.py",
         "scripts/deployment_account_barrier.py",
         "scripts/deployment_input_validation.py",
+        "scripts/deployment_promotion_proof.py",
         "scripts/operator_plan_envelope.py",
         "scripts/pulumi_command_preflight.py",
         "scripts/pulumi_pr_comment.py",

@@ -208,7 +208,6 @@ def test_service_scope_template_survives_central_changes(tmp_path, central_prese
         }
     }
     assert workflow["permissions"] == {
-        "actions": "read",
         "contents": "read",
         "pull-requests": "read",
     }
