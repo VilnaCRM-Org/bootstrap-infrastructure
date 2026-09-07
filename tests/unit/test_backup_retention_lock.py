@@ -14,9 +14,12 @@ from infra.utils.outputs import future_output
 from pulumi.runtime.sync_await import _sync_await
 
 
-@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize(
+    "environment,schedule",
+    [("test", "cron(0 10 * * ? *)"), ("prod", "cron(0 5 * * ? *)")],
+)
 def test_backup_lock_preserves_plan_and_reversible_protection(
-    pulumi_mocks, monkeypatch, environment
+    pulumi_mocks, monkeypatch, environment, schedule
 ):
     captured = []
     original = backup.aws.backup.VaultLockConfiguration
@@ -49,6 +52,11 @@ def test_backup_lock_preserves_plan_and_reversible_protection(
         for typ, _, state in pulumi_mocks.resources
         if typ == "aws:backup/plan:Plan"
     )
+    assert len(plan["rules"]) == 1
+    assert plan["rules"][0]["ruleName"] == "daily"
+    assert plan["rules"][0]["schedule"] == schedule
+    assert plan["rules"][0]["startWindow"] == 60
+    assert plan["rules"][0]["completionWindow"] == 120
     assert plan["rules"][0]["lifecycle"]["deleteAfter"] == 90
     assert plan["rules"][0]["targetVaultName"] == lock["backupVaultName"]
 

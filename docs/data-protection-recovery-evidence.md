@@ -31,6 +31,29 @@ details.
 | AWS Backup recovery points | AWS Backup vault and daily plan protect central logs and state buckets with 90-day retention. | Use AWS Backup for scheduled recovery points and isolated restore drills; vault encryption follows AWS Backup vault encryption behavior and source resource protection. | `pulumi/infra/backup.py`, collector restore-job check, restore drill evidence. | Open SEV2 follow-up for failed jobs and run a fresh restore drill after remediation. |
 | CI artifacts and saved plans | GitHub artifact retention plus saved-plan manifest hash, backend, stack, commit, preview hash, and age checks. | Treat artifacts as review evidence only; reject stale or tampered plans before apply. | `scripts/run_pulumi_command.py`, saved-plan tests. | Regenerate preview and plan from the intended commit when manifest validation fails. |
 
+## Daily Backup Schedule
+
+The canonical TEST plan runs at 10:00 UTC; PROD remains at 05:00 UTC.
+Both retain a 60-minute start window, a 120-minute completion window and
+90-day retention. TEST has two existing 05:00 UTC plans selecting the same
+central log bucket. Their configured latest completion bounds are 08:00 and
+09:00 UTC (the latter has a 180-minute completion window), leaving one hour
+before the canonical TEST slot. Preserve those plans, vaults and recovery
+points; consolidation requires a separate ownership review. One plan has
+verified retained checkpoint ownership; the other plan's current checkpoint
+owner remains unresolved.
+
+AWS applies [plan updates to future backups](https://docs.aws.amazon.com/aws-backup/latest/devguide/updating-a-backup-plan.html).
+For a same-day transition, verify the updated rule before 10:00 UTC and observe
+the existing 05:00 job and new scheduled job independently. Do not infer job
+creation or successful backup from rule readback alone. If the deployment misses
+that slot, reassess the transition against the daily-backup RPO before applying.
+The [start and completion windows](https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_BackupRuleInput.html)
+bound configured scheduling; delayed service cancellation or other concurrent
+jobs still require live job verification. This schedule-only change preserves
+S3 versioning and the existing TEST/PROD restore evidence; it requires no new
+restore drill.
+
 ## Vault Lock And Object Lock Decision
 
 Current design: retain mutable active S3 state with versioning, encrypted Pulumi

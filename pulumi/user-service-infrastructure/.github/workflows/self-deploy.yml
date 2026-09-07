@@ -221,7 +221,7 @@ jobs:
         run: |
           mkdir -p .artifacts/pulumi-preview
           labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/pulumi-preview/pull-request-event.json
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
 
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
@@ -329,6 +329,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
           GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
         run: |
           # The immutable same-run preview is the diff for this saved plan.
@@ -342,6 +344,13 @@ jobs:
             fi
           done
           test "${found_preview}" = true
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
           labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
           printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
           # Remove only obsolete event metadata; preserve the original diff files.
@@ -599,7 +608,7 @@ jobs:
         run: |
           mkdir -p .artifacts/pulumi-preview
           labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/pulumi-preview/pull-request-event.json
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
 
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
@@ -720,6 +729,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
           GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
         run: |
           # The immutable same-run preview is the diff for this saved plan.
@@ -733,6 +744,13 @@ jobs:
             fi
           done
           test "${found_preview}" = true
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
           labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
           printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
           # Remove only obsolete event metadata; preserve the original diff files.

@@ -898,3 +898,128 @@ def test_each_initialization_job_verifies_before_credentials(
             initializer.main(arguments)
         assert protected == []
     assert initialization[0] == []
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("phase", ["preview", "apply"])
+@pytest.mark.parametrize("override", [False, True])
+def test_generated_make_consumes_workflow_event_for_destructive_gate(
+    tmp_path, environment, phase, override
+):
+    """Execute generated workflow staging, its real Makefile, and the real parser."""
+    destination = tmp_path / "generated"
+    scaffold.generate(ROOT, destination, "billing-infrastructure")
+    subprocess.run(["git", "init", "-q", str(destination)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "fixture",
+        ],
+        cwd=destination,
+        check=True,
+    )
+    head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=destination, text=True
+    ).strip()
+    preview = destination / ".artifacts/pulumi-preview"
+    preview.mkdir(parents=True)
+    original = json.dumps(
+        {
+            "steps": [
+                {
+                    "op": "delete",
+                    "urn": "urn:fixture",
+                    "newState": {"type": "aws:kms/key:Key"},
+                }
+            ]
+        }
+    )
+    (preview / "original.json").write_text(original)
+    stale = preview / "pull-request-event.json"
+    stale.write_text(
+        json.dumps(
+            {"pull_request": {"labels": [{"name": "allow-destructive-infra-change"}]}}
+        )
+    )
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    gh = binaries / "gh"
+    gh.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "if sys.argv[2].endswith('/pulls/39'):\n"
+        "    print(json.dumps({'state':'open','merged':False,\n"
+        "        'head':{'sha':os.environ['EXPECTED_SHA']},\n"
+        "        'base':{'ref':'main','sha':os.environ['EXPECTED_BASE_SHA']}}))\n"
+        "else:\n"
+        "    assert sys.argv[2].endswith('/issues/39/labels')\n"
+        "    assert '--paginate' in sys.argv and '--slurp' in sys.argv\n"
+        "    print(json.dumps([json.loads(os.environ['LABELS'])]))\n"
+    )
+    compose = binaries / "compose"
+    compose.write_text(
+        f"#!{sys.executable}\n"
+        "import subprocess, sys\n"
+        "args = sys.argv[1:]\n"
+        "assert args[:7] == ['run','--rm','pulumi','uv','run','--frozen','python']\n"
+        "assert args[7:9] == ['scripts/pulumi_ci_guardrails.py','destructive-gate']\n"
+        "sys.exit(subprocess.run([sys.executable, *args[7:]], "
+        "check=False).returncode)\n"
+    )
+    gh.chmod(0o755)
+    compose.chmod(0o755)
+    workflow = yaml.safe_load(
+        (destination / ".github/workflows/self-deploy.yml").read_text()
+    )
+    if phase == "preview":
+        steps = workflow["jobs"][f"{environment}_destructive_diff"]["steps"]
+        stage = next(
+            step for step in steps if step.get("name", "").startswith("Stage pull")
+        )
+        shell = (
+            stage["run"].replace(
+                "${{ needs.preflight.outputs.pull_request_number }}", "39"
+            )
+            + "\nmake test-destructive-diff\n"
+        )
+    else:
+        steps = workflow["jobs"][f"{environment}_apply"]["steps"]
+        apply = next(
+            step for step in steps if step.get("name", "").startswith("Apply saved")
+        )
+        assert apply["run"].rstrip().endswith("make pulumi-up-plan")
+        shell = apply["run"].rsplit("make pulumi-up-plan", 1)[0]
+    result = subprocess.run(
+        ["/bin/bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", shell],
+        cwd=destination,
+        env={
+            "PATH": f"{binaries}:/usr/bin:/bin",
+            "COMPOSE": str(compose),
+            "GITHUB_REPOSITORY": "fixture/repository",
+            "PR_NUMBER": "39",
+            "EXPECTED_SHA": head,
+            "EXPECTED_BASE_SHA": "b" * 40,
+            "LABELS": json.dumps(
+                [{"name": "allow-destructive-infra-change"}] if override else []
+            ),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) is override, result.stderr
+    assert "No such file" not in result.stderr
+    if not override:
+        assert "destructive change blocked" in result.stderr
+    if phase == "apply":
+        assert not stale.exists()
+    assert (preview / "original.json").read_text() == original

@@ -94,6 +94,12 @@ def test_apply_reuses_matching_same_run_preview(path: Path, environment: str) ->
             [{"name": "ordinary"}] * 30 + [{"name": "allow-destructive-infra-change"}],
             True,
         ),
+        ("closed", "same", [], False),
+        ("merged", "same", [], False),
+        ("head-moved", "same", [], False),
+        ("base-moved", "same", [], False),
+        ("retargeted", "same", [], False),
+        ("pr-unavailable", "same", [], False),
         ("labels-unavailable", "same", [], False),
         ("missing-preview", "same", [], False),
         ("empty-preview", "same", [], False),
@@ -109,6 +115,27 @@ def test_rendered_apply_rechecks_current_labels(
     tmp_path: Path,
 ) -> None:
     _, apply = _apply_steps(path, environment)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "fixture",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
+    head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True
+    ).strip()
     preview_dir = tmp_path / ".artifacts/pulumi-preview"
     preview_dir.mkdir(parents=True)
     event = preview_dir / "pull-request-event.json"
@@ -141,6 +168,18 @@ def test_rendered_apply_rechecks_current_labels(
     gh.write_text(
         f"#!{sys.executable}\n"
         "import json, os, subprocess, sys\n"
+        "if sys.argv[2].endswith('/pulls/39'):\n"
+        "    case = os.environ['CASE']\n"
+        "    if case == 'pr-unavailable': sys.exit(1)\n"
+        "    pr = {'state': 'closed' if case == 'closed' else 'open',\n"
+        "          'merged': case == 'merged',\n"
+        "          'head': {'sha': 'changed' if case == 'head-moved' "
+        "else os.environ['EXPECTED_SHA']},\n"
+        "          'base': {'ref': 'other' if case == 'retargeted' else 'main',\n"
+        "                   'sha': 'changed' if case == 'base-moved' "
+        "else os.environ['EXPECTED_BASE_SHA']}}\n"
+        "    print(json.dumps(pr)); sys.exit(0)\n"
+        "assert sys.argv[2].endswith('/issues/39/labels')\n"
         "if os.environ['CASE'] == 'labels-unavailable':\n"
         "    sys.exit(1)\n"
         "assert '--paginate' in sys.argv and '--slurp' in sys.argv\n"
@@ -202,6 +241,8 @@ def test_rendered_apply_rechecks_current_labels(
             "LABELS": json.dumps(labels),
             "GITHUB_REPOSITORY": "fixture/repository",
             "PR_NUMBER": "39",
+            "EXPECTED_SHA": head,
+            "EXPECTED_BASE_SHA": "b" * 40,
         },
         capture_output=True,
         text=True,

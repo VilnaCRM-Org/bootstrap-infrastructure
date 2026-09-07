@@ -180,7 +180,11 @@ class S3BackupPlan(pulumi.ComponentResource):
                 aws.backup.PlanRuleArgs(
                     rule_name="daily",
                     target_vault_name=backup_vault.name,
-                    schedule="cron(0 5 * * ? *)",
+                    schedule=(
+                        "cron(0 10 * * ? *)"
+                        if configured_settings.environment == "test"
+                        else "cron(0 5 * * ? *)"
+                    ),
                     start_window=60,
                     completion_window=120,
                     lifecycle=aws.backup.PlanRuleLifecycleArgs(delete_after=90),
