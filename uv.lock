@@ -72,6 +72,7 @@ dependencies = [
     { name = "pulumi-aws" },
     { name = "pulumi-policy" },
     { name = "pyyaml" },
+    { name = "tomli" },
 ]
 
 [package.dev-dependencies]
@@ -89,7 +90,6 @@ dev = [
     { name = "pytest-cov" },
     { name = "radon" },
     { name = "ruff" },
-    { name = "tomli" },
     { name = "ty" },
     { name = "vulture" },
     { name = "wily" },
@@ -104,6 +104,7 @@ requires-dist = [
     { name = "pulumi-aws", specifier = ">=7.0,<8" },
     { name = "pulumi-policy", specifier = ">=1.20.0,<2" },
     { name = "pyyaml", specifier = ">=6,<7" },
+    { name = "tomli", specifier = ">=2.0,<3" },
 ]
 
 [package.metadata.requires-dev]
@@ -121,7 +122,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=5.0,<6" },
     { name = "radon", specifier = ">=5.1,<6" },
     { name = "ruff", specifier = ">=0.15.6,<1" },
-    { name = "tomli", specifier = ">=2.0,<3" },
     { name = "ty", specifier = ">=0.0.21,<0.1" },
     { name = "vulture", specifier = ">=2.11,<3" },
     { name = "wily", specifier = ">=1.25,<2" },
