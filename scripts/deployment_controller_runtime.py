@@ -89,6 +89,8 @@ def required_environments(contract: DeploymentContract) -> tuple[str, ...]:
             names.append(f"{scope}-preview")
             if contract.identity.command == "up":
                 names.append(scope)
+                if scope == "operator":
+                    names.append("operator-drift")
     return tuple(dict.fromkeys(names))
 
 

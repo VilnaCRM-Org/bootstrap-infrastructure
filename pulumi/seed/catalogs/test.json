@@ -1,0 +1,3987 @@
+{
+  "account_id": "891377212104",
+  "environment": "test",
+  "operator_bindings": {
+    "account": "891377212104",
+    "aws_secretsmanager_key": "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221",
+    "backend": "s3://pulumi-bootstrap-infrastructure-test-state",
+    "backend_key": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be",
+    "bucket": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state",
+    "checkpoint": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json",
+    "enrollment_policy_arns": [
+      "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceApply",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorApply-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorDrift-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorPreview-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceDrift",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernancePreview",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-attachments",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-closed-actions",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-crypto",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-read",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-write",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-storage",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-closed-actions",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-crypto",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-iam-read",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-storage",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-closed-actions",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-crypto",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-iam-read",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-storage",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiAutomation-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiDeploy-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/aws-config-recorder-role",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/central-logging-replication-role-705bb42",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/s3-backup-role-ac43c65",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorApply-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorDrift-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorPreview-test"
+    ],
+    "lock": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/locks/organization/github-ci-bootstrap/test/*",
+    "oidc": "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com",
+    "plan_fixed_context": {
+      "kms:EncryptionContext:account": "891377212104",
+      "kms:EncryptionContext:backend": "s3://pulumi-bootstrap-infrastructure-test-state",
+      "kms:EncryptionContext:project": "github-ci-bootstrap",
+      "kms:EncryptionContext:purpose": "operator-saved-plan-v1",
+      "kms:EncryptionContext:repository": "VilnaCRM-Org/bootstrap-infrastructure",
+      "kms:EncryptionContext:repository_id": "1098568429",
+      "kms:EncryptionContext:repository_owner_id": "114362548",
+      "kms:EncryptionContext:stack": "test",
+      "kms:EncryptionContext:workflow_path": ".github/workflows/pulumi-pr-command-runner.yml"
+    },
+    "policy_read": [
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-cost-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-boundary-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-operations-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-pulumi-backend",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-secret-read-deny",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-security-policy",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-backend",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-metadata",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-iam",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-storage",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-backend",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-metadata",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-iam",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-storage",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-backend",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-metadata",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-iam",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-storage",
+      "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test",
+      "arn:aws:iam::891377212104:policy/github-automation-cost-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-iam-boundary-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-iam-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-operations-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-security-policy",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceApply",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorApply-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorDrift-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorPreview-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceDrift",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernancePreview",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-attachments",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-closed-actions",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-crypto",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-read",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-write",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-storage",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-closed-actions",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-crypto",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-iam-read",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-storage",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-closed-actions",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-crypto",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-iam-read",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-storage",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiAutomation-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiDeploy-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-user-service-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/aws-config-recorder-role",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/central-logging-replication-role-705bb42",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/s3-backup-role-ac43c65",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorApply-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorDrift-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorPreview-test",
+      "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup",
+      "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+    ],
+    "policy_read_resources": [
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-cost-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-boundary-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-operations-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-pulumi-backend",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-secret-read-deny",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-security-policy",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-backend",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-metadata",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-iam",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-storage",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-backend",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-metadata",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-iam",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-storage",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-backend",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-metadata",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-iam",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-storage",
+      "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test",
+      "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test",
+      "arn:aws:iam::891377212104:policy/github-automation-cost-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-iam-boundary-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-iam-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-operations-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-security-policy",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/*",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/*",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/*",
+      "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup",
+      "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+    ],
+    "policy_write": [
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-cost-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-boundary-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-operations-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-policy",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-pulumi-backend",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-secret-read-deny",
+      "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-security-policy",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-backend",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-metadata",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-iam",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-storage",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-backend",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-metadata",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-iam",
+      "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-storage",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-backend",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-metadata",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-iam",
+      "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-storage",
+      "arn:aws:iam::891377212104:policy/github-automation-cost-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-iam-boundary-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-iam-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-operations-policy",
+      "arn:aws:iam::891377212104:policy/github-automation-security-policy"
+    ],
+    "read_objects": [
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/meta.yaml",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json.bak",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.pulumi-tags",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.history.json",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.checkpoint.json",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/backups/github-ci-bootstrap/test/test.*.json",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/locks/organization/github-ci-bootstrap/test/*"
+    ],
+    "role_read": [
+      "arn:aws:iam::891377212104:role/GitHubCiApply-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiApply-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:role/GitHubCiDrift-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiDrift-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiPreview-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiPreview-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubGovernanceApply-test",
+      "arn:aws:iam::891377212104:role/GitHubGovernanceDrift-test",
+      "arn:aws:iam::891377212104:role/GitHubGovernancePreview-test",
+      "arn:aws:iam::891377212104:role/GitHubOperatorApply-test",
+      "arn:aws:iam::891377212104:role/GitHubOperatorDrift-test",
+      "arn:aws:iam::891377212104:role/GitHubOperatorPreview-test",
+      "arn:aws:iam::891377212104:role/OperationsAlertTriage-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/PulumiAutomation-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/PulumiDeploy-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:role/PulumiStateRepl-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test",
+      "arn:aws:iam::891377212104:role/aws-config-recorder-role-test",
+      "arn:aws:iam::891377212104:role/central-logging-replication-role-705bb42",
+      "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
+    ],
+    "role_write": [
+      "arn:aws:iam::891377212104:role/GitHubCiApply-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:role/GitHubCiDrift-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubCiPreview-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/GitHubGovernanceApply-test",
+      "arn:aws:iam::891377212104:role/GitHubGovernanceDrift-test",
+      "arn:aws:iam::891377212104:role/GitHubGovernancePreview-test",
+      "arn:aws:iam::891377212104:role/OperationsAlertTriage-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/PulumiAutomation-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/PulumiDeploy-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:role/PulumiStateRepl-bootstrap-infrastructure-test",
+      "arn:aws:iam::891377212104:role/central-logging-replication-role-705bb42"
+    ],
+    "secrets": [
+      "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB",
+      "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+    ],
+    "secrets_manager_context": {
+      "kms:EncryptionContext:SecretARN": [
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB",
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+      ],
+      "kms:ViaService": "secretsmanager.eu-central-1.amazonaws.com"
+    },
+    "seed_key_binding_required": true,
+    "source_alias_metadata_key": "arn:aws:kms:eu-central-1:891377212104:key/43a95078-d801-4c4c-94d9-62676045bc0e",
+    "write_checkpoints": [
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json.bak",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.pulumi-tags",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.history.json",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.checkpoint.json",
+      "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/backups/github-ci-bootstrap/test/test.*.json"
+    ]
+  },
+  "policies": {
+    "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test": {
+      "installed_arn": true,
+      "kind": "existing_capability_boundary",
+      "ownership": "existing_operator_policy_transfer_to_seed",
+      "statement_ids": [
+        "d9f868e50a68f0a24b3d322846dec112f24c232b4712a534e01a8be810184629",
+        "082c5348b9609ee995824dd8bd60a0a464ebea5f253935edd7ae794905dde7de",
+        "0705102896cf01bb35aa0b1b22255be893275b1a6c32e73bd623c0cd1099ab06",
+        "cfa02f708f83ffa7f1d4fae78f604d146c2a5598274675e37dbedc63dbfa734a",
+        "96521f4ca72faf1a5759cd280429db8cc0dbda1545c8f536646fe986c156a649"
+      ],
+      "template_sha256": "4a170a1cf18cc87dba99289f1e4ac342082e6d7198c64855662cd40527bdaf84"
+    },
+    "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test": {
+      "installed_arn": true,
+      "kind": "existing_capability_boundary",
+      "ownership": "existing_operator_policy_transfer_to_seed",
+      "statement_ids": [
+        "ed369dbc14b532377e007445ebad2b115ce3adb3653f3c8d618aad68804d7151",
+        "df57d62ae00439449a1caac3c599ff6820c0daf63e627c529b716703cbfe5676"
+      ],
+      "template_sha256": "918e6b1937d5532499b5a4a911f1c00fe9d422d2ae15cebc726b01a2f88a99ac"
+    },
+    "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test": {
+      "installed_arn": true,
+      "kind": "existing_capability_boundary",
+      "ownership": "existing_operator_policy_transfer_to_seed",
+      "statement_ids": [
+        "f806accb1fb8a83b4b0bd862c06f0f94d777e74ae0366e94f7087447745b1546",
+        "12a651e017147d3d4732fe156a33b6b5316e75fc09e6be183099994b1b01530f",
+        "c59ad30ce8ed5d197f64a0c1499383f2d5e0f27a47a4715dadbacdcaf3153e79",
+        "886e620a48d85f6e301d79941b07d8cb3ef8754d1bc9e17649e24bfd526d0d9a",
+        "d54e2dd8fd55131f53b8e1ce349049fe710138447a9db94c85c9b9264928fd24",
+        "f37a7242c0fffb00edf85bb250bcf911ab6709a0f9b924de55d160cdaa69a672",
+        "a34932f387e0c109af57bd126ba3fadd39b3d242106242f8a77e7c18f1ed77ec",
+        "f15468eee662938ca0ca49286c11a9236c72d6dd7214a388c52aa5164d607ab2",
+        "a1631d5c28fdb517bff37ddf773dae4bdfc5a89aafa04b1cf275f3f747e53959"
+      ],
+      "template_sha256": "fd88c4dbc54b63344d698dfbfc46109355e9bb195ec6d006cdd7668a43e2c7a1"
+    },
+    "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test": {
+      "installed_arn": true,
+      "kind": "existing_capability_boundary",
+      "ownership": "existing_operator_policy_transfer_to_seed",
+      "statement_ids": [
+        "fa35e6b8368c82f82c2caf49b5395bc5f046c53cdca9d44e5771ee963ac3c641",
+        "301a8053799ffafc48782abe06bcea14f1868a8da3eea41d1d4003d07280d378",
+        "9c5e3ad3942fdbe4e62a3200155303e6dc7c09f702f35c8f4e6a7d14ada5906c",
+        "ec0ab3bf4be8893b8b892ac8c1a697b32fa27a3cde6aa1e2c0a6395fd858068e",
+        "d03c134ecc4c5e971514f6915665a98e36de085a4115c8aecabac2f29688a0af",
+        "4ba47d1a06981bfc68875aa1a8998a2250fd5d5bb417325a256b153675182973",
+        "a2d8c40eda36311de55fe492dc64b430519263a1e8ff48f0e73d6e5afb6a393b",
+        "4ac3aeb04a0ada851e85566ffaccba1c59889d1ed3784fb9c21b4827127d46a6",
+        "0d9e052f15b3ce170c0232c45370fbf444a56eae58485857ad91a254efef855d",
+        "66d4fea85429ebabef122d43f0f5661fbb9bf67f4eda02282119182bdd8dd3fe",
+        "c5c210e19289da394c98f8cced589dc8a77f95971b4bfdf7a089b495381de971",
+        "6327fc287d446cefaf134cbbc1b262562f7c2891fe87bd705e5675cc8e5cb2c6",
+        "6a3cddaf258d1e67daf93f6194f0b4a7fc2c1397732df7dcc19e4db17fe8acaa",
+        "d819ca0d9c6634ed3590fe986db5674527c71aa246a091e8e6e10f979a3d279c",
+        "631f756863f92a5063aa54ca2fe0e76b312977fc098caf8abefc2514ca4d1ad6",
+        "ae7fccc8413d0c6391895f4e70bfef255f2953b019588e2411230148c4e01d02",
+        "1950750b5eda52bd873256c5a0d497ff76596d49db6a2a309efe328398476161",
+        "4d143616c5d2f8759a753a791a72599602b2a4f626f54501d30e0e129af5fa34",
+        "d5d72689810cc2bc81314ce2026c180f6056838e0ae48f9c7dbba4342d226b91"
+      ],
+      "template_sha256": "bd5715c0fe203cc627ab426eaad7effb4bd07aa7457d3495421945d60e8d5081"
+    },
+    "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test": {
+      "installed_arn": true,
+      "kind": "existing_capability_boundary",
+      "ownership": "existing_operator_policy_transfer_to_seed",
+      "statement_ids": [
+        "57c3d74630484d0456e7edb7e9a2063227d169236b0be54103ce73bcc4a3478b",
+        "31bc1ed43687e2082d836b1f3f2957895b3503620e274f9a4a140e0ac28ed955"
+      ],
+      "template_sha256": "0ad71dbc320d4ca15c1fde8c839d2c47b53cf7f55fe3075e370386470744afc2"
+    },
+    "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test": {
+      "installed_arn": true,
+      "kind": "existing_capability_boundary",
+      "ownership": "existing_operator_policy_transfer_to_seed",
+      "statement_ids": [
+        "3a3df5a1ec5d78b0822fd4b1722991021c30c64367873fb961ea6aff3989366e",
+        "b0949bea9721c37254542ef73caa810a8d5c7703a7a002e7b2062cc63a92d54a"
+      ],
+      "template_sha256": "1c5e44c6345a851a86d0fbab01c7a354a9c2f4211734c839f8be464f7a90471b"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "7e9a1e069d0f6219463bfc411aaa1b57254f8f69432843072f985dabbeb02a3d"
+      ],
+      "template_sha256": "f387c1a09fb07b0e15c2f6c86b34cfb1f674e5f5e80a5a59e0bce7da9ae1eb23"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "ce6809e66974deedaa2c4b22606481d9f8b893dbc13d5681e0362d2c52619f8f"
+      ],
+      "template_sha256": "c1343e1086bc85b3e9846179245ab1dda8dad1b564b51de1d594f0c546cca431"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "af88daca91aa269a8a390002db322627fb5bf5223f8d82b3ca45caafb3b8ae8f",
+        "e76c304d5fae16bc97586c2286fc7c6ef2013d267f1aa6af94f8f98a26891a99",
+        "a5f233e067cd5bf480f029dab14011d0ad64048ba4c2e2c1a34966818a1cc601",
+        "12574e9b65baab28006eeadc5db1107a56c7d5bd63c884a66273da9bc730215a"
+      ],
+      "template_sha256": "f6d23a0c33254b67fc380a1f084a3f096c3a5168fcc2f3f9d459d6cf4df60e83"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "af88daca91aa269a8a390002db322627fb5bf5223f8d82b3ca45caafb3b8ae8f",
+        "e76c304d5fae16bc97586c2286fc7c6ef2013d267f1aa6af94f8f98a26891a99",
+        "a5f233e067cd5bf480f029dab14011d0ad64048ba4c2e2c1a34966818a1cc601",
+        "12574e9b65baab28006eeadc5db1107a56c7d5bd63c884a66273da9bc730215a"
+      ],
+      "template_sha256": "f6d23a0c33254b67fc380a1f084a3f096c3a5168fcc2f3f9d459d6cf4df60e83"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceApply": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "e1ba4aaba828e1a14d7de6a70ae9355844a500f9ffac1a7a9f83fe99f4f9bbc5",
+        "7a36d2ff752bf0fae4c2454059d12287b8f9f4bfb1f02843dc98d44fa04875b9",
+        "81c3805bc169f073d449128673106d88126187820e26551809a0c9a25f827840",
+        "a572325d1bc34dc2c74829a6a88350330a1b6e0f3eb87442ef232c0b9747f2ef",
+        "a392c26920954b42bfc022e75b3aa982e1f93bac15abd63e4c4753a7b31baae0",
+        "6f28ae7eed5bc32f6acbeb04fca8b7beec2a0334dd6d3446843842a0fad3706f",
+        "37942811a69c5c09324ce2f6a2ba57d40508db312fee413ef932324c75735e73",
+        "002571700334a071317c946c93092948acd3c80f9023907353673d90742116be",
+        "d35c02e1b58e87db1b72c592e510272adb27ef4a2ff51242d53f647b4610c9d7",
+        "abfe3f3990477fac0e12685a8aa236cec207b37de5f3095d961faee33b718007",
+        "69f23143750aff551ef80632f283250e324a87c7e44e14cd14419b07a55fa224",
+        "d419212929bd6b38e732ed5843a6ced5557af7de60b4b36fb1886611149dcef8",
+        "beb2b34d65d5680d4a2d12c8730e323f1a0c0054c98ae90d4009335c9215ae5f",
+        "94a9f77e7cb16ae2b00f16f2eb57343638dfefb05d97be123d2c3d6aa49cb1a9"
+      ],
+      "template_sha256": "b8f47d84858a9572970f062d492bb17eb01dd2ba9c8301b39d8bc4069fb8aaeb"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "6b2d4e238e1ef4f762db301c07c26c5af58f44bbda7e934e9e67247e4883493f",
+        "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17",
+        "69f23143750aff551ef80632f283250e324a87c7e44e14cd14419b07a55fa224",
+        "d419212929bd6b38e732ed5843a6ced5557af7de60b4b36fb1886611149dcef8",
+        "c388dae0b90358d20602d537cd9b8100c7a9c62b84726197f2cd1994f30cf2f5",
+        "47eaa1262eda09394a732e260aa5fdf4abf72693431085fe6f4096205ddcee60",
+        "94a9f77e7cb16ae2b00f16f2eb57343638dfefb05d97be123d2c3d6aa49cb1a9",
+        "0d44e2be89373db8443b37a751527f1d68e951d28f56d6c258d0cced849241f6",
+        "011f168588a825ccb472baeab390c6d18583ac4d62b9ef6cdb8ceb0ea2733d50",
+        "0c5dd53a3d795b3005fe827be63a3e52438c6c95c6e342a4fcd916007454f541",
+        "2be63eb279fb8482c3d6bbdd2544e86b1ca04508fb8ae0643dfc93e6ca6978a2",
+        "08b78f220f822c5ebeacd572bd38d4e2c8eaeebcfd4c0a32444aa30b05399454"
+      ],
+      "template_sha256": "fef4d440e7363d45e3717af3f3c06f990e14af35d8335031cd4ad6fdd147c94a"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "6b2d4e238e1ef4f762db301c07c26c5af58f44bbda7e934e9e67247e4883493f",
+        "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17",
+        "2be63eb279fb8482c3d6bbdd2544e86b1ca04508fb8ae0643dfc93e6ca6978a2",
+        "08b78f220f822c5ebeacd572bd38d4e2c8eaeebcfd4c0a32444aa30b05399454",
+        "0d44e2be89373db8443b37a751527f1d68e951d28f56d6c258d0cced849241f6",
+        "011f168588a825ccb472baeab390c6d18583ac4d62b9ef6cdb8ceb0ea2733d50",
+        "0c5dd53a3d795b3005fe827be63a3e52438c6c95c6e342a4fcd916007454f541",
+        "69f23143750aff551ef80632f283250e324a87c7e44e14cd14419b07a55fa224",
+        "d419212929bd6b38e732ed5843a6ced5557af7de60b4b36fb1886611149dcef8",
+        "c388dae0b90358d20602d537cd9b8100c7a9c62b84726197f2cd1994f30cf2f5",
+        "47eaa1262eda09394a732e260aa5fdf4abf72693431085fe6f4096205ddcee60",
+        "94a9f77e7cb16ae2b00f16f2eb57343638dfefb05d97be123d2c3d6aa49cb1a9"
+      ],
+      "template_sha256": "ebf09dc35113bf01aacc94677f45b465ef22f58e2d0842e655838ae6c7041a4f"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorApply-test": {
+      "installed_arn": false,
+      "kind": "executor_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
+        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
+        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
+        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
+        "3f46d49a8b6ceba0ff097b63a1aa38ebb6935d19be6203a31e8ba39b5ac7288b",
+        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
+        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
+        "0efe0d3f70ae03cff49b883a27428624937c5cbe0887118dd3baa7270d291862",
+        "eac8b0bab079f9c6f7b85fc60459b3912d80771a48e4ef1fd1dccb2b4045eb31",
+        "b02bbac7e3db8f78ced162009a8c00dc9248fc91466af868fc8e1a68735de1fd",
+        "e8d162edeba0fdeb60fb03174fef240df75ec7bbff7794ac0f7ac8c6ebdd6c4f"
+      ],
+      "template_sha256": "3977991dbb87fde326eda17dc64e28a33cfc69f6fbf0d7d2d943296233d05304"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorDrift-test": {
+      "installed_arn": false,
+      "kind": "executor_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
+        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
+        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
+        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
+        "e9820ff0bb10f30f4be0f312ab4de508564d4c3a59edad1f0447f57c90e21c7c",
+        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
+        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
+        "aa379a9e5261855f5708e888b1f3598a7b3188ef43c7a3d11b0b0ef53ed55f9d",
+        "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1"
+      ],
+      "template_sha256": "82d6f404f3441ae8e92e531f153d65a743d9924978f9e1109797d48874894da4"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorPreview-test": {
+      "installed_arn": false,
+      "kind": "executor_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
+        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
+        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
+        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
+        "e9820ff0bb10f30f4be0f312ab4de508564d4c3a59edad1f0447f57c90e21c7c",
+        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
+        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
+        "aa379a9e5261855f5708e888b1f3598a7b3188ef43c7a3d11b0b0ef53ed55f9d",
+        "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1"
+      ],
+      "template_sha256": "82d6f404f3441ae8e92e531f153d65a743d9924978f9e1109797d48874894da4"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "987dfc91d0761f32a2b48c2d4fa4754096b4bf87b2864b49dab55d8665d0607f"
+      ],
+      "template_sha256": "29bcd7141a5bce8ae558bd0eb6abd4c3aa8a146ea3083901ce1c7a2be199e0c8"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "8f75c4a552697704efba9f8b64f062296a575ca57f9e7aa84d76d1decbbb226d",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "f10419fa89f37d2c23e1694928f9a012d9094e77c88ce7695ceef1a943a48d50",
+        "26f0959f649ced8227e35fdad7dc39926169b08037b08f287c9f405b29d27d1b",
+        "94cec98a98529e3e9e90ce47bf0693589cbb935b737189020931247b098ea334",
+        "03293e1c9a0f787897a5cdc69ac00f3a011f9f7b078f7b788bcad613d906d6e7",
+        "4fae8daf596071a45b344ddc646e6a76438e96dc7b6ad17e3ec711e1b52bcffa",
+        "9e1612b826bd801e53872cc818a2fb530430b02d5184c7e027cdb2b67d6126b8"
+      ],
+      "template_sha256": "7e148230154180a4ba3f1082762e23623aa0b35cb50a548b64e7707980cdf248"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-user-service-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "9f26966048423c7bae8f9dec0c9d6ef539a7ddfecc8d26c27b5424d664fa3af2"
+      ],
+      "template_sha256": "326bd0c9a14f8f4662a9cb150b38a20499f7503786d96a7f13a6afd852ad650a"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "14388ad5b11b5ed98e2aa131373de47945ec9ec363f7152da6047a2c318a3426",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "d5006a1c4e7416b58052616a3135ef403508cc41285bc21d07015fbb60ca183e",
+        "4342ab6beb062c00147db2f024804648b3bc41bccad01b2d1aa3a1f570b7705e"
+      ],
+      "template_sha256": "ba45f26b7bfb083783b86b2e7e467976d00967591bc9ef147a342c0fceaace09"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "14388ad5b11b5ed98e2aa131373de47945ec9ec363f7152da6047a2c318a3426",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "d5006a1c4e7416b58052616a3135ef403508cc41285bc21d07015fbb60ca183e",
+        "baa6ab9baad6655674d6eb91d305dc52d4d6fab8be1281410ff5a24a75aedb91"
+      ],
+      "template_sha256": "5b84ca903a95675d87362854c179f0585b45bdcd986e811ddb5bf276e6e35673"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "14388ad5b11b5ed98e2aa131373de47945ec9ec363f7152da6047a2c318a3426",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "d5006a1c4e7416b58052616a3135ef403508cc41285bc21d07015fbb60ca183e",
+        "b10aa0b0121a57e5dd0ad09caf76db977a85397142f557fce7ee080740c4b5c5"
+      ],
+      "template_sha256": "3fbb2e51e51ce256143fbf4c559af01a80e5b56143b0a843174e67dab5e62c05"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure-test-pr": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "14388ad5b11b5ed98e2aa131373de47945ec9ec363f7152da6047a2c318a3426",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "d5006a1c4e7416b58052616a3135ef403508cc41285bc21d07015fbb60ca183e",
+        "8cffb4257a67336d939bc412f6de8cc79b1242173893bc590086340afdd338f1"
+      ],
+      "template_sha256": "3f565c7fa0a79d0aa6bdea596a40cddcec8cce9e691921b7776960104023aeb6"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "14940c5ce54ebae45c24099a1ecaa53f93e24d04c1e2601497d28df6194237cb",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "61ef87c48e7b1e49323b58a1fd5fe20eb4d72490670dc0f862d6275538e350f9",
+        "1e80b2c54c6f68a342e9806675cb6c46cf1f3410306bfe55486ab401638ff324",
+        "26f0959f649ced8227e35fdad7dc39926169b08037b08f287c9f405b29d27d1b",
+        "0436edd8295fc7f28c78d3b14b0565a5fa26e115e013882418948f69689849f0",
+        "03293e1c9a0f787897a5cdc69ac00f3a011f9f7b078f7b788bcad613d906d6e7",
+        "4fae8daf596071a45b344ddc646e6a76438e96dc7b6ad17e3ec711e1b52bcffa"
+      ],
+      "template_sha256": "30952ca7a89fded8fde98bb724b1a9cbaa9f857d4e37a54bcadc902002600992"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-user-service-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "ae950d737c89a5ac0c02927c6030244c3d45ad9af10681158610270203123864",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "119623e2999a209d7e94139a09d58819d9bd1ab20a4dfb506abeb2585562ce46"
+      ],
+      "template_sha256": "3a5ec9540b7a171bee05e2685bb72cb30530ca45dd1d6474ac7bff0c29cd866a"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "14940c5ce54ebae45c24099a1ecaa53f93e24d04c1e2601497d28df6194237cb",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "61ef87c48e7b1e49323b58a1fd5fe20eb4d72490670dc0f862d6275538e350f9",
+        "1e80b2c54c6f68a342e9806675cb6c46cf1f3410306bfe55486ab401638ff324",
+        "26f0959f649ced8227e35fdad7dc39926169b08037b08f287c9f405b29d27d1b",
+        "0436edd8295fc7f28c78d3b14b0565a5fa26e115e013882418948f69689849f0",
+        "03293e1c9a0f787897a5cdc69ac00f3a011f9f7b078f7b788bcad613d906d6e7",
+        "4fae8daf596071a45b344ddc646e6a76438e96dc7b6ad17e3ec711e1b52bcffa"
+      ],
+      "template_sha256": "30952ca7a89fded8fde98bb724b1a9cbaa9f857d4e37a54bcadc902002600992"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-user-service-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "ae950d737c89a5ac0c02927c6030244c3d45ad9af10681158610270203123864",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "119623e2999a209d7e94139a09d58819d9bd1ab20a4dfb506abeb2585562ce46"
+      ],
+      "template_sha256": "3a5ec9540b7a171bee05e2685bb72cb30530ca45dd1d6474ac7bff0c29cd866a"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "8c068aaa3d0526af49b9d871d2f2de23b11aab92043cf7146b460c2912d9a8ea",
+        "5366ec1143481bd6aa005f3b85c4f1f58f3da13a537d6e077a05e894c3403def"
+      ],
+      "template_sha256": "1115f1219a9cee5b299fa17d1dafcfb23e197deecd15d0c0d04752a660f85024"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceDrift": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "8b958d1f1a461e38ccbf762d8d863e3b84fc546b6261a1b342dfcf2390e8b103",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "167f653db9e678a04dcf7bfd200d6195c10207393fdc3a0010d88e1488cec74d"
+      ],
+      "template_sha256": "1168e0aefc770a42ccef8ed5a25ca39a68a179a7069fc825f1a8bb19e38636c2"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernancePreview": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "8b958d1f1a461e38ccbf762d8d863e3b84fc546b6261a1b342dfcf2390e8b103",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "167f653db9e678a04dcf7bfd200d6195c10207393fdc3a0010d88e1488cec74d"
+      ],
+      "template_sha256": "1168e0aefc770a42ccef8ed5a25ca39a68a179a7069fc825f1a8bb19e38636c2"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-attachments": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "c18540fba0bc350026f4afc4f24575e8b67fe8dd344a693cb747bdc615eb5c7a"
+      ],
+      "template_sha256": "69146e001d63512711e4c9df9810496ece756c9df66d4d562cfb94b503fe120c"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-closed-actions": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "b61f8baa01abc727fbc8cc30f95acd4d39e22efdf5f6aa390fabdddd29e25cf5"
+      ],
+      "template_sha256": "ad4fcca57159c54326fe6207708d960314397a85fe044e14f12d6e7b51366f94"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-crypto": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "ce3cbd6481ff7e2b98ad00d23bda2a2bad3e8ef4e56d7c2ebf0be3fe6a7b2b58",
+        "32367cadecd8d06d599c0b9b9683def82adcedae8979b816497c84f8ce0e3ab9",
+        "5d8572400bf3e27260432c0181e315c330b3c51db9344e80d97a2560ffc37fac",
+        "85f92f8b25d104a960d8f57bd68d813a5afcd7affa999d7e281fcd935e240fe4",
+        "435f74dc1de95b9d7d8dfe0dafe1e87d43efbc0a59e4cf81c7ca079f4927a7b2",
+        "596fe1e0ad9d969720ccabf01714dbd7908e6a2171e241111e552cf9ca1724d8",
+        "c8afa21e2a5c149177345604502e4f00d742fbbcf4e113f5f511a705039bd246",
+        "58a324896e514edd4607c8292cd379674d7073444a2f99132b0bde47f3a51f50",
+        "180d7b8c6ac2ae7cec1a97fa79bae5090a69bf4b3f9230cc67d6c970a0874d97",
+        "bc1f7723c83ef067951db3c6be7ea69ab7703247f3ea8d3bd6ea3943b6c69771",
+        "2c0bb51d79f9985a1b05cdc82afab71f303eb0e260f8647bab298357fa243398",
+        "aa1d813a0258e4e113e19767bde272f552fe592af3b122424a4e07cc7b72a7af",
+        "e35db61f5dabe8ab755235d71fd3691e54c13d698c031a1ec510129bbeaaccec",
+        "662629ff803ab6e0241882482dc0f19ef1b59013f70c6d1bfc5f51e6feee813f"
+      ],
+      "template_sha256": "8ec7b37791d724c75204c34d12b1fe6ffb9a8559f566d8d461e4867f68b4ea38"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-read": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "fabd8598dc75cea2affb1e777426d2a0090b87e61a358586194027da6c08bcbb",
+        "408cdbf98d039936dfbd961c790dedded87fd2d727ad253d40ab2d098d74be0d",
+        "2dca8504fa8ae299c117837f5ddd76c63b580f0e51030b420f72f36cf27cfeb9"
+      ],
+      "template_sha256": "1356044086cb0713dc8a008dbd07f9c9f113d5511fb30d6cefafb8a4aa3c1f83"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-write": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "455fe8d0216d9ac8cc7dc5ed84a91e5a765b987c633488a6a3f5eb5cf7bc20cd",
+        "0c5eed92152626033e72bf964587c8a563691acfef93ebc468313f9df12a89ce"
+      ],
+      "template_sha256": "24033b7fa203c75e3b193ed176cee7f9029e25f877ce7a6ca9403285c37ef112"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-storage": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "0eae5e3fc9948e924a6881ec895e2ff37fa7d21396987ce7884193fc3c9892f5",
+        "d794f37b934b43668ede159cfd935aeecbc51bd2db0f5c957addee202f9b86e3",
+        "b93910d4fd3c10c6b8ed671f03f3fa0fd747e99a2a6df706e96549b957bec62b",
+        "0ba9567defd98797b3aa6a4399575e283326591bf7c5b0c3d5b53fe1080d2fb3",
+        "1129033c21314e5f0c085e3052ec67395cf1a956a5e095b34f329e6a5e9fda74"
+      ],
+      "template_sha256": "491c22e5cf683805eaea762d82c1bfe9101b3dd82ad78da22fa9907d6c3edbd1"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-closed-actions": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "956044098bc5321defc7805f2da521c58b198c37cb3c7bc1ec408078ff3fc74f"
+      ],
+      "template_sha256": "50e0ad696b0b5ce31772e9f29f315e7c4f1132b6e85b78fffe44750aac518901"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-crypto": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "ce3cbd6481ff7e2b98ad00d23bda2a2bad3e8ef4e56d7c2ebf0be3fe6a7b2b58",
+        "32367cadecd8d06d599c0b9b9683def82adcedae8979b816497c84f8ce0e3ab9",
+        "5d8572400bf3e27260432c0181e315c330b3c51db9344e80d97a2560ffc37fac",
+        "85f92f8b25d104a960d8f57bd68d813a5afcd7affa999d7e281fcd935e240fe4",
+        "939dead6accbf0db62c570ced4dfe6a6875613a7a84aa3be8329d40eb56086ac",
+        "6c4d138b4b128e3b0df00af26d5bfac65f496dc585fe658e6b2994fa89fa304f",
+        "596fe1e0ad9d969720ccabf01714dbd7908e6a2171e241111e552cf9ca1724d8",
+        "c8afa21e2a5c149177345604502e4f00d742fbbcf4e113f5f511a705039bd246",
+        "58a324896e514edd4607c8292cd379674d7073444a2f99132b0bde47f3a51f50",
+        "180d7b8c6ac2ae7cec1a97fa79bae5090a69bf4b3f9230cc67d6c970a0874d97",
+        "bc1f7723c83ef067951db3c6be7ea69ab7703247f3ea8d3bd6ea3943b6c69771",
+        "2c0bb51d79f9985a1b05cdc82afab71f303eb0e260f8647bab298357fa243398",
+        "aa1d813a0258e4e113e19767bde272f552fe592af3b122424a4e07cc7b72a7af",
+        "e35db61f5dabe8ab755235d71fd3691e54c13d698c031a1ec510129bbeaaccec",
+        "662629ff803ab6e0241882482dc0f19ef1b59013f70c6d1bfc5f51e6feee813f"
+      ],
+      "template_sha256": "32a252d97414bfabad72b6163981f309ae493214c03cfec5c9a074c235b46769"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-iam-read": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "fabd8598dc75cea2affb1e777426d2a0090b87e61a358586194027da6c08bcbb",
+        "408cdbf98d039936dfbd961c790dedded87fd2d727ad253d40ab2d098d74be0d",
+        "2dca8504fa8ae299c117837f5ddd76c63b580f0e51030b420f72f36cf27cfeb9"
+      ],
+      "template_sha256": "1356044086cb0713dc8a008dbd07f9c9f113d5511fb30d6cefafb8a4aa3c1f83"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-storage": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "0eae5e3fc9948e924a6881ec895e2ff37fa7d21396987ce7884193fc3c9892f5",
+        "d794f37b934b43668ede159cfd935aeecbc51bd2db0f5c957addee202f9b86e3",
+        "d58c9c5564565ccbf14acb3506c95d1d08225df53969f1e49057d3aa27a061df",
+        "0ba9567defd98797b3aa6a4399575e283326591bf7c5b0c3d5b53fe1080d2fb3",
+        "ba49771ee9d15fcfa2124243035e49a9eb109a7efe007929832a670b0e4ee98f"
+      ],
+      "template_sha256": "b588af9c2e8a540092e358ae253656a9428c082e8b87d18272bf58f0e86887bc"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-closed-actions": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "956044098bc5321defc7805f2da521c58b198c37cb3c7bc1ec408078ff3fc74f"
+      ],
+      "template_sha256": "50e0ad696b0b5ce31772e9f29f315e7c4f1132b6e85b78fffe44750aac518901"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-crypto": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "ce3cbd6481ff7e2b98ad00d23bda2a2bad3e8ef4e56d7c2ebf0be3fe6a7b2b58",
+        "32367cadecd8d06d599c0b9b9683def82adcedae8979b816497c84f8ce0e3ab9",
+        "5d8572400bf3e27260432c0181e315c330b3c51db9344e80d97a2560ffc37fac",
+        "85f92f8b25d104a960d8f57bd68d813a5afcd7affa999d7e281fcd935e240fe4",
+        "939dead6accbf0db62c570ced4dfe6a6875613a7a84aa3be8329d40eb56086ac",
+        "6c4d138b4b128e3b0df00af26d5bfac65f496dc585fe658e6b2994fa89fa304f",
+        "596fe1e0ad9d969720ccabf01714dbd7908e6a2171e241111e552cf9ca1724d8",
+        "c8afa21e2a5c149177345604502e4f00d742fbbcf4e113f5f511a705039bd246",
+        "58a324896e514edd4607c8292cd379674d7073444a2f99132b0bde47f3a51f50",
+        "180d7b8c6ac2ae7cec1a97fa79bae5090a69bf4b3f9230cc67d6c970a0874d97",
+        "bc1f7723c83ef067951db3c6be7ea69ab7703247f3ea8d3bd6ea3943b6c69771",
+        "2c0bb51d79f9985a1b05cdc82afab71f303eb0e260f8647bab298357fa243398",
+        "aa1d813a0258e4e113e19767bde272f552fe592af3b122424a4e07cc7b72a7af",
+        "e35db61f5dabe8ab755235d71fd3691e54c13d698c031a1ec510129bbeaaccec",
+        "662629ff803ab6e0241882482dc0f19ef1b59013f70c6d1bfc5f51e6feee813f"
+      ],
+      "template_sha256": "32a252d97414bfabad72b6163981f309ae493214c03cfec5c9a074c235b46769"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-iam-read": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "fabd8598dc75cea2affb1e777426d2a0090b87e61a358586194027da6c08bcbb",
+        "408cdbf98d039936dfbd961c790dedded87fd2d727ad253d40ab2d098d74be0d",
+        "2dca8504fa8ae299c117837f5ddd76c63b580f0e51030b420f72f36cf27cfeb9"
+      ],
+      "template_sha256": "1356044086cb0713dc8a008dbd07f9c9f113d5511fb30d6cefafb8a4aa3c1f83"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-storage": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "0eae5e3fc9948e924a6881ec895e2ff37fa7d21396987ce7884193fc3c9892f5",
+        "d794f37b934b43668ede159cfd935aeecbc51bd2db0f5c957addee202f9b86e3",
+        "d58c9c5564565ccbf14acb3506c95d1d08225df53969f1e49057d3aa27a061df",
+        "0ba9567defd98797b3aa6a4399575e283326591bf7c5b0c3d5b53fe1080d2fb3",
+        "ba49771ee9d15fcfa2124243035e49a9eb109a7efe007929832a670b0e4ee98f"
+      ],
+      "template_sha256": "b588af9c2e8a540092e358ae253656a9428c082e8b87d18272bf58f0e86887bc"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06"
+      ],
+      "template_sha256": "5411b3b604a49897defca4cb37b13eccb3dfa8e8c961e5f133bf516efa4b160d"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiAutomation-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "8f75c4a552697704efba9f8b64f062296a575ca57f9e7aa84d76d1decbbb226d",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "f10419fa89f37d2c23e1694928f9a012d9094e77c88ce7695ceef1a943a48d50",
+        "26f0959f649ced8227e35fdad7dc39926169b08037b08f287c9f405b29d27d1b",
+        "94cec98a98529e3e9e90ce47bf0693589cbb935b737189020931247b098ea334",
+        "03293e1c9a0f787897a5cdc69ac00f3a011f9f7b078f7b788bcad613d906d6e7",
+        "4fae8daf596071a45b344ddc646e6a76438e96dc7b6ad17e3ec711e1b52bcffa"
+      ],
+      "template_sha256": "23ceeb1687195879f4dfcf7127486120e0ecebcd9bb68c9ca167698ed8c975e6"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiDeploy-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "8f75c4a552697704efba9f8b64f062296a575ca57f9e7aa84d76d1decbbb226d",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "f10419fa89f37d2c23e1694928f9a012d9094e77c88ce7695ceef1a943a48d50",
+        "26f0959f649ced8227e35fdad7dc39926169b08037b08f287c9f405b29d27d1b",
+        "0436edd8295fc7f28c78d3b14b0565a5fa26e115e013882418948f69689849f0",
+        "03293e1c9a0f787897a5cdc69ac00f3a011f9f7b078f7b788bcad613d906d6e7",
+        "4fae8daf596071a45b344ddc646e6a76438e96dc7b6ad17e3ec711e1b52bcffa"
+      ],
+      "template_sha256": "42c7f1db29d823ef86e4d019aa642e96afa204c7d5a877536497b5ea78096f6f"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06"
+      ],
+      "template_sha256": "5411b3b604a49897defca4cb37b13eccb3dfa8e8c961e5f133bf516efa4b160d"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-user-service-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06"
+      ],
+      "template_sha256": "5411b3b604a49897defca4cb37b13eccb3dfa8e8c961e5f133bf516efa4b160d"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/aws-config-recorder-role": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06"
+      ],
+      "template_sha256": "5411b3b604a49897defca4cb37b13eccb3dfa8e8c961e5f133bf516efa4b160d"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/central-logging-replication-role-705bb42": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06"
+      ],
+      "template_sha256": "5411b3b604a49897defca4cb37b13eccb3dfa8e8c961e5f133bf516efa4b160d"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/s3-backup-role-ac43c65": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06"
+      ],
+      "template_sha256": "5411b3b604a49897defca4cb37b13eccb3dfa8e8c961e5f133bf516efa4b160d"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorApply-test": {
+      "installed_arn": false,
+      "kind": "executor_identity",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
+        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
+        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
+        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
+        "3f46d49a8b6ceba0ff097b63a1aa38ebb6935d19be6203a31e8ba39b5ac7288b",
+        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
+        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
+        "0efe0d3f70ae03cff49b883a27428624937c5cbe0887118dd3baa7270d291862",
+        "eac8b0bab079f9c6f7b85fc60459b3912d80771a48e4ef1fd1dccb2b4045eb31",
+        "b02bbac7e3db8f78ced162009a8c00dc9248fc91466af868fc8e1a68735de1fd",
+        "e8d162edeba0fdeb60fb03174fef240df75ec7bbff7794ac0f7ac8c6ebdd6c4f"
+      ],
+      "template_sha256": "3977991dbb87fde326eda17dc64e28a33cfc69f6fbf0d7d2d943296233d05304"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorDrift-test": {
+      "installed_arn": false,
+      "kind": "executor_identity",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
+        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
+        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
+        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
+        "e9820ff0bb10f30f4be0f312ab4de508564d4c3a59edad1f0447f57c90e21c7c",
+        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
+        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
+        "aa379a9e5261855f5708e888b1f3598a7b3188ef43c7a3d11b0b0ef53ed55f9d",
+        "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1"
+      ],
+      "template_sha256": "82d6f404f3441ae8e92e531f153d65a743d9924978f9e1109797d48874894da4"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorPreview-test": {
+      "installed_arn": false,
+      "kind": "executor_identity",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
+        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
+        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
+        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
+        "e9820ff0bb10f30f4be0f312ab4de508564d4c3a59edad1f0447f57c90e21c7c",
+        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
+        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
+        "aa379a9e5261855f5708e888b1f3598a7b3188ef43c7a3d11b0b0ef53ed55f9d",
+        "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1"
+      ],
+      "template_sha256": "82d6f404f3441ae8e92e531f153d65a743d9924978f9e1109797d48874894da4"
+    }
+  },
+  "principals": [
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiApply-bootstrap-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-cost-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-boundary-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-operations-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-secret-read-deny",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-security-policy",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-bootstrap-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-bootstrap-infrastructure"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiApply-user-service-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-user-service-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-user-service-infrastructure"
+      ],
+      "owner_project": "governance"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure"
+      ],
+      "owner_project": "governance"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure-test-pr"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure-test-pr"
+      ],
+      "owner_project": "governance"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiDrift-bootstrap-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiDrift-user-service-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-user-service-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-user-service-infrastructure"
+      ],
+      "owner_project": "governance"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiPreview-bootstrap-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-bootstrap-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-bootstrap-infrastructure"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubCiPreview-user-service-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-user-service-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-user-service-infrastructure"
+      ],
+      "owner_project": "governance"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubGovernanceApply-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-backend",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-metadata",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-iam",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-storage",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceApply",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubGovernanceDrift-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-backend",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-metadata",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-iam",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-storage",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceDrift"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceDrift"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubGovernancePreview-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-backend",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-metadata",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-iam",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-storage",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernancePreview"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernancePreview"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubOperatorApply-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-attachments",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-closed-actions",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-crypto",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-read",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-write",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-storage",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorApply-test"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorApply-test",
+      "existing": false,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-attachments",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-closed-actions",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-crypto",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-read",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-write",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-storage"
+      ],
+      "owner_project": "independent_seed"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubOperatorDrift-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-closed-actions",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-crypto",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-iam-read",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-storage",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorDrift-test"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorDrift-test",
+      "existing": false,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-closed-actions",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-crypto",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-iam-read",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-storage"
+      ],
+      "owner_project": "independent_seed"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/GitHubOperatorPreview-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-closed-actions",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-crypto",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-iam-read",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-storage",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorPreview-test"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorPreview-test",
+      "existing": false,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-closed-actions",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-crypto",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-iam-read",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-storage"
+      ],
+      "owner_project": "independent_seed"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/OperationsAlertTriage-bootstrap-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/PulumiAutomation-bootstrap-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/github-automation-cost-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-iam-boundary-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-iam-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-operations-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-security-policy",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiAutomation-bootstrap-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiAutomation-bootstrap-infrastructure"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/PulumiDeploy-bootstrap-infrastructure",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiDeploy-bootstrap-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiDeploy-bootstrap-infrastructure"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/PulumiStateRepl-bootstrap-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-bootstrap-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-bootstrap-infrastructure"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-user-service-infrastructure"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-user-service-infrastructure"
+      ],
+      "owner_project": "governance"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/aws-config-recorder-role-test",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/aws-config-recorder-role",
+        "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+      ],
+      "boundary_arn": null,
+      "existing": true,
+      "frozen_config": {
+        "aws_managed_policy": {
+          "arn": "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole",
+          "document_sha256": "800d2de29e1503c081b58465590b2856a601749d1ba9db207f6951f358822ac7",
+          "version_id": "v72"
+        },
+        "aws_managed_updates_external": true,
+        "inline_policies": {
+          "security-account-controls-config-recorder-s3-policy-d950c16": {
+            "Statement": [
+              {
+                "Action": [
+                  "s3:ListBucket",
+                  "s3:GetBucketAcl"
+                ],
+                "Effect": "Allow",
+                "Resource": "arn:aws:s3:::bootstrap-891377212104-eu-central-1-test-aws-config",
+                "Sid": "AllowConfigBucketLocationCheck"
+              },
+              {
+                "Action": [
+                  "s3:PutObject",
+                  "s3:PutObjectAcl"
+                ],
+                "Condition": {
+                  "StringEquals": {
+                    "s3:x-amz-acl": "bucket-owner-full-control"
+                  }
+                },
+                "Effect": "Allow",
+                "Resource": "arn:aws:s3:::bootstrap-891377212104-eu-central-1-test-aws-config/AWSLogs/891377212104/Config/*",
+                "Sid": "AllowConfigBucketDelivery"
+              }
+            ],
+            "Version": "2012-10-17"
+          }
+        },
+        "trust": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "ArnLike": {
+                  "aws:SourceArn": "arn:aws:config:eu-central-1:891377212104:*"
+                },
+                "StringEquals": {
+                  "aws:SourceAccount": "891377212104"
+                }
+              },
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "config.amazonaws.com"
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        }
+      },
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/aws-config-recorder-role"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/central-logging-replication-role-705bb42",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/central-logging-replication-role-705bb42"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/central-logging-replication-role-705bb42"
+      ],
+      "owner_project": "github-ci-bootstrap"
+    },
+    {
+      "arn": "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65",
+      "attachment_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/s3-backup-role-ac43c65",
+        "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup"
+      ],
+      "boundary_arn": "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test",
+      "existing": true,
+      "frozen_config": null,
+      "guard_arns": [
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/s3-backup-role-ac43c65"
+      ],
+      "owner_project": "bootstrap-infrastructure"
+    }
+  ],
+  "provenance": {
+    "executor_inputs": {
+      "outputs/pr213-operator-reconciliation.json": "8ecf56e0935f7e3fac978c80cb76bca9b059065c4e0b5777fb1c1fa732503d3b",
+      "work/issue215-final-guard-inventory/inventory.json": "16157dd1f14d6de3c5ea91c36b11043b322df4a89f0b6770b66cfbf7cfd08662",
+      "work/issue215-final-guard-inventory/prod-operator-requirements.json": "759b55f1f1d4a58493f8ca321978c2d9119fb6aa5586c58df8956d91e1ce6199",
+      "work/issue215-final-guard-inventory/test-operator-requirements.json": "71b2a3ecc82cbdd97f6d1d40ee49a63881c97760709c18d625587601e61fa61c",
+      "work/issue215-operator-executor-ceilings/prod-ci-secret-key-metadata.json": "43d2bb8cd9c6921de6018e12ff4f6136e25feb3ce63edc6f142a396008779460",
+      "work/issue215-operator-executor-ceilings/prod-source-alias-key-metadata.json": "fb80754ae20d5c807231406a0db7de9ce69725b7b7eb994a3c84a5c34e608a97",
+      "work/issue215-operator-executor-ceilings/test-ci-secret-key-metadata.json": "0e1a8ba558be24e7cf0ed7b0944abe0f9f5ad5b209f8a6089d6c8c64a1042dfd",
+      "work/issue215-operator-executor-ceilings/test-source-alias-key-metadata.json": "3a9fe5c19e3cca36dff161e130e380e8e3f01205600adc4f8ec7b1f9667ac7ad",
+      "work/issue215-source/pulumi/github-ci-bootstrap/__main__.py": "a8601513e5e19de090fd020f9c66f35f323b53b7cd75514f13551f18ae276662",
+      "work/issue215-source/pulumi/infra/ci_bootstrap.py": "87b235b509dd70366c92ec28207f5f51973a6e4a09579b5f12adc141fcc9d2c8",
+      "work/issue215-source/pulumi/infra/ci_config.py": "0323f34d5cba0ea6d0a9678eddb5001ccdd38300a9fb2c33041939d12d51058a",
+      "work/issue215-source/pulumi/infra/governance.py": "0dc74aefa2162b8f3c0a47bff51172d527ebc1e09c4f48e479aed8ab531d8ec1",
+      "work/issue215-source/pulumi/infra/governance_automation.py": "c5c588d1d427d03fcf2791799531e76a15a278cb4ccf16a915ed777cbe44ac26",
+      "work/issue215-source/pulumi/infra/iam/adoption.py": "5950d6c04debc4f0cd501997b2e0980c15a0e039be0803699a29b5ec73a0b2c8",
+      "work/issue215-source/pulumi/infra/platform_control_iam.py": "68719d24acd8d761725f818bfb0139aff908cd2d15d58eb4cc79deaa1638c48b"
+    },
+    "iam_audit_sha256": "432ec95feca17306018213751735e03ed265a285800d1c7b8873e7fc42964fb0"
+  },
+  "region": "eu-central-1",
+  "schema_version": 1,
+  "statements": {
+    "002571700334a071317c946c93092948acd3c80f9023907353673d90742116be": {
+      "Action": [
+        "iam:AttachRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:iam::891377212104:role/GitHubCiApply-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:role/GitHubCiDrift-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiPreview-user-service-infrastructure-test"
+      ]
+    },
+    "011f168588a825ccb472baeab390c6d18583ac4d62b9ef6cdb8ceb0ea2733d50": {
+      "Action": [
+        "kms:DescribeKey",
+        "kms:GetKeyPolicy",
+        "kms:GetKeyRotationStatus",
+        "kms:ListResourceTags"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Environment": "test",
+          "aws:ResourceTag/Purpose": "pulumi-secrets",
+          "aws:ResourceTag/Repository": "user-service-infrastructure"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/*"
+    },
+    "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89": {
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/meta.yaml",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json.bak",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.pulumi-tags",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.history.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.checkpoint.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/backups/github-ci-bootstrap/test/test.*.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/locks/organization/github-ci-bootstrap/test/*"
+      ]
+    },
+    "03293e1c9a0f787897a5cdc69ac00f3a011f9f7b078f7b788bcad613d906d6e7": {
+      "Action": "iam:AttachRolePolicy",
+      "Condition": {
+        "ArnNotEquals": {
+          "iam:PolicyARN": "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "0436edd8295fc7f28c78d3b14b0565a5fa26e115e013882418948f69689849f0": {
+      "Action": [
+        "iam:*tagRole",
+        "iam:Attach*",
+        "iam:DeleteRole*",
+        "iam:Detach*",
+        "iam:Put*",
+        "iam:Update*"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
+    },
+    "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4": {
+      "Action": "iam:CreateServiceLinkedRole",
+      "Condition": {
+        "StringNotEquals": {
+          "iam:AWSServiceName": [
+            "budgets.amazonaws.com",
+            "guardduty.amazonaws.com",
+            "securityhub.amazonaws.com"
+          ]
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "0705102896cf01bb35aa0b1b22255be893275b1a6c32e73bd623c0cd1099ab06": {
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:DeleteObjectVersion"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state/state/*",
+        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state/.pulumi/*"
+      ]
+    },
+    "082c5348b9609ee995824dd8bd60a0a464ebea5f253935edd7ae794905dde7de": {
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state"
+      ]
+    },
+    "08b78f220f822c5ebeacd572bd38d4e2c8eaeebcfd4c0a32444aa30b05399454": {
+      "Action": "iam:GetOpenIDConnectProvider",
+      "Effect": "Allow",
+      "Resource": "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com"
+    },
+    "0ba9567defd98797b3aa6a4399575e283326591bf7c5b0c3d5b53fe1080d2fb3": {
+      "Action": "s3:DeleteObject",
+      "Effect": "Deny",
+      "NotResource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/locks/organization/github-ci-bootstrap/test/*"
+    },
+    "0c5dd53a3d795b3005fe827be63a3e52438c6c95c6e342a4fcd916007454f541": {
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:ListSecretVersionIds"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/user-service-infrastructure/ci/test-??????",
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/user-service-infrastructure/ci/test-pr-??????"
+      ]
+    },
+    "0c5eed92152626033e72bf964587c8a563691acfef93ebc468313f9df12a89ce": {
+      "Action": [
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy",
+        "iam:UntagPolicy",
+        "iam:DeletePolicy"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-cost-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-boundary-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-operations-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-secret-read-deny",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-security-policy",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-backend",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-metadata",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-iam",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-storage",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-backend",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-metadata",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-iam",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-storage",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-backend",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-metadata",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-iam",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-storage",
+        "arn:aws:iam::891377212104:policy/github-automation-cost-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-iam-boundary-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-iam-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-operations-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-security-policy"
+      ]
+    },
+    "0d44e2be89373db8443b37a751527f1d68e951d28f56d6c258d0cced849241f6": {
+      "Action": [
+        "s3:GetAccelerateConfiguration",
+        "s3:GetBucketAcl",
+        "s3:GetBucketCORS",
+        "s3:GetBucketLocation",
+        "s3:GetBucketLogging",
+        "s3:GetBucketObjectLockConfiguration",
+        "s3:GetBucketOwnershipControls",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketPolicyStatus",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketRequestPayment",
+        "s3:GetBucketTagging",
+        "s3:GetBucketVersioning",
+        "s3:GetBucketWebsite",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetReplicationConfiguration",
+        "s3:ListBucket"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-user-service-infrastructu-ce064677-eu-west-1-replication",
+        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state"
+      ]
+    },
+    "0d9e052f15b3ce170c0232c45370fbf444a56eae58485857ad91a254efef855d": {
+      "Action": "iam:PassRole",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "config.amazonaws.com"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:iam::891377212104:role/aws-config-recorder-role-test"
+    },
+    "0eae5e3fc9948e924a6881ec895e2ff37fa7d21396987ce7884193fc3c9892f5": {
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state"
+    },
+    "0efe0d3f70ae03cff49b883a27428624937c5cbe0887118dd3baa7270d291862": {
+      "Action": [
+        "kms:Decrypt"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "kms:EncryptionContext:account": "891377212104",
+          "kms:EncryptionContext:backend": "s3://pulumi-bootstrap-infrastructure-test-state",
+          "kms:EncryptionContext:project": "github-ci-bootstrap",
+          "kms:EncryptionContext:purpose": "operator-saved-plan-v1",
+          "kms:EncryptionContext:repository": "VilnaCRM-Org/bootstrap-infrastructure",
+          "kms:EncryptionContext:repository_id": "1098568429",
+          "kms:EncryptionContext:repository_owner_id": "114362548",
+          "kms:EncryptionContext:stack": "test",
+          "kms:EncryptionContext:workflow_path": ".github/workflows/pulumi-pr-command-runner.yml"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "1129033c21314e5f0c085e3052ec67395cf1a956a5e095b34f329e6a5e9fda74": {
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:UpdateSecretVersionStage",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB",
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+      ]
+    },
+    "119623e2999a209d7e94139a09d58819d9bd1ab20a4dfb506abeb2585562ce46": {
+      "Action": [
+        "s3:DeleteObject",
+        "s3:PutObject"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:s3:::pulumi-user-service-infrastructure-test-state/.pulumi/locks/*"
+    },
+    "12574e9b65baab28006eeadc5db1107a56c7d5bd63c884a66273da9bc730215a": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:Encrypt",
+        "kms:GenerateDataKey",
+        "kms:ReEncrypt*"
+      ],
+      "Condition": {
+        "ForAnyValue:StringLike": {
+          "kms:ResourceAliases": [
+            "alias/pulumi-bootstrap-infrastructure-test-secrets",
+            "alias/pulumi-platform-bootstrap-test"
+          ]
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:*:891377212104:key/*"
+    },
+    "12a651e017147d3d4732fe156a33b6b5316e75fc09e6be183099994b1b01530f": {
+      "Action": [
+        "events:DeleteRule",
+        "events:PutTargets",
+        "events:DescribeRule",
+        "events:EnableRule",
+        "events:PutRule",
+        "events:RemoveTargets",
+        "events:ListTargetsByRule",
+        "events:DisableRule"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:events:*:891377212104:rule/AwsBackupManagedRule*"
+    },
+    "14388ad5b11b5ed98e2aa131373de47945ec9ec363f7152da6047a2c318a3426": {
+      "Action": [
+        "cognito-identity:Get*",
+        "ec2:GetPasswordData",
+        "ecr:GetAuthorizationToken",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteServiceLinkedRole",
+        "iam:PutRolePermissionsBoundary",
+        "lambda:GetFunction",
+        "ssm:GetParameter*",
+        "sts:AssumeRole*",
+        "sts:AssumeRoot",
+        "sts:GetFederationToken",
+        "sts:GetSessionToken"
+      ],
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "14940c5ce54ebae45c24099a1ecaa53f93e24d04c1e2601497d28df6194237cb": {
+      "Action": [
+        "cognito-identity:GetCredentialsForIdentity",
+        "cognito-identity:GetId",
+        "cognito-identity:GetOpenIdToken",
+        "cognito-identity:GetOpenIdTokenForDeveloperIdentity",
+        "cognito-idp:AdminGetUser",
+        "cognito-idp:ListUsers",
+        "ec2:GetPasswordData",
+        "ecr:GetAuthorizationToken",
+        "iam:*SAMLProvider*",
+        "iam:AddClientIDToOpenIDConnectProvider",
+        "iam:CreateOpenIDConnectProvider",
+        "iam:CreatePolicy*",
+        "iam:CreateRole",
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:DeletePolicy*",
+        "iam:DeleteRole",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteServiceLinkedRole",
+        "iam:PutRolePermissionsBoundary",
+        "iam:RemoveClientIDFromOpenIDConnectProvider",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagOpenIDConnectProvider",
+        "iam:TagPolicy",
+        "iam:UntagOpenIDConnectProvider",
+        "iam:UntagPolicy",
+        "iam:UpdateOpenIDConnectProviderThumbprint",
+        "lambda:GetFunction",
+        "s3:DeleteObjectVersion*",
+        "secretsmanager:BatchGetSecretValue",
+        "secretsmanager:GetSecretValue",
+        "ssm:GetParameter",
+        "ssm:GetParameter*",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "sts:AssumeRole",
+        "sts:AssumeRole*",
+        "sts:AssumeRoot",
+        "sts:GetFederationToken",
+        "sts:GetSessionToken"
+      ],
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "167f653db9e678a04dcf7bfd200d6195c10207393fdc3a0010d88e1488cec74d": {
+      "Action": [
+        "s3:DeleteObject",
+        "s3:PutObject"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/governance/.pulumi/locks/*"
+    },
+    "180d7b8c6ac2ae7cec1a97fa79bae5090a69bf4b3f9230cc67d6c970a0874d97": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "false"
+        },
+        "StringNotEquals": {
+          "kms:EncryptionContext:repository_owner_id": "114362548"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "1950750b5eda52bd873256c5a0d497ff76596d49db6a2a309efe328398476161": {
+      "Action": "iam:CreateServiceLinkedRole",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": [
+            "budgets.amazonaws.com",
+            "guardduty.amazonaws.com",
+            "securityhub.amazonaws.com"
+          ]
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:iam::891377212104:role/aws-service-role/*"
+    },
+    "1e80b2c54c6f68a342e9806675cb6c46cf1f3410306bfe55486ab401638ff324": {
+      "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:DeleteObject*",
+        "s3:PutObject*",
+        "s3:ReplicateDelete",
+        "s3:ReplicateObject",
+        "s3:ReplicateTags",
+        "s3:RestoreObject"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/state/test/.pulumi/locks/*"
+    },
+    "26f0959f649ced8227e35fdad7dc39926169b08037b08f287c9f405b29d27d1b": {
+      "Action": [
+        "kms:CancelKeyDeletion",
+        "kms:CreateAlias",
+        "kms:CreateGrant",
+        "kms:Decrypt",
+        "kms:DeleteAlias",
+        "kms:DeleteImportedKeyMaterial",
+        "kms:DeriveSharedSecret",
+        "kms:DescribeKey",
+        "kms:DisableKey*",
+        "kms:EnableKey*",
+        "kms:Encrypt",
+        "kms:GenerateDataKey*",
+        "kms:GenerateMac",
+        "kms:GetKey*",
+        "kms:GetParametersForImport",
+        "kms:GetPublicKey",
+        "kms:ImportKeyMaterial",
+        "kms:ListGrants",
+        "kms:ListKeyPolicies",
+        "kms:ListKeyRotations",
+        "kms:ListResourceTags",
+        "kms:PutKeyPolicy",
+        "kms:ReEncrypt*",
+        "kms:ReplicateKey",
+        "kms:RetireGrant",
+        "kms:RevokeGrant",
+        "kms:RotateKeyOnDemand",
+        "kms:ScheduleKeyDeletion",
+        "kms:Sign",
+        "kms:SynchronizeMultiRegionKey",
+        "kms:TagResource",
+        "kms:UntagResource",
+        "kms:UpdateAlias",
+        "kms:UpdateKeyDescription",
+        "kms:UpdatePrimaryRegion",
+        "kms:Verify*"
+      ],
+      "Condition": {
+        "Null": {
+          "aws:ResourceTag/Repository": "false"
+        },
+        "StringNotEquals": {
+          "aws:ResourceTag/Repository": "bootstrap-infrastructure"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:*:891377212104:key/*"
+    },
+    "2be63eb279fb8482c3d6bbdd2544e86b1ca04508fb8ae0643dfc93e6ca6978a2": {
+      "Action": [
+        "access-analyzer:ValidatePolicy",
+        "kms:ListAliases",
+        "sts:GetCallerIdentity"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "2c0bb51d79f9985a1b05cdc82afab71f303eb0e260f8647bab298357fa243398": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "false"
+        },
+        "StringNotEquals": {
+          "kms:EncryptionContext:project": "github-ci-bootstrap"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "2dca8504fa8ae299c117837f5ddd76c63b580f0e51030b420f72f36cf27cfeb9": {
+      "Action": [
+        "iam:GetOpenIDConnectProvider",
+        "iam:ListOpenIDConnectProviderTags"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com"
+    },
+    "301a8053799ffafc48782abe06bcea14f1868a8da3eea41d1d4003d07280d378": {
+      "Action": [
+        "kms:CreateAlias",
+        "kms:DeleteAlias",
+        "kms:UpdateAlias"
+      ],
+      "Condition": {
+        "StringEqualsIfExists": {
+          "aws:ResourceTag/Environment": "test",
+          "aws:ResourceTag/Purpose": [
+            "pulumi-secrets",
+            "operations-alerting",
+            "operations-cloudtrail"
+          ]
+        }
+      },
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:kms:*:891377212104:alias/pulumi-bootstrap-infrastructure-test-secrets",
+        "arn:aws:kms:*:891377212104:alias/bootstrap-test-operations-alerting",
+        "arn:aws:kms:*:891377212104:alias/bootstrap-test-operations-cloudtrail",
+        "arn:aws:kms:*:891377212104:key/*"
+      ]
+    },
+    "31bc1ed43687e2082d836b1f3f2957895b3503620e274f9a4a140e0ac28ed955": {
+      "Action": [
+        "s3:ReplicateObject",
+        "s3:ReplicateDelete",
+        "s3:ReplicateTags",
+        "s3:GetObjectVersionTagging",
+        "s3:PutObject"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::company-central-logs-eu-central-1-test-eu-west-1-replication",
+        "arn:aws:s3:::company-central-logs-eu-central-1-test-eu-west-1-replication/*"
+      ]
+    },
+    "32367cadecd8d06d599c0b9b9683def82adcedae8979b816497c84f8ce0e3ab9": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be",
+        "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221"
+      ]
+    },
+    "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17": {
+      "Action": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListEntitiesForPolicy",
+        "iam:ListPolicyTags",
+        "iam:ListPolicyVersions"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny",
+        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test"
+      ]
+    },
+    "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d": {
+      "Action": [
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/locks/organization/github-ci-bootstrap/test/*"
+    },
+    "37942811a69c5c09324ce2f6a2ba57d40508db312fee413ef932324c75735e73": {
+      "Action": [
+        "kms:CreateAlias",
+        "kms:DeleteAlias",
+        "kms:UpdateAlias"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:alias/pulumi-user-service-infrastructure-test-secrets"
+    },
+    "3a3df5a1ec5d78b0822fd4b1722991021c30c64367873fb961ea6aff3989366e": {
+      "Action": [
+        "s3:GetReplicationConfiguration",
+        "s3:ListBucket",
+        "s3:GetObjectVersion",
+        "s3:GetObjectVersionAcl",
+        "s3:GetObjectVersionForReplication",
+        "s3:GetObjectVersionTagging"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/*"
+      ]
+    },
+    "3f46d49a8b6ceba0ff097b63a1aa38ebb6935d19be6203a31e8ba39b5ac7288b": {
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:UpdateSecretVersionStage",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB",
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+      ]
+    },
+    "408cdbf98d039936dfbd961c790dedded87fd2d727ad253d40ab2d098d74be0d": {
+      "Action": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicyVersions",
+        "iam:ListPolicyTags",
+        "iam:ListEntitiesForPolicy"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-cost-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-boundary-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-operations-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-policy",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-secret-read-deny",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-security-policy",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-backend",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-metadata",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-iam",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-storage",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-backend",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-metadata",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-iam",
+        "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-storage",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-backend",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-metadata",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-iam",
+        "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-storage",
+        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test",
+        "arn:aws:iam::891377212104:policy/github-automation-cost-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-iam-boundary-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-iam-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-operations-policy",
+        "arn:aws:iam::891377212104:policy/github-automation-security-policy",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/*",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/*",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/*",
+        "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup",
+        "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole"
+      ]
+    },
+    "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b": {
+      "Action": "iam:DetachRolePolicy",
+      "Condition": {
+        "ArnLike": {
+          "iam:PolicyARN": "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/*"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "4342ab6beb062c00147db2f024804648b3bc41bccad01b2d1aa3a1f570b7705e": {
+      "Action": "kms:Decrypt",
+      "Condition": {
+        "StringNotEquals": {
+          "kms:EncryptionContext:SecretARN": [
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB"
+          ]
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "435f74dc1de95b9d7d8dfe0dafe1e87d43efbc0a59e4cf81c7ca079f4927a7b2": {
+      "Action": "kms:GenerateDataKey",
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "455fe8d0216d9ac8cc7dc5ed84a91e5a765b987c633488a6a3f5eb5cf7bc20cd": {
+      "Action": [
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:UpdateRole",
+        "iam:UpdateRoleDescription",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:iam::891377212104:role/GitHubCiApply-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:role/GitHubCiDrift-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiPreview-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubGovernanceApply-test",
+        "arn:aws:iam::891377212104:role/GitHubGovernanceDrift-test",
+        "arn:aws:iam::891377212104:role/GitHubGovernancePreview-test",
+        "arn:aws:iam::891377212104:role/OperationsAlertTriage-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/PulumiAutomation-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/PulumiDeploy-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:role/PulumiStateRepl-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/central-logging-replication-role-705bb42"
+      ]
+    },
+    "47eaa1262eda09394a732e260aa5fdf4abf72693431085fe6f4096205ddcee60": {
+      "Action": [
+        "s3:DeleteObject",
+        "s3:PutObject"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/governance/.pulumi/locks/*"
+    },
+    "4ac3aeb04a0ada851e85566ffaccba1c59889d1ed3784fb9c21b4827127d46a6": {
+      "Action": "iam:PassRole",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "backup.amazonaws.com"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
+    },
+    "4ba47d1a06981bfc68875aa1a8998a2250fd5d5bb417325a256b153675182973": {
+      "Action": [
+        "secretsmanager:*GetSecretValue",
+        "ssm:GetParameter*",
+        "cognito-idp:*User*",
+        "sts:AssumeRole"
+      ],
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "4d143616c5d2f8759a753a791a72599602b2a4f626f54501d30e0e129af5fa34": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:Encrypt",
+        "kms:GenerateDataKey",
+        "kms:DescribeKey"
+      ],
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "kms:ResourceAliases": "alias/pulumi-platform-bootstrap-test"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:*:891377212104:key/*"
+    },
+    "4fae8daf596071a45b344ddc646e6a76438e96dc7b6ad17e3ec711e1b52bcffa": {
+      "Action": "iam:PassRole",
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:iam::891377212104:role/PulumiStateRepl-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/aws-config-recorder-role-test",
+        "arn:aws:iam::891377212104:role/central-logging-replication-role-705bb42",
+        "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
+      ]
+    },
+    "5366ec1143481bd6aa005f3b85c4f1f58f3da13a537d6e077a05e894c3403def": {
+      "Action": [
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy",
+        "iam:UntagPolicy"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny"
+      ]
+    },
+    "57c3d74630484d0456e7edb7e9a2063227d169236b0be54103ce73bcc4a3478b": {
+      "Action": [
+        "s3:GetReplicationConfiguration",
+        "s3:ListBucket",
+        "s3:GetObjectVersion",
+        "s3:GetObjectVersionAcl",
+        "s3:GetObjectVersionForReplication",
+        "s3:GetObjectVersionTagging"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::company-central-logs-eu-central-1-test",
+        "arn:aws:s3:::company-central-logs-eu-central-1-test/*"
+      ]
+    },
+    "58a324896e514edd4607c8292cd379674d7073444a2f99132b0bde47f3a51f50": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "false"
+        },
+        "StringNotEquals": {
+          "kms:EncryptionContext:repository_id": "1098568429"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "596fe1e0ad9d969720ccabf01714dbd7908e6a2171e241111e552cf9ca1724d8": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "false"
+        },
+        "StringNotEquals": {
+          "kms:EncryptionContext:purpose": "operator-saved-plan-v1"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "5d8572400bf3e27260432c0181e315c330b3c51db9344e80d97a2560ffc37fac": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "StringNotEquals": {
+          "kms:ViaService": "secretsmanager.eu-central-1.amazonaws.com"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221"
+    },
+    "61ef87c48e7b1e49323b58a1fd5fe20eb4d72490670dc0f862d6275538e350f9": {
+      "Action": [
+        "s3:GetObject*",
+        "s3:ListMultipartUploadParts",
+        "s3:ObjectOwnerOverrideToBucketOwner"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/state/test/*"
+    },
+    "631f756863f92a5063aa54ca2fe0e76b312977fc098caf8abefc2514ca4d1ad6": {
+      "Action": [
+        "backup:*",
+        "budgets:*",
+        "cloudtrail:*",
+        "config:*",
+        "ecr:*",
+        "events:*",
+        "s3:*",
+        "securityhub:*",
+        "sns:*",
+        "sqs:*"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:backup:*:891377212104:backup-plan:*",
+        "arn:aws:backup:*:891377212104:backup-selection:*",
+        "arn:aws:backup:*:891377212104:backup-vault:*",
+        "arn:aws:backup:*:891377212104:recovery-point:*",
+        "arn:aws:budgets::891377212104:budget/*",
+        "arn:aws:cloudtrail:*:891377212104:trail/bootstrap-test-management-events",
+        "arn:aws:config:*:891377212104:configuration-recorder/bootstrap-test-configuration-recorder/*",
+        "arn:aws:ecr:*:891377212104:repository/pulumi-runner/bootstrap-infrastructure-test",
+        "arn:aws:events:*:891377212104:rule/bootstrap-test-*",
+        "arn:aws:s3:::bootstrap-*-test-aws-config",
+        "arn:aws:s3:::bootstrap-*-test-cloudtrail",
+        "arn:aws:s3:::company-central-logs-*-test",
+        "arn:aws:s3:::company-central-logs-*-test-*-replication",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure--c1194dce-eu-west-1-replication",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state",
+        "arn:aws:securityhub:*:891377212104:hub/default",
+        "arn:aws:sns:*:891377212104:bootstrap-test-operations",
+        "arn:aws:sqs:*:891377212104:bootstrap-test-operations-alerts"
+      ]
+    },
+    "6327fc287d446cefaf134cbbc1b262562f7c2891fe87bd705e5675cc8e5cb2c6": {
+      "Action": "ce:GetAnomalyMonitors",
+      "Effect": "Allow",
+      "Resource": "arn:aws:ce::891377212104:anomalymonitor/*"
+    },
+    "662629ff803ab6e0241882482dc0f19ef1b59013f70c6d1bfc5f51e6feee813f": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "false"
+        },
+        "StringNotEquals": {
+          "kms:EncryptionContext:workflow_path": ".github/workflows/pulumi-pr-command-runner.yml"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8": {
+      "Action": [
+        "iam:Add*",
+        "iam:Attach*",
+        "iam:Create*",
+        "iam:Delete*",
+        "iam:Detach*",
+        "iam:PassRole",
+        "iam:Put*",
+        "iam:Remove*",
+        "iam:Set*",
+        "iam:Tag*",
+        "iam:Untag*",
+        "iam:Update*"
+      ],
+      "Effect": "Deny",
+      "Resource": [
+        "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com",
+        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/*",
+        "arn:aws:iam::891377212104:role/GitHubOperatorApply-test",
+        "arn:aws:iam::891377212104:role/GitHubOperatorDrift-test",
+        "arn:aws:iam::891377212104:role/GitHubOperatorPreview-test"
+      ]
+    },
+    "66d4fea85429ebabef122d43f0f5661fbb9bf67f4eda02282119182bdd8dd3fe": {
+      "Action": "iam:PassRole",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "s3.amazonaws.com"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:iam::891377212104:role/PulumiStateRepl-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/central-logging-replication-role-705bb42"
+      ]
+    },
+    "69f23143750aff551ef80632f283250e324a87c7e44e14cd14419b07a55fa224": {
+      "Action": "s3:GetBucketLocation",
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state"
+    },
+    "6a3cddaf258d1e67daf93f6194f0b4a7fc2c1397732df7dcc19e4db17fe8acaa": {
+      "Action": [
+        "ce:CreateAnomalyMonitor",
+        "ce:CreateAnomalySubscription",
+        "guardduty:CreateDetector"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Environment": "test",
+          "aws:RequestTag/Project": "bootstrap-infrastructure"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "6b2d4e238e1ef4f762db301c07c26c5af58f44bbda7e934e9e67247e4883493f": {
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:iam::891377212104:role/GitHubCiApply-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:role/GitHubCiDrift-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiPreview-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test"
+      ]
+    },
+    "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe": {
+      "Action": [
+        "iam:Add*",
+        "iam:Attach*",
+        "iam:Create*",
+        "iam:Delete*",
+        "iam:Detach*",
+        "iam:Put*",
+        "iam:Remove*",
+        "iam:Set*",
+        "iam:Tag*",
+        "iam:Untag*",
+        "iam:Update*"
+      ],
+      "Effect": "Deny",
+      "Resource": "arn:aws:iam::891377212104:role/aws-config-recorder-role-test"
+    },
+    "6c4d138b4b128e3b0df00af26d5bfac65f496dc585fe658e6b2994fa89fa304f": {
+      "Action": "kms:GenerateDataKey",
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "true"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e": {
+      "Action": "kms:Decrypt",
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "true"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "6f28ae7eed5bc32f6acbeb04fca8b7beec2a0334dd6d3446843842a0fad3706f": {
+      "Action": "kms:TagResource",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Repository": "user-service-infrastructure",
+          "aws:ResourceTag/Environment": "test",
+          "aws:ResourceTag/Purpose": "pulumi-secrets",
+          "aws:ResourceTag/Repository": "user-service-infrastructure"
+        },
+        "StringEqualsIfExists": {
+          "aws:RequestTag/Environment": "test",
+          "aws:RequestTag/Purpose": "pulumi-secrets"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/*"
+    },
+    "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a": {
+      "Action": [
+        "sts:GetCallerIdentity",
+        "kms:ListAliases"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "7a36d2ff752bf0fae4c2454059d12287b8f9f4bfb1f02843dc98d44fa04875b9": {
+      "Action": [
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:DeleteBucketPolicy",
+        "s3:GetAccelerateConfiguration",
+        "s3:GetBucketAcl",
+        "s3:GetBucketCORS",
+        "s3:GetBucketLocation",
+        "s3:GetBucketLogging",
+        "s3:GetBucketObjectLockConfiguration",
+        "s3:GetBucketOwnershipControls",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketPolicyStatus",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetBucketRequestPayment",
+        "s3:GetBucketTagging",
+        "s3:GetBucketVersioning",
+        "s3:GetBucketWebsite",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetReplicationConfiguration",
+        "s3:ListBucket",
+        "s3:PutBucketLogging",
+        "s3:PutBucketOwnershipControls",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketTagging",
+        "s3:PutBucketVersioning",
+        "s3:PutEncryptionConfiguration",
+        "s3:PutLifecycleConfiguration",
+        "s3:PutReplicationConfiguration"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-user-service-infrastructu-ce064677-eu-west-1-replication",
+        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state"
+      ]
+    },
+    "7e9a1e069d0f6219463bfc411aaa1b57254f8f69432843072f985dabbeb02a3d": {
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:secretsmanager:*:891377212104:secret:/bootstrap-infrastructure/ci/test-*"
+    },
+    "81c3805bc169f073d449128673106d88126187820e26551809a0c9a25f827840": {
+      "Action": [
+        "kms:CancelKeyDeletion",
+        "kms:CreateAlias",
+        "kms:DeleteAlias",
+        "kms:DescribeKey",
+        "kms:DisableKey",
+        "kms:DisableKeyRotation",
+        "kms:EnableKey",
+        "kms:EnableKeyRotation",
+        "kms:GetKeyPolicy",
+        "kms:GetKeyRotationStatus",
+        "kms:ListResourceTags",
+        "kms:PutKeyPolicy",
+        "kms:ScheduleKeyDeletion",
+        "kms:UpdateAlias",
+        "kms:UpdateKeyDescription"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Environment": "test",
+          "aws:ResourceTag/Purpose": "pulumi-secrets",
+          "aws:ResourceTag/Repository": "user-service-infrastructure"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/*"
+    },
+    "85f92f8b25d104a960d8f57bd68d813a5afcd7affa999d7e281fcd935e240fe4": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "StringNotEquals": {
+          "kms:EncryptionContext:SecretARN": [
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB",
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+          ]
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221"
+    },
+    "886e620a48d85f6e301d79941b07d8cb3ef8754d1bc9e17649e24bfd526d0d9a": {
+      "Action": "s3:ListTagsForResource",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceAccount": "891377212104"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::company-central-logs-eu-central-1-test",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state"
+      ]
+    },
+    "8b958d1f1a461e38ccbf762d8d863e3b84fc546b6261a1b342dfcf2390e8b103": {
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteServiceLinkedRole",
+        "iam:PutRolePermissionsBoundary",
+        "s3:DeleteObjectVersion",
+        "sts:AssumeRole*",
+        "sts:AssumeRoot",
+        "sts:GetFederationToken",
+        "sts:GetSessionToken"
+      ],
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "8c068aaa3d0526af49b9d871d2f2de23b11aab92043cf7146b460c2912d9a8ea": {
+      "Action": "iam:*",
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny",
+        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiApply-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:role/GitHubCiDrift-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiPreview-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test"
+      ]
+    },
+    "8cffb4257a67336d939bc412f6de8cc79b1242173893bc590086340afdd338f1": {
+      "Action": "kms:Decrypt",
+      "Condition": {
+        "StringNotEquals": {
+          "kms:EncryptionContext:SecretARN": [
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/user-service-infrastructure/ci/test-pr-C3yJgN"
+          ]
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "8f75c4a552697704efba9f8b64f062296a575ca57f9e7aa84d76d1decbbb226d": {
+      "Action": [
+        "cognito-idp:AdminGetUser",
+        "cognito-idp:ListUsers",
+        "iam:*SAMLProvider*",
+        "iam:AddClientIDToOpenIDConnectProvider",
+        "iam:CreateOpenIDConnectProvider",
+        "iam:CreatePolicy*",
+        "iam:CreateRole",
+        "iam:DeleteOpenIDConnectProvider",
+        "iam:DeletePolicy*",
+        "iam:DeleteRole",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteServiceLinkedRole",
+        "iam:PutRolePermissionsBoundary",
+        "iam:RemoveClientIDFromOpenIDConnectProvider",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagOpenIDConnectProvider",
+        "iam:TagPolicy",
+        "iam:UntagOpenIDConnectProvider",
+        "iam:UntagPolicy",
+        "iam:UpdateOpenIDConnectProviderThumbprint",
+        "secretsmanager:BatchGetSecretValue",
+        "secretsmanager:GetSecretValue",
+        "sts:AssumeRole*",
+        "sts:AssumeRoot",
+        "sts:GetFederationToken",
+        "sts:GetSessionToken"
+      ],
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "939dead6accbf0db62c570ced4dfe6a6875613a7a84aa3be8329d40eb56086ac": {
+      "Action": "kms:GenerateDataKey",
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221"
+    },
+    "94a9f77e7cb16ae2b00f16f2eb57343638dfefb05d97be123d2c3d6aa49cb1a9": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:Encrypt",
+        "kms:GenerateDataKey",
+        "kms:ReEncryptFrom",
+        "kms:ReEncryptTo"
+      ],
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "kms:ResourceAliases": [
+            "alias/pulumi-platform-bootstrap-test"
+          ]
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/*"
+    },
+    "94cec98a98529e3e9e90ce47bf0693589cbb935b737189020931247b098ea334": {
+      "Action": [
+        "iam:*tagRole",
+        "iam:Attach*",
+        "iam:AttachRolePolicy",
+        "iam:DeleteRole*",
+        "iam:DeleteRolePolicy",
+        "iam:Detach*",
+        "iam:DetachRolePolicy",
+        "iam:Put*",
+        "iam:PutRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:Update*",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:UpdateRole",
+        "iam:UpdateRoleDescription"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
+    },
+    "956044098bc5321defc7805f2da521c58b198c37cb3c7bc1ec408078ff3fc74f": {
+      "Effect": "Deny",
+      "NotAction": [
+        "iam:GetOpenIDConnectProvider",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListEntitiesForPolicy",
+        "iam:ListOpenIDConnectProviderTags",
+        "iam:ListPolicyTags",
+        "iam:ListPolicyVersions",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags",
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GenerateDataKey",
+        "kms:ListAliases",
+        "s3:DeleteObject",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:ListBucket",
+        "s3:PutObject",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:ListSecretVersionIds",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    "96521f4ca72faf1a5759cd280429db8cc0dbda1545c8f536646fe986c156a649": {
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:GetSecretValue"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/user-service-infrastructure/ci/test-pr-??????",
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/user-service-infrastructure/ci/test-??????"
+      ]
+    },
+    "987dfc91d0761f32a2b48c2d4fa4754096b4bf87b2864b49dab55d8665d0607f": {
+      "Action": [
+        "sqs:DeleteMessage",
+        "sqs:GetQueueUrl",
+        "sqs:ReceiveMessage"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:sqs:*:891377212104:bootstrap-test-operations-alerts"
+    },
+    "9c5e3ad3942fdbe4e62a3200155303e6dc7c09f702f35c8f4e6a7d14ada5906c": {
+      "Action": [
+        "kms:CancelKeyDeletion",
+        "kms:*Grant",
+        "kms:DescribeKey",
+        "kms:DisableKey",
+        "kms:EnableKey*",
+        "kms:GetKey*",
+        "kms:ListGrants",
+        "kms:ListResourceTags",
+        "kms:PutKeyPolicy",
+        "kms:ScheduleKeyDeletion",
+        "kms:*tagResource",
+        "kms:UpdateKeyDescription"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Environment": "test",
+          "aws:ResourceTag/Purpose": [
+            "pulumi-secrets",
+            "operations-alerting",
+            "operations-cloudtrail"
+          ]
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:*:891377212104:key/*"
+    },
+    "9e1612b826bd801e53872cc818a2fb530430b02d5184c7e027cdb2b67d6126b8": {
+      "Action": [
+        "cognito-identity:GetCredentialsForIdentity",
+        "cognito-identity:GetId",
+        "cognito-identity:GetOpenIdToken",
+        "cognito-identity:GetOpenIdTokenForDeveloperIdentity",
+        "ec2:GetPasswordData",
+        "ecr:GetAuthorizationToken",
+        "lambda:GetFunction"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/*"
+    },
+    "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05": {
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRoleTags",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicyVersions",
+        "iam:ListPolicyTags",
+        "iam:ListEntitiesForPolicy",
+        "iam:GetOpenIDConnectProvider",
+        "iam:ListOpenIDConnectProviderTags"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "9f26966048423c7bae8f9dec0c9d6ef539a7ddfecc8d26c27b5424d664fa3af2": {
+      "Action": [
+        "cognito-identity:GetCredentialsForIdentity",
+        "cognito-identity:GetId",
+        "cognito-identity:GetOpenIdToken",
+        "cognito-identity:GetOpenIdTokenForDeveloperIdentity",
+        "ec2:GetPasswordData",
+        "ecr:GetAuthorizationToken",
+        "lambda:GetFunction",
+        "secretsmanager:GetSecretValue",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/user-service-infrastructure/ci/*"
+    },
+    "a1631d5c28fdb517bff37ddf773dae4bdfc5a89aafa04b1cf275f3f747e53959": {
+      "Action": [
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:GetObjectAcl",
+        "s3:GetObjectTagging",
+        "s3:GetObjectVersion",
+        "s3:GetObjectVersionAcl",
+        "s3:ListMultipartUploadParts",
+        "s3:PutObject",
+        "s3:PutObjectAcl",
+        "s3:PutObjectTagging",
+        "s3:PutObjectVersionAcl"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::awsbackup-restore-test-bootstrap-891377212104-*/*",
+      "Sid": "RestoreObjectsToIsolatedDrillBuckets"
+    },
+    "a2d8c40eda36311de55fe492dc64b430519263a1e8ff48f0e73d6e5afb6a393b": {
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:secretsmanager:*:891377212104:secret:/bootstrap-infrastructure/ci/test-*"
+    },
+    "a34932f387e0c109af57bd126ba3fadd39b3d242106242f8a77e7c18f1ed77ec": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "ForAnyValue:StringLike": {
+          "kms:ResourceAliases": [
+            "alias/pulumi-bootstrap-infrastructure-test-secrets",
+            "alias/pulumi-platform-bootstrap-test",
+            "alias/bootstrap-test-operations-cloudtrail"
+          ]
+        },
+        "StringLike": {
+          "kms:ViaService": "s3.*.amazonaws.com"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:*:891377212104:key/*",
+      "Sid": "UseS3KmsKeysForIsolatedRestoreDrills"
+    },
+    "a392c26920954b42bfc022e75b3aa982e1f93bac15abd63e4c4753a7b31baae0": {
+      "Action": "kms:CreateKey",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Environment": "test",
+          "aws:RequestTag/Purpose": "pulumi-secrets",
+          "aws:RequestTag/Repository": "user-service-infrastructure"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "a572325d1bc34dc2c74829a6a88350330a1b6e0f3eb87442ef232c0b9747f2ef": {
+      "Action": [
+        "secretsmanager:CreateSecret",
+        "secretsmanager:DeleteSecret",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:RestoreSecret",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:UpdateSecretVersionStage"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/user-service-infrastructure/ci/test-??????",
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/user-service-infrastructure/ci/test-pr-??????"
+      ]
+    },
+    "a5f233e067cd5bf480f029dab14011d0ad64048ba4c2e2c1a34966818a1cc601": {
+      "Action": [
+        "s3:DeleteObject",
+        "s3:PutObject"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/state/test/.pulumi/locks/*"
+    },
+    "aa1d813a0258e4e113e19767bde272f552fe592af3b122424a4e07cc7b72a7af": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "false"
+        },
+        "StringNotEquals": {
+          "kms:EncryptionContext:stack": "test"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "aa379a9e5261855f5708e888b1f3598a7b3188ef43c7a3d11b0b0ef53ed55f9d": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "kms:EncryptionContext:account": "891377212104",
+          "kms:EncryptionContext:backend": "s3://pulumi-bootstrap-infrastructure-test-state",
+          "kms:EncryptionContext:project": "github-ci-bootstrap",
+          "kms:EncryptionContext:purpose": "operator-saved-plan-v1",
+          "kms:EncryptionContext:repository": "VilnaCRM-Org/bootstrap-infrastructure",
+          "kms:EncryptionContext:repository_id": "1098568429",
+          "kms:EncryptionContext:repository_owner_id": "114362548",
+          "kms:EncryptionContext:stack": "test",
+          "kms:EncryptionContext:workflow_path": ".github/workflows/pulumi-pr-command-runner.yml"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "abfe3f3990477fac0e12685a8aa236cec207b37de5f3095d961faee33b718007": {
+      "Action": "iam:PassRole",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "s3.amazonaws.com"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test"
+    },
+    "ae7fccc8413d0c6391895f4e70bfef255f2953b019588e2411230148c4e01d02": {
+      "Action": [
+        "billing:GetBillingViewData",
+        "ce:ListCostAllocationTags",
+        "ce:UpdateCostAllocationTagsStatus",
+        "cloudtrail:DescribeTrails",
+        "config:DeleteDeliveryChannel",
+        "config:DescribeDeliveryChannels",
+        "config:PutDeliveryChannel",
+        "guardduty:ListDetectors",
+        "iam:Get*",
+        "iam:List*",
+        "kms:ListAliases",
+        "sts:GetCallerIdentity"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "ae950d737c89a5ac0c02927c6030244c3d45ad9af10681158610270203123864": {
+      "Action": [
+        "cognito-identity:GetCredentialsForIdentity",
+        "cognito-identity:GetId",
+        "cognito-identity:GetOpenIdToken",
+        "cognito-identity:GetOpenIdTokenForDeveloperIdentity",
+        "ec2:GetPasswordData",
+        "ecr:GetAuthorizationToken",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteServiceLinkedRole",
+        "iam:PutRolePermissionsBoundary",
+        "lambda:GetFunction",
+        "s3:DeleteObjectVersion",
+        "secretsmanager:GetSecretValue",
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath",
+        "sts:AssumeRole*",
+        "sts:AssumeRoot",
+        "sts:GetFederationToken",
+        "sts:GetSessionToken"
+      ],
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "af88daca91aa269a8a390002db322627fb5bf5223f8d82b3ca45caafb3b8ae8f": {
+      "Action": [
+        "access-analyzer:ValidatePolicy",
+        "backup:Describe*",
+        "backup:Get*",
+        "backup:List*",
+        "budgets:Describe*",
+        "budgets:ListTagsForResource",
+        "budgets:ViewBudget",
+        "ce:GetAnomalies",
+        "ce:GetAnomalyMonitors",
+        "ce:GetAnomalySubscriptions",
+        "ce:GetCostAndUsage",
+        "ce:GetCostForecast",
+        "ce:ListCostAllocationTags",
+        "ce:ListTagsForResource",
+        "cloudtrail:DescribeTrails",
+        "cloudtrail:Get*",
+        "cloudtrail:ListTags",
+        "config:Describe*",
+        "config:Get*",
+        "config:List*",
+        "ecr:Describe*",
+        "ecr:Get*",
+        "ecr:ListTagsForResource",
+        "events:DescribeRule",
+        "events:List*",
+        "guardduty:Get*",
+        "guardduty:List*",
+        "iam:Get*",
+        "iam:List*",
+        "kms:Describe*",
+        "kms:Get*",
+        "kms:List*",
+        "s3:GetAccelerateConfiguration",
+        "s3:GetBucket*",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetReplicationConfiguration",
+        "s3:ListAllMyBuckets",
+        "s3:ListBucket",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:ListSecrets",
+        "securityhub:Describe*",
+        "securityhub:Get*",
+        "securityhub:List*",
+        "sns:Get*",
+        "sns:List*",
+        "sqs:Get*",
+        "sqs:List*",
+        "sts:GetCallerIdentity"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "b02bbac7e3db8f78ced162009a8c00dc9248fc91466af868fc8e1a68735de1fd": {
+      "Action": [
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:UpdateRole",
+        "iam:UpdateRoleDescription",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy",
+        "iam:UntagPolicy",
+        "iam:DeletePolicy"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "b0949bea9721c37254542ef73caa810a8d5c7703a7a002e7b2062cc63a92d54a": {
+      "Action": [
+        "s3:ReplicateObject",
+        "s3:ReplicateDelete",
+        "s3:ReplicateTags",
+        "s3:GetObjectVersionTagging",
+        "s3:PutObject"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure--c1194dce-eu-west-1-replication",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure--c1194dce-eu-west-1-replication/*"
+      ]
+    },
+    "b10aa0b0121a57e5dd0ad09caf76db977a85397142f557fce7ee080740c4b5c5": {
+      "Action": "kms:Decrypt",
+      "Condition": {
+        "StringNotEquals": {
+          "kms:EncryptionContext:SecretARN": [
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/user-service-infrastructure/ci/test-yE22lz"
+          ]
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741": {
+      "Action": "kms:DescribeKey",
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be",
+        "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221",
+        "arn:aws:kms:eu-central-1:891377212104:key/43a95078-d801-4c4c-94d9-62676045bc0e",
+        {
+          "Ref": "SeedKmsKeyArn"
+        }
+      ]
+    },
+    "b61f8baa01abc727fbc8cc30f95acd4d39e22efdf5f6aa390fabdddd29e25cf5": {
+      "Effect": "Deny",
+      "NotAction": [
+        "iam:AttachRolePolicy",
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:DeleteRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:GetOpenIDConnectProvider",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListEntitiesForPolicy",
+        "iam:ListOpenIDConnectProviderTags",
+        "iam:ListPolicyTags",
+        "iam:ListPolicyVersions",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags",
+        "iam:PutRolePolicy",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy",
+        "iam:TagRole",
+        "iam:UntagPolicy",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:UpdateRole",
+        "iam:UpdateRoleDescription",
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GenerateDataKey",
+        "kms:ListAliases",
+        "s3:DeleteObject",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:ListBucket",
+        "s3:PutObject",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:UpdateSecretVersionStage",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    },
+    "b93910d4fd3c10c6b8ed671f03f3fa0fd747e99a2a6df706e96549b957bec62b": {
+      "Action": "s3:PutObject",
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/locks/organization/github-ci-bootstrap/test/*",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json.bak",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.pulumi-tags",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.history.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.checkpoint.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/backups/github-ci-bootstrap/test/test.*.json"
+      ]
+    },
+    "ba49771ee9d15fcfa2124243035e49a9eb109a7efe007929832a670b0e4ee98f": {
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:GetSecretValue"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB",
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+      ]
+    },
+    "baa6ab9baad6655674d6eb91d305dc52d4d6fab8be1281410ff5a24a75aedb91": {
+      "Action": "kms:Decrypt",
+      "Condition": {
+        "StringNotEquals": {
+          "kms:EncryptionContext:SecretARN": [
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+          ]
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "bc1f7723c83ef067951db3c6be7ea69ab7703247f3ea8d3bd6ea3943b6c69771": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "false"
+        },
+        "StringNotEquals": {
+          "kms:EncryptionContext:account": "891377212104"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "beb2b34d65d5680d4a2d12c8730e323f1a0c0054c98ae90d4009335c9215ae5f": {
+      "Action": [
+        "s3:DeleteObject",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:PutObject"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/governance/*"
+    },
+    "c18540fba0bc350026f4afc4f24575e8b67fe8dd344a693cb747bdc615eb5c7a": {
+      "Action": [
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+      ],
+      "Condition": {
+        "ArnNotEquals": {
+          "iam:PolicyARN": [
+            "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-cost-policy",
+            "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-boundary-policy",
+            "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-managed-policies",
+            "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-iam-policy",
+            "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-operations-policy",
+            "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-policy",
+            "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-pulumi-backend",
+            "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-secret-read-deny",
+            "arn:aws:iam::891377212104:policy/GitHubCiApply-bootstrap-infrastructure-test-security-policy",
+            "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-backend",
+            "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-metadata",
+            "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-iam",
+            "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-storage",
+            "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-backend",
+            "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-metadata",
+            "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-iam",
+            "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-storage",
+            "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-backend",
+            "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-metadata",
+            "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-iam",
+            "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-storage",
+            "arn:aws:iam::891377212104:policy/github-automation-cost-policy",
+            "arn:aws:iam::891377212104:policy/github-automation-iam-boundary-policy",
+            "arn:aws:iam::891377212104:policy/github-automation-iam-policy",
+            "arn:aws:iam::891377212104:policy/github-automation-operations-policy",
+            "arn:aws:iam::891377212104:policy/github-automation-security-policy"
+          ]
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "c388dae0b90358d20602d537cd9b8100c7a9c62b84726197f2cd1994f30cf2f5": {
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/governance/*"
+    },
+    "c59ad30ce8ed5d197f64a0c1499383f2d5e0f27a47a4715dadbacdcaf3153e79": {
+      "Action": [
+        "s3:GetBucketTagging",
+        "s3:GetInventoryConfiguration",
+        "s3:ListBucketVersions",
+        "s3:ListBucket",
+        "s3:GetBucketVersioning",
+        "s3:GetBucketLocation",
+        "s3:GetBucketAcl",
+        "s3:PutInventoryConfiguration",
+        "s3:GetBucketNotification",
+        "s3:PutBucketNotification"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::company-central-logs-eu-central-1-test",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state"
+      ]
+    },
+    "c5c210e19289da394c98f8cced589dc8a77f95971b4bfdf7a089b495381de971": {
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage"
+      ],
+      "Effect": "Deny",
+      "Resource": "arn:aws:sqs:*:891377212104:bootstrap-test-operations-alerts"
+    },
+    "c8afa21e2a5c149177345604502e4f00d742fbbcf4e113f5f511a705039bd246": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "false"
+        },
+        "StringNotEquals": {
+          "kms:EncryptionContext:repository": "VilnaCRM-Org/bootstrap-infrastructure"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "ce3cbd6481ff7e2b98ad00d23bda2a2bad3e8ef4e56d7c2ebf0be3fe6a7b2b58": {
+      "Action": "kms:DescribeKey",
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be",
+        "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221",
+        "arn:aws:kms:eu-central-1:891377212104:key/43a95078-d801-4c4c-94d9-62676045bc0e",
+        {
+          "Ref": "SeedKmsKeyArn"
+        }
+      ]
+    },
+    "ce6809e66974deedaa2c4b22606481d9f8b893dbc13d5681e0362d2c52619f8f": {
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:secretsmanager:*:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-*"
+    },
+    "cfa02f708f83ffa7f1d4fae78f604d146c2a5598274675e37dbedc63dbfa734a": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:Encrypt",
+        "kms:GenerateDataKey",
+        "kms:DescribeKey",
+        "kms:ReEncryptFrom",
+        "kms:ReEncryptTo"
+      ],
+      "Condition": {
+        "ForAnyValue:StringEquals": {
+          "kms:ResourceAliases": [
+            "alias/pulumi-user-service-infrastructure-test-secrets"
+          ]
+        }
+      },
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:kms:eu-central-1:891377212104:key/*"
+      ]
+    },
+    "d03c134ecc4c5e971514f6915665a98e36de085a4115c8aecabac2f29688a0af": {
+      "Action": [
+        "iam:*RolePolicy",
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:UpdateRole*",
+        "iam:PutRolePermissionsBoundary"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
+    },
+    "d35c02e1b58e87db1b72c592e510272adb27ef4a2ff51242d53f647b4610c9d7": {
+      "Action": [
+        "iam:AttachRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePolicy"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test"
+    },
+    "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06": {
+      "Action": "*",
+      "Effect": "Deny",
+      "Resource": [
+        "arn:aws:s3:::issue215-independent-seed-891377212104-test",
+        "arn:aws:s3:::issue215-independent-seed-891377212104-test/*",
+        {
+          "Ref": "SeedKmsKeyArn"
+        },
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:issue215-independent-seed/*"
+      ]
+    },
+    "d419212929bd6b38e732ed5843a6ced5557af7de60b4b36fb1886611149dcef8": {
+      "Action": "s3:ListBucket",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "governance",
+            "governance/*"
+          ]
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state"
+    },
+    "d5006a1c4e7416b58052616a3135ef403508cc41285bc21d07015fbb60ca183e": {
+      "Action": "kms:Decrypt",
+      "Condition": {
+        "StringNotEquals": {
+          "kms:ViaService": "secretsmanager.eu-central-1.amazonaws.com"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "d54e2dd8fd55131f53b8e1ce349049fe710138447a9db94c85c9b9264928fd24": {
+      "Action": [
+        "s3:GetObjectAcl",
+        "s3:GetObject",
+        "s3:GetObjectVersionTagging",
+        "s3:GetObjectVersionAcl",
+        "s3:GetObjectTagging",
+        "s3:GetObjectVersion"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::company-central-logs-eu-central-1-test/*",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/*"
+      ]
+    },
+    "d58c9c5564565ccbf14acb3506c95d1d08225df53969f1e49057d3aa27a061df": {
+      "Action": "s3:PutObject",
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/locks/organization/github-ci-bootstrap/test/*"
+      ]
+    },
+    "d5d72689810cc2bc81314ce2026c180f6056838e0ae48f9c7dbba4342d226b91": {
+      "Action": [
+        "s3:GetObject*",
+        "s3:PutObject",
+        "s3:DeleteObject*"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/*"
+    },
+    "d794f37b934b43668ede159cfd935aeecbc51bd2db0f5c957addee202f9b86e3": {
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/meta.yaml",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json.bak",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.pulumi-tags",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.history.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.checkpoint.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/backups/github-ci-bootstrap/test/test.*.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/locks/organization/github-ci-bootstrap/test/*"
+      ]
+    },
+    "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7": {
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state"
+    },
+    "d819ca0d9c6634ed3590fe986db5674527c71aa246a091e8e6e10f979a3d279c": {
+      "Action": [
+        "ce:DeleteAnomalyMonitor",
+        "ce:DeleteAnomalySubscription",
+        "ce:GetAnomalyMonitors",
+        "ce:GetAnomalySubscriptions",
+        "ce:ListTagsForResource",
+        "ce:TagResource",
+        "ce:UntagResource",
+        "ce:UpdateAnomalyMonitor",
+        "ce:UpdateAnomalySubscription",
+        "guardduty:DeleteDetector",
+        "guardduty:GetDetector",
+        "guardduty:TagResource",
+        "guardduty:UntagResource",
+        "guardduty:UpdateDetector"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Environment": "test",
+          "aws:ResourceTag/Project": "bootstrap-infrastructure"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:ce::891377212104:anomalymonitor/*",
+        "arn:aws:ce::891377212104:anomalysubscription/*",
+        "arn:aws:guardduty:*:891377212104:detector/*"
+      ]
+    },
+    "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1": {
+      "Action": [
+        "kms:Decrypt"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "kms:EncryptionContext:SecretARN": [
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB",
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+          ],
+          "kms:ViaService": "secretsmanager.eu-central-1.amazonaws.com"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221"
+    },
+    "d9f868e50a68f0a24b3d322846dec112f24c232b4712a534e01a8be810184629": {
+      "Action": [
+        "sts:GetCallerIdentity"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "*"
+      ]
+    },
+    "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214": {
+      "Action": [
+        "iam:CreateRole",
+        "iam:DeleteRole",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteServiceLinkedRole",
+        "iam:PutRolePermissionsBoundary",
+        "sts:AssumeRole*",
+        "sts:AssumeRoot",
+        "sts:GetFederationToken",
+        "sts:GetSessionToken"
+      ],
+      "Effect": "Deny",
+      "Resource": "*"
+    },
+    "df57d62ae00439449a1caac3c599ff6820c0daf63e627c529b716703cbfe5676": {
+      "Action": [
+        "s3:ReplicateObject",
+        "s3:ReplicateDelete",
+        "s3:ReplicateTags",
+        "s3:GetObjectVersionTagging",
+        "s3:PutObject"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-user-service-infrastructu-ce064677-eu-west-1-replication",
+        "arn:aws:s3:::pulumi-user-service-infrastructu-ce064677-eu-west-1-replication/*"
+      ]
+    },
+    "e1ba4aaba828e1a14d7de6a70ae9355844a500f9ffac1a7a9f83fe99f4f9bbc5": {
+      "Action": [
+        "access-analyzer:ValidatePolicy",
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:GetOpenIDConnectProvider",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListEntitiesForPolicy",
+        "iam:ListPolicyTags",
+        "iam:ListPolicyVersions",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy",
+        "iam:TagRole",
+        "iam:UntagPolicy",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:UpdateRole",
+        "iam:UpdateRoleDescription",
+        "kms:ListAliases",
+        "sts:GetCallerIdentity"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "e35db61f5dabe8ab755235d71fd3691e54c13d698c031a1ec510129bbeaaccec": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "Null": {
+          "kms:EncryptionContext:purpose": "false"
+        },
+        "StringNotEquals": {
+          "kms:EncryptionContext:backend": "s3://pulumi-bootstrap-infrastructure-test-state"
+        }
+      },
+      "Effect": "Deny",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be"
+    },
+    "e76c304d5fae16bc97586c2286fc7c6ef2013d267f1aa6af94f8f98a26891a99": {
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:ListBucket"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/state/test/*"
+      ]
+    },
+    "e8d162edeba0fdeb60fb03174fef240df75ec7bbff7794ac0f7ac8c6ebdd6c4f": {
+      "Action": "s3:PutObject",
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.json.bak",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/stacks/github-ci-bootstrap/test.pulumi-tags",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.history.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/history/github-ci-bootstrap/test/test-*.checkpoint.json",
+        "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/.pulumi/backups/github-ci-bootstrap/test/test.*.json"
+      ]
+    },
+    "e9820ff0bb10f30f4be0f312ab4de508564d4c3a59edad1f0447f57c90e21c7c": {
+      "Action": [
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:GetSecretValue"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB",
+        "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+      ]
+    },
+    "eac8b0bab079f9c6f7b85fc60459b3912d80771a48e4ef1fd1dccb2b4045eb31": {
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "kms:EncryptionContext:SecretARN": [
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-AbzsjB",
+            "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/test-pr-eXoDBk"
+          ],
+          "kms:ViaService": "secretsmanager.eu-central-1.amazonaws.com"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221"
+    },
+    "ec0ab3bf4be8893b8b892ac8c1a697b32fa27a3cde6aa1e2c0a6395fd858068e": {
+      "Action": [
+        "iam:TagRole",
+        "iam:UntagRole"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
+    },
+    "ed369dbc14b532377e007445ebad2b115ce3adb3653f3c8d618aad68804d7151": {
+      "Action": [
+        "s3:GetReplicationConfiguration",
+        "s3:ListBucket",
+        "s3:GetObjectVersion",
+        "s3:GetObjectVersionAcl",
+        "s3:GetObjectVersionForReplication",
+        "s3:GetObjectVersionTagging"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state",
+        "arn:aws:s3:::pulumi-user-service-infrastructure-test-state/*"
+      ]
+    },
+    "f10419fa89f37d2c23e1694928f9a012d9094e77c88ce7695ceef1a943a48d50": {
+      "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:DeleteObject*",
+        "s3:GetObject*",
+        "s3:ListMultipartUploadParts",
+        "s3:ObjectOwnerOverrideToBucketOwner",
+        "s3:PutObject*",
+        "s3:ReplicateDelete",
+        "s3:ReplicateObject",
+        "s3:ReplicateTags",
+        "s3:RestoreObject"
+      ],
+      "Effect": "Deny",
+      "NotResource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/state/test/*"
+    },
+    "f15468eee662938ca0ca49286c11a9236c72d6dd7214a388c52aa5164d607ab2": {
+      "Action": [
+        "s3:CreateBucket",
+        "s3:GetBucketLocation",
+        "s3:GetBucketOwnershipControls",
+        "s3:GetBucketVersioning",
+        "s3:ListBucket",
+        "s3:ListBucketVersions",
+        "s3:PutBucketOwnershipControls",
+        "s3:PutBucketVersioning"
+      ],
+      "Effect": "Allow",
+      "Resource": "arn:aws:s3:::awsbackup-restore-test-bootstrap-891377212104-*",
+      "Sid": "RestoreToIsolatedDrillBuckets"
+    },
+    "f37a7242c0fffb00edf85bb250bcf911ab6709a0f9b924de55d160cdaa69a672": {
+      "Action": "backup:TagResource",
+      "Effect": "Allow",
+      "Resource": "arn:aws:backup:*:891377212104:recovery-point:*"
+    },
+    "f806accb1fb8a83b4b0bd862c06f0f94d777e74ae0366e94f7087447745b1546": {
+      "Action": [
+        "cloudwatch:GetMetricData",
+        "events:ListRules",
+        "s3:ListAllMyBuckets"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "fa35e6b8368c82f82c2caf49b5395bc5f046c53cdca9d44e5771ee963ac3c641": {
+      "Action": "kms:CreateKey",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Environment": "test",
+          "aws:RequestTag/Purpose": [
+            "pulumi-secrets",
+            "operations-alerting",
+            "operations-cloudtrail"
+          ],
+          "aws:RequestTag/Repository": "bootstrap-infrastructure"
+        }
+      },
+      "Effect": "Allow",
+      "Resource": "*"
+    },
+    "fabd8598dc75cea2affb1e777426d2a0090b87e61a358586194027da6c08bcbb": {
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRoleTags"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:iam::891377212104:role/GitHubCiApply-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiApply-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:role/GitHubCiDrift-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiDrift-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiPreview-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiPreview-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubGovernanceApply-test",
+        "arn:aws:iam::891377212104:role/GitHubGovernanceDrift-test",
+        "arn:aws:iam::891377212104:role/GitHubGovernancePreview-test",
+        "arn:aws:iam::891377212104:role/GitHubOperatorApply-test",
+        "arn:aws:iam::891377212104:role/GitHubOperatorDrift-test",
+        "arn:aws:iam::891377212104:role/GitHubOperatorPreview-test",
+        "arn:aws:iam::891377212104:role/OperationsAlertTriage-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/PulumiAutomation-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/PulumiDeploy-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:role/PulumiStateRepl-bootstrap-infrastructure-test",
+        "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/aws-config-recorder-role-test",
+        "arn:aws:iam::891377212104:role/central-logging-replication-role-705bb42",
+        "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
+      ]
+    }
+  }
+}

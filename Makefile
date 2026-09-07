@@ -215,6 +215,7 @@ test-ty: ## Run the Ty static type checker against Python sources.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run ty check \
 		--extra-search-path policy \
 		--extra-search-path scripts \
+		--extra-search-path pulumi \
 		--ignore missing-argument \
 		--ignore invalid-argument-type \
 		--ignore conflicting-declarations \

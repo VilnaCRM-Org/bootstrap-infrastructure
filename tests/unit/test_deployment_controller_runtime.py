@@ -265,6 +265,7 @@ def test_accept_claims_once_after_checks_then_persists_canonical_contract(
     assert environment_reads == [
         "operator-preview",
         "operator",
+        "operator-drift",
         "governance-preview",
         "governance",
         "test-preview",
@@ -444,7 +445,12 @@ def test_changed_file_collection_races_do_not_claim(github, observation, field):
     "scopes,command,target,expected",
     [
         (("operator",), "plan", "prod", ["operator-preview"]),
-        (("operator",), "up", "test", ["operator-preview", "operator"]),
+        (
+            ("operator",),
+            "up",
+            "test",
+            ["operator-preview", "operator", "operator-drift"],
+        ),
         (("governance",), "up", "prod", ["governance-preview", "governance"]),
         (("governance",), "plan", "test", ["governance-preview"]),
         (("platform",), "plan", "test", ["test-preview"]),
@@ -489,6 +495,7 @@ def test_unreadable_reviewer_identity_blocks_claim(github, response):
     [
         "operator-preview",
         "operator",
+        "operator-drift",
         "governance-preview",
         "governance",
         "test-preview",
