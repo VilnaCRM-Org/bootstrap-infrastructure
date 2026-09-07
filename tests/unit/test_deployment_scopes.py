@@ -361,6 +361,7 @@ def test_security_classification_is_independent() -> None:
         ("scripts/deployment_schedule.py", False),
         ("scripts/deployment_controller.py", False),
         ("scripts/deployment_controller_runtime.py", False),
+        ("scripts/deployment_contract_io.py", False),
         ("scripts/pulumi_command_preflight.py", True),
         ("scripts/pulumi_pr_comment.py", True),
         ("scripts/governance_promotion.py", True),
