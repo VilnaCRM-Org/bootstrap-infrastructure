@@ -8,7 +8,7 @@ on:
       - pulumi-pr-command
 
 concurrency:
-  group: pulumi-command-${{ github.event.client_payload.pull_request_number }}
+  group: pulumi-command-${{ github.event.client_payload.pull_request_number || github.event_name }}
   cancel-in-progress: false
 
 defaults:
@@ -22,6 +22,7 @@ permissions:
 
 jobs:
   preflight:
+    if: github.event_name == 'repository_dispatch'
     name: Preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -70,6 +71,9 @@ jobs:
       pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
+    concurrency:
+      group: pulumi-state-${{ github.repository }}-test-test
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -87,12 +91,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Load test AWS CI configuration
@@ -152,9 +159,7 @@ jobs:
           echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
           echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: preview"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
 
@@ -187,6 +192,7 @@ jobs:
 
   test_destructive_diff:
     name: Test Destructive Diff Gate
+    if: github.event_name == 'repository_dispatch'
     runs-on: ubuntu-latest
     needs:
       - preflight
@@ -214,8 +220,8 @@ jobs:
       - name: Stage pull request labels for destructive diff override
         run: |
           mkdir -p .artifacts/pulumi-preview
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --jq '[.[] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/pulumi-preview/pull-request-event.json
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
 
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
@@ -237,6 +243,9 @@ jobs:
       pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
+    concurrency:
+      group: pulumi-state-${{ github.repository }}-test-test
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -254,12 +263,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Load test AWS CI configuration
@@ -289,9 +301,7 @@ jobs:
           echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
           echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: apply"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
 
@@ -306,11 +316,47 @@ jobs:
             needs.preflight.outputs.head_sha }}-test-plan
           path: .artifacts/pulumi-plan
 
+      - name: Download test preview for apply revalidation
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-preview
+          path: .artifacts/pulumi-preview
+
       - name: Apply saved test plan
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
           GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: make pulumi-up-plan
+        run: |
+          # The immutable same-run preview is the diff for this saved plan.
+          shopt -s nullglob
+          previews=(.artifacts/pulumi-preview/*.json)
+          found_preview=false
+          for preview in "${previews[@]}"; do
+            if [[ "${preview}" != */pull-request-event.json ]]; then
+              test -s "${preview}"
+              found_preview=true
+            fi
+          done
+          test "${found_preview}" = true
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+          # Remove only obsolete event metadata; preserve the original diff files.
+          rm -f .artifacts/pulumi-preview/pull-request-event.json
+          make test-destructive-diff
+          make pulumi-up-plan
 
   test_post_apply_drift:
     name: Test Post-Apply Drift
@@ -328,6 +374,9 @@ jobs:
       pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
+    concurrency:
+      group: pulumi-state-${{ github.repository }}-test-test
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -345,12 +394,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Load test AWS CI configuration
@@ -401,6 +453,9 @@ jobs:
       pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
+    concurrency:
+      group: pulumi-state-${{ github.repository }}-prod-prod
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -418,12 +473,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Load prod preview AWS CI configuration
@@ -486,9 +544,7 @@ jobs:
           echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
           echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: preview"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
 
@@ -521,7 +577,9 @@ jobs:
 
   prod_destructive_diff:
     name: Prod Destructive Diff Gate
-    if: needs.preflight.outputs.target_environment == 'prod'
+    if: >-
+      github.event_name == 'repository_dispatch' &&
+      needs.preflight.outputs.target_environment == 'prod'
     runs-on: ubuntu-latest
     needs:
       - preflight
@@ -549,8 +607,8 @@ jobs:
       - name: Stage pull request labels for destructive diff override
         run: |
           mkdir -p .artifacts/pulumi-preview
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --jq '[.[] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/pulumi-preview/pull-request-event.json
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
 
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
@@ -575,6 +633,9 @@ jobs:
       pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
+    concurrency:
+      group: pulumi-state-${{ github.repository }}-prod-prod
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -601,12 +662,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Load prod AWS CI configuration
@@ -637,9 +701,7 @@ jobs:
           echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
           echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: apply"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
 
@@ -654,11 +716,47 @@ jobs:
             needs.preflight.outputs.head_sha }}-prod-plan
           path: .artifacts/pulumi-plan
 
+      - name: Download production preview for apply revalidation
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-preview
+          path: .artifacts/pulumi-preview
+
       - name: Apply saved production plan
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
           GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: make pulumi-up-plan
+        run: |
+          # The immutable same-run preview is the diff for this saved plan.
+          shopt -s nullglob
+          previews=(.artifacts/pulumi-preview/*.json)
+          found_preview=false
+          for preview in "${previews[@]}"; do
+            if [[ "${preview}" != */pull-request-event.json ]]; then
+              test -s "${preview}"
+              found_preview=true
+            fi
+          done
+          test "${found_preview}" = true
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+          # Remove only obsolete event metadata; preserve the original diff files.
+          rm -f .artifacts/pulumi-preview/pull-request-event.json
+          make test-destructive-diff
+          make pulumi-up-plan
 
   prod_post_apply_drift:
     name: Prod Post-Apply Drift
@@ -677,6 +775,9 @@ jobs:
       pull-requests: read
     env:
       PULUMI_SKIP_UPDATE_CHECK: "true"
+    concurrency:
+      group: pulumi-state-${{ github.repository }}-prod-prod
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -694,12 +795,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Load prod preview AWS CI configuration

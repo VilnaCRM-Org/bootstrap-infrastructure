@@ -1,0 +1,147 @@
+# The dedicated display name and environments are read-only OIDC trust conditions.
+# This schedule-only file never consumes a PR revision or dispatch payload.
+name: Service Scheduled Drift
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+
+concurrency:
+  group: pulumi-command-schedule
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  scheduled_test_drift:
+    name: Scheduled Test Drift
+    if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
+    environment: test-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+    concurrency:
+      group: pulumi-state-${{ github.repository }}-test-test
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Verify trusted scheduled revision before credentials
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          test "${GITHUB_EVENT_NAME}" = schedule
+          test "${GITHUB_REF}" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load test AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: test
+          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_TEST_REGION }}
+          purpose: Scheduled test drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
+
+      - name: Configure AWS drift credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
+          role-session-name: gha-scheduled-test-drift-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run scheduled test drift detection
+        run: make test-drift
+
+  scheduled_prod_drift:
+    name: Scheduled Prod Drift
+    if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
+    environment: prod-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: read
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: "true"
+    concurrency:
+      group: pulumi-state-${{ github.repository }}-prod-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Check out trusted credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+
+      - name: Verify trusted scheduled revision before credentials
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          test "${GITHUB_EVENT_NAME}" = schedule
+          test "${GITHUB_REF}" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+
+      - name: Load prod AWS CI configuration
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: prod-preview
+          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
+          aws-region: ${{ vars.AWS_PROD_REGION }}
+          purpose: Scheduled prod drift
+          required-keys: >-
+            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
+            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
+
+      - name: Configure AWS drift credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
+          role-session-name: gha-scheduled-prod-drift-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ vars.AWS_PROD_ACCOUNT_ID }}
+
+      - name: Start development environment
+        run: make start
+
+      - name: Run scheduled prod drift detection
+        run: make test-drift

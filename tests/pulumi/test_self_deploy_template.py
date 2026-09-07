@@ -25,6 +25,9 @@ until the operator applies governance, FEASIBILITY-6). They cover:
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -302,3 +305,257 @@ def test_template_carries_no_static_aws_keys_via_file_scan() -> None:
 
     # No access-key-id value prefix anywhere in the deployable workflow file.
     assert "AKIA" not in text  # nosec B101
+
+
+def test_scheduled_drift_uses_only_protected_main_read_roles():
+    """Scheduled runs cannot enter comment apply or promotion jobs."""
+    dispatch = _workflow_document()
+    workflow = yaml.safe_load(
+        (WORKFLOW_PATH.parent / "scheduled-drift.yml").read_text()
+    )
+    assert set(workflow[True]) == {"schedule"}
+    assert workflow[True]["schedule"] == [{"cron": "17 3 * * *"}]
+    assert set(dispatch[True]) == {"repository_dispatch"}
+    assert set(workflow["jobs"]) == {
+        "scheduled_test_drift",
+        "scheduled_prod_drift",
+    }
+    assert not set(workflow["jobs"]) & set(dispatch["jobs"])
+    assert workflow["name"] == "Service Scheduled Drift"
+    assert dispatch["name"] == "Service Self Deploy"
+    assert "needs.preflight" not in str(workflow)
+    assert "client_payload" not in str(workflow)
+    assert (
+        dispatch["jobs"]["preflight"]["if"]
+        == "github.event_name == 'repository_dispatch'"
+    )
+    for environment in ("test", "prod"):
+        job = workflow["jobs"][f"scheduled_{environment}_drift"]
+        assert (
+            job["if"]
+            == "github.event_name == 'schedule' && github.ref == 'refs/heads/main'"
+        )
+        assert job["environment"] == f"{environment}-drift"
+        assert "needs" not in job
+        assert job["permissions"]["id-token"] == "write"
+        steps = job["steps"]
+        checkouts = [
+            step
+            for step in steps
+            if step.get("uses", "").startswith("actions/checkout@")
+        ]
+        assert all(step["with"]["ref"] == "${{ github.sha }}" for step in checkouts)
+        guard_index = next(
+            i
+            for i, step in enumerate(steps)
+            if step.get("name")
+            == "Verify trusted scheduled revision before credentials"
+        )
+        loader_index = next(
+            i for i, step in enumerate(steps) if step.get("id") == "ci_config"
+        )
+        assert guard_index < loader_index
+        loader = steps[loader_index]["with"]
+        assert loader["environment"] == (
+            "prod-preview" if environment == "prod" else "test"
+        )
+        role_variable = (
+            "AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN"
+            if environment == "prod"
+            else "AWS_TEST_CI_CONFIG_ROLE_ARN"
+        )
+        assert loader["config-role-arn"] == "${{ vars." + role_variable + " }}"
+        assert "AWS_DRIFT_ROLE_ARN" in loader["required-keys"]
+        assert "AWS_APPLY_ROLE_ARN" not in loader["required-keys"]
+        role = next(
+            step
+            for step in steps
+            if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+        )
+        assert (
+            role["with"]["role-to-assume"]
+            == "${{ steps.ci_config.outputs.aws-drift-role-arn }}"
+        )
+        assert (
+            role["with"]["allowed-account-ids"]
+            == "${{ vars.AWS_" + environment.upper() + "_ACCOUNT_ID }}"
+        )
+        assert steps[-1]["run"] == "make test-drift"
+        assert "pulumi-up" not in str(job) and "deployments: write" not in str(job)
+
+
+def test_pr_destructive_gates_exclude_scheduled_execution():
+    """PR-head gates explicitly exclude schedule even before needs resolution."""
+    jobs = _workflow_document()["jobs"]
+    dispatch = "github.event_name == 'repository_dispatch'"
+    for environment in ("test", "prod"):
+        job = jobs[f"{environment}_destructive_diff"]
+        expected = dispatch
+        if environment == "prod":
+            expected += " && needs.preflight.outputs.target_environment == 'prod'"
+        assert " ".join(job.get("if", "").split()) == expected
+        assert "preflight" in job["needs"]
+        assert f"{environment}_preview" in job["needs"]
+
+
+def test_state_operations_share_cross_workflow_stack_mutex():
+    """A cron drift and a PR state operation cannot hold the same stack at once."""
+
+    def load(name):
+        return yaml.safe_load((SCAFFOLD_DIR / ".github/workflows" / name).read_text())
+
+    workflows = {
+        name: load(name) for name in ("self-deploy.yml", "scheduled-drift.yml")
+    }
+    operations = {"make pulumi-plan", "make pulumi-up-plan", "make test-drift"}
+    state_jobs = {
+        name: (workflow, job)
+        for workflow in workflows.values()
+        for name, job in workflow["jobs"].items()
+        if any(
+            operations.intersection(step.get("run", "").splitlines())
+            for step in job["steps"]
+        )
+    }
+    assert set(state_jobs) == {
+        "test_preview",
+        "test_apply",
+        "test_post_apply_drift",
+        "prod_preview",
+        "prod_apply",
+        "prod_post_apply_drift",
+        "scheduled_test_drift",
+        "scheduled_prod_drift",
+    }
+    groups = {}
+    for name, (workflow, job) in state_jobs.items():
+        environment = "test" if "test" in name else "prod"
+        group = (
+            "pulumi-state-${{ github.repository }}-" + environment + "-" + environment
+        )
+        assert job["concurrency"] == {"group": group, "cancel-in-progress": False}
+        assert workflow["concurrency"]["group"] != group
+        if name.startswith("scheduled_"):
+            assert job["environment"] == environment + "-drift"
+        else:
+            assert job["environment"] in {environment, environment + "-preview"}
+        groups.setdefault(environment, set()).add(group)
+    assert len(groups["test"]) == len(groups["prod"]) == 1
+    assert groups["test"].isdisjoint(groups["prod"])
+
+
+_PR_CREDENTIAL_JOB_CASES = [
+    (path, job_id)
+    for path in (
+        WORKFLOW_PATH,
+        ROOT / ".github/workflows/pulumi-governance.yml",
+        ROOT / ".github/workflows/pulumi-pr-command-runner.yml",
+    )
+    for job_id, job in yaml.safe_load(path.read_text())["jobs"].items()
+    if any(
+        step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+        for step in job.get("steps", [])
+    )
+]
+
+
+@pytest.mark.parametrize("workflow_path,job_id", _PR_CREDENTIAL_JOB_CASES)
+@pytest.mark.parametrize(
+    "change,accepted",
+    [
+        ("none", True),
+        ("retarget", False),
+        ("base_moved", False),
+        ("base_missing", False),
+        ("head_moved", False),
+        ("closed", False),
+        ("merged", False),
+        ("checkout_moved", False),
+    ],
+)
+def test_credential_jobs_recheck_authenticated_pr_base(
+    tmp_path, workflow_path, job_id, change, accepted
+):
+    """Execute each credential guard; moved PR metadata cannot reach credentials."""
+    assert len(_PR_CREDENTIAL_JOB_CASES) == 20
+    workflow = yaml.safe_load(workflow_path.read_text())
+    assert (
+        workflow["jobs"]["preflight"]["outputs"]["base_sha"]
+        == "${{ steps.resolve.outputs.base_sha }}"
+    )
+    steps = workflow["jobs"][job_id]["steps"]
+    guard = next(
+        s
+        for s in steps
+        if s.get("name") == "Recheck current PR head before credentials"
+    )
+    loader_index = next(
+        i
+        for i, s in enumerate(steps)
+        if "load-aws-ci-env" in s.get("uses", "")
+        or s.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+    )
+    assert steps.index(guard) < loader_index
+    assert (
+        guard["env"]["EXPECTED_BASE_SHA"] == "${{ needs.preflight.outputs.base_sha }}"
+    )
+    assert guard["env"]["EXPECTED_SHA"] == "${{ needs.preflight.outputs.head_sha }}"
+    head, base = "a" * 40, "b" * 40
+    payload = {
+        "state": "open",
+        "merged": False,
+        "head": {"sha": head},
+        "base": {"ref": "main", "sha": base},
+    }
+    if change == "retarget":
+        payload["base"]["ref"] = "unprotected"
+    elif change == "base_moved":
+        payload["base"]["sha"] = "c" * 40
+    elif change == "base_missing":
+        del payload["base"]
+    elif change == "head_moved":
+        payload["head"]["sha"] = "c" * 40
+    elif change == "closed":
+        payload["state"] = "closed"
+    elif change == "merged":
+        payload["merged"] = True
+    response = tmp_path / "pr.json"
+    response.write_text(json.dumps(payload))
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    for name, body in {
+        "gh": 'cat "$PR_RESPONSE_FILE"',
+        "git": 'printf "%s\\n" "$CHECKOUT_SHA"',
+    }.items():
+        tool = tools / name
+        tool.write_text("#!/bin/sh\n" + body + "\n")
+        tool.chmod(0o755)
+    marker = tmp_path / "credentials-reached"
+    result = subprocess.run(
+        [
+            "bash",
+            "--noprofile",
+            "--norc",
+            "-e",
+            "-o",
+            "pipefail",
+            "-c",
+            guard["run"] + '\nprintf ready > "$CREDENTIAL_MARKER"',
+        ],
+        env={
+            "PATH": str(tools) + os.pathsep + os.environ["PATH"],
+            "GH_TOKEN": "synthetic",
+            "GITHUB_REPOSITORY": "org/repo",
+            "PR_NUMBER": "39",
+            "PR_RESPONSE_FILE": str(response),
+            "EXPECTED_SHA": head,
+            "EXPECTED_BASE_SHA": base,
+            "CHECKOUT_SHA": "c" * 40 if change == "checkout_moved" else head,
+            "CREDENTIAL_MARKER": str(marker),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) is accepted, result.stderr
+    assert marker.exists() is accepted

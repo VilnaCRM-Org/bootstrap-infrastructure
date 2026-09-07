@@ -94,42 +94,52 @@ def test_rejected_status_is_terminal(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "event,ref,head,code,privileged",
+    "credential",
     [
-        ("workflow_dispatch", "refs/heads/main", "org/repo", 0, "true"),
-        ("workflow_dispatch", "refs/heads/feature", "org/repo", 1, None),
-        ("workflow_dispatch", "refs/tags/main", "org/repo", 1, None),
-        ("pull_request", "refs/pull/1/merge", "org/repo", 0, "true"),
-        ("pull_request", "refs/pull/1/merge", "fork/repo", 0, "false"),
-        ("schedule", "refs/heads/main", "org/repo", 0, "true"),
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
     ],
 )
-def test_manual_evidence_requires_main(tmp_path, event, ref, head, code, privileged):
-    """Non-main manual dispatch fails in the credential-free mode job."""
-    jobs = workflow("well-architected-evidence.yml")["jobs"]
-    mode = jobs["evidence_mode"]
-    assert mode["env"]["GITHUB_REF"] == "${{ github.ref }}"
-    assert "permissions" not in mode
-    assert jobs["test_account_evidence"]["needs"] == ["evidence_mode"]
-    output = tmp_path / "output"
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_advisory_evidence_strips_credentials_and_propagates_failure(
+    tmp_path, credential, exit_code
+):
+    """Execute the exact workflow shell with a local uv double, without network."""
+    job = workflow("well-architected-evidence.yml")["jobs"]["evidence_data"]
+    assert job["permissions"] == {"contents": "read"}
+    step = next(
+        item
+        for item in job["steps"]
+        if item.get("name") == "Validate selected committed evidence and receipt hashes"
+    )
+    executable = tmp_path / ".local/bin/uv"
+    executable.parent.mkdir(parents=True)
+    executable.write_text(
+        '#!/bin/sh\n/usr/bin/env\nprintf "arg=%s\\n" "$@"\nexit '
+        + str(exit_code)
+        + "\n"
+    )
+    executable.chmod(0o700)
     result = subprocess.run(
-        ["bash", "-euo", "pipefail", "-c", mode["steps"][0]["run"]],
+        ["bash", "-euo", "pipefail", "-c", step["run"]],
         env={
             "PATH": "/usr/bin:/bin",
-            "GITHUB_EVENT_NAME": event,
-            "GITHUB_REF": ref,
-            "GITHUB_HEAD_REPOSITORY": head,
-            "GITHUB_REPOSITORY_NAME": "org/repo",
-            "GITHUB_OUTPUT": str(output),
+            "HOME": str(tmp_path),
+            credential: "synthetic-never-forward",
+            "GITHUB_REF": "refs/heads/untrusted",
         },
         cwd=tmp_path,
-        check=False,
         capture_output=True,
         text=True,
+        check=False,
     )
-    assert result.returncode == code
-    if privileged is None:
-        assert not output.exists()
-        assert "must run from main" in result.stdout
-    else:
-        assert output.read_text() == f"privileged={privileged}\n"
+    assert result.returncode == exit_code
+    assert credential + "=" not in result.stdout
+    assert "synthetic-never-forward" not in result.stdout
+    assert "GITHUB_REF=" not in result.stdout
+    assert "arg=--frozen" in result.stdout
+    assert "arg=tests/unit/test_well_architected_evidence_data.py" in result.stdout

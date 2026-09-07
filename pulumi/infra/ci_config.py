@@ -15,6 +15,7 @@ from .config import settings as default_settings
 from .github_identity import (
     expand_subjects,
     identity_conditions,
+    scheduled_drift_trust_statement,
     validate_trust_policy_size,
 )
 from .utils.outputs import apply_output
@@ -294,6 +295,21 @@ def _ci_config_read_assume_role_policy(
         },
         sort_keys=True,
     )
+    scheduled_suffix = {"test": "test", "prod": "prod-preview"}.get(
+        settings.environment
+    )
+    if governed_service_workflows and suffix == scheduled_suffix:
+        payload = json.loads(document)
+        payload["Statement"].append(
+            scheduled_drift_trust_statement(
+                provider_arn,
+                f"{settings.org}/{resolved_repo}",
+                settings.environment,
+                settings.github_repository_id,
+                settings.github_repository_owner_id,
+            )
+        )
+        document = json.dumps(payload)
     return validate_trust_policy_size(document)
 
 

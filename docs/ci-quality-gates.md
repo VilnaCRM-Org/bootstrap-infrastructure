@@ -39,7 +39,7 @@ These checks should be required in branch protection:
 | `Policy` | `make test-policy` | Custom Pulumi CrossGuard policy pack enforcement |
 | `CodeQL (python)` | GitHub-native | Static security/code scanning for Python |
 | `CodeQL (actions)` | GitHub-native | Static security/code scanning for workflows |
-| `Test Account Evidence` | `make report-well-architected-evidence` | Real test-account Well-Architected evidence gate for trusted PRs and main |
+| `Test Account Evidence` | Protected trusted publisher; complete live collector | App-pinned exact-head acceptance, separate from advisory PR data checks |
 
 `make ci-pr` is the canonical local equivalent of the real non-mutation
 pull-request battery and backs the required `Local Battery` check.
@@ -197,3 +197,5 @@ After pulling these workflows into a downstream repo:
 - Wily trends depend on available git history; very shallow clones reduce the
   usefulness of the report, and local worktrees without a resolvable `HEAD`
   write an advisory note instead of failing the scheduled report battery
+
+The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher retains the complete live collector and the existing required context with its pinned App issuer.

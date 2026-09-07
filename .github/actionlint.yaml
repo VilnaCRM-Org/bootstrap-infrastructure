@@ -1,4 +1,1 @@
-paths:
-  .github/workflows/well-architected-evidence.yml:
-    ignore:
-      - 'unknown permission scope "vulnerability-alerts"'
+paths: {}

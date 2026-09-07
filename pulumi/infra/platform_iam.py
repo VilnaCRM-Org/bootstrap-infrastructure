@@ -443,6 +443,9 @@ def _boundary_source_groups(
         if statement["Sid"] in (
             "DenyAdministratorAttachments",
             "DenyForeignRepositoryKms",
+            # The existing unconditional backup:* vault ceiling already covers
+            # this action; exact retention constraints remain in the identity.
+            "ConfigureBootstrapBackupRetentionLock",
             *_GUARD_ONLY_IAM_DENIALS,
         ):
             continue

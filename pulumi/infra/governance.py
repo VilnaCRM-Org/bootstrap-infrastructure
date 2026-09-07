@@ -342,6 +342,9 @@ def _governance_role_specs(
                 project=project,
             ),
             subjects=_deployment_role_subjects(settings, purpose, repo),
+            scheduled_drift_environment=(
+                settings.environment if purpose == "drift" else None
+            ),
             policy_documents=_governance_policy_documents(
                 purpose=purpose,
                 backend_policy=_governance_backend_policy_document(

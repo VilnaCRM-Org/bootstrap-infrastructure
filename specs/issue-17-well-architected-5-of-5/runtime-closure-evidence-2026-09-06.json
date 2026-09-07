@@ -1,0 +1,641 @@
+{
+  "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+  "reviewer": "Codex (delegated technical review)",
+  "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+  "scope": "TEST technical WA evidence, with separately labeled actual TEST/PROD operator/platform local deployment receipts; no GitHub promotion or service/DR inference",
+  "receiptBindings": {
+    "outputs/current-well-architected-closure-posture.json": "cd8f7a1156d1342550fa8b373112e6bdfe98fd883f17cd42cc79722bfb16204b",
+    "outputs/wa-alert-route-execution.json": "6f7c898480b1d9d521c4dd44f327eb0c8cabe07fd9b3bc4b38c7d7f9059feb3a",
+    "outputs/wa-runtime-closure-plan.json": "12b29652faad49caa7932cbeed8644b5d2f165019159dcd6e67748bfbb3df58a",
+    "outputs/pr78-test-post-apply-verification.json": "ae00bbf5f4599b9b14066d49930b9c978390be5533901931023d42707ebfbf1d",
+    "outputs/test-operator-live-plan-review.json": "fa165ff22129a4af208076789fe70a465bc01983806f87941402134500fa46d6",
+    "outputs/prod-operator-live-plan-review.json": "fdcec20bca9e1e1cb7b6736322be04264f7f58cfbb103ed5162eb68cb0adae9d",
+    "outputs/test-operator-apply-execution.json": "bb17980c381d0b433d37197ccca68904bf58794a13e1731fcb52a81828cc81f2",
+    "outputs/test-operator-drift-execution.json": "12e890f01addcc824b2be05e16982e289a6f706f1c44bede2eb16f203618fcda",
+    "outputs/test-platform-apply-execution.json": "2b03d96ffff5c0d47767348f72b08708b3bf9b5cc2a96d61830adf05399f4df2",
+    "outputs/test-platform-drift-execution.json": "c656df5a5831e06d15d9fd4410a922236dbaf265fa6acdd24bb67444a5b6acba",
+    "outputs/prod-operator-apply-execution.json": "75bfec873628f327c1ff1c79dca57fc1c063b0e5eff4e60d55a5822e82458fe4",
+    "outputs/prod-operator-drift-execution.json": "d97a2289fcdc3fa1515e88dce832bc3792650ea7ffd0f385a1a7288eadbbfbbc",
+    "outputs/prod-platform-apply-execution.json": "be730f07f2f318f77160f5dfccf36f5b851a0c96ddac96fef0817c58fa0fcbd9",
+    "outputs/prod-platform-drift-execution.json": "c02cef9def822f3fe2ee8b8e69285b7f319e29c5a27df35775684c10be3d88a5",
+    "outputs/pr78-bypass-cleanup-readback.json": "1e556a20ac64aa8dffddf7f174aa0dbddc23b55567ea9c2686bf9860eebfcb6e",
+    "outputs/downstream-github-environment-protection.json": "f65653ff439bdd14fc2396751d2387cf140b8a779006cc55f1915dc4c47d6782",
+    "outputs/test-governance-apply-execution.json": "366ce25344c144915f7603cafaa7870628e86e564c631f3e1e5e51204478e9d2",
+    "outputs/test-governance-drift-execution.json": "71f6153b6950dbeea48cf0606c5b14f37cb378d08d72ea658c2ecc9a1e4b73c8",
+    "outputs/prod-governance-live-plan-review.json": "cf9adc2e37d0a441ef3aca46b2c848516b18c1829651b87fc407380619e30204",
+    "outputs/bootstrap-active-stack-deployment-inventory.json": "d644b25311aecfe99ac1209a493fec56a8fea8eb38af7b138e9ec8b31d8dd104",
+    "outputs/prod-local-migration-finalization-result.json": "6980d68cc41be98135c7005ace4c5aaedb87c37c83e5bdf77f081dcfc6dbe973",
+    "outputs/prod-operator-live-security-validation.json": "8cebe22352f444b29cfd89aea52cc3a36299057b94d8901d215393e6f4fe2e65",
+    "outputs/pr78-live-read-role-authorization-qa.json": "43f7bedc53324f9198eb32e7a0ca76d57d43c09b5659fbdfdd79a42898f90617",
+    "work/wa-runtime-closure/remaining-evidence/metadata.json": "06739ce21e72ddee0a9c9176d69b3c6c2fe60b8e802c284beceff32c33ad4851",
+    "work/wa-runtime-closure/remaining-evidence/logging-supplement.json": "e42376f851470e3db6948280a47cdada299e91fcc7293420e1bfc86a8b50aff8",
+    "work/wa-runtime-closure/remaining-evidence/github-security.json": "68b7993a2b4c65abc34f55a800868234824b9eed67b287edfd8cdc79c9cedcac"
+  },
+  "deployments": {
+    "test_operator_apply": {
+      "status": "PASS",
+      "account": "891377212104",
+      "plan_sha256": "cfe534551177beff955c019c839c483cc0d1cb0b44a0cdc6f52bdcdc0966efb0",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "started_at": "2026-09-06T20:17:56.556601+00:00",
+      "returncode": 0,
+      "finished_at": "2026-09-06T20:20:15.911532+00:00"
+    },
+    "test_operator_drift": {
+      "status": "PASS",
+      "returncode": 0,
+      "account": "891377212104",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "backend": "s3://pulumi-bootstrap-infrastructure-test-state",
+      "finished_at": "2026-09-06T20:24:00.220362+00:00"
+    },
+    "test_platform_apply": {
+      "status": "PASS",
+      "account": "891377212104",
+      "plan_sha256": "74069b85bd4c10acee0c8016692b818ca213de69fd1182001b4f32c00334f6d7",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "started_at": "2026-09-06T20:27:45.589939+00:00",
+      "returncode": 0,
+      "finished_at": "2026-09-06T20:29:24.461109+00:00"
+    },
+    "test_platform_drift": {
+      "status": "PASS",
+      "returncode": 0,
+      "account": "891377212104",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "backend": "s3://pulumi-bootstrap-infrastructure-test-state/state/test",
+      "finished_at": "2026-09-06T20:31:38.764831+00:00"
+    },
+    "prod_operator_apply": {
+      "status": "PASS",
+      "account": "933245420672",
+      "plan_sha256": "4bbf906e5ee4c851ed3ca4aac52701708de608382c01a33330558440c7b80add",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "started_at": "2026-09-06T20:12:34.283975+00:00",
+      "returncode": 0,
+      "finished_at": "2026-09-06T20:16:00.430519+00:00"
+    },
+    "prod_operator_drift": {
+      "status": "PASS",
+      "returncode": 0,
+      "account": "933245420672",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "backend": "s3://pulumi-bootstrap-infrastructure-prod-state",
+      "finished_at": "2026-09-06T20:18:23.477026+00:00"
+    },
+    "prod_platform_apply": {
+      "status": "PASS",
+      "account": "933245420672",
+      "plan_sha256": "1de4d725c958ee123cb15b7982d1741b35c6ff6589718662e4bcdcdcd4383780",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "started_at": "2026-09-06T20:30:19.050788+00:00",
+      "returncode": 0,
+      "finished_at": "2026-09-06T20:32:59.259970+00:00"
+    },
+    "prod_platform_drift": {
+      "status": "PASS",
+      "returncode": 0,
+      "account": "933245420672",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "backend": "s3://pulumi-bootstrap-infrastructure-prod-state/state/prod",
+      "finished_at": "2026-09-06T20:37:13.300934+00:00"
+    },
+    "test_governance_apply": {
+      "status": "PASS",
+      "account": "891377212104",
+      "plan_sha256": "bf3e96ba4ba86a3bb9c6f40f8fed4efb5509497325e1e464b04afdccf3f2e980",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "started_at": "2026-09-06T20:45:10.953493+00:00",
+      "returncode": 0,
+      "finished_at": "2026-09-06T20:45:49.236097+00:00"
+    },
+    "test_governance_drift": {
+      "status": "PASS",
+      "returncode": 0,
+      "account": "891377212104",
+      "main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+      "backend": "s3://pulumi-bootstrap-infrastructure-test-state/governance",
+      "finished_at": "2026-09-06T20:48:11.649276+00:00"
+    }
+  },
+  "testAccountEvidence": {
+    "accountAccessKeysPresent": 0,
+    "accountMfaEnabled": 1,
+    "activeUserAccessKeyCount": 0,
+    "activeUserAccessKeyCreateDateUnknownCount": 0,
+    "activeUserAccessKeyLastUsedOlderThan90DaysCount": 0,
+    "activeUserAccessKeyLastUsedUnknownCount": 0,
+    "activeUserAccessKeyLastUsedWithin90DaysCount": 0,
+    "activeUserAccessKeyNeverUsedCount": 0,
+    "activeUserAccessKeyOlderThan90DaysCount": 0,
+    "discoveredUserCount": 5,
+    "inactiveUserAccessKeyCount": 1,
+    "mfaDeviceCount": 3,
+    "mfaDevicesInUse": 3,
+    "otherUserAccessKeyStatusCount": 0,
+    "summaryUserCount": 5,
+    "unreadableAccessKeyLastUsedCount": 0,
+    "unreadableAccessKeyUserCount": 0,
+    "usersWithActiveAccessKeys": 0
+  },
+  "testCredentialSurfaces": {
+    "account": "891377212104",
+    "caller_arn": "arn:aws:iam::891377212104:root",
+    "summary": {
+      "Users": 5,
+      "MFADevices": 3,
+      "MFADevicesInUse": 3,
+      "AccountMFAEnabled": 1,
+      "AccountAccessKeysPresent": 0,
+      "Roles": 102,
+      "Policies": 156,
+      "Groups": 8
+    },
+    "discovered_user_count": 5,
+    "user_auth_surfaces": [
+      {
+        "identity_index": 1,
+        "console_login_profile": false,
+        "login_profile_error": "NoSuchEntity",
+        "mfa_device_count": 0,
+        "active_access_keys": 0,
+        "inactive_access_keys": 1,
+        "other_access_keys": 0,
+        "active_signing_certificates": 0,
+        "active_ssh_public_keys": 0,
+        "active_service_specific_credentials": 0,
+        "service_specific_error": null,
+        "permissions_boundary_present": false
+      },
+      {
+        "identity_index": 2,
+        "console_login_profile": false,
+        "login_profile_error": "NoSuchEntity",
+        "mfa_device_count": 0,
+        "active_access_keys": 0,
+        "inactive_access_keys": 0,
+        "other_access_keys": 0,
+        "active_signing_certificates": 0,
+        "active_ssh_public_keys": 0,
+        "active_service_specific_credentials": 0,
+        "service_specific_error": null,
+        "permissions_boundary_present": false
+      },
+      {
+        "identity_index": 3,
+        "console_login_profile": false,
+        "login_profile_error": "NoSuchEntity",
+        "mfa_device_count": 0,
+        "active_access_keys": 0,
+        "inactive_access_keys": 0,
+        "other_access_keys": 0,
+        "active_signing_certificates": 0,
+        "active_ssh_public_keys": 0,
+        "active_service_specific_credentials": 0,
+        "service_specific_error": null,
+        "permissions_boundary_present": false
+      },
+      {
+        "identity_index": 4,
+        "console_login_profile": false,
+        "login_profile_error": "NoSuchEntity",
+        "mfa_device_count": 0,
+        "active_access_keys": 0,
+        "inactive_access_keys": 0,
+        "other_access_keys": 0,
+        "active_signing_certificates": 0,
+        "active_ssh_public_keys": 0,
+        "active_service_specific_credentials": 0,
+        "service_specific_error": null,
+        "permissions_boundary_present": false
+      },
+      {
+        "identity_index": 5,
+        "console_login_profile": false,
+        "login_profile_error": "NoSuchEntity",
+        "mfa_device_count": 0,
+        "active_access_keys": 0,
+        "inactive_access_keys": 0,
+        "other_access_keys": 0,
+        "active_signing_certificates": 0,
+        "active_ssh_public_keys": 0,
+        "active_service_specific_credentials": 0,
+        "service_specific_error": null,
+        "permissions_boundary_present": false
+      }
+    ],
+    "virtual_mfa_assignment_counts": {
+      "root": 2,
+      "iam_users": 0,
+      "unclassified": 0
+    },
+    "aggregate": {
+      "users_with_console": 0,
+      "users_with_mfa": 0,
+      "active_access_keys": 0,
+      "inactive_access_keys": 1,
+      "users_with_any_active_direct_credential": 0
+    },
+    "guardduty": [
+      {
+        "status": "ENABLED",
+        "error": null
+      }
+    ],
+    "securityhub": {
+      "enabled": true,
+      "error": null
+    },
+    "config_recorders": [
+      {
+        "recording": true,
+        "lastStatus": "SUCCESS",
+        "lastErrorCode": null
+      }
+    ],
+    "cloudtrail": [
+      {
+        "multi_region": true,
+        "log_validation": true,
+        "kms_present": true,
+        "is_logging": true,
+        "delivery_error_present": false
+      },
+      {
+        "multi_region": false,
+        "log_validation": true,
+        "kms_present": false,
+        "is_logging": true,
+        "delivery_error_present": false
+      },
+      {
+        "multi_region": false,
+        "log_validation": true,
+        "kms_present": false,
+        "is_logging": true,
+        "delivery_error_present": false
+      }
+    ]
+  },
+  "alertRoute": {
+    "status": "PASS_BOUNDED_REAL_SNS_SQS_GITHUB_ROUTE_AND_ACK",
+    "completed_at": "2026-09-06T20:40:12.539151+00:00",
+    "source_main": "5c873f86fa956f6b96a09e2887297905467b8562",
+    "workflow_sha256": "7493923443846f089a7d9c21f1f881df9a36a567bdc7e297273b147aef86ae71",
+    "payload_sha256": "10b3ed45eb7292dfe6eebf9bdda13c7ab5a26137265e335409e37fa518bd0a77",
+    "publication": {
+      "published_at": "2026-09-06T20:36:51.556921+00:00",
+      "sns_message_id": "501a417e-1261-5286-bec4-2269c342b26c",
+      "request_id": "69fb2e80-8bb8-5018-898c-4d975a9b90f2",
+      "http_status": 200,
+      "payload_sha256": "10b3ed45eb7292dfe6eebf9bdda13c7ab5a26137265e335409e37fa518bd0a77",
+      "topic_arn": "arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations",
+      "publication_count": 1
+    },
+    "observations": [
+      {
+        "verified_at": "2026-09-06T20:38:28.066966+00:00",
+        "run_id": 34058543444,
+        "run_url": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/runs/34058543444",
+        "run_conclusion": "success",
+        "oidc_step": "success",
+        "create_and_ack_step": "success",
+        "issue_number": 202,
+        "issue_url": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/issues/202",
+        "issue_state": "open",
+        "issue_created_at": "2026-09-06T20:37:21Z",
+        "issue_author": "github-actions[bot]",
+        "message_count": 1,
+        "exclusively_approved_synthetic_message": true,
+        "sns_message_id": "501a417e-1261-5286-bec4-2269c342b26c",
+        "sqs_message_id": "2d00aa03-87c4-40dd-9cbd-7a987b3880e7",
+        "detail_type": "WA route QA 20260906 fbc178ab",
+        "queue_counts": {
+          "ApproximateNumberOfMessages": "0",
+          "ApproximateNumberOfMessagesNotVisible": "0",
+          "ApproximateNumberOfMessagesDelayed": "0"
+        },
+        "queue_receives_or_deletes_by_verifier": 0
+      },
+      {
+        "verified_at": "2026-09-06T20:39:06.338900+00:00",
+        "run_id": 34058543444,
+        "run_url": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/runs/34058543444",
+        "run_conclusion": "success",
+        "oidc_step": "success",
+        "create_and_ack_step": "success",
+        "issue_number": 202,
+        "issue_url": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/issues/202",
+        "issue_state": "open",
+        "issue_created_at": "2026-09-06T20:37:21Z",
+        "issue_author": "github-actions[bot]",
+        "message_count": 1,
+        "exclusively_approved_synthetic_message": true,
+        "sns_message_id": "501a417e-1261-5286-bec4-2269c342b26c",
+        "sqs_message_id": "2d00aa03-87c4-40dd-9cbd-7a987b3880e7",
+        "detail_type": "WA route QA 20260906 fbc178ab",
+        "queue_counts": {
+          "ApproximateNumberOfMessages": "0",
+          "ApproximateNumberOfMessagesNotVisible": "0",
+          "ApproximateNumberOfMessagesDelayed": "0"
+        },
+        "queue_receives_or_deletes_by_verifier": 0
+      }
+    ],
+    "cleanup": {
+      "issue_number": 202,
+      "issue_url": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/issues/202",
+      "state": "CLOSED",
+      "closed_at": "2026-09-06T20:39:24Z",
+      "actor": "dmytrocraft",
+      "qa_comment_url": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/issues/202#issuecomment-5562023886",
+      "only_synthetic_message": true
+    },
+    "counts": {
+      "sns_publish_calls": 1,
+      "workflow_dispatch_calls": 1,
+      "manual_sqs_receive_delete_or_purge_calls": 0,
+      "qa_issues_closed": 1,
+      "qa_comments": 1,
+      "restore_canary_or_resource_apply_calls": 0
+    },
+    "interpretation": {
+      "real_aws_route": true,
+      "real_github_oidc_execution": true,
+      "normal_issue_before_ack": true,
+      "empty_queue_after_visibility_interval": true,
+      "upstream_aws_event_generation_tested": false,
+      "human_paging_or_business_response_tested": false,
+      "backup_restore_or_production_dr_tested": false,
+      "live_v2_activation": false
+    },
+    "runStepResults": [
+      {
+        "name": "Set up job",
+        "conclusion": "success"
+      },
+      {
+        "name": "Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+        "conclusion": "success"
+      },
+      {
+        "name": "Load test AWS CI configuration",
+        "conclusion": "success"
+      },
+      {
+        "name": "Validate triage prerequisites",
+        "conclusion": "success"
+      },
+      {
+        "name": "Configure AWS credentials via OIDC",
+        "conclusion": "success"
+      },
+      {
+        "name": "Create GitHub issue for queued operations alerts",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Configure AWS credentials via OIDC",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Load test AWS CI configuration",
+        "conclusion": "success"
+      },
+      {
+        "name": "Post Run actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5",
+        "conclusion": "success"
+      },
+      {
+        "name": "Complete job",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "costReview": {
+    "totals": {
+      "all_s3": {
+        "usd": "0.0122818753",
+        "gb_metered_lines": "1.5772861178"
+      },
+      "Repository_EQUALS": {
+        "usd": "0.0122638443",
+        "gb_metered_lines": "1.5739275189"
+      },
+      "Project_EQUALS": {
+        "usd": "0.0122808894",
+        "gb_metered_lines": "1.5771209094"
+      },
+      "Repository_ABSENT": {
+        "usd": "0.0000180310",
+        "gb_metered_lines": "0.0033522165"
+      }
+    },
+    "decision": "Retain existing EU pair and thresholds; no expansion, classify tag-unallocated/metered ingress-egress uncertainty explicitly. Low absolute cost supports continued existing workload, not new budget or risk acceptance.",
+    "scope": "TEST account Sep1\u20135; estimated CE values; metered-line GB not unique traffic"
+  },
+  "quotas": {
+    "list_buckets": {
+      "usage": 55,
+      "applied_quota": 10000.0,
+      "source": "ServiceQuotas us-east-1 L-DC2B2D3D"
+    },
+    "list_roles": {
+      "usage": 102,
+      "applied_quota": 1000,
+      "source": "IAM GetAccountSummary"
+    },
+    "list_keys": {
+      "usage": 14,
+      "quota": 100000.0,
+      "quota_code": "L-C2F1777E",
+      "quota_origin": "applied",
+      "remaining": 99986.0
+    },
+    "list_backup_plans": {
+      "usage": 3,
+      "quota": 300.0,
+      "quota_code": "L-BD69F607",
+      "quota_origin": "default (applied unavailable)",
+      "remaining": 297.0
+    },
+    "list_backup_vaults": {
+      "usage": 3,
+      "quota": 300.0,
+      "quota_code": "L-7705D2CB",
+      "quota_origin": "default (applied unavailable)",
+      "remaining": 297.0
+    },
+    "describe_repositories": {
+      "usage": 1,
+      "quota": 100000.0,
+      "quota_code": "L-CFEB8E8D",
+      "quota_origin": "default (applied unavailable)",
+      "remaining": 99999.0
+    },
+    "list_topics": {
+      "usage": 17,
+      "quota": 100000.0,
+      "quota_code": "L-61103206",
+      "quota_origin": "applied",
+      "remaining": 99983.0
+    },
+    "list_rules": {
+      "usage": 13,
+      "quota": 300.0,
+      "quota_code": "L-244521F2",
+      "quota_origin": "applied",
+      "remaining": 287.0
+    },
+    "sqs": {
+      "usage": 1,
+      "repository_threshold": 50
+    },
+    "config": {
+      "usage": 1,
+      "constraint": "reuse existing customer-managed recorder; do not create another"
+    },
+    "cloudtrail": {
+      "trails": [
+        {
+          "name": "bootstrap-test-management-events",
+          "home_region": "eu-central-1"
+        },
+        {
+          "name": "ci-cd-infra-crm-test-dynamodb-cloudtrail",
+          "home_region": "eu-central-1"
+        },
+        {
+          "name": "ci-cd-infra-test-dynamodb-cloudtrail",
+          "home_region": "eu-central-1"
+        }
+      ],
+      "regional_trail_quota": 5,
+      "constraint": "do not consume last slot without explicit review"
+    }
+  },
+  "globalQuotaSupplement": {
+    "observed_at": "2026-09-06T20:25:06.456543+00:00",
+    "iam_roles": {
+      "usage": 102,
+      "applied_quota": 1000,
+      "source": "IAM GetAccountSummary"
+    },
+    "s3_buckets": {
+      "usage": 55,
+      "applied_quota": 10000.0,
+      "source": "ServiceQuotas us-east-1 L-DC2B2D3D"
+    },
+    "ecr": [
+      {
+        "name": "pulumi-runner/bootstrap-infrastructure-test",
+        "image_count": 0,
+        "scan_on_push": true,
+        "images": []
+      }
+    ]
+  },
+  "budgetAndCostMetadata": {
+    "observedAt": "2026-09-06T20:21:56.976437+00:00",
+    "periodExclusiveEnd": {
+      "Start": "2026-09-01",
+      "End": "2026-09-06"
+    },
+    "estimatedAccountUnblendedCostUsd": "5.8706730031",
+    "activeCostAllocationTagKeys": [
+      "Owner",
+      "RepositoryProject",
+      "DataClassification",
+      "Repository",
+      "Criticality",
+      "RetentionClass",
+      "App",
+      "CostCenter",
+      "Project",
+      "Environment"
+    ],
+    "bootstrapBudget": [
+      {
+        "BudgetName": "bootstrap-test-monthly-cost",
+        "BudgetLimit": {
+          "Amount": "100.0",
+          "Unit": "USD"
+        },
+        "BudgetType": "COST",
+        "TimeUnit": "MONTHLY",
+        "CalculatedSpend": {
+          "ActualSpend": {
+            "Amount": "5.949",
+            "Unit": "USD"
+          },
+          "ForecastedSpend": {
+            "Amount": "29.612",
+            "Unit": "USD"
+          }
+        },
+        "notifications": [
+          {
+            "NotificationType": "ACTUAL",
+            "ComparisonOperator": "GREATER_THAN",
+            "Threshold": 80.0,
+            "NotificationState": "OK",
+            "subscriber_types": [
+              "SNS"
+            ],
+            "all_expected_sns": true
+          },
+          {
+            "NotificationType": "FORECASTED",
+            "ComparisonOperator": "GREATER_THAN",
+            "Threshold": 100.0,
+            "NotificationState": "OK",
+            "subscriber_types": [
+              "SNS"
+            ],
+            "all_expected_sns": true
+          }
+        ]
+      }
+    ],
+    "bootstrapAnomalySubscription": [
+      {
+        "SubscriptionName": "bootstrap-test-cost-alerts",
+        "Frequency": "IMMEDIATE",
+        "ThresholdExpression": {
+          "Dimensions": {
+            "Key": "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
+            "Values": [
+              "10"
+            ],
+            "MatchOptions": [
+              "GREATER_THAN_OR_EQUAL"
+            ]
+          }
+        },
+        "subscriber_types": [
+          "SNS"
+        ],
+        "subscriber_statuses": [
+          "CONFIRMED"
+        ]
+      }
+    ]
+  },
+  "governanceBoundaryProof": {
+    "roleBoundariesVerified": 6,
+    "immutableDocumentsVerified": 2,
+    "receipt": "outputs/pr78-test-post-apply-verification.json",
+    "governanceRuntimeSha256": "a7e9487232674f2138d396573d4abd25bb415bea553d9491b2489aa2268a8174",
+    "runtimeByteEqualBdbbAndMain": true
+  },
+  "limitations": [
+    "No account-wide zero-key claim for PROD; unrelated codex/MCP active key remains outside bootstrap auth path.",
+    "The account summary reports three MFA devices. The separate virtual-device inventory reports two bound to root, zero bound to IAM users and zero unclassified virtual devices. One aggregate device is not explained by that virtual inventory; its type and owner are not established by these observations. All five IAM users lack console and active direct credentials. The inventories are not interchangeable and no additional virtual device is inferred.",
+    "Source-bound local apply/drift is not protected PR-comment promotion.",
+    "No successful R3 Backup restore yet; delivered canary event proof pending at parent status.",
+    "PROD governance reviewed plan is not yet an apply/drift receipt here; service initialization and true downstream TEST/PROD promotion remain separate.",
+    "Platform access-log target is outside the current allowed prefix; source repair assigned to another agent, not claimed applied.",
+    "No personal Kravalg approval or renewed production RTO/RPO/lock exemption has been fabricated."
+  ],
+  "technicalReview": "specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json"
+}

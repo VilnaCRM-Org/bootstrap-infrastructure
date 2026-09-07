@@ -1,0 +1,93 @@
+{
+  "workload": "bootstrap-infrastructure",
+  "environment": "test",
+  "account": "891377212104",
+  "region": "eu-central-1",
+  "completedAt": "2026-09-07T00:08:13.770000+00:00",
+  "sourceRecoveryPointArn": "arn:aws:backup:eu-central-1:891377212104:recovery-point:pulumi-bootstrap-infrastructure-test-sta-20260905051952-07bdf25f",
+  "targetRestoreLocation": "s3://bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak",
+  "validationResult": "passed",
+  "cleanupConfirmed": true,
+  "restoreJobId": "4d9f551a-92cd-42df-9ef1-a3dd38cafc11",
+  "restoreStartedAt": "2026-09-07T00:03:58.176000+00:00",
+  "restoredObjectBytes": 1135467,
+  "restoredObjectSha256": "9a520cb11d36bc20723ca305b2598f5e27a7c7a18e507060f72d90250dabbc21",
+  "restoredObjectVersionId": "TT68ItErbacRbPEXIZp8cH1aycNANJP5",
+  "sourceVersionId": "hG.O7vsYLU05uqnGDn.Zr4DH0mfNevE9",
+  "sourceLastModified": "2026-06-08T02:41:58Z",
+  "recoverySnapshotAt": "2026-09-05T05:40:32Z",
+  "measuredJobDurationSeconds": 255.594,
+  "measurementScope": "AWS Backup job creation to completion for exactly one historical TEST object; not end-to-end recovery RTO, achieved RPO, PROD DR or business SLA.",
+  "requestMetadataEvidence": {
+    "redacted_fields": [
+      "destinationbucketname",
+      "encryptiontype",
+      "itemstorestore",
+      "restoreacls",
+      "restorelatestversionsupto"
+    ],
+    "request_values_verified": false,
+    "verification": "unavailable_redacted"
+  },
+  "sourceBinding": "exact recovery-point ResourceArn and pinned source version",
+  "canaryDeliveryVerifiedBeforeStart": true,
+  "canaryEvents": [
+    {
+      "eventName": "GetObject",
+      "eventID": "00bab3f8-3682-4328-8cc9-395b8e95448d",
+      "eventTime": "2026-09-06T23:55:55+00:00",
+      "requestID": "0Z8PJN2BYMBW8JCD",
+      "log_compressed_sha256": "836309b9939c2976a37935bc792f7e1d5cdf825ec6c2cb7740c818ebd4ca4c63",
+      "log_object_key": "AWSLogs/891377212104/CloudTrail/eu-central-1/2026/09/07/891377212104_CloudTrail_eu-central-1_20260907T0000Z_Y7CJBut52F2iv7w9.json.gz",
+      "log_object_version_or_etag": "wBh5MrLDQVgsJpdYMvHpXgxWwyrsWWqI"
+    },
+    {
+      "eventName": "PutObject",
+      "eventID": "9ee2cfe1-f3a1-40d7-9263-25759d8b5c6d",
+      "eventTime": "2026-09-06T23:55:54+00:00",
+      "requestID": "ASYZNQR5K5T6ZEN4",
+      "log_compressed_sha256": "836309b9939c2976a37935bc792f7e1d5cdf825ec6c2cb7740c818ebd4ca4c63",
+      "log_object_key": "AWSLogs/891377212104/CloudTrail/eu-central-1/2026/09/07/891377212104_CloudTrail_eu-central-1_20260907T0000Z_Y7CJBut52F2iv7w9.json.gz",
+      "log_object_version_or_etag": "wBh5MrLDQVgsJpdYMvHpXgxWwyrsWWqI"
+    }
+  ],
+  "cleanupEvidence": {
+    "cleanup_complete": true,
+    "diagnostics_restored": true,
+    "drill_passed": true,
+    "phase": "cleanup",
+    "selector_sha256": "d13c903620035b96f43776d9e41ff52cf3adbf45c406c48ba9bb3cbc90029194",
+    "trail_health": {
+      "delivery_errors_present": false,
+      "delivery_recent": true,
+      "healthy": true,
+      "is_logging": true,
+      "latest_successful_delivery": "2026-09-07T00:08:26+00:00",
+      "status_available": true
+    }
+  },
+  "historicalFailedAttempt": {
+    "jobId": "8a1ef01a-bd29-4732-939c-40fcb654604b",
+    "drillPassed": false,
+    "cleanupConfirmed": true,
+    "disposition": "R5 remains failed despite partial object integrity; no prior journal or result was overwritten."
+  },
+  "reviewedAt": "2026-09-07T00:20:17.535057+00:00",
+  "reviewer": "Codex security_review (delegated technical reviewer; root executed the live drill)",
+  "receiptBindings": {
+    "specs/issue-17-well-architected-5-of-5/restore-r6-receipts/observe-2.json": "cf26a70d1f78f363aa18605305c84639b4dc55145512bf1464fea49e6f91fdc3",
+    "specs/issue-17-well-architected-5-of-5/restore-r6-receipts/cleanup-result.json": "bfa2c1f4868267c697096525ba356c113a641d947ed0ace703aaa566cbdc7f6f",
+    "specs/issue-17-well-architected-5-of-5/restore-r6-receipts/start-result.json": "53e0b14230706f8141126f60d93f65698c70063f786eafe2a5e87cbf1b3ecc66",
+    "specs/issue-17-well-architected-5-of-5/restore-r6-receipts/diagnostics-collect-4.json": "f554bc8c47b9569bd9773411a43ff0bd8c9a1b889e46bb644a3b8358d9b2ad8c",
+    "specs/issue-17-well-architected-5-of-5/restore-r6-receipts/canary-result.json": "3168081f1a627f75cd9483d4bbef3923835adb09ef5952977a073b40f2b87b4b",
+    "specs/issue-17-well-architected-5-of-5/restore-r6-receipts/canary-cleanup-result.json": "44be09afa34c67749473ed8d849fb61d6fa7524195bcd5a1d4dd926b8c2066d5",
+    "specs/issue-17-well-architected-5-of-5/restore-r6-receipts/selected-source-hash.json": "811c0d38004eb1bfdbcdcbccda42bfac1253abb15465ba061edc52b4211bb04c",
+    "specs/issue-17-well-architected-5-of-5/restore-r6-receipts/proposal.json": "dbae4dd5636dea36cf17b46645668feea58b592964726f8085b7651571a9ef6d",
+    "specs/issue-17-well-architected-5-of-5/restore-r6-receipts/r5-cleanup-historical.json": "a4760bbfdd891476f82ff28445497ed90b492f1fef450efbbf7c38afaaf2692b"
+  },
+  "limits": [
+    "No secret contents were read by this evidence review.",
+    "AWS redacted five request metadata values; request_values_verified remains false.",
+    "One historical TEST object restored; no PROD restore, broad degraded-mode exercise, human/SSO approval, retention exception renewal or protected promotion claimed."
+  ]
+}

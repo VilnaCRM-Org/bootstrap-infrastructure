@@ -24,6 +24,7 @@ RUNTIME_FILES = (
     "scripts/_github_environment_controls.py",
     "scripts/_github_evidence_environment.py",
     "scripts/_github_repository_controls.py",
+    "scripts/configure_github_repository_controls.py",
     "scripts/run_pulumi_command.py",
     "scripts/prepare_policy_pack.py",
     "scripts/pulumi_ci_guardrails.py",

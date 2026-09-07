@@ -1,0 +1,335 @@
+{
+  "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+  "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+  "reviewer": "Codex (delegated technical operator; authored this assessment)",
+  "authority": "User delegates bootstrap technical setup, testing, review and ordinary operating decisions. This records technical decisions; no personal Kravalg approval, risk exemption, business SLA acceptance or human response is represented.",
+  "nextReviewDue": "2026-10-06",
+  "reviewTriggers": [
+    "catalog, retention, region, IAM or credential change",
+    "any incident or failed drill",
+    "budget/transfer threshold breach",
+    "new replicated data class or application workload"
+  ],
+  "receiptBindings": {
+    "outputs/pr78-bypass-cleanup-readback.json": "1e556a20ac64aa8dffddf7f174aa0dbddc23b55567ea9c2686bf9860eebfcb6e",
+    "outputs/downstream-github-environment-protection.json": "f65653ff439bdd14fc2396751d2387cf140b8a779006cc55f1915dc4c47d6782",
+    "outputs/test-governance-apply-execution.json": "366ce25344c144915f7603cafaa7870628e86e564c631f3e1e5e51204478e9d2",
+    "outputs/test-governance-drift-execution.json": "71f6153b6950dbeea48cf0606c5b14f37cb378d08d72ea658c2ecc9a1e4b73c8",
+    "outputs/prod-governance-live-plan-review.json": "cf9adc2e37d0a441ef3aca46b2c848516b18c1829651b87fc407380619e30204",
+    "outputs/bootstrap-active-stack-deployment-inventory.json": "d644b25311aecfe99ac1209a493fec56a8fea8eb38af7b138e9ec8b31d8dd104",
+    "outputs/prod-local-migration-finalization-result.json": "6980d68cc41be98135c7005ace4c5aaedb87c37c83e5bdf77f081dcfc6dbe973",
+    "outputs/wa-alert-route-execution.json": "6f7c898480b1d9d521c4dd44f327eb0c8cabe07fd9b3bc4b38c7d7f9059feb3a",
+    "outputs/wa-runtime-closure-plan.json": "12b29652faad49caa7932cbeed8644b5d2f165019159dcd6e67748bfbb3df58a",
+    "outputs/prod-operator-live-security-validation.json": "8cebe22352f444b29cfd89aea52cc3a36299057b94d8901d215393e6f4fe2e65",
+    "outputs/pr78-live-read-role-authorization-qa.json": "43f7bedc53324f9198eb32e7a0ca76d57d43c09b5659fbdfdd79a42898f90617",
+    "work/wa-runtime-closure/remaining-evidence/metadata.json": "06739ce21e72ddee0a9c9176d69b3c6c2fe60b8e802c284beceff32c33ad4851",
+    "work/wa-runtime-closure/remaining-evidence/logging-supplement.json": "e42376f851470e3db6948280a47cdada299e91fcc7293420e1bfc86a8b50aff8",
+    "work/wa-runtime-closure/remaining-evidence/github-security.json": "68b7993a2b4c65abc34f55a800868234824b9eed67b287edfd8cdc79c9cedcac",
+    "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json": "ac448e163e3eeca0f7b71299ccd82e7211d74c98b2cc566894fabd9bc4620baa"
+  },
+  "classificationAndRetentionDecisions": [
+    {
+      "class": "encrypted migration recovery copies and official checkpoint snapshots",
+      "classification": "confidential operational state; cloud provider/config fields are secret-bearing metadata",
+      "storage": "existing version-pinned SSE-KMS recovery objects; AWS backend remains authoritative",
+      "retention": "retain at least 90 days after final bootstrap acceptance; extend for any incident, legal hold, unresolved ownership or active recovery reference",
+      "disposal": "platform-maintainer/SRE performs separately reviewed exact-version cleanup after original owners, current checkpoints and durable minimal receipt are verified; no deletion executed or automatically scheduled here"
+    },
+    {
+      "class": "migration journals, ownership maps, seals and recovery receipts",
+      "classification": "confidential when containing full resource/config metadata; sanitized counts and hashes internal",
+      "storage": "existing protected AWS control objects and private review files; publish only sanitized evidence",
+      "retention": "365 days from completed execution, longer while referenced by an incident or unresolved migration",
+      "disposal": "platform-maintainer/SRE checks no active operation or rollback reference before exact-version removal; preserve sanitized final audit receipt"
+    },
+    {
+      "class": "private saved plans, encrypted rehearsal snapshots and hydrated local configs",
+      "classification": "confidential; secret-bearing provider/config material restricted as secret, never public",
+      "storage": "private local 0700 directories/0600 files, no plaintext secret export; local copies are not an authoritative backend",
+      "retention": "review for purge 14 days after final bootstrap acceptance, only after durable recovery is verified and no pending apply/incident requires the files",
+      "disposal": "technical operator removes exact private copies after source/plan bindings are no longer required; preserve sanitized hashes and outcome for 365 days; no purge performed by this review"
+    }
+  ],
+  "demandDecision": {
+    "activeTargets": 8,
+    "meaning": "operator, platform, governance and backend-only service baseline in each of TEST and PROD",
+    "catalogRepositories": 2,
+    "catalogEnvironmentsEach": 2,
+    "retainedPhysicalOwners": 23,
+    "retainedOwnerCheckpoints": 2,
+    "correction": "23 denotes 16 platform plus 7 operator AWS owners, not 23 stack targets.",
+    "decision": "Retain legacy ownership checkpoints and their resources; do not run active programs against them. No removal or redeployment merely to improve a score. No new repositories, environments, compute fleet or regions in this review.",
+    "catalogDates": "Existing lastReviewed fields remain historical; this separate current technical review binds their exact unchanged catalog content without attributing new personal owner review.",
+    "cleanupTrigger": "Any demonstrated unused owner gets an explicit per-resource dependency/usage and recovery review before a separate deletion plan. Review retained inventory monthly; current migration evidence makes immediate wholesale deletion unsafe.",
+    "expansionGate": "Recalculate per-kind counts and account/regional quota headroom before any catalog change; preserve Config singleton, existing CloudTrail capacity margin, 100 USD budget, 80/100 percent alerts, 10 USD anomaly and 1 GB/1 USD transfer review triggers."
+  },
+  "storageAndPricingDecision": {
+    "observedLifecycle": "TEST primary state and governed service state retain noncurrent versions 365 days and abort multipart uploads after 7 days; central logs transition after 30 days and expire after 365. Rules read live, not inferred from source.",
+    "accessModel": "Interactive small JSON current checkpoints use STANDARD; replicas remain STANDARD for recovery and are outside the synchronous apply path. Recovery snapshots/journals are bounded cold review copies, not a new application data stream. Do not transition authoritative active checkpoints into retrieval-delayed tiers.",
+    "growthModel": "Three current TEST checkpoint samples total 2442370 bytes; these are samples, not whole-bucket size. Growth follows completed updates and retained versions, so watch monthly version bytes and writes per active target rather than multiplying 23 retained owners by active stack fanout.",
+    "performanceLimits": "Replica samples prove current version/size/ETag parity only, not achieved latency or an RPO/RTO SLA. Daily Backup and eventual replication remain design assumptions; successful restoration is separately unresolved.",
+    "pricingReview": "Keep existing storage classes pending actual size/access evidence. STANDARD_IA has 128 KB minimum billable size, 30-day minimum duration and retrieval/transition charges; do not claim savings for tiny log objects or force a new transition. No purchase/reservation or region change.",
+    "incrementalProdGovernancePlan": {
+      "planSha256": "7ecceb35844d90677d93969e2e62a3fc04bfd920480931278759d07c957438af",
+      "awsRecords": 40,
+      "counts": {
+        "aws:iam/policy:Policy": 2,
+        "aws:iam/role:Role": 6,
+        "aws:iam/rolePolicy:RolePolicy": 7,
+        "aws:iam/rolePolicyAttachment:RolePolicyAttachment": 2,
+        "aws:secretsmanager/secretVersion:SecretVersion": 2,
+        "aws:secretsmanager/secret:Secret": 2,
+        "bootstrap:ci:CiConfiguration": 1,
+        "aws:kms/alias:Alias": 1,
+        "aws:kms/key:Key": 1,
+        "bootstrap:kms:PulumiSecretsKeys": 1,
+        "aws:s3/bucket:Bucket": 2,
+        "aws:s3/bucketLifecycleConfiguration:BucketLifecycleConfiguration": 2,
+        "aws:s3/bucketLogging:BucketLogging": 2,
+        "aws:s3/bucketOwnershipControls:BucketOwnershipControls": 2,
+        "aws:s3/bucketPolicy:BucketPolicy": 2,
+        "aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock": 2,
+        "aws:s3/bucketReplicationConfig:BucketReplicationConfig": 1,
+        "aws:s3/bucketServerSideEncryptionConfiguration:BucketServerSideEncryptionConfiguration": 2,
+        "aws:s3/bucketVersioning:BucketVersioning": 2,
+        "pulumi:providers:aws": 2,
+        "bootstrap:pulumi:PulumiStateBuckets": 1,
+        "bootstrap:governance:RepoGovernance": 1,
+        "bootstrap:governance:GovernanceStack": 1,
+        "pulumi:pulumi:Stack": 1
+      },
+      "interpretation": "40 Pulumi AWS records include 2 bucket containers plus their configurations, 1 KMS key/alias, 2 secrets/versions and 6 roles plus policies/attachments. Do not count every record as a separate billed service. This was reviewed plan inventory, not a completed PROD governance deployment at this review cut."
+    },
+    "fixedChargeProjectionUsdPerMonth": 1.8,
+    "projectionAssumptions": "One newly created customer-managed KMS key at 1 USD/month plus two Secrets Manager secrets at 0.40 USD/month each before usage and future rotation charges; no duplicate charge for SecretVersion resources. Service baseline program exports configuration only and declares zero AWS resources. Already installed operator/platform/TEST governance resources are not added again.",
+    "variableCostModel": "Add regional S3 current+noncurrent+replica GB-month, PUT/GET/LIST/replication requests and cross-region transfer, KMS API and Secrets Manager API requests. These depend on actual workload volume; 1.80 is a fixed-charge component, not a complete forecast or spending cap. Existing actual/forecast budget and anomaly/transfer limits provide stop-and-review thresholds.",
+    "pricingSources": [
+      "https://aws.amazon.com/kms/pricing/",
+      "https://aws.amazon.com/secrets-manager/pricing/",
+      "https://aws.amazon.com/s3/pricing/"
+    ],
+    "regionalPricingArtifacts": [
+      "work/wa-runtime-closure/restore-r3/pricing-backup-frankfurt.json",
+      "work/wa-runtime-closure/restore-r3/pricing-s3-frankfurt.json"
+    ]
+  },
+  "technicalIncidentTabletop": [
+    {
+      "scenario": "primary state unavailable or ambiguous write",
+      "checks": "Verify exact account/backend, current VersionId and locks; compare pinned recovery receipt without fallback init/import.",
+      "containment": "Stop writers and preserve sealed evidence; no blind retry of ambiguous mutation.",
+      "recovery": "Use separately reviewed version-bound ownership recovery. Actual PROD conditional-delete 501 stopped, reconciled and exact owned versions were released with preserved 21/77 owners; no bucket outage injected."
+    },
+    {
+      "scenario": "replica lag or regional failure",
+      "checks": "Three fresh TEST source heads COMPLETED and replica heads REPLICA matched version/ETag/size; recheck source head unchanged.",
+      "containment": "Keep primary authoritative; do not promote a stale replica or create duplicate owners.",
+      "recovery": "Re-establish replication/parity before promotion; no regional failover or measured recovery SLA claimed."
+    },
+    {
+      "scenario": "KMS disablement, pending deletion or policy regression",
+      "checks": "Existing live operator/governance key-state, rotation and exact policy receipts; compare immutable key/provider bindings.",
+      "containment": "Stop plans when key/provider/config binding fails; no passphrase/local-state fallback or guessed broad decrypt Allow.",
+      "recovery": "Restore only reviewed exact key policy/state through authorized operator; actual KMS/Secrets Manager repair and negative IAM simulations are evidence, not an injected key-disable exercise."
+    },
+    {
+      "scenario": "OIDC or IAM trust compromise",
+      "checks": "Current role/trust/boundary and protected environment receipts; inspect caller and source/ref/numeric identity.",
+      "containment": "Freeze relevant writers; retain deny boundaries and exact subject contracts; no static credential escape path.",
+      "recovery": "Reapply reviewed exact trust/policy, then real OIDC and negative decision checks. Current downstream main-only protected environments installed; final service promotion still pending."
+    },
+    {
+      "scenario": "log delivery failure",
+      "checks": "Live platform logging prefix is outside central policy allow; service prefix matches. Empty listings alone are not proof of failure.",
+      "containment": "Report real mismatch, preserve CloudTrail selector exclusivity and no silent permission widening.",
+      "recovery": "Root assigned narrow platform prefix repair; then actual post-apply metadata/delivery verification. This tabletop detected an open defect and does not certify healthy platform logging."
+    },
+    {
+      "scenario": "Backup failure or completed-with-issues",
+      "checks": "Use real terminal status AND issues/content checks, exact destination ownership, canary event evidence and selector rollback.",
+      "containment": "No blind retry, no cleanup of unidentified/in-flight restore; keep failure receipts and report remaining resources.",
+      "recovery": "R3 content+canary cleanup verified by root, delivered Put/Get proof and actual successful restore remain pending. No successful restore inferred from canary or migration."
+    },
+    {
+      "scenario": "hosted workflow or review failure",
+      "checks": "Bind actual current source, checks, saved plan and protected environment; inspect failed stage rather than its badge.",
+      "containment": "No bypass to manufacture normal merge; current ruleset bypass list independently verified empty.",
+      "recovery": "Correct exact runtime/source defect, execute affected checks and fresh plan; final same-head TEST/PROD comment promotion still required."
+    }
+  ],
+  "incidentReviewLimits": "Completed delegated technical tabletop and metadata exercise, not a human paging drill or destructive fault injection. Detection/containment/recovery decisions reviewed now. Record source/UTC/account/plan in incident GitHub issue when authorized; keep secret material private. No new external notification sent. Recovery objectives and business communications commitments are not invented; REL9/REL11/REL12/REL13 remain below 5 where actual recovery or service outcomes are missing.",
+  "kpiDecision": {
+    "reviewCadence": "Monthly, next 2026-10-06; immediately on listed change/incident triggers. This is an operating decision, not a newly scheduled automation.",
+    "observations": "Five local stack apply/drift pairs passed at this snapshot. Real SNS/SQS/GitHub synthetic route and acknowledgement passed. Three checkpoint replica samples passed. Two open CodeQL alerts remain classified below; logging defect and incomplete restore/promotion remain visible failure KPIs.",
+    "efficiencyDecision": "Retain managed control-plane services in eu-central-1 with existing eu-west-1 recovery pairing. No idle compute fleet is introduced. Keep finite CI timeouts/concurrency and no unnecessary repeated broad campaigns. No measured carbon improvement or zero-failure trend claimed."
+  },
+  "codeScanningReview": {
+    "openAlerts": [
+      11,
+      12
+    ],
+    "severity": "high",
+    "rule": "actions/cache-poisoning/poisonable-step",
+    "paths": [
+      ".github/workflows/pulumi-prod.yml:178",
+      ".github/workflows/pulumi-prod.yml:187"
+    ],
+    "sourceAssessment": "Historical source at 5c873f86fa956f6b96a09e2887297905467b8562 places both cited steps in destructive_diff, which needs preview. The successful TEST run and head_branch=main checks alone do not independently prove protected-main ancestry. The initial false-positive recommendation is superseded by the separately reviewed source correction below. Absence of cache actions alone is not a security justification.",
+    "action": "Preserve the detector. The current source correction requires refs/heads/main and independently verifies that the requested exact commit is an ancestor of the trusted workflow SHA before checkout. Hosted analysis and alert disposition remain separate evidence; no alert dismissal or full acceptance is asserted here.",
+    "dependabotOpen": 0,
+    "pathsSourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562"
+  },
+  "sourceBindings": {
+    "pulumi/repositories.bootstrap.json": "cc87f64b1b1005bd2a2a447ce695c8d1fca236f2280ed03b112afdf930b814ad",
+    "pulumi/repositories.governance.json": "1c375faf18edbd3de08ccf7c94b57afd0af0059f5ccad23f792a13a646286a7b",
+    "pulumi/user-service-infrastructure/pulumi/__main__.py": "9b22896a655477803baf7eb98c605a3610c2273ff3b56e0554687e1902f3adf3"
+  },
+  "sourceBindingsScope": "Historical content hashes at sourceCommit 5c873f86fa956f6b96a09e2887297905467b8562, observed at reviewedAt. Later reviewed source corrections are recorded separately below; these hashes are not assertions about the PR head.",
+  "reviewedSourceCorrection": {
+    "reviewedRevision": "ffae8ec17ef7e2c4610fd699f4a2aa2f30734654",
+    "scope": "Source correction to the historical assessment; does not change observation dates, historical source hashes or runtime outcomes.",
+    "sourceBindings": {
+      ".github/workflows/pulumi-prod.yml": "feac18921725b055810b6e3c155264cf3c0a55d3eced6d2d824f7771fc3bec6c",
+      "pulumi/user-service-infrastructure/pulumi/__main__.py": "a867486d9e47d9bc1b96809e67f55a13cc6b82e6ca29132d80c5b1abd005a2db"
+    },
+    "productionSourceGuard": "Before target checkout, require the workflow main ref and exact 40-character lowercase commit IDs; GitHub compare must return one object with base_commit and merge_base equal to the requested SHA, behind_by=0 and status ahead or identical. API failure, malformed/multiple responses and foreign or divergent history fail closed. Existing successful TEST and protected PROD gates remain.",
+    "serviceAccountGuard": "Shared TEST/PROD entrypoint compares selected stack with configured environment and actual AWS caller with configured account before exporting service metadata. No change to the historical main hash above.",
+    "limitations": "Source checks do not constitute current protected TEST/PROD deployment, resolved CodeQL alert state or successful restore."
+  },
+  "subsequentDeploymentProgress": {
+    "observedAt": "2026-09-06T22:20:33.376376+00:00",
+    "baselineSourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+    "baselineSnapshotAt": "2026-09-06T22:04:15.718180+00:00",
+    "baselineApplyPassCount": 8,
+    "baselineDriftPassCount": 8,
+    "baselineMeaning": "Operator, platform, governance and backend-only service stack in TEST and PROD. These local AWS KMS/S3 operations are not downstream workload or protected PR-comment promotion acceptance.",
+    "inventoryReceipt": {
+      "path": "outputs/bootstrap-all-stack-deployment-progress.json",
+      "sha256": "292e8ba876dd6ea10295cf3549b1780a0b2d0879edf0d355a9683e886ed5f460"
+    },
+    "executionReceipts": [
+      {
+        "path": "outputs/test-operator-apply-execution.json",
+        "sha256": "bb17980c381d0b433d37197ccca68904bf58794a13e1731fcb52a81828cc81f2",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-operator-drift-execution.json",
+        "sha256": "12e890f01addcc824b2be05e16982e289a6f706f1c44bede2eb16f203618fcda",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-platform-apply-execution.json",
+        "sha256": "2b03d96ffff5c0d47767348f72b08708b3bf9b5cc2a96d61830adf05399f4df2",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-platform-drift-execution.json",
+        "sha256": "c656df5a5831e06d15d9fd4410a922236dbaf265fa6acdd24bb67444a5b6acba",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-governance-apply-execution.json",
+        "sha256": "366ce25344c144915f7603cafaa7870628e86e564c631f3e1e5e51204478e9d2",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-governance-drift-execution.json",
+        "sha256": "71f6153b6950dbeea48cf0606c5b14f37cb378d08d72ea658c2ecc9a1e4b73c8",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-service-apply-execution.json",
+        "sha256": "b54bff8de113babf7754215de0d85e17c3feb1987b5dcdf14d51287a4c6798d7",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/test-service-drift-execution.json",
+        "sha256": "7c7a64ee5578f99e5245d968d00edb73abb71c76245ac3cb3582405d12b85463",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-operator-apply-execution.json",
+        "sha256": "75bfec873628f327c1ff1c79dca57fc1c063b0e5eff4e60d55a5822e82458fe4",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-operator-drift-execution.json",
+        "sha256": "d97a2289fcdc3fa1515e88dce832bc3792650ea7ffd0f385a1a7288eadbbfbbc",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-platform-apply-execution.json",
+        "sha256": "be730f07f2f318f77160f5dfccf36f5b851a0c96ddac96fef0817c58fa0fcbd9",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-platform-drift-execution.json",
+        "sha256": "c02cef9def822f3fe2ee8b8e69285b7f319e29c5a27df35775684c10be3d88a5",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-governance-apply-execution.json",
+        "sha256": "0a24944e9b854599ca7e9a12a3b97ca921718f060a94144d521b211140a6a7fa",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-governance-drift-execution.json",
+        "sha256": "a6882dccc83f02fe2c4757c3a388115c760732dd8ef9affe414b97a6d04254f8",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-service-apply-execution.json",
+        "sha256": "5a3cae76886e0f1499a5286dbd575a5ba64345abe560cbb05bf30f276d1d7d93",
+        "status": "PASS"
+      },
+      {
+        "path": "outputs/prod-service-drift-execution.json",
+        "sha256": "32b144fd2b756fcddf64597096bb72797f0dfb1bbca8e8d23e9307f993481038",
+        "status": "PASS"
+      }
+    ],
+    "testGovernanceComment": {
+      "head": "ffae8ec17ef7e2c4610fd699f4a2aa2f30734654",
+      "runUrl": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/runs/34062796631",
+      "command": "/pulumi test up",
+      "triggerCommentId": 5562475017,
+      "plan": "SUCCESS",
+      "apply": "SUCCESS",
+      "postApplyDrift": "SUCCESS",
+      "prod": "SKIPPED",
+      "promotionProof": "SKIPPED",
+      "receipt": {
+        "path": "outputs/pr204-test-comment-deployment.json",
+        "sha256": "f576dd6d96f4a087665c5b185e1dd87852f4cbcbacc7eaf9c33e059822bfaaed"
+      }
+    },
+    "remaining": "The new initializer correction still requires a frozen source review and current-head validation. Final same-revision PROD comment promotion, downstream live acceptance, successful restore and unresolved WA requirements remain. Prior snapshot observations and historical receipt hashes above are preserved."
+  },
+  "historicalRuntimeLimits": {
+    "observedAt": "2026-09-06T21:28:37.505289+00:00",
+    "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+    "limits": [
+      "No successful R3 Backup restore yet; delivered canary event proof pending at parent status.",
+      "PROD governance reviewed plan is not yet an apply/drift receipt here; service initialization and true downstream TEST/PROD promotion remain separate.",
+      "Platform access-log target is outside the current allowed prefix; source repair assigned to another agent, not claimed applied.",
+      "No personal Kravalg approval or renewed production RTO/RPO/lock exemption has been fabricated."
+    ],
+    "scope": "Original snapshot before subsequentDeploymentProgress; preserved history, not current absence assertions."
+  },
+  "remainingRuntimeLimits": [
+    "PROD governance apply/drift and all eight local baseline pairs are now evidenced by subsequentDeploymentProgress. Current same-head protected TEST/PROD promotion and downstream workload/support acceptance still require separate receipts.",
+    "R6 TEST Backup restore/content/cleanup passed; no PROD restore or production RTO/RPO/communications commitment is inferred.",
+    "Current repaired platform logging delivery and final CodeQL/current-source checks require their own later receipts; historical source observations above are not assertions about current deployed state.",
+    "No personal Kravalg approval, organization SSO approval or renewed production retention-lock exemption is represented."
+  ],
+  "reviewCorrection": {
+    "reviewedAt": "2026-09-07T00:40:05.751210+00:00",
+    "reviewer": "Codex security_review (delegated technical reviewer)",
+    "findingIds": [
+      3945750845
+    ],
+    "scope": "Reconcile historical limits against exact later PROD governance PASS receipt hashes and R6 TEST outcome. Preserve original observation dates and source hashes.",
+    "restoreEvidence": "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+  }
+}

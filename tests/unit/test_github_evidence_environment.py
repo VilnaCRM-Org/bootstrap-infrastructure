@@ -21,6 +21,7 @@ def test_valid_boundary_has_no_all_pr_review_bottleneck():
         boundary.verification_blockers(
             environment,
             {
+                "total_count": 1,
                 "branch_policies": [{"name": "main", "type": "branch"}],
             },
         )
@@ -31,6 +32,13 @@ def test_valid_boundary_has_no_all_pr_review_bottleneck():
 @pytest.mark.parametrize(
     "policies",
     [
+        None,
+        1,
+        "main",
+        {},
+        [None],
+        ["main"],
+        [{}],
         [],
         [{"name": "*", "type": "branch"}],
         [{"name": "main", "type": "tag"}],
@@ -39,7 +47,11 @@ def test_valid_boundary_has_no_all_pr_review_bottleneck():
 )
 def test_wildcards_tags_other_branches_and_missing_policy_rejected(policies):
     assert boundary.verification_blockers(
-        boundary.payload(), {"branch_policies": policies}
+        boundary.payload(),
+        {
+            "total_count": len(policies) if isinstance(policies, list) else 0,
+            "branch_policies": policies,
+        },
     )
 
 
@@ -56,7 +68,10 @@ def test_configure_converges_main_only_policy(monkeypatch, existing):
 
     def api(args, **kwargs):
         calls.append((args, kwargs))
-        return {"branch_policies": policies}
+        return {
+            "total_count": len(policies) if isinstance(policies, list) else 0,
+            "branch_policies": policies,
+        }
 
     monkeypatch.setattr(controls, "_run_gh_api", api)
     controls._configure_evidence_environment("org/repo")
@@ -74,7 +89,7 @@ def test_configure_rejects_malformed_policy_metadata(monkeypatch):
 def test_verification_reads_environment_and_branch_policies(monkeypatch):
     def api(args):
         return (
-            {"branch_policies": [{"name": "main", "type": "branch"}]}
+            {"total_count": 1, "branch_policies": [{"name": "main", "type": "branch"}]}
             if args[0].endswith("deployment-branch-policies")
             else boundary.payload()
         )
@@ -97,7 +112,7 @@ def test_reporter_rechecks_boundary_before_using_app_key(monkeypatch):
         promotion,
         "gh",
         lambda path: (
-            {"branch_policies": [{"name": "main", "type": "branch"}]}
+            {"total_count": 1, "branch_policies": [{"name": "main", "type": "branch"}]}
             if path.endswith("deployment-branch-policies")
             else boundary.payload()
         ),

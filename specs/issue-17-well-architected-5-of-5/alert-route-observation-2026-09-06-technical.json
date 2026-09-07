@@ -1,0 +1,43 @@
+{
+  "workload": "bootstrap-infrastructure",
+  "environment": "test",
+  "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+  "owner": "SRE",
+  "approvedBy": "Codex (delegated technical review)",
+  "reviewedAt": "2026-09-06T20:51:21.682863+00:00",
+  "expiresAt": "2026-10-06T20:51:21.682863+00:00",
+  "decision": "approved",
+  "downstreamRoute": "Installed unchanged main v1 Operations Alert Issue Triage consumes encrypted SNS/SQS metadata through dedicated GitHub OIDC and creates a sanitized repository issue before acknowledgement. Exact run34058543444/issue202 contains only approved SNS501a417e-1261-5286-bec4-2269c342b26c; normal acknowledgement and two empty-queue observations verified, then only synthetic issue202 closed.",
+  "severityExpectations": "Retain existing SEV1/SEV2 control-plane/backup/KMS/IAM-OIDC/S3/cost categories for maintainer review. This technical route check does not claim human paging, response time, upstream event generation or a new on-call commitment.",
+  "fallback": "If issue creation or triage fails, leave messages for normal SQS retry, inspect sanitized metadata and create an incident issue through existing runbook. Do not manually purge or acknowledge without durable issue evidence; block route acceptance until restored.",
+  "remediationPlan": "Real single-message route/normal acknowledgement completed and synthetic issue cleaned. Reassess within30days and after route/consumer changes. Preserve existing30minute schedule/four-day queue buffer and explicit lack of human-response proof.",
+  "evidence": [
+    "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/runs/34058543444",
+    "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/issues/202",
+    "Approved exact payload SHA10b3ed45eb7292dfe6eebf9bdda13c7ab5a26137265e335409e37fa518bd0a77; unchanged live v1 SHA7493923443846f089a7d9c21f1f881df9a36a567bdc7e297273b147aef86ae71.",
+    "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+    "doc:docs/well-architected-current-review-2026-09-06.md"
+  ],
+  "routeEvidence": {
+    "encrypted": true,
+    "sqsQueue": {
+      "delayedMessages": 0,
+      "messageRetentionSeconds": 345600,
+      "notVisibleMessages": 0,
+      "queueArn": "arn:aws:sqs:eu-central-1:891377212104:bootstrap-test-operations-alerts",
+      "queueName": "bootstrap-test-operations-alerts",
+      "visibilityTimeoutSeconds": 30,
+      "visibleMessages": 0
+    },
+    "subscriptionCount": 1,
+    "subscriptionProtocols": [
+      "sqs"
+    ],
+    "topicArn": "arn:aws:sns:eu-central-1:891377212104:bootstrap-test-operations"
+  },
+  "queueObservation": {
+    "visibleMessages": 0,
+    "notVisibleMessages": 0,
+    "delayedMessages": 0
+  }
+}

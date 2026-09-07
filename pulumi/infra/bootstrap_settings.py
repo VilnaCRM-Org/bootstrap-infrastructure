@@ -56,6 +56,7 @@ class BootstrapSettings:
     github_repository_owner_id: str | None = None
     platform_logging_replication_role_name: str | None = None
     platform_backup_role_name: str | None = None
+    platform_backup_vault_arn: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize pinned GitHub IDs before any trust policy is constructed."""
@@ -111,6 +112,7 @@ class BootstrapSettings:
                 "platformLoggingReplicationRoleName"
             ),
             platform_backup_role_name=config.get("platformBackupRoleName"),
+            platform_backup_vault_arn=config.get("platformBackupVaultArn"),
         )
 
     @staticmethod

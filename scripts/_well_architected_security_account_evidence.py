@@ -26,10 +26,16 @@ SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS = (
     _recording.SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
 )
 SECURITY_ACCOUNT_ALLOWED_APPROVALS = frozenset(
-    {"approved", "approved_exception", "accepted_risk"}
+    {"approved", "approved_exception", "accepted_risk", "technical_review"}
 )
 SECURITY_ACCOUNT_ALLOWED_HUMAN_ACCESS = frozenset(
-    {"mfa_sso_verified", "approved", "approved_exception", "accepted_risk"}
+    {
+        "mfa_sso_verified",
+        "approved",
+        "approved_exception",
+        "accepted_risk",
+        "not_assessed",
+    }
 )
 SECURITY_ACCOUNT_ALLOWED_ACTIVE_KEY = frozenset(
     {"no_active_keys", "rotated", "approved_exception", "accepted_risk"}
@@ -68,6 +74,8 @@ def _security_account_attestation_coverage(
         _security_account_attestation_payload_blockers(payload, account_evidence)
     )
     controls = SECURITY_ACCOUNT_ATTESTED_CONTROLS if not blockers else frozenset()
+    if _normalized_text(payload.get("approval")) == "technical_review":
+        controls = controls - {"human_access"}
     return (
         _security_account_attestation_summary(evidence_path, payload),
         controls,
@@ -109,6 +117,22 @@ def _security_account_attestation_payload_blockers(
             SECURITY_ACCOUNT_ALLOWED_BOUNDARY,
         )
     )
+    if _normalized_text(payload.get("approval")) == "technical_review":
+        expected = {
+            "humanAccessPosture": "not_assessed",
+            "activeKeyDecision": "no_active_keys",
+            "permissionsBoundaryDecision": "boundary_verified",
+        }
+        if any(
+            _normalized_text(payload.get(key)) != value
+            for key, value in expected.items()
+        ):
+            blockers.append(
+                "Technical review must not claim human access approval, "
+                "active-key exceptions or permissions-boundary exemptions."
+            )
+    elif _normalized_text(payload.get("humanAccessPosture")) == "not_assessed":
+        blockers.append("Human-access approval cannot use a not_assessed posture.")
     if (
         account_evidence.get("activeUserAccessKeyCount") != 0
         and _normalized_text(payload.get("activeKeyDecision")) == "no_active_keys"

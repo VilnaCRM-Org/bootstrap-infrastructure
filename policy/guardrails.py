@@ -160,7 +160,9 @@ def storage_encryption_violations(
 
     if _matches_resource_type(resource_type, S3_BUCKET_TYPE_SUFFIX):
         encryption = props.get("serverSideEncryptionConfiguration")
-        if not isinstance(encryption, Mapping):
+        if not isinstance(encryption, Mapping) or not _has_default_s3_encryption_rule(
+            encryption
+        ):
             violations.append("S3 buckets must enable default server-side encryption.")
 
     if _matches_resource_type(resource_type, EBS_VOLUME_TYPE_SUFFIX) and not _truthy(
@@ -216,7 +218,7 @@ def logging_violations(resource_type: str, props: Mapping[str, Any]) -> list[str
         if _bucket_logging_exempt(props):
             return violations
         logging_config = props.get("logging")
-        if not isinstance(logging_config, Mapping) or not _string_value(
+        if not isinstance(logging_config, Mapping) or not _s3_concrete_bucket_name(
             logging_config.get("targetBucket")
         ):
             violations.append("S3 buckets must send access logs to a target bucket.")
@@ -257,15 +259,12 @@ def logging_stack_violations(resources: Sequence[Any]) -> list[tuple[str | None,
 
 
 def _resource_dependencies(resource: Any, property_name: str) -> Sequence[Any]:
-    """Return resource dependencies for one property, falling back to general deps."""
+    """Return only dependencies that affect the specific protected property."""
     property_dependencies = cast(
         Mapping[str, Sequence[Any]],
         getattr(resource, "property_dependencies", {}) or {},
     )
-    dependencies = list(property_dependencies.get(property_name, []))
-    if dependencies:
-        return dependencies
-    return cast(Sequence[Any], getattr(resource, "dependencies", []) or [])
+    return list(property_dependencies.get(property_name, []))
 
 
 def _s3_encryption_rule_items(props: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -286,14 +285,25 @@ def _s3_encryption_rule_items(props: Mapping[str, Any]) -> list[Mapping[str, Any
 
 
 def _has_default_s3_encryption_rule(props: Mapping[str, Any]) -> bool:
-    """Return True when any encryption rule declares a default SSE algorithm."""
+    """Require a supported concrete SSE algorithm, never an RPC unknown value."""
     for candidate in _s3_encryption_rule_items(props):
         default_encryption = candidate.get("applyServerSideEncryptionByDefault")
         if not isinstance(default_encryption, Mapping):
             continue
-        if _string_value(default_encryption.get("sseAlgorithm")):
+        if _string_value(default_encryption.get("sseAlgorithm")) in {
+            "AES256",
+            "aws:fsx",
+            "aws:kms",
+            "aws:kms:dsse",
+        }:
             return True
     return False
+
+
+def _s3_concrete_bucket_name(value: object) -> str | None:
+    """Do not treat the shared Pulumi unknown sentinel as an S3 identity."""
+    name = _string_value(value)
+    return None if name == "04da6b54-80e4-46f7-96ec-b56ff0331ba9" else name
 
 
 def _s3_encryption_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]]:
@@ -313,7 +323,7 @@ def _s3_encryption_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]
         if not _has_default_s3_encryption_rule(props):
             continue
 
-        bucket_name = _string_value(props.get("bucket"))
+        bucket_name = _s3_concrete_bucket_name(props.get("bucket"))
         if bucket_name:
             encrypted_bucket_names.add(bucket_name)
 
@@ -338,10 +348,10 @@ def _s3_bucket_is_covered(
         return False
 
     encryption = props.get("serverSideEncryptionConfiguration")
-    if isinstance(encryption, Mapping):
+    if isinstance(encryption, Mapping) and _has_default_s3_encryption_rule(encryption):
         return True
 
-    bucket_name = _string_value(props.get("bucket"))
+    bucket_name = _s3_concrete_bucket_name(props.get("bucket"))
     if urn in encrypted_bucket_urns:
         return True
     return bool(bucket_name and bucket_name in encrypted_bucket_names)
@@ -361,17 +371,18 @@ def _s3_logging_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]]:
             continue
 
         props = cast(Mapping[str, Any], getattr(resource, "props", {}))
-        if not _string_value(props.get("targetBucket")):
+        if not _s3_concrete_bucket_name(props.get("targetBucket")):
             continue
 
-        bucket_name = _string_value(props.get("bucket"))
+        bucket_name = _s3_concrete_bucket_name(props.get("bucket"))
         if bucket_name:
             logged_bucket_names.add(bucket_name)
 
         for dependency in _resource_dependencies(resource, "bucket"):
             dependency_type = getattr(dependency, "resource_type", "")
             if _matches_resource_type(dependency_type, S3_BUCKET_TYPE_SUFFIX):
-                logged_bucket_urns.add(getattr(dependency, "urn", ""))
+                dependency_urn = getattr(dependency, "urn", "")
+                logged_bucket_urns.update(filter(None, (dependency_urn,)))
 
     return logged_bucket_names, logged_bucket_urns
 
@@ -391,12 +402,12 @@ def _s3_bucket_logging_is_covered(
         return True
 
     logging_config = props.get("logging")
-    if isinstance(logging_config, Mapping) and _string_value(
+    if isinstance(logging_config, Mapping) and _s3_concrete_bucket_name(
         logging_config.get("targetBucket")
     ):
         return True
 
-    bucket_name = _string_value(props.get("bucket"))
+    bucket_name = _s3_concrete_bucket_name(props.get("bucket"))
     if urn in logged_bucket_urns:
         return True
     return bool(bucket_name and bucket_name in logged_bucket_names)
@@ -416,7 +427,7 @@ def wildcard_iam_violations(
     props: Mapping[str, Any],
     config: PolicyConfig = CONFIG,
 ) -> list[str]:
-    """Reject wildcard IAM unless its exact policy content has been reviewed."""
+    """Reject broad IAM grants; retain reviewed and resource-local exceptions."""
     if reviewed_iam_document_matches(
         resource_type, props, config.reviewed_iam_documents
     ):
@@ -425,10 +436,11 @@ def wildcard_iam_violations(
     documents = list(_policy_documents(resource_type, props))
     violations: list[str] = []
     for field_name, statements in documents:
-        if _wildcard_iam_document_exempt(resource_type, field_name):
-            continue
+        resource_policy_service = _resource_policy_service(resource_type, field_name)
         for statement in statements:
-            if _statement_contains_wildcard_permissions(statement):
+            if _statement_contains_wildcard_permissions(
+                statement, resource_policy_service=resource_policy_service
+            ):
                 violations.append(
                     f"{field_name} must not use wildcard IAM permissions "
                     "without an explicit allowlist."
@@ -559,17 +571,21 @@ def _role_policy_documents(
     return documents
 
 
-def _wildcard_iam_document_exempt(resource_type: str, field_name: str) -> bool:
-    """Ignore known resource-policy shapes that legitimately require wildcards."""
+def _resource_policy_service(resource_type: str, field_name: str) -> str | None:
+    """Retain self-resource and same-service scope, never global/negated grants.
+
+    This compatibility rule is not principal/condition approval. Stronger exact
+    resource-policy review is tracked separately; IAM document pins stay distinct.
+    """
     if field_name not in {"policy", "policyDocument"}:
-        return False
-    return _matches_any_resource_type(
-        resource_type,
-        (
-            S3_BUCKET_POLICY_TYPE_SUFFIX,
-            KMS_KEY_TYPE_SUFFIX,
-        ),
-    )
+        return None
+    for suffix, service in (
+        (S3_BUCKET_POLICY_TYPE_SUFFIX, "s3"),
+        (KMS_KEY_TYPE_SUFFIX, "kms"),
+    ):
+        if _matches_resource_type(resource_type, suffix):
+            return service
+    return None
 
 
 _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
@@ -590,8 +606,6 @@ _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
         "iam:listopenidconnectproviders",
         "kms:createkey",
         "kms:listaliases",
-        "sns:getsubscriptionattributes",
-        "sns:unsubscribe",
         "sts:getcalleridentity",
     }
 )
@@ -704,23 +718,29 @@ def _has_public_access_narrowing_condition(condition: object) -> bool:
     return False
 
 
-def _statement_contains_wildcard_permissions(statement: Mapping[str, Any]) -> bool:
-    """Reject Action=* or Resource=* patterns inside IAM policies."""
+def _statement_contains_wildcard_permissions(
+    statement: Mapping[str, Any], *, resource_policy_service: str | None = None
+) -> bool:
+    """Reject global/negated grants, with explicit resource-policy compatibility."""
     effect = _string_value(statement.get("Effect"))
     if effect != "Allow":
         return False
 
     if (
-        _contains_action_wildcard(statement.get("Action"))
+        _contains_action_wildcard(
+            statement.get("Action"), allowed_service=resource_policy_service
+        )
         or _contains_action_wildcard(statement.get("NotAction"))
         or _has_negated_policy_scope(statement.get("NotAction"))
         or _contains_resource_wildcard(statement.get("NotResource"))
         or _has_negated_policy_scope(statement.get("NotResource"))
     ):
         return True
-    return _contains_resource_wildcard(
-        statement.get("Resource")
-    ) and not _resource_wildcard_allowed_for_unscopable_actions(statement)
+    return (
+        resource_policy_service is None
+        and _contains_resource_wildcard(statement.get("Resource"))
+        and not _resource_wildcard_allowed_for_unscopable_actions(statement)
+    )
 
 
 def _resource_wildcard_allowed_for_unscopable_actions(
@@ -757,7 +777,14 @@ def _condition_has_concrete_keys(
         return False
 
     found: set[str] = set()
-    for condition_value in condition.values():
+    for operator, condition_value in condition.items():
+        # Required request-tag keys are single-valued. Set qualifiers can make
+        # absent keys match, so only bare positive operators establish presence.
+        if (
+            not isinstance(operator, str)
+            or operator not in POSITIVE_PUBLIC_ACCESS_OPERATORS
+        ):
+            continue
         if not isinstance(condition_value, Mapping):
             continue
         for key, value in condition_value.items():
@@ -766,15 +793,22 @@ def _condition_has_concrete_keys(
     return required_keys <= found
 
 
-def _contains_action_wildcard(value: object) -> bool:
-    """Detect wildcard IAM actions, including service-level wildcards like s3:*."""
+def _contains_action_wildcard(
+    value: object, *, allowed_service: str | None = None
+) -> bool:
+    """Reject global/service wildcards except the attached resource service."""
     if value == "*":
         return True
     if isinstance(value, str):
-        return value.endswith(":*")
+        return value.endswith(":*") and value.lower() != f"{allowed_service}:*"
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return any(
-            item == "*" or (isinstance(item, str) and item.endswith(":*"))
+            item == "*"
+            or (
+                isinstance(item, str)
+                and item.endswith(":*")
+                and item.lower() != f"{allowed_service}:*"
+            )
             for item in value
         )
     return False

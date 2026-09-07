@@ -29,6 +29,8 @@ backend/secrets provider, so this template is validated by structure only.
 
 from __future__ import annotations
 
+import pulumi_aws as aws
+
 import pulumi
 
 config = pulumi.Config()
@@ -39,6 +41,13 @@ config = pulumi.Config()
 # governance resources before adding real service infrastructure below.
 repo_slug = config.require("repoSlug")
 environment = config.require("environment")
+stack = pulumi.get_stack()
+if stack in {"test", "prod"} or environment in {"test", "prod"}:
+    if environment != stack:
+        raise ValueError("Configured environment differs from selected shared stack")
+    expected_account = config.require("awsAccountId")
+    if aws.get_caller_identity().account_id != expected_account:
+        raise ValueError("AWS caller account differs from configured awsAccountId")
 pulumi_backend_url = config.require("pulumiBackendUrl")
 pulumi_secrets_provider = config.require("pulumiSecretsProvider")
 

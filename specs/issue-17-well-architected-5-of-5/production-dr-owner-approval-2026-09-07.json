@@ -1,0 +1,22 @@
+{
+  "status": "ACTUAL_USER_APPROVAL_RELAYED_BY_ROOT",
+  "owner": "Kravalg",
+  "exact_user_text": "Yes, I approve, but make the policy until October 2027",
+  "root_interpretation": "2027-10-07; unchanged existing targets/order; no security exemptions",
+  "recorded_at": "2026-09-07T02:15:16.955360+00:00",
+  "exact_original_user_message_timestamp_available": false,
+  "source": "Current conversation approval, additionally recorded by authorized Codex through Kravalg browser session in the bound GitHub comment.",
+  "scope": "Production DR owner business-policy renewal only; not a retention-lock waiver, general security exception or technical-evidence freshness extension.",
+  "github_record": {
+    "id": 5564563080,
+    "node_id": "IC_kwDOQXrS7c8AAAABS6x-iA",
+    "html_url": "https://github.com/VilnaCRM-Org/bootstrap-infrastructure/pull/204#issuecomment-5564563080",
+    "created_at": "2026-09-07T03:21:22Z",
+    "updated_at": "2026-09-07T03:21:22Z",
+    "author_login": "Kravalg",
+    "author_id": 9444106,
+    "body_sha256": "144542920bbc54ac6deeccc657184771704d2bb2b2d42d0274d49c8cb9e64276",
+    "body": "Recording the production DR owner decision already explicitly authorized by Kravalg in the current Codex task: \"Yes, I approve, but make the policy until October 2027.\" This comment is posted by Codex through the authorized Kravalg session to retain GitHub-authenticated provenance; it is not a new approval invented by the agent.\r\n\r\nThe policy is recorded with explicit expiry 2027-10-07, retaining day 07 from the recorded review date as the conservative interpretation within October 2027. Existing targets remain one business day RTO and daily AWS Backup plus S3 versioning RPO; recovery order remains state, KMS/secrets/OIDC, preview/drift, then protected PROD apply. Kravalg / platform-maintainers retain ownership and incident-channel plus GitHub-issue escalation.\r\n\r\nThis approves only the human DR policy renewal. It does not renew security or retention exceptions, extend technical-evidence freshness, or assert full production acceptance. Closed TEST R6 and PROD R1 prove exact-object restore integrity and cleanup only. Historical receipts retain the actual initiating caller and do not claim an end-to-end RTO or least-privilege operator drill.\r\n\r\nBound record: specs/issue-17-well-architected-5-of-5/production-dr-owner-2026-09-07.json at commit 8494397edd9c3fb59e2c2d832d850d1fe6319017, SHA256 f7aea83d8b2e1982bd80224cc3a17cb226e53a9d33952c11588296eb369d5252. The accompanying approval record will retain this comment ID, timestamp and body hash."
+  },
+  "expiry_interpretation_basis": "Conservative date within October 2027 retaining the recorded review day07; interpretation, not a quoted owner-selected day."
+}
