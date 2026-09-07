@@ -13,12 +13,13 @@ import json
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
+# Subprocess use is limited to the two reviewed fixed-argv call sites below.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from deployment_worker_runtime import load_verified_admission  # noqa: E402
@@ -119,9 +120,11 @@ def _tool(name: str, source: Path) -> str:
 
 
 def _verify_head(source: Path, head_sha: str, environment: dict[str, str]) -> None:
-    result = subprocess.run(
+    # Absolute git outside the PR checkout, literal read-only arguments, no shell.
+    result = subprocess.run(  # nosec B603
         [_tool("git", source), "-C", str(source), "rev-parse", "--verify", "HEAD"],
         check=True,
+        shell=False,
         capture_output=True,
         text=True,
         env=environment,
@@ -234,9 +237,17 @@ def run(*, plan_path: str, plan_sha256: str) -> None:
         commands = [
             [_tool(command[0], source), *command[1:]] for command in plan["commands"]
         ]
+        # _read_plan requires the authenticated digest and exact fixed registry.
+        # Tools resolve outside PR source before it executes; children get no auth
+        # environment. PR code is intentionally tested on a credential-free runner.
         for command in commands:
-            subprocess.run(
-                command, cwd=source, env=environment, check=True, timeout=1200
+            subprocess.run(  # nosec B603
+                command,
+                cwd=source,
+                env=environment,
+                check=True,
+                shell=False,
+                timeout=1200,
             )
 
 

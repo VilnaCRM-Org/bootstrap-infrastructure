@@ -362,3 +362,22 @@ def test_real_child_gets_no_inherited_credentials(tmp_path, monkeypatch):
         "PYTHONPATH",
     }.intersection(child)
     assert child["HOME"] == str(tmp_path)
+
+
+def test_subprocess_boundary_uses_absolute_argv_without_shell(prepared):
+    digest = prepare(prepared)
+    runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
+    for command, options in prepared.calls:
+        assert isinstance(command, list)
+        assert Path(command[0]).is_absolute()
+        assert not Path(command[0]).is_relative_to(prepared.source)
+        assert options["shell"] is False
+        assert options["check"] is True
+        assert not set(runtime.CREDENTIAL_KEYS).intersection(options["env"])
+    assert prepared.calls[0][0][1:] == [
+        "-C",
+        str(prepared.source),
+        "rev-parse",
+        "--verify",
+        "HEAD",
+    ]
