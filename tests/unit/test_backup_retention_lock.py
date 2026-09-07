@@ -6,12 +6,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from iam_statement_matcher import iam_statement_matches
 from infra import backup, config
 from infra.automation import _automation_policy, _automation_policy_documents
 from infra.utils.outputs import future_output
 from pulumi.runtime.sync_await import _sync_await
-
-from tests.unit.iam_statement_matcher import iam_statement_matches
 
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
