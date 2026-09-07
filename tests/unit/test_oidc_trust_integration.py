@@ -3,10 +3,12 @@
 import importlib
 import json
 import runpy
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 from infra import automation, ci_bootstrap, ci_config, governance_automation
 from infra.bootstrap_settings import BootstrapSettings
 from infra.iam import github_oidc
@@ -316,3 +318,133 @@ def test_existing_legacy_role_is_imported_with_catalog_identity(monkeypatch):
         ]
         == IDS["repository_id"]
     )
+
+
+GOVERNANCE_ACCOUNTS = {"test": "891377212104", "prod": "933245420672"}
+GOVERNANCE_PURPOSES = ("preview", "drift", "apply")
+
+
+def governance_conditions(account, purpose):
+    number = GOVERNANCE_ACCOUNTS[account]
+    provider = (
+        f"arn:aws:iam::{number}:oidc-provider/token.actions.githubusercontent.com"
+    )
+    config = replace(settings(), environment=account, github_oidc_provider_arn=provider)
+    args = governance_automation.GovernanceAutomationArgs(
+        settings=config,
+        repositories=[],
+        account_id=number,
+        region="eu-central-1",
+        provider_arn=provider,
+        backend_url=f"s3://state-{account}/governance",
+        secrets_provider=f"awskms://alias/pulumi-platform-bootstrap-{account}?region=eu-central-1",
+    )
+    document = json.loads(
+        governance_automation.governance_trust_policy(args, purpose, provider)
+    )
+    assert document["Statement"][0]["Principal"] == {"Federated": provider}
+    assert len(json.dumps(document, separators=(",", ":"))) <= 2048
+    return document["Statement"][0]["Condition"]["StringEquals"]
+
+
+def governance_token(account, purpose, immutable):
+    """Model caller/callee claims from actual installed workflow declarations."""
+    root = Path(__file__).resolve().parents[2]
+    caller = yaml.safe_load(
+        (root / ".github/workflows/pulumi-pr-command-runner.yml").read_text()
+    )
+    worker_path = ".github/workflows/pulumi-governance-account.yml"
+    worker = yaml.safe_load((root / worker_path).read_text())
+    job_name = {"preview": "preview", "apply": "apply", "drift": "post_apply_drift"}[
+        purpose
+    ]
+    expression = worker["jobs"][job_name]["environment"]
+    prefix, suffix = "${{ format('", "', inputs.account) }}"
+    assert expression.startswith(prefix) and expression.endswith(suffix)
+    environment = expression[len(prefix) : -len(suffix)].format(account)
+    repository_subject = (
+        f"VilnaCRM-Org@{IDS['owner_id']}/bootstrap-infrastructure@{IDS['repository_id']}"
+        if immutable
+        else REPO
+    )
+    prefix = "token.actions.githubusercontent.com:"
+    return {
+        prefix + "aud": "sts.amazonaws.com",
+        prefix + "sub": f"repo:{repository_subject}:environment:{environment}",
+        prefix + "repository": REPO,
+        prefix + "repository_id": IDS["repository_id"],
+        prefix + "repository_owner_id": IDS["owner_id"],
+        prefix + "workflow": caller["name"],
+        prefix + "ref": "refs/heads/main",
+        prefix + "environment": environment,
+        prefix + "job_workflow_ref": f"{REPO}/{worker_path}@refs/heads/main",
+    }
+
+
+@pytest.mark.parametrize("role_account", GOVERNANCE_ACCOUNTS)
+@pytest.mark.parametrize("role_purpose", GOVERNANCE_PURPOSES)
+@pytest.mark.parametrize("token_account", GOVERNANCE_ACCOUNTS)
+@pytest.mark.parametrize("token_purpose", GOVERNANCE_PURPOSES)
+@pytest.mark.parametrize("immutable", [False, True])
+def test_governance_account_purpose_matrix(
+    role_account, role_purpose, token_account, token_purpose, immutable
+):
+    trust = governance_conditions(role_account, role_purpose)
+    claims = governance_token(token_account, token_purpose, immutable)
+    assert matches(trust, claims) is (
+        (role_account, role_purpose) == (token_account, token_purpose)
+    )
+
+
+@pytest.mark.parametrize("account", GOVERNANCE_ACCOUNTS)
+@pytest.mark.parametrize("purpose", GOVERNANCE_PURPOSES)
+@pytest.mark.parametrize("immutable", [False, True])
+@pytest.mark.parametrize("environment", ["governance", "governance-preview"])
+def test_shared_governance_subjects_are_retired(
+    account, purpose, immutable, environment
+):
+    trust = governance_conditions(account, purpose)
+    claims = governance_token(account, purpose, immutable)
+    prefix = "token.actions.githubusercontent.com:"
+    claims[prefix + "sub"] = (
+        claims[prefix + "sub"].split(":environment:")[0] + ":environment:" + environment
+    )
+    # Even retaining the expected separate environment claim cannot rescue a
+    # legacy shared subject. There is no compatibility Allow for old tokens.
+    assert not matches(trust, claims)
+
+
+@pytest.mark.parametrize("account", GOVERNANCE_ACCOUNTS)
+@pytest.mark.parametrize("purpose", GOVERNANCE_PURPOSES)
+@pytest.mark.parametrize(
+    "claim,value",
+    [
+        ("workflow", "Pulumi Governance Runner"),
+        ("workflow", "Pulumi Governance Account"),
+        ("ref", "refs/pull/1/merge"),
+        ("ref", "refs/heads/feature"),
+        ("job_workflow_ref", None),
+        (
+            "job_workflow_ref",
+            f"{REPO}/.github/workflows/pulumi-governance-account.yml@refs/heads/feature",
+        ),
+        ("job_workflow_ref", f"{REPO}/.github/workflows/foreign.yml@refs/heads/main"),
+        (
+            "job_workflow_ref",
+            "foreign/repository/.github/workflows/pulumi-governance-account.yml@refs/heads/main",
+        ),
+        ("environment", "governance"),
+        ("environment", "governance-preview"),
+    ],
+)
+def test_governance_caller_and_callee_are_exact(account, purpose, claim, value):
+    trust = governance_conditions(account, purpose)
+    claims = governance_token(account, purpose, True)
+    key = "token.actions.githubusercontent.com:" + claim
+    if value is None:
+        del claims[key]
+    else:
+        claims[key] = value
+    assert not matches(trust, claims)
+    # AWS's documented reusable key is job_workflow_ref, not workflow_ref.
+    assert "token.actions.githubusercontent.com:workflow_ref" not in trust

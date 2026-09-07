@@ -94,8 +94,15 @@ def test_gates_and_account_operations_have_exact_dependency_order(name, needs):
 @pytest.mark.parametrize("name", CREDENTIAL_JOBS)
 def test_dedicated_governance_credentials_follow_authentication_and_backend_guard(name):
     job = JOBS[name]
+    suffix = (
+        ""
+        if name == "apply"
+        else "-drift"
+        if name == "post_apply_drift"
+        else "-preview"
+    )
     assert job["environment"] == (
-        "governance" if name == "apply" else "governance-preview"
+        "${{ format('{0}-governance" + suffix + "', inputs.account) }}"
     )
     assert job["permissions"]["id-token"] == "write"
     assert job["permissions"]["actions"] == "read"

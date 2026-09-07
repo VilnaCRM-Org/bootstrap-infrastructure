@@ -74,24 +74,19 @@ def _controller_metadata() -> ControllerMetadata:
 def required_environments(contract: DeploymentContract) -> tuple[str, ...]:
     """List only the protected environments used by the selected account graph."""
     names: list[str] = []
+    accounts = (
+        ("test", "prod")
+        if contract.identity.target_environment == "prod"
+        else ("test",)
+    )
     for scope in contract.selection.stacks:
-        if scope in {"platform", "operator"}:
-            accounts = (
-                ("test", "prod")
-                if contract.identity.target_environment == "prod"
-                else ("test",)
-            )
-            for account in accounts:
-                prefix = account if scope == "platform" else f"{account}-operator"
-                names.append(f"{prefix}-preview")
-                if contract.identity.command == "up":
-                    names.append(prefix)
-                    if scope == "operator":
-                        names.append(f"{prefix}-drift")
-        else:
-            names.append(f"{scope}-preview")
+        for account in accounts:
+            prefix = account if scope == "platform" else f"{account}-{scope}"
+            names.append(f"{prefix}-preview")
             if contract.identity.command == "up":
-                names.append(scope)
+                names.append(prefix)
+                if scope != "platform":
+                    names.append(f"{prefix}-drift")
     return tuple(dict.fromkeys(names))
 
 

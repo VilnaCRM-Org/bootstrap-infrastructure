@@ -417,6 +417,18 @@ def test_dry_run_provisions_disjoint_protected_command_environments(
         "test-preview",
         "prod-preview",
         "governance-preview",
+        "test-operator-preview",
+        "test-operator",
+        "test-operator-drift",
+        "prod-operator-preview",
+        "prod-operator",
+        "prod-operator-drift",
+        "test-governance-preview",
+        "test-governance",
+        "test-governance-drift",
+        "prod-governance-preview",
+        "prod-governance",
+        "prod-governance-drift",
     }
     for payload in environments.values():
         assert payload["prevent_self_review"] is True

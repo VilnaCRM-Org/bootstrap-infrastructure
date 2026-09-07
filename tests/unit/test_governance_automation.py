@@ -447,7 +447,8 @@ def test_trust_requires_repository_branch_workflow_and_environment(purpose):
     args = inputs()
     document = json.loads(governance_trust_policy(args, purpose, PROVIDER))
     conditions = document["Statement"][0]["Condition"]["StringEquals"]
-    environment = "governance" if purpose == "apply" else "governance-preview"
+    suffix = "" if purpose == "apply" else f"-{purpose}"
+    environment = f"test-governance{suffix}"
     assert conditions["token.actions.githubusercontent.com:sub"] == [
         f"repo:test-org/bootstrap-infrastructure:environment:{environment}"
     ]
@@ -458,9 +459,13 @@ def test_trust_requires_repository_branch_workflow_and_environment(purpose):
     assert conditions["token.actions.githubusercontent.com:ref"] == "refs/heads/main"
     assert (
         conditions["token.actions.githubusercontent.com:workflow"]
-        == "Pulumi Governance Runner"
+        == "Pulumi PR Command Runner"
     )
-    assert "token.actions.githubusercontent.com:job_workflow_ref" not in conditions
+    assert conditions["token.actions.githubusercontent.com:environment"] == environment
+    assert conditions["token.actions.githubusercontent.com:job_workflow_ref"] == (
+        "test-org/bootstrap-infrastructure/.github/workflows/"
+        "pulumi-governance-account.yml@refs/heads/main"
+    )
     fallback = dataclasses.replace(
         args, settings=dataclasses.replace(args.settings, github_branch=None)
     )
@@ -765,3 +770,23 @@ def test_catalog_role_lengths_checked_before_allocation(monkeypatch, environment
         with pytest.raises(ValueError, match="longer than 64 characters"):
             GovernanceAutomation("too-long-name", args=args)
         assert allocations == []
+
+
+@pytest.mark.parametrize("environment", ["dev", "", "governance", "prod-preview"])
+def test_governance_trust_rejects_unknown_account(environment):
+    args = inputs()
+    args = dataclasses.replace(
+        args, settings=dataclasses.replace(args.settings, environment=environment)
+    )
+    with pytest.raises(ValueError, match="test and prod only"):
+        governance_trust_policy(args, "preview", PROVIDER)
+
+
+@pytest.mark.parametrize("branch", ["develop", "refs/heads/main", "", "feature"])
+def test_governance_trust_rejects_other_branches(branch):
+    args = inputs()
+    args = dataclasses.replace(
+        args, settings=dataclasses.replace(args.settings, github_branch=branch)
+    )
+    with pytest.raises(ValueError, match="main branch"):
+        governance_trust_policy(args, "preview", PROVIDER)

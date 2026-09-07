@@ -521,6 +521,18 @@ def _references(
         _provider_inputs(row.get("inputs", {}), catalog)
 
 
+def _physical_owner(
+    row: dict[str, Any], identities: dict[tuple[str, str], bool]
+) -> None:
+    identity = (row["type"], row["id"])
+    external = row.get("external", False)
+    _require(
+        identity not in identities or (external and identities[identity]),
+        "duplicate-physical-owner",
+    )
+    identities[identity] = external
+
+
 def _checkpoint(
     payload: bytes, catalog: Mapping[str, Any]
 ) -> dict[str, dict[str, Any]]:
@@ -566,7 +578,7 @@ def _checkpoint(
         "checkpoint-resources",
     )
     resources: dict[str, dict[str, Any]] = {}
-    identities: set[tuple[str, ...]] = set()
+    identities: dict[tuple[str, str], bool] = {}
     for value in deployment["resources"]:
         row = _state(value, catalog)
         urn = row["urn"]
@@ -574,9 +586,7 @@ def _checkpoint(
         target = _target(row, catalog)
         if row["custom"]:
             _physical_id(row, target)
-            identity = (row["type"], row["id"])
-            _require(identity not in identities, "duplicate-physical-owner")
-            identities.add(identity)
+            _physical_owner(row, identities)
         resources[urn] = row
     _require(
         sum(row["type"] == STACK for row in resources.values()) == 1, "stack-owner"
@@ -1044,7 +1054,7 @@ def _preview_states(
     )
 
 
-def _desired_inventory(
+def _target_ownership(
     resources: dict[str, Any],
     desired: dict[str, dict[str, Any] | None],
     catalog: Mapping[str, Any],
@@ -1055,6 +1065,20 @@ def _desired_inventory(
         if row is not None and row["custom"]
     ]
     _require(len(targets) == len(set(targets)), "duplicate-desired-target")
+    external_targets = {
+        (row["type"], *_target(row, catalog))
+        for row in resources.values()
+        if row.get("external")
+    }
+    _require(set(targets).isdisjoint(external_targets), "external-target-ownership")
+
+
+def _desired_inventory(
+    resources: dict[str, Any],
+    desired: dict[str, dict[str, Any] | None],
+    catalog: Mapping[str, Any],
+) -> None:
+    _target_ownership(resources, desired, catalog)
     remaining = {
         **{urn: row for urn, row in resources.items() if row.get("external")},
         **{urn: row for urn, row in desired.items() if row is not None},

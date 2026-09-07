@@ -81,6 +81,18 @@ ADDITIONAL_PROTECTED_ENVIRONMENTS = (
     "test-preview",
     "prod-preview",
     "governance-preview",
+    "test-operator-preview",
+    "test-operator",
+    "test-operator-drift",
+    "prod-operator-preview",
+    "prod-operator",
+    "prod-operator-drift",
+    "test-governance-preview",
+    "test-governance",
+    "test-governance-drift",
+    "prod-governance-preview",
+    "prod-governance",
+    "prod-governance-drift",
 )
 SERVICE_PROTECTED_ENVIRONMENTS = ("test", "test-preview", "prod", "prod-preview")
 

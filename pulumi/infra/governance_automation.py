@@ -339,16 +339,21 @@ def governance_backend_policy(
 def governance_trust_policy(
     args: GovernanceAutomationArgs, purpose: str, provider_arn: str
 ) -> str:
-    """Bind normal workflow OIDC to repository, main ref and protected environment."""
+    """Bind central reusable governance OIDC to one account and role purpose."""
     if purpose not in {"preview", "drift", "apply"}:
         raise ValueError("unsupported governance role purpose")
+    if args.settings.environment not in {"test", "prod"}:
+        raise ValueError("governance automation supports test and prod only")
+    if args.settings.github_branch not in {None, "main"}:
+        raise ValueError("central governance requires the main branch")
     expected_provider = _iam_arn(
         args, "oidc-provider", "token.actions.githubusercontent.com"
     )
     if provider_arn != expected_provider:
         raise ValueError("governance OIDC provider must belong to the target account")
     repository = f"{args.settings.org}/{args.settings.repo}"
-    environment = "governance" if purpose == "apply" else "governance-preview"
+    suffix = "" if purpose == "apply" else f"-{purpose}"
+    environment = f"{args.settings.environment}-governance{suffix}"
     document = _document(
         [
             {
@@ -370,10 +375,15 @@ def governance_trust_policy(
                         ),
                         "token.actions.githubusercontent.com:repository": repository,
                         "token.actions.githubusercontent.com:workflow": (
-                            "Pulumi Governance Runner"
+                            "Pulumi PR Command Runner"
                         ),
-                        "token.actions.githubusercontent.com:ref": (
-                            f"refs/heads/{args.settings.github_branch or 'main'}"
+                        "token.actions.githubusercontent.com:ref": "refs/heads/main",
+                        "token.actions.githubusercontent.com:environment": environment,
+                        # AWS documents this GitHub claim for reusable-workflow
+                        # trust; workflow/ref above identify the calling root.
+                        "token.actions.githubusercontent.com:job_workflow_ref": (
+                            f"{repository}/.github/workflows/"
+                            "pulumi-governance-account.yml@refs/heads/main"
                         ),
                     }
                 },

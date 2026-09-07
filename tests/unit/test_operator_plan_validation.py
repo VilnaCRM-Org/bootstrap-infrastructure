@@ -655,6 +655,123 @@ def test_external_read_identity_is_not_an_unchecked_goal_exception():
         validate(data)
 
 
+def oidc_alias_fixture(environment="test"):
+    """Use both existing OIDC component paths and the provider's .get inputs."""
+    data = fixture(environment)
+    rows = data["checkpoint"]["deployment"]["resources"]
+    original = resource(data, validation.OIDC)
+    rows.remove(original)
+    root = resource(data, validation.STACK)["urn"]
+    prefix = f"urn:pulumi:{environment}::github-ci-bootstrap::"
+    for parent_type, parent_name, component_name in (
+        (
+            "bootstrap:ci:GitHubCiBootstrap",
+            "github-ci-bootstrap",
+            "github-ci-bootstrap-oidc",
+        ),
+        ("bootstrap:iam:PlatformControlIam", "platform-control-iam", "github-oidc"),
+    ):
+        parent = prefix + parent_type + "::" + parent_name
+        qualified = parent_type + "$bootstrap:iam:GitHubOidcRoles"
+        component = prefix + qualified + "::" + component_name
+        for urn, kind, owner in (
+            (parent, parent_type, root),
+            (component, "bootstrap:iam:GitHubOidcRoles", parent),
+        ):
+            rows.append(
+                {
+                    "urn": urn,
+                    "type": kind,
+                    "custom": False,
+                    "parent": owner,
+                    "protect": False,
+                }
+            )
+        alias = copy.deepcopy(original)
+        alias.update(
+            urn=prefix
+            + qualified
+            + "$"
+            + validation.OIDC
+            + "::"
+            + component_name
+            + "-provider",
+            parent=component,
+            external=True,
+            protect=False,
+            inputs={},
+        )
+        rows.append(alias)
+    reset_noop(data)
+    return data
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_existing_oidc_read_aliases_remain_unchanged(environment):
+    data = oidc_alias_fixture(environment)
+    assert validate(data).changed_urns == ()
+
+
+@pytest.mark.parametrize(
+    "external_flags", [(False, False), (False, True), (True, False)]
+)
+def test_oidc_alias_cannot_duplicate_or_mix_ownership(external_flags):
+    data = oidc_alias_fixture()
+    aliases = [
+        row
+        for row in data["checkpoint"]["deployment"]["resources"]
+        if row["type"] == validation.OIDC
+    ]
+    for row, external in zip(aliases, external_flags, strict=True):
+        row.update(external=external, protect=not external)
+    reset_noop(data)
+    with pytest.raises(ValueError, match="duplicate-physical-owner"):
+        validate(data)
+
+
+def test_new_oidc_read_alias_is_not_admitted_from_preview():
+    data = oidc_alias_fixture()
+    data["checkpoint"]["deployment"]["resources"].remove(
+        resource(data, validation.OIDC)
+    )
+    with pytest.raises(ValueError, match="complete-inventory"):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    "field,value", [("id", "foreign-id"), ("parent", ""), ("external", False)]
+)
+def test_existing_oidc_alias_cannot_change_read_identity(field, value):
+    data = oidc_alias_fixture()
+    urn = resource(data, validation.OIDC)["urn"]
+    step = next(row for row in data["preview"]["steps"] if row["urn"] == urn)
+    step["newState"][field] = value
+    with pytest.raises(ValueError):
+        validate(data)
+
+
+def test_new_owned_policy_cannot_capture_existing_external_target():
+    data = fixture()
+    prior = resource(data, validation.POLICY)
+    rows = data["checkpoint"]["deployment"]["resources"]
+    rows.remove(prior)
+    alias = copy.deepcopy(prior)
+    alias.update(urn=prior["urn"] + "-read", external=True, protect=False, inputs={})
+    rows.append(alias)
+    goal = data["plan"]["resourcePlans"][prior["urn"]]
+    goal["steps"] = ["create"]
+    goal["goal"]["inputDiff"] = {"adds": prior["inputs"]}
+    data["preview"]["steps"] = [
+        row for row in data["preview"]["steps"] if row["urn"] != prior["urn"]
+    ]
+    new = copy.deepcopy(prior)
+    new.pop("id")
+    append_preview(data["preview"], None, new, "create")
+    append_preview(data["preview"], alias, alias, "read")
+    with pytest.raises(ValueError, match="external-target-ownership"):
+        validate(data)
+
+
 def test_external_role_provider():
     data = fixture()
     row = resource(data, validation.ROLE)
