@@ -3,6 +3,7 @@
 import copy
 import json
 from dataclasses import replace
+from fnmatch import fnmatchcase
 from typing import cast
 
 import pytest
@@ -110,6 +111,112 @@ def test_executor_and_config_envelopes_remain_exact(environment):
     assert "s3:PutObject" in config.frozen_config.inline_policies[0][1]
     assert config.frozen_config.aws_policy_version == "v72"
     assert all(set(p.guard_arns) <= set(p.attachment_arns) for p in expected.principals)
+
+
+def matches_action(statement, action):
+    """Match only IAM action selectors; unrelated actions cannot trigger a guard."""
+    values = statement.get("Action", statement.get("NotAction"))
+    patterns = [values] if isinstance(values, str) else values
+    matched = any(fnmatchcase(action.lower(), pattern.lower()) for pattern in patterns)
+    return not matched if "NotAction" in statement else matched
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("purpose", ["Preview", "Apply", "Drift"])
+def test_policy_gate_permission_respects_executor_purpose(environment, purpose):
+    expected = build(environment)
+    policies = {p.arn: json.loads(p.document_json) for p in expected.policies}
+    executor = next(
+        p
+        for p in expected.principals
+        if p.arn.endswith(f"/GitHubOperator{purpose}-{environment}")
+    )
+    identity = next(arn for arn in executor.attachment_arns if "/identity/" in arn)
+    action = "access-analyzer:ValidatePolicy"
+    for arn in (executor.boundary_arn, identity):
+        grants = [s for s in policies[arn]["Statement"] if matches_action(s, action)]
+        assert grants == (
+            []
+            if purpose == "Drift"
+            else [
+                {
+                    "Effect": "Allow",
+                    "Resource": "*",
+                    "Action": ["sts:GetCallerIdentity", "kms:ListAliases", action],
+                }
+            ]
+        )
+    blockers = [
+        s
+        for arn in executor.guard_arns
+        for s in policies[arn]["Statement"]
+        if matches_action(s, action)
+    ]
+    if purpose == "Drift":
+        assert len(blockers) == 1
+        assert set(blockers[0]) == {"Effect", "NotAction", "Resource"}
+        assert blockers[0]["Effect"] == "Deny" and blockers[0]["Resource"] == "*"
+    else:
+        # No guard's action selector matches, independent of resource or context.
+        assert blockers == []
+    closed = policies[
+        next(a for a in executor.guard_arns if a.endswith("-closed-actions"))
+    ]["Statement"][0]
+    for unrelated in (
+        "access-analyzer:CreateAnalyzer",
+        "access-analyzer:StartPolicyGeneration",
+        "access-analyzer:CheckNoNewAccess",
+    ):
+        assert matches_action(closed, unrelated)
+        assert not any(
+            matches_action(s, unrelated)
+            for arn in (executor.boundary_arn, identity)
+            for s in policies[arn]["Statement"]
+        )
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_catalog_amendment_is_exactly_policy_gate_permission(environment):
+    """Removing the documented delta reproduces the entire prior pinned catalog."""
+    catalog = registry.load_catalog(environment)
+    action = "access-analyzer:ValidatePolicy"
+    changed = []
+    for arn, policy in catalog["policies"].items():
+        if not any(f"GitHubOperator{p}" in arn for p in ("Preview", "Apply")):
+            continue
+        if policy["kind"] not in {
+            "executor_boundary",
+            "executor_identity",
+        } and not arn.endswith("-closed-actions"):
+            continue
+        statements = [
+            copy.deepcopy(catalog["statements"][k]) for k in policy["statement_ids"]
+        ]
+        for statement in statements:
+            selector = "NotAction" if "NotAction" in statement else "Action"
+            if action in statement[selector]:
+                statement[selector].remove(action)
+                changed.append(arn)
+        policy["statement_ids"] = [registry.document_hash(s) for s in statements]
+        catalog["statements"].update(
+            zip(policy["statement_ids"], statements, strict=True)
+        )
+        policy["template_sha256"] = registry.document_hash(
+            {"Version": "2012-10-17", "Statement": statements}
+        )
+    assert len(changed) == len(set(changed)) == 6
+    used = {s for p in catalog["policies"].values() for s in p["statement_ids"]}
+    catalog["statements"] = {
+        k: v for k, v in catalog["statements"].items() if k in used
+    }
+    amendment = catalog["provenance"].pop("executor_amendments")
+    assert amendment[0]["action"] == action
+    assert amendment[0]["purposes"] == ["preview", "apply"]
+    baseline = {
+        "test": "9cba41674f977e36c6e1793f7480effecd8c98577da03a7f404e7e001c22e6f7",
+        "prod": "6ba8eb8430269ce57bc31f22c2654b06788209bc23879ce7a962096b52d5c0d9",
+    }
+    assert registry.document_hash(catalog) == baseline[environment]
 
 
 @pytest.mark.parametrize("environment", ["other", "../test", "TEST"])

@@ -118,6 +118,13 @@ def test_entrypoint_asserts_account_before_first_resource(
         ),
         "infra.platform_iam": SimpleNamespace(PlatformIamBoundaries=allocate),
         "infra.platform_control_iam": SimpleNamespace(),
+        "seed.policy_registry": SimpleNamespace(
+            load_catalog=lambda environment: {
+                "account_id": ACCOUNT,
+                "region": "eu-central-1",
+                "principals": [],
+            }
+        ),
     }
     monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
     path = (
@@ -255,8 +262,8 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
             PlatformIamBoundaries=lambda name, **kw: (
                 allocations.setdefault(name, kw)
                 and SimpleNamespace(
-                    policies={
-                        purpose: SimpleNamespace(arn=f"{purpose}-boundary")
+                    boundary_arns={
+                        purpose: f"{purpose}-boundary"
                         for purpose in (
                             "control",
                             "backup",
@@ -270,6 +277,13 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
         ),
         "infra.platform_control_iam": SimpleNamespace(
             PlatformControlIam=lambda name, **kw: allocations.setdefault(name, kw),
+        ),
+        "seed.policy_registry": SimpleNamespace(
+            load_catalog=lambda environment: {
+                "account_id": ACCOUNT,
+                "region": "eu-central-1",
+                "principals": [],
+            }
         ),
     }
     root = Path(__file__).resolve().parents[2] / "pulumi"
@@ -299,7 +313,8 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
         "write_secret_values": not overrides,
         "protect_resources": True,
         "control_permissions_boundary": "control-boundary",
-        "manage_oidc_provider": True,
+        "manage_oidc_provider": False,
+        "external_role_boundaries": {},
     }
     assert allocations["platform-control-iam"]["provider_arn"] == PROVIDER
     assert (
@@ -307,6 +322,7 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
         == "control-boundary"
     )
     assert allocations["platform-iam-boundaries"]["account_id"] == ACCOUNT
+    assert allocations["platform-iam-boundaries"]["manage_policies"] is False
     assert catalog_paths == [
         "custom-catalog.json"
         if overrides
@@ -331,6 +347,8 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
             else "awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1"
         ),
         "protect_resources": True,
+        "external_role_boundaries": {},
+        "manage_service_boundaries": False,
     }
     assert exported == {
         "governanceGithubVariables": governance.github_variables,
@@ -636,8 +654,9 @@ def test_policy_size_limit_fails_closed():
 
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("manage", [True, False])
 def test_component_creates_three_roles_and_two_immutable_boundaries(
-    pulumi_mocks, environment, monkeypatch
+    pulumi_mocks, environment, monkeypatch, manage
 ):
     import pulumi_aws as aws
 
@@ -652,20 +671,23 @@ def test_component_creates_three_roles_and_two_immutable_boundaries(
 
     for kind in ("Role", "Policy", "RolePolicyAttachment"):
         monkeypatch.setattr(aws.iam, kind, capture(getattr(aws.iam, kind)))
-    component = GovernanceAutomation("test-governor", args=inputs(environment))
+    component = GovernanceAutomation(
+        "test-governor", args=inputs(environment, manage_service_boundaries=manage)
+    )
     for role in component.roles.values():
         _sync_await(future_output(role.arn))
     for boundary in component.boundaries.values():
         _sync_await(future_output(boundary.arn))
     _sync_await(wait_for_rpcs())
     assert {kind for kind, _ in protected} == {"Role", "Policy", "RolePolicyAttachment"}
-    assert len(protected) == 29
+    assert len(protected) == (29 if manage else 27)
     assert all(protect is True for _, protect in protected)
     assert set(component.roles) == {"preview", "drift", "apply"}
-    assert set(component.boundaries) == {
+    expected_boundaries = {
         f"GovernanceBoundary-user-service-infrastructure-{environment}",
         f"GovernanceReplicationBoundary-user-service-infrastructure-{environment}",
     }
+    assert set(component.boundaries) == (expected_boundaries if manage else set())
     prefix = f"AWS_GOVERNANCE_{environment.upper()}"
     assert set(component.github_variables) == {
         f"{prefix}_{suffix}"

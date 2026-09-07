@@ -810,7 +810,7 @@ def platform_workload_boundaries(
 
 
 class PlatformIamBoundaries(pulumi.ComponentResource):
-    """Provision immutable policy ceilings solely in the operator stack."""
+    """Retain the component when independent seed ownership supplies its policies."""
 
     def __init__(
         self,
@@ -820,16 +820,24 @@ class PlatformIamBoundaries(pulumi.ComponentResource):
         account_id: str,
         region: str,
         repositories: Sequence[ManagedRepository],
+        manage_policies: bool = True,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         super().__init__("bootstrap:iam:PlatformIamBoundaries", name, None, opts)
+        self.policies: dict[str, aws.iam.Policy] = {}
+        self.boundary_arns: dict[str, pulumi.Input[str]] = {
+            purpose: platform_boundary_arn(account_id, settings, purpose)
+            for purpose in PURPOSES
+        }
+        if not manage_policies:
+            self.register_outputs({"boundaryArns": self.boundary_arns})
+            return
         documents = platform_workload_boundaries(
             account_id, settings, region, repositories
         )
         documents["control"] = platform_control_boundary(
             account_id, settings, settings.repo or ""
         )
-        self.policies = {}
         for purpose, document in documents.items():
             policy_name = platform_boundary_arn(account_id, settings, purpose).split(
                 "/"
@@ -843,9 +851,8 @@ class PlatformIamBoundaries(pulumi.ComponentResource):
                 ),
                 opts=pulumi.ResourceOptions(parent=self, protect=True),
             )
-        self.register_outputs(
-            {"boundaryArns": {key: policy.arn for key, policy in self.policies.items()}}
-        )
+        self.boundary_arns = {key: policy.arn for key, policy in self.policies.items()}
+        self.register_outputs({"boundaryArns": self.boundary_arns})
 
 
 def _state_replication_logical_key(repository: str) -> str:

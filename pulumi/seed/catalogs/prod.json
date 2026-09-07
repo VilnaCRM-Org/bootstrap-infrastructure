@@ -501,7 +501,7 @@
       "ownership": "new_seed_owned",
       "statement_ids": [
         "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
-        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "11c190b3c2968892e4690ccd4ef7ae033e332e182d23363b94647ed76cec377b",
         "c9b3bd1503bfe2114411ce58228c3e5035cee8bfa638cc9b9271154bdd9e279c",
         "09de7eca2592ec7dca0ba23a584bed002d378a28cf7419a18115360967712ffe",
         "70f531ac106aa257bf7ab1aecd840dd8733f414797b4bafbe0fdf4120d5be347",
@@ -513,7 +513,7 @@
         "b02bbac7e3db8f78ced162009a8c00dc9248fc91466af868fc8e1a68735de1fd",
         "696cf3a92457105167a21f2672733e61e1212be2352ca75c7e34fbc1b0d3b429"
       ],
-      "template_sha256": "69a8a1f75a259983ed1033a75e166c4c2790c660d30a18fc40f282c5487ee4b5"
+      "template_sha256": "2be9d5f5caeccf67aa48c4e04f7d633b019591215a8422bda70ba329a467e07c"
     },
     "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubOperatorDrift-prod": {
       "installed_arn": false,
@@ -539,7 +539,7 @@
       "ownership": "new_seed_owned",
       "statement_ids": [
         "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
-        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "11c190b3c2968892e4690ccd4ef7ae033e332e182d23363b94647ed76cec377b",
         "c9b3bd1503bfe2114411ce58228c3e5035cee8bfa638cc9b9271154bdd9e279c",
         "09de7eca2592ec7dca0ba23a584bed002d378a28cf7419a18115360967712ffe",
         "70f531ac106aa257bf7ab1aecd840dd8733f414797b4bafbe0fdf4120d5be347",
@@ -549,7 +549,7 @@
         "a6072763e405c9c80d5040b951aab8fe42057c5d62561e99d4e25eb33c4fc967",
         "29dce264a764ed4273492d3dc663a98608378bd526a80143885ca6401d6a9d37"
       ],
-      "template_sha256": "8932b7c785cf65e4b88e07b09b3b970c28b8caa9882d079f2b357c9e4cc388ea"
+      "template_sha256": "a4bfcb446d7c04d978fd75b4395e7b9c19c8f5d8b80d867779d0673042651c38"
     },
     "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/OperationsAlertTriage-bootstrap-infrastructure": {
       "installed_arn": false,
@@ -789,9 +789,9 @@
       "kind": "immutable_managed_guard",
       "ownership": "new_seed_owned",
       "statement_ids": [
-        "b61f8baa01abc727fbc8cc30f95acd4d39e22efdf5f6aa390fabdddd29e25cf5"
+        "0478881235008e950e0f279e6acb3221785015a3830f3edd0c5df0bc249b4f32"
       ],
-      "template_sha256": "ad4fcca57159c54326fe6207708d960314397a85fe044e14f12d6e7b51366f94"
+      "template_sha256": "4f8c71a88868a7ff19da76328e9f43c34e86b81cfd7ec2b1e4d40e6ffc7ff1d0"
     },
     "arn:aws:iam::933245420672:policy/issue215-seed/prod/guard/GitHubOperatorApply-crypto": {
       "installed_arn": false,
@@ -910,9 +910,9 @@
       "kind": "immutable_managed_guard",
       "ownership": "new_seed_owned",
       "statement_ids": [
-        "956044098bc5321defc7805f2da521c58b198c37cb3c7bc1ec408078ff3fc74f"
+        "c6633be0a6236188196ee1d8a253013c9df189594ae4434ae7f51049f4080916"
       ],
-      "template_sha256": "50e0ad696b0b5ce31772e9f29f315e7c4f1132b6e85b78fffe44750aac518901"
+      "template_sha256": "f572e74417609937f1d33b032d5d3c80c6c4e9824bd2c592cc7025f2e6b90312"
     },
     "arn:aws:iam::933245420672:policy/issue215-seed/prod/guard/GitHubOperatorPreview-crypto": {
       "installed_arn": false,
@@ -1089,7 +1089,7 @@
       "ownership": "new_seed_owned",
       "statement_ids": [
         "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
-        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "11c190b3c2968892e4690ccd4ef7ae033e332e182d23363b94647ed76cec377b",
         "c9b3bd1503bfe2114411ce58228c3e5035cee8bfa638cc9b9271154bdd9e279c",
         "09de7eca2592ec7dca0ba23a584bed002d378a28cf7419a18115360967712ffe",
         "70f531ac106aa257bf7ab1aecd840dd8733f414797b4bafbe0fdf4120d5be347",
@@ -1101,7 +1101,7 @@
         "b02bbac7e3db8f78ced162009a8c00dc9248fc91466af868fc8e1a68735de1fd",
         "696cf3a92457105167a21f2672733e61e1212be2352ca75c7e34fbc1b0d3b429"
       ],
-      "template_sha256": "69a8a1f75a259983ed1033a75e166c4c2790c660d30a18fc40f282c5487ee4b5"
+      "template_sha256": "2be9d5f5caeccf67aa48c4e04f7d633b019591215a8422bda70ba329a467e07c"
     },
     "arn:aws:iam::933245420672:policy/issue215-seed/prod/identity/GitHubOperatorDrift-prod": {
       "installed_arn": false,
@@ -1127,7 +1127,7 @@
       "ownership": "new_seed_owned",
       "statement_ids": [
         "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
-        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "11c190b3c2968892e4690ccd4ef7ae033e332e182d23363b94647ed76cec377b",
         "c9b3bd1503bfe2114411ce58228c3e5035cee8bfa638cc9b9271154bdd9e279c",
         "09de7eca2592ec7dca0ba23a584bed002d378a28cf7419a18115360967712ffe",
         "70f531ac106aa257bf7ab1aecd840dd8733f414797b4bafbe0fdf4120d5be347",
@@ -1137,7 +1137,7 @@
         "a6072763e405c9c80d5040b951aab8fe42057c5d62561e99d4e25eb33c4fc967",
         "29dce264a764ed4273492d3dc663a98608378bd526a80143885ca6401d6a9d37"
       ],
-      "template_sha256": "8932b7c785cf65e4b88e07b09b3b970c28b8caa9882d079f2b357c9e4cc388ea"
+      "template_sha256": "a4bfcb446d7c04d978fd75b4395e7b9c19c8f5d8b80d867779d0673042651c38"
     }
   },
   "principals": [
@@ -1567,6 +1567,17 @@
     }
   ],
   "provenance": {
+    "executor_amendments": [
+      {
+        "action": "access-analyzer:ValidatePolicy",
+        "evidence": "work/issue215-operator-executor-ceilings/validate-policy-amendment.json",
+        "purposes": [
+          "preview",
+          "apply"
+        ],
+        "reason": "Validate the operator plan before sealing and replay; drift has no IAM gate"
+      }
+    ],
     "executor_inputs": {
       "outputs/pr213-operator-reconciliation.json": "8ecf56e0935f7e3fac978c80cb76bca9b059065c4e0b5777fb1c1fa732503d3b",
       "work/issue215-final-guard-inventory/inventory.json": "16157dd1f14d6de3c5ea91c36b11043b322df4a89f0b6770b66cfbf7cfd08662",
@@ -1650,6 +1661,62 @@
         }
       },
       "Effect": "Deny",
+      "Resource": "*"
+    },
+    "0478881235008e950e0f279e6acb3221785015a3830f3edd0c5df0bc249b4f32": {
+      "Effect": "Deny",
+      "NotAction": [
+        "access-analyzer:ValidatePolicy",
+        "iam:AttachRolePolicy",
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:DeleteRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:GetOpenIDConnectProvider",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListEntitiesForPolicy",
+        "iam:ListOpenIDConnectProviderTags",
+        "iam:ListPolicyTags",
+        "iam:ListPolicyVersions",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags",
+        "iam:PutRolePolicy",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy",
+        "iam:TagRole",
+        "iam:UntagPolicy",
+        "iam:UntagRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:UpdateRole",
+        "iam:UpdateRoleDescription",
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GenerateDataKey",
+        "kms:ListAliases",
+        "s3:DeleteObject",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:ListBucket",
+        "s3:PutObject",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:ListSecretVersionIds",
+        "secretsmanager:PutSecretValue",
+        "secretsmanager:TagResource",
+        "secretsmanager:UntagResource",
+        "secretsmanager:UpdateSecret",
+        "secretsmanager:UpdateSecretVersionStage",
+        "sts:GetCallerIdentity"
+      ],
       "Resource": "*"
     },
     "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4": {
@@ -1771,6 +1838,15 @@
       },
       "Effect": "Deny",
       "Resource": "arn:aws:kms:eu-central-1:933245420672:key/fdba4c44-71b0-4979-b163-4705a91aa29b"
+    },
+    "11c190b3c2968892e4690ccd4ef7ae033e332e182d23363b94647ed76cec377b": {
+      "Action": [
+        "sts:GetCallerIdentity",
+        "kms:ListAliases",
+        "access-analyzer:ValidatePolicy"
+      ],
+      "Effect": "Allow",
+      "Resource": "*"
     },
     "13156c5122801542a02a81fd008a55e4e440a34afa31362b92615b07c5869967": {
       "Action": [
@@ -3329,61 +3405,6 @@
       "Effect": "Deny",
       "Resource": "arn:aws:kms:eu-central-1:933245420672:key/fdba4c44-71b0-4979-b163-4705a91aa29b"
     },
-    "b61f8baa01abc727fbc8cc30f95acd4d39e22efdf5f6aa390fabdddd29e25cf5": {
-      "Effect": "Deny",
-      "NotAction": [
-        "iam:AttachRolePolicy",
-        "iam:CreatePolicy",
-        "iam:CreatePolicyVersion",
-        "iam:DeletePolicy",
-        "iam:DeletePolicyVersion",
-        "iam:DeleteRolePolicy",
-        "iam:DetachRolePolicy",
-        "iam:GetOpenIDConnectProvider",
-        "iam:GetPolicy",
-        "iam:GetPolicyVersion",
-        "iam:GetRole",
-        "iam:GetRolePolicy",
-        "iam:ListAttachedRolePolicies",
-        "iam:ListEntitiesForPolicy",
-        "iam:ListOpenIDConnectProviderTags",
-        "iam:ListPolicyTags",
-        "iam:ListPolicyVersions",
-        "iam:ListRolePolicies",
-        "iam:ListRoleTags",
-        "iam:PutRolePolicy",
-        "iam:SetDefaultPolicyVersion",
-        "iam:TagPolicy",
-        "iam:TagRole",
-        "iam:UntagPolicy",
-        "iam:UntagRole",
-        "iam:UpdateAssumeRolePolicy",
-        "iam:UpdateRole",
-        "iam:UpdateRoleDescription",
-        "kms:Decrypt",
-        "kms:DescribeKey",
-        "kms:GenerateDataKey",
-        "kms:ListAliases",
-        "s3:DeleteObject",
-        "s3:GetBucketLocation",
-        "s3:GetBucketVersioning",
-        "s3:GetEncryptionConfiguration",
-        "s3:GetObject",
-        "s3:GetObjectVersion",
-        "s3:ListBucket",
-        "s3:PutObject",
-        "secretsmanager:DescribeSecret",
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:ListSecretVersionIds",
-        "secretsmanager:PutSecretValue",
-        "secretsmanager:TagResource",
-        "secretsmanager:UntagResource",
-        "secretsmanager:UpdateSecret",
-        "secretsmanager:UpdateSecretVersionStage",
-        "sts:GetCallerIdentity"
-      ],
-      "Resource": "*"
-    },
     "b8f8bc873e2c69de972e5ca3521866f3efa17d1ee6d0f20638dfac5a161f32da": {
       "Action": [
         "s3:DeleteObject",
@@ -3522,6 +3543,41 @@
       },
       "Effect": "Allow",
       "Resource": "arn:aws:kms:eu-central-1:933245420672:key/*"
+    },
+    "c6633be0a6236188196ee1d8a253013c9df189594ae4434ae7f51049f4080916": {
+      "Effect": "Deny",
+      "NotAction": [
+        "access-analyzer:ValidatePolicy",
+        "iam:GetOpenIDConnectProvider",
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListEntitiesForPolicy",
+        "iam:ListOpenIDConnectProviderTags",
+        "iam:ListPolicyTags",
+        "iam:ListPolicyVersions",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags",
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GenerateDataKey",
+        "kms:ListAliases",
+        "s3:DeleteObject",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:ListBucket",
+        "s3:PutObject",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:ListSecretVersionIds",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
     },
     "c911c28baa447c12c08812b62f08bc5822db20296042aaa1292ea52ed08ea951": {
       "Action": [

@@ -153,7 +153,8 @@ class GovernanceAutomationArgs:
     """Explicit account, backend and catalog inputs; no ambient fallbacks.
 
     ``external_role_boundaries`` retains independently owned boundaries and must
-    cover all three governor roles. Service-boundary creation is unchanged.
+    cover all three governor roles. ``manage_service_boundaries=False`` retains
+    independently enrolled policies without registering ownership or read aliases.
     """
 
     settings: BootstrapSettings
@@ -166,6 +167,7 @@ class GovernanceAutomationArgs:
     partition: str = "aws"
     protect_resources: bool = True
     external_role_boundaries: Mapping[str, str] | None = None
+    manage_service_boundaries: bool = True
 
 
 def assert_bootstrap_account(expected: str | None, actual: str) -> None:
@@ -619,8 +621,9 @@ class GovernanceAutomation(pulumi.ComponentResource):
         super().__init__("bootstrap:ci:GovernanceAutomation", name, None, opts)
         self.roles: dict[str, aws.iam.Role] = {}
         self.boundaries: dict[str, aws.iam.Policy] = {}
-        for repo in args.repositories:
-            self._create_boundaries(name, args, repo)
+        if args.manage_service_boundaries:
+            for repo in args.repositories:
+                self._create_boundaries(name, args, repo)
         for purpose in ("preview", "drift", "apply"):
             self._create_runner(name, args, purpose)
         prefix = f"AWS_GOVERNANCE_{args.settings.environment.upper()}"
