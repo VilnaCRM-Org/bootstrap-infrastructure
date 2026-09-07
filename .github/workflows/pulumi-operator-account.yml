@@ -1,0 +1,515 @@
+# Independent active seed enrollment and ownership migration are prerequisites.
+# Retire legacy writers before this account lock becomes authoritative.
+name: Pulumi Operator Account
+'on':
+  workflow_call:
+    inputs:
+      account:
+        required: true
+        type: string
+      artifact_id:
+        required: true
+        type: string
+      artifact_sha256:
+        required: true
+        type: string
+      contract_sha256:
+        required: true
+        type: string
+    outputs:
+      receipt_artifact_id:
+        value: ${{ jobs.receipt.outputs.receipt_artifact_id }}
+      receipt_artifact_sha256:
+        value: ${{ jobs.receipt.outputs.receipt_artifact_sha256 }}
+      result:
+        value: ${{ jobs.receipt.outputs.result }}
+      receipt_digest:
+        value: ${{ jobs.receipt.outputs.receipt_digest }}
+      receipt_file_sha256:
+        value: ${{ jobs.receipt.outputs.receipt_file_sha256 }}
+      selection_digest:
+        value: ${{ jobs.receipt.outputs.selection_digest }}
+      contract_digest:
+        value: ${{ jobs.receipt.outputs.contract_digest }}
+      completion_kind:
+        value: ${{ jobs.receipt.outputs.completion_kind }}
+      scope:
+        value: ${{ jobs.receipt.outputs.scope }}
+      environment:
+        value: ${{ jobs.receipt.outputs.environment }}
+      command:
+        value: ${{ jobs.receipt.outputs.command }}
+      head_sha:
+        value: ${{ jobs.receipt.outputs.head_sha }}
+      base_sha:
+        value: ${{ jobs.receipt.outputs.base_sha }}
+concurrency:
+  group: bootstrap-infrastructure-operator-${{ inputs.account }}-state
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+env:
+  DEPLOYMENT_COORDINATOR_MODE: ${{ vars.DEPLOYMENT_COORDINATOR_MODE }}
+  OPERATOR_SEED_KMS_KEY_ARN: ${{ inputs.account == 'test' && vars.AWS_OPERATOR_TEST_SEED_KMS_KEY_ARN || vars.AWS_OPERATOR_PROD_SEED_KMS_KEY_ARN }}
+jobs:
+  resolve:
+    name: Validate fixed account and authenticated admission
+    if: ${{ github.repository == 'VilnaCRM-Org/bootstrap-infrastructure' && github.ref == 'refs/heads/main' && github.event_name == 'repository_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Check out trusted operator runtime
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate admission before credentials
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" --scope operator --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Build pinned trusted tooling before OIDC
+        run: |
+          docker build --target dev --tag operator-base --file .trusted/Dockerfile .trusted
+          docker build --tag operator-worker --file - .trusted <<'DOCKER'
+          FROM operator-base
+          USER root
+          RUN apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
+          RUN PULUMI_HOME=/opt/operator-plugins /opt/pulumi/pulumi plugin install resource aws 7.23.0
+          RUN echo 'ad2008620e4504705db055f27c2cbd76f34c6e29fb465278464c286c30d63196  /opt/operator-plugins/plugins/resource-aws-v7.23.0/pulumi-resource-aws' | sha256sum -c -
+          DOCKER
+      - name: Resolve required independent seed binding
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" --scope operator --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+          mkdir -p "${RUNNER_TEMP}/operator-public"
+          docker run --rm --user 0:0 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=3g \
+            --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add KILL --pids-limit 512 --security-opt no-new-privileges \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/.trusted,dst=/trusted,readonly" \
+            --mount "type=bind,src=${RUNNER_TEMP}/operator-public,dst=/public" \
+            -e GH_TOKEN -e GITHUB_REPOSITORY -e GITHUB_REPOSITORY_ID -e GITHUB_REPOSITORY_OWNER_ID -e GITHUB_SHA -e GITHUB_REF -e GITHUB_EVENT_NAME -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e GITHUB_WORKFLOW_REF -e GITHUB_ACTOR -e GITHUB_TRIGGERING_ACTOR -e DEPLOYMENT_COORDINATOR_MODE -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+            operator-worker /home/dev/.venvs/bootstrap-infrastructure/bin/python -I \
+            /trusted/scripts/operator_execution_runtime.py --stage resolve --account "${ACCOUNT}" \
+            --seed-key-arn "${OPERATOR_SEED_KMS_KEY_ARN}" --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" --contract-sha256 "${CONTRACT_SHA256}" \
+            --output /public/outputs
+          cat "${RUNNER_TEMP}/operator-public/outputs" >> "${GITHUB_OUTPUT}"
+    outputs:
+      account_id: ${{ steps.resolve.outputs.account_id }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+      command: ${{ steps.resolve.outputs.command }}
+      preview_role: ${{ steps.resolve.outputs.preview_role }}
+      apply_role: ${{ steps.resolve.outputs.apply_role }}
+      drift_role: ${{ steps.resolve.outputs.drift_role }}
+  preview:
+    name: Operator account plan
+    if: ${{ github.repository == 'VilnaCRM-Org/bootstrap-infrastructure' && github.ref == 'refs/heads/main' && github.event_name == 'repository_dispatch' }}
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    environment: ${{ format('{0}-operator-preview', inputs.account) }}
+    steps:
+      - name: Check out trusted operator runtime
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate admission before credentials
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" --scope operator --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Check out exact admitted operator source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify admitted checkout
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.head_sha }}
+        run: |
+          test "$(git -C source rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - name: Build pinned trusted tooling before OIDC
+        run: |
+          docker build --target dev --tag operator-base --file .trusted/Dockerfile .trusted
+          docker build --tag operator-worker --file - .trusted <<'DOCKER'
+          FROM operator-base
+          USER root
+          RUN apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
+          RUN PULUMI_HOME=/opt/operator-plugins /opt/pulumi/pulumi plugin install resource aws 7.23.0
+          RUN echo 'ad2008620e4504705db055f27c2cbd76f34c6e29fb465278464c286c30d63196  /opt/operator-plugins/plugins/resource-aws-v7.23.0/pulumi-resource-aws' | sha256sum -c -
+          DOCKER
+      - name: Configure exact operator role through OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ needs.resolve.outputs.preview_role }}
+          role-session-name: gha-operator-${{ inputs.account }}-preview-${{ github.run_id }}
+          aws-region: eu-central-1
+          allowed-account-ids: ${{ needs.resolve.outputs.account_id }}
+          unset-current-credentials: true
+      - name: Recheck admission and execute verified preview
+        id: execute
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" --scope operator --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+          mkdir -p "${RUNNER_TEMP}/operator-public"
+          docker run --rm --user 0:0 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=3g \
+            --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add KILL --pids-limit 512 --security-opt no-new-privileges \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/.trusted,dst=/trusted,readonly" \
+            --mount "type=bind,src=${RUNNER_TEMP}/operator-public,dst=/public" \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/source,dst=/source,readonly" \
+            -e GH_TOKEN -e GITHUB_REPOSITORY -e GITHUB_REPOSITORY_ID -e GITHUB_REPOSITORY_OWNER_ID -e GITHUB_SHA -e GITHUB_REF -e GITHUB_EVENT_NAME -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e GITHUB_WORKFLOW_REF -e GITHUB_ACTOR -e GITHUB_TRIGGERING_ACTOR -e DEPLOYMENT_COORDINATOR_MODE -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+            operator-worker /home/dev/.venvs/bootstrap-infrastructure/bin/python -I \
+            /trusted/scripts/operator_execution_runtime.py --stage preview --account "${ACCOUNT}" \
+            --seed-key-arn "${OPERATOR_SEED_KMS_KEY_ARN}" --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" --contract-sha256 "${CONTRACT_SHA256}" \
+            --output /public/outputs
+          cat "${RUNNER_TEMP}/operator-public/outputs" >> "${GITHUB_OUTPUT}"
+      - name: Upload only the encrypted saved plan
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: operator-plan-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.account }}-${{ needs.resolve.outputs.head_sha }}
+          path: ${{ runner.temp }}/operator-public/saved-plan.encrypted.json
+          if-no-files-found: error
+          retention-days: 7
+    outputs:
+      plan_validated: ${{ steps.execute.outputs.plan_validated }}
+      plan_artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      plan_artifact_sha256: ${{ steps.upload.outputs.artifact-digest }}
+  apply:
+    name: Apply saved operator plan
+    if: ${{ github.repository == 'VilnaCRM-Org/bootstrap-infrastructure' && github.ref == 'refs/heads/main' && github.event_name == 'repository_dispatch' && needs.resolve.outputs.command == 'up' }}
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - preview
+      - destructive_diff
+      - iam_validation
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    environment: ${{ format('{0}-operator', inputs.account) }}
+    steps:
+      - name: Check out trusted operator runtime
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate admission before credentials
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" --scope operator --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Check out exact admitted operator source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify admitted checkout
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.head_sha }}
+        run: |
+          test "$(git -C source rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - name: Build pinned trusted tooling before OIDC
+        run: |
+          docker build --target dev --tag operator-base --file .trusted/Dockerfile .trusted
+          docker build --tag operator-worker --file - .trusted <<'DOCKER'
+          FROM operator-base
+          USER root
+          RUN apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
+          RUN PULUMI_HOME=/opt/operator-plugins /opt/pulumi/pulumi plugin install resource aws 7.23.0
+          RUN echo 'ad2008620e4504705db055f27c2cbd76f34c6e29fb465278464c286c30d63196  /opt/operator-plugins/plugins/resource-aws-v7.23.0/pulumi-resource-aws' | sha256sum -c -
+          DOCKER
+      - name: Configure exact operator role through OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ needs.resolve.outputs.apply_role }}
+          role-session-name: gha-operator-${{ inputs.account }}-apply-${{ github.run_id }}
+          aws-region: eu-central-1
+          allowed-account-ids: ${{ needs.resolve.outputs.account_id }}
+          unset-current-credentials: true
+      - name: Recheck admission and execute verified apply
+        id: execute
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+          PLAN_ARTIFACT_ID: ${{ needs.preview.outputs.plan_artifact_id }}
+          PLAN_ARTIFACT_SHA256: ${{ needs.preview.outputs.plan_artifact_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" --scope operator --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+          mkdir -p "${RUNNER_TEMP}/operator-public"
+          docker run --rm --user 0:0 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=3g \
+            --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add KILL --pids-limit 512 --security-opt no-new-privileges \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/.trusted,dst=/trusted,readonly" \
+            --mount "type=bind,src=${RUNNER_TEMP}/operator-public,dst=/public" \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/source,dst=/source,readonly" \
+            -e GH_TOKEN -e GITHUB_REPOSITORY -e GITHUB_REPOSITORY_ID -e GITHUB_REPOSITORY_OWNER_ID -e GITHUB_SHA -e GITHUB_REF -e GITHUB_EVENT_NAME -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e GITHUB_WORKFLOW_REF -e GITHUB_ACTOR -e GITHUB_TRIGGERING_ACTOR -e DEPLOYMENT_COORDINATOR_MODE -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+            operator-worker /home/dev/.venvs/bootstrap-infrastructure/bin/python -I \
+            /trusted/scripts/operator_execution_runtime.py --stage apply --account "${ACCOUNT}" \
+            --seed-key-arn "${OPERATOR_SEED_KMS_KEY_ARN}" --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" --contract-sha256 "${CONTRACT_SHA256}" \
+            --output /public/outputs --plan-artifact-id "${PLAN_ARTIFACT_ID}" --plan-artifact-sha256 "${PLAN_ARTIFACT_SHA256}"
+          cat "${RUNNER_TEMP}/operator-public/outputs" >> "${GITHUB_OUTPUT}"
+  post_apply_drift:
+    name: Operator post-apply drift
+    if: ${{ github.repository == 'VilnaCRM-Org/bootstrap-infrastructure' && github.ref == 'refs/heads/main' && github.event_name == 'repository_dispatch' && needs.resolve.outputs.command == 'up' }}
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - apply
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    environment: ${{ format('{0}-operator-drift', inputs.account) }}
+    steps:
+      - name: Check out trusted operator runtime
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate admission before credentials
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" --scope operator --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Check out exact admitted operator source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify admitted checkout
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.head_sha }}
+        run: |
+          test "$(git -C source rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - name: Build pinned trusted tooling before OIDC
+        run: |
+          docker build --target dev --tag operator-base --file .trusted/Dockerfile .trusted
+          docker build --tag operator-worker --file - .trusted <<'DOCKER'
+          FROM operator-base
+          USER root
+          RUN apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
+          RUN PULUMI_HOME=/opt/operator-plugins /opt/pulumi/pulumi plugin install resource aws 7.23.0
+          RUN echo 'ad2008620e4504705db055f27c2cbd76f34c6e29fb465278464c286c30d63196  /opt/operator-plugins/plugins/resource-aws-v7.23.0/pulumi-resource-aws' | sha256sum -c -
+          DOCKER
+      - name: Configure exact operator role through OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ needs.resolve.outputs.drift_role }}
+          role-session-name: gha-operator-${{ inputs.account }}-drift-${{ github.run_id }}
+          aws-region: eu-central-1
+          allowed-account-ids: ${{ needs.resolve.outputs.account_id }}
+          unset-current-credentials: true
+      - name: Recheck admission and execute verified drift
+        id: execute
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" --scope operator --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+          mkdir -p "${RUNNER_TEMP}/operator-public"
+          docker run --rm --user 0:0 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=3g \
+            --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add KILL --pids-limit 512 --security-opt no-new-privileges \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/.trusted,dst=/trusted,readonly" \
+            --mount "type=bind,src=${RUNNER_TEMP}/operator-public,dst=/public" \
+            --mount "type=bind,src=${GITHUB_WORKSPACE}/source,dst=/source,readonly" \
+            -e GH_TOKEN -e GITHUB_REPOSITORY -e GITHUB_REPOSITORY_ID -e GITHUB_REPOSITORY_OWNER_ID -e GITHUB_SHA -e GITHUB_REF -e GITHUB_EVENT_NAME -e GITHUB_RUN_ID -e GITHUB_RUN_ATTEMPT -e GITHUB_WORKFLOW_REF -e GITHUB_ACTOR -e GITHUB_TRIGGERING_ACTOR -e DEPLOYMENT_COORDINATOR_MODE -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN \
+            operator-worker /home/dev/.venvs/bootstrap-infrastructure/bin/python -I \
+            /trusted/scripts/operator_execution_runtime.py --stage drift --account "${ACCOUNT}" \
+            --seed-key-arn "${OPERATOR_SEED_KMS_KEY_ARN}" --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" --contract-sha256 "${CONTRACT_SHA256}" \
+            --output /public/outputs
+          cat "${RUNNER_TEMP}/operator-public/outputs" >> "${GITHUB_OUTPUT}"
+  destructive_diff:
+    name: Operator destructive diff gate
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - preview
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require completed native full-plan and IAM gates
+        env:
+          VALIDATED: ${{ needs.preview.outputs.plan_validated }}
+        run: |
+          test "${VALIDATED}" = true
+  iam_validation:
+    name: Operator IAM validation
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - preview
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require completed native full-plan and IAM gates
+        env:
+          VALIDATED: ${{ needs.preview.outputs.plan_validated }}
+        run: |
+          test "${VALIDATED}" = true
+  receipt:
+    name: Verify complete operator account receipt
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - preview
+      - destructive_diff
+      - iam_validation
+      - apply
+      - post_apply_drift
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Check out trusted operator runtime
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate contract and require every actual job
+        id: receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+          PLAN_RESULT: ${{ needs.preview.result }}
+          DESTRUCTIVE_RESULT: ${{ needs.destructive_diff.result }}
+          IAM_RESULT: ${{ needs.iam_validation.result }}
+          APPLY_RESULT: ${{ needs.apply.result }}
+          DRIFT_RESULT: ${{ needs.post_apply_drift.result }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_receipt.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" --scope operator --environment "${ACCOUNT}" \
+            --plan-result "${PLAN_RESULT}" --destructive-result "${DESTRUCTIVE_RESULT}" \
+            --iam-result "${IAM_RESULT}" --apply-result "${APPLY_RESULT}" --drift-result "${DRIFT_RESULT}" \
+            --receipt-path .artifacts/operator-receipt/receipt.json --output "${GITHUB_OUTPUT}"
+      - name: Upload verified operator receipt
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deployment-receipt-${{ github.run_id }}-${{ github.run_attempt }}-operator-${{ inputs.account }}-${{ needs.resolve.outputs.head_sha }}
+          path: .artifacts/operator-receipt/receipt.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Expose success after verified receipt upload
+        id: terminal
+        run: |
+          printf "result=success\n" >> "${GITHUB_OUTPUT}"
+    outputs:
+      receipt_artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      receipt_artifact_sha256: ${{ steps.upload.outputs.artifact-digest }}
+      result: ${{ steps.terminal.outputs.result }}
+      receipt_digest: ${{ steps.receipt.outputs.receipt_digest }}
+      receipt_file_sha256: ${{ steps.receipt.outputs.receipt_file_sha256 }}
+      selection_digest: ${{ steps.receipt.outputs.selection_digest }}
+      contract_digest: ${{ steps.receipt.outputs.contract_digest }}
+      completion_kind: ${{ steps.receipt.outputs.completion_kind }}
+      scope: ${{ steps.receipt.outputs.scope }}
+      environment: ${{ steps.receipt.outputs.environment }}
+      command: ${{ steps.receipt.outputs.command }}
+      head_sha: ${{ steps.receipt.outputs.head_sha }}
+      base_sha: ${{ steps.receipt.outputs.base_sha }}
