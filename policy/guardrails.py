@@ -285,12 +285,17 @@ def _s3_encryption_rule_items(props: Mapping[str, Any]) -> list[Mapping[str, Any
 
 
 def _has_default_s3_encryption_rule(props: Mapping[str, Any]) -> bool:
-    """Return True when any encryption rule declares a default SSE algorithm."""
+    """Require a supported concrete SSE algorithm, never an RPC unknown value."""
     for candidate in _s3_encryption_rule_items(props):
         default_encryption = candidate.get("applyServerSideEncryptionByDefault")
         if not isinstance(default_encryption, Mapping):
             continue
-        if _string_value(default_encryption.get("sseAlgorithm")):
+        if _string_value(default_encryption.get("sseAlgorithm")) in {
+            "AES256",
+            "aws:fsx",
+            "aws:kms",
+            "aws:kms:dsse",
+        }:
             return True
     return False
 
@@ -370,7 +375,8 @@ def _s3_logging_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]]:
         for dependency in _resource_dependencies(resource, "bucket"):
             dependency_type = getattr(dependency, "resource_type", "")
             if _matches_resource_type(dependency_type, S3_BUCKET_TYPE_SUFFIX):
-                logged_bucket_urns.add(getattr(dependency, "urn", ""))
+                dependency_urn = getattr(dependency, "urn", "")
+                logged_bucket_urns.update(filter(None, (dependency_urn,)))
 
     return logged_bucket_names, logged_bucket_urns
 

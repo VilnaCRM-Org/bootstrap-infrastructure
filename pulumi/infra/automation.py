@@ -268,7 +268,7 @@ _AUTOMATION_SNS_ACTIONS = (
     "sns:UntagResource",
 )
 _AUTOMATION_SNS_SUBSCRIPTION_ACTIONS = (
-    # These subscription APIs do not support SNS resource-level permissions.
+    # SNS authorizes these subscription APIs against their parent topic.
     "sns:GetSubscriptionAttributes",
     "sns:Unsubscribe",
 )
@@ -1010,7 +1010,7 @@ def _automation_policy(
                     "Sid": "ManageBootstrapSnsSubscriptions",
                     "Effect": "Allow",
                     "Action": list(_AUTOMATION_SNS_SUBSCRIPTION_ACTIONS),
-                    "Resource": "*",
+                    "Resource": _automation_sns_resources(account_id, settings),
                 },
                 {
                     "Sid": "ManageBootstrapSqs",

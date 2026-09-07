@@ -141,6 +141,16 @@ jobs:
           path: .artifacts/pulumi-plan
           retention-days: 7
 
+      - name: Upload governance test preview artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-preview
+          path: .artifacts/pulumi-preview
+          if-no-files-found: error
+          retention-days: 7
+
   governance_test_apply:
     name: Governance Test Apply
     # Every up request applies test first. Plan requests never mutate either account.
@@ -231,11 +241,38 @@ jobs:
             needs.preflight.outputs.head_sha }}-test-plan
           path: .artifacts/pulumi-plan
 
+      - name: Download governance test preview for apply revalidation
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-preview
+          path: .artifacts/pulumi-preview
+
       - name: Apply saved governance test plan
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
           GITHUB_TOKEN: ${{ github.token }}
           PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: make pulumi-up-plan
+        run: |
+          # The immutable same-run preview is the diff for this saved plan.
+          shopt -s nullglob
+          previews=(.artifacts/pulumi-preview/*.json)
+          found_preview=false
+          for preview in "${previews[@]}"; do
+            if [[ "${preview}" != */pull-request-event.json ]]; then
+              test -s "${preview}"
+              found_preview=true
+            fi
+          done
+          test "${found_preview}" = true
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+          # Remove only obsolete event metadata; preserve the original diff files.
+          rm -f .artifacts/pulumi-preview/pull-request-event.json
+          make test-destructive-diff
+          make pulumi-up-plan
 
   governance_test_post_apply_drift:
     name: Governance Test Post-Apply Drift
@@ -392,6 +429,16 @@ jobs:
           path: .artifacts/pulumi-plan
           retention-days: 7
 
+      - name: Upload governance prod preview artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-preview
+          path: .artifacts/pulumi-preview
+          if-no-files-found: error
+          retention-days: 7
+
   governance_prod_apply:
     name: Governance Prod Apply
     # Only prod up can mutate production after successful test apply and drift.
@@ -485,11 +532,38 @@ jobs:
             needs.preflight.outputs.head_sha }}-prod-plan
           path: .artifacts/pulumi-plan
 
+      - name: Download governance prod preview for apply revalidation
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-preview
+          path: .artifacts/pulumi-preview
+
       - name: Apply saved governance prod plan
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
           GITHUB_TOKEN: ${{ github.token }}
           PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: make pulumi-up-plan
+        run: |
+          # The immutable same-run preview is the diff for this saved plan.
+          shopt -s nullglob
+          previews=(.artifacts/pulumi-preview/*.json)
+          found_preview=false
+          for preview in "${previews[@]}"; do
+            if [[ "${preview}" != */pull-request-event.json ]]; then
+              test -s "${preview}"
+              found_preview=true
+            fi
+          done
+          test "${found_preview}" = true
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+          # Remove only obsolete event metadata; preserve the original diff files.
+          rm -f .artifacts/pulumi-preview/pull-request-event.json
+          make test-destructive-diff
+          make pulumi-up-plan
 
   governance_prod_post_apply_drift:
     name: Governance Prod Post-Apply Drift

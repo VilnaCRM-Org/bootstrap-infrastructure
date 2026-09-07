@@ -412,7 +412,10 @@ def test_state_operations_share_cross_workflow_stack_mutex():
         name: (workflow, job)
         for workflow in workflows.values()
         for name, job in workflow["jobs"].items()
-        if any(step.get("run") in operations for step in job["steps"])
+        if any(
+            operations.intersection(step.get("run", "").splitlines())
+            for step in job["steps"]
+        )
     }
     assert set(state_jobs) == {
         "test_preview",

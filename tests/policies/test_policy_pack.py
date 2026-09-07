@@ -1168,6 +1168,75 @@ def test_storage_encryption_stack_violations_ignore_invalid_rules_before_valid_o
     )
 
 
+@pytest.mark.parametrize("mode", ["inline", "split"])
+@pytest.mark.parametrize("rule_key", ["rule", "rules"])
+@pytest.mark.parametrize(
+    ("algorithm", "accepted"),
+    [
+        ("AES256", True),
+        ("aws:fsx", True),
+        ("aws:kms", True),
+        ("aws:kms:dsse", True),
+        ("04da6b54-80e4-46f7-96ec-b56ff0331ba9", False),
+        ("unverified-algorithm", False),
+    ],
+)
+def test_s3_encryption_requires_a_supported_concrete_algorithm(
+    policy_runtime: SimpleNamespace,
+    mode: str,
+    rule_key: str,
+    algorithm: str,
+    accepted: bool,
+) -> None:
+    """Unknown or invalid SSE values cannot satisfy either resource shape."""
+    rule = {"applyServerSideEncryptionByDefault": {"sseAlgorithm": algorithm}}
+    configuration = {rule_key: rule if rule_key == "rule" else [rule]}
+    bucket = _stack_resource(
+        "aws:s3/bucket:Bucket",
+        props={"bucket": "concrete-encryption"},
+        urn="urn:pulumi:test::policy::aws:s3/bucket:Bucket::concrete-encryption",
+    )
+    resources = [bucket]
+    if mode == "inline":
+        bucket.props["serverSideEncryptionConfiguration"] = configuration
+    else:
+        resources.append(
+            _stack_resource(
+                "aws:s3/bucketServerSideEncryptionConfigurationV2:"
+                "BucketServerSideEncryptionConfigurationV2",
+                props={"bucket": "concrete-encryption", **configuration},
+                urn="urn:pulumi:test::policy::s3:encryption::concrete-encryption",
+                property_dependencies={"bucket": [bucket]},
+            )
+        )
+    message = "S3 buckets must enable default server-side encryption."
+    expected = [] if accepted else [(bucket.urn, message)]
+    assert policy_runtime.storage_encryption_stack_violations(resources) == expected
+    if mode == "inline":
+        assert policy_runtime.storage_encryption_violations(
+            bucket.resource_type, bucket.props
+        ) == ([] if accepted else [message])
+
+
+@pytest.mark.parametrize("missing_urn", ["", None])
+def test_logging_cannot_bind_buckets_by_an_empty_dependency_urn(
+    policy_runtime: SimpleNamespace, missing_urn: str | None
+) -> None:
+    """Malformed dependency metadata cannot mark an unrelated bucket as logged."""
+    bucket = _stack_resource("aws:s3/bucket:Bucket", props={}, urn="")
+    dependency = _stack_resource("aws:s3/bucket:Bucket", props={}, urn="")
+    bucket.urn = dependency.urn = missing_urn
+    logging = _stack_resource(
+        "aws:s3/bucketLogging:BucketLogging",
+        props={"targetBucket": "audit-logs"},
+        urn="urn:pulumi:test::policy::aws:s3/bucketLogging:BucketLogging::logging",
+        property_dependencies={"bucket": [dependency]},
+    )
+    assert policy_runtime.logging_stack_violations([bucket, logging]) == [
+        (missing_urn, "S3 buckets must send access logs to a target bucket.")
+    ]
+
+
 def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
     policy_runtime: SimpleNamespace,
 ) -> None:
