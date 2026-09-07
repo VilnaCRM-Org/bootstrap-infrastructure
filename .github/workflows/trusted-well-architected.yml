@@ -64,6 +64,8 @@ jobs:
       contents: read
       actions: read
       pull-requests: read
+      deployments: read
+      statuses: read
       id-token: write
     env:
       GH_TOKEN: ${{ github.token }}
@@ -165,6 +167,7 @@ jobs:
           app-id: '4840884'
           private-key: ${{ secrets.GOVERNANCE_PROMOTION_APP_PRIVATE_KEY }}
           permission-statuses: write
+          permission-deployments: read
           permission-actions: read
           permission-contents: read
           permission-pull-requests: read
