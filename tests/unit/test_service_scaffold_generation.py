@@ -204,7 +204,7 @@ def test_service_scope_template_survives_central_changes(tmp_path, central_prese
     assert workflow[True] == {
         "pull_request_target": {
             "branches": ["main"],
-            "types": ["opened", "synchronize", "reopened"],
+            "types": ["opened", "synchronize", "reopened", "edited"],
         }
     }
     assert workflow["permissions"] == {

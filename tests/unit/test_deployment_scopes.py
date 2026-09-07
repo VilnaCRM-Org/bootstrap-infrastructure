@@ -172,7 +172,7 @@ def test_moved_files_union_both_paths(status, source, destination, stacks) -> No
     )
 
 
-@pytest.mark.parametrize("status", ["added", "modified", "removed"])
+@pytest.mark.parametrize("status", ["added", "modified", "removed", "changed"])
 @pytest.mark.parametrize(
     "path",
     ["scripts/_pulumi_stack_config.py", "pulumi/repositories.governance.json"],

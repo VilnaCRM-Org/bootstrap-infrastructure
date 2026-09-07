@@ -168,7 +168,7 @@ def _record_paths(record: Mapping[str, object]) -> tuple[str, ...]:
         if previous == path:
             raise ValueError("Rename/copy source must differ from its destination")
         return (path, previous)
-    if status not in ("added", "modified", "removed"):
+    if status not in ("added", "modified", "removed", "changed"):
         raise ValueError("Unsupported or missing changed-file status")
     if "previous_filename" in record:
         raise ValueError("Only rename/copy records may contain previous_filename")

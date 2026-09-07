@@ -12,6 +12,7 @@ from test_seed_policy_registry import key_for
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import operator_seed_installation as installation  # noqa: E402
+from seed.operator_trust import operator_trust_policy  # noqa: E402
 
 
 def packet_for(environment="test"):
@@ -338,3 +339,216 @@ def test_executor_cannot_be_rendered_without_boundary():
     executor = next(p for p in packet_for().registry.principals if not p.existing)
     with pytest.raises(ValueError, match="Executor boundary"):
         installation._role_resource(replace(executor, boundary_arn=None))
+
+
+def activation_changes(packet):
+    """Standard API summaries of three direct, non-replacing role trust updates."""
+    resources = json.loads(packet.activation_template)["Resources"]
+    return [
+        {
+            "Type": "Resource",
+            "ResourceChange": {
+                "Action": "Modify",
+                "LogicalResourceId": logical,
+                "PhysicalResourceId": value["Properties"]["RoleName"],
+                "ResourceType": "AWS::IAM::Role",
+                "Replacement": "False",
+                "Scope": ["Properties"],
+                "Details": [
+                    {
+                        "Evaluation": "Static",
+                        "ChangeSource": "DirectModification",
+                        "Target": {
+                            "Attribute": "Properties",
+                            "Name": "AssumeRolePolicyDocument",
+                            "RequiresRecreation": "Never",
+                        },
+                    }
+                ],
+            },
+        }
+        for logical, value in resources.items()
+        if value["Type"] == "AWS::IAM::Role"
+    ]
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_activation_preserves_everything_except_three_exact_trusts(environment):
+    disabled = packet_for(environment)
+    active = installation.build_activation(disabled)
+    assert active == installation.build_activation(disabled)
+    installation.validate_activation(active)
+    installation.validate_installation(disabled)
+    before = json.loads(disabled.enrollment_template)
+    after = json.loads(active.activation_template)
+    changed = []
+    for logical, resource in after["Resources"].items():
+        previous = before["Resources"][logical]
+        if resource == previous:
+            continue
+        changed.append(logical)
+        name = resource["Properties"]["RoleName"]
+        purpose = name.removeprefix("GitHubOperator").split("-")[0].lower()
+        trust = resource["Properties"]["AssumeRolePolicyDocument"]
+        assert trust == json.loads(
+            operator_trust_policy(
+                environment, purpose, account_id=registry.ACCOUNTS[environment]
+            )
+        )
+        assert (
+            previous["Properties"]["AssumeRolePolicyDocument"]
+            == registry.DISABLED_TRUST
+        )
+        assert len(registry.canonical_json(trust)) <= 2048
+        resource["Properties"]["AssumeRolePolicyDocument"] = registry.DISABLED_TRUST
+    assert len(changed) == 3
+    assert after == before
+    assert json.loads(active.temporary_stack_policy) == {
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "Update:Modify",
+                "Principal": "*",
+                "Resource": sorted(f"LogicalResourceId/{key}" for key in changed),
+            },
+            {
+                "Effect": "Deny",
+                "Action": ["Update:Replace", "Update:Delete"],
+                "Principal": "*",
+                "Resource": "*",
+            },
+        ]
+    }
+    changes = activation_changes(active)
+    installation.validate_activation_change_set(active, changes=changes)
+    for change in changes:
+        target = change["ResourceChange"]["Details"][0]["Target"]
+        target["Path"] = "/Properties/AssumeRolePolicyDocument"
+        target["AttributeChangeType"] = "Modify"
+    installation.validate_activation_change_set(active, changes=list(reversed(changes)))
+
+
+@pytest.mark.parametrize(
+    "mutation", ["trust", "policy", "boundary", "owner", "retention"]
+)
+def test_activation_rejects_template_changes_even_with_plausible_summaries(mutation):
+    active = installation.build_activation(packet_for())
+    template = json.loads(active.activation_template)
+    resources = template["Resources"]
+    role = next(r for r in resources.values() if r["Type"] == "AWS::IAM::Role")
+    if mutation == "trust":
+        role["Properties"]["AssumeRolePolicyDocument"] = registry.DISABLED_TRUST
+    elif mutation == "policy":
+        policy = next(
+            r for r in resources.values() if r["Type"] == "AWS::IAM::ManagedPolicy"
+        )
+        policy["Properties"]["PolicyDocument"] = {}
+    elif mutation == "boundary":
+        role["Properties"]["PermissionsBoundary"] = "foreign"
+    elif mutation == "owner":
+        role["Properties"]["RoleName"] = "GitHubCiApply-bootstrap-infrastructure-test"
+    else:
+        role["DeletionPolicy"] = "Delete"
+    forged = replace(active, activation_template=registry.canonical_json(template))
+    with pytest.raises(ValueError, match="differs"):
+        installation.validate_activation_change_set(
+            forged, changes=activation_changes(active)
+        )
+
+
+def test_activation_rejects_forged_parent_policy_and_packet_types():
+    packet = packet_for()
+    active = installation.build_activation(packet)
+    with pytest.raises(ValueError, match="Activation packet required"):
+        installation.validate_activation(None)
+    with pytest.raises(ValueError, match="differs"):
+        installation.build_activation(replace(packet, enrollment_template="{}"))
+    with pytest.raises(ValueError, match="differs"):
+        installation.validate_activation(replace(active, temporary_stack_policy="{}"))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("Action", "Add"),
+        ("Action", "Remove"),
+        ("ResourceType", "AWS::IAM::ManagedPolicy"),
+        ("Replacement", "True"),
+        ("Replacement", "Conditional"),
+        ("Replacement", None),
+        ("Replacement", False),
+        ("Scope", ["Properties", "Tags"]),
+        ("Scope", []),
+        ("ChangeSetId", "nested"),
+        ("PolicyAction", "Delete"),
+        ("LogicalResourceId", []),
+        ("LogicalResourceId", "Foreign"),
+        ("PhysicalResourceId", "GitHubOperatorApply-prod"),
+        ("Details", []),
+        ("Details", None),
+        ("Details", [None]),
+    ],
+)
+def test_activation_rejects_other_changes_and_malformed_summaries(field, value):
+    active = installation.build_activation(packet_for())
+    changes = activation_changes(active)
+    changes[0]["ResourceChange"][field] = value
+    with pytest.raises(ValueError):
+        installation.validate_activation_change_set(active, changes=changes)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("Evaluation", "Dynamic"),
+        ("ChangeSource", "ResourceReference"),
+        ("CausingEntity", "OtherRole"),
+        ("Target", None),
+    ],
+)
+def test_activation_rejects_indirect_or_missing_trust_detail(field, value):
+    active = installation.build_activation(packet_for())
+    changes = activation_changes(active)
+    changes[0]["ResourceChange"]["Details"][0][field] = value
+    with pytest.raises(ValueError):
+        installation.validate_activation_change_set(active, changes=changes)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("Attribute", "Metadata"),
+        ("Name", "ManagedPolicyArns"),
+        ("Name", "PermissionsBoundary"),
+        ("Name", "Policies"),
+        ("RequiresRecreation", "Conditionally"),
+        ("RequiresRecreation", None),
+        ("Path", "/Properties/ManagedPolicyArns"),
+        ("AttributeChangeType", "Remove"),
+    ],
+)
+def test_activation_rejects_any_other_property_target(field, value):
+    active = installation.build_activation(packet_for())
+    changes = activation_changes(active)
+    changes[0]["ResourceChange"]["Details"][0]["Target"][field] = value
+    with pytest.raises(ValueError):
+        installation.validate_activation_change_set(active, changes=changes)
+
+
+@pytest.mark.parametrize(
+    "kind", ["missing", "duplicate", "object", "entry", "type", "resource", "extra"]
+)
+def test_activation_requires_complete_unique_executor_changes(kind):
+    active = installation.build_activation(packet_for())
+    changes = activation_changes(active)
+    edits = {
+        "missing": changes[:-1],
+        "duplicate": changes + changes[:1],
+        "object": {},
+        "entry": [None],
+        "type": [{"Type": "Output"}],
+        "resource": [{"Type": "Resource", "ResourceChange": []}],
+        "extra": changes + changes_for(active.installation, "enroll")[:1],
+    }
+    with pytest.raises(ValueError):
+        installation.validate_activation_change_set(active, changes=edits[kind])

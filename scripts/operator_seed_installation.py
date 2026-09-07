@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from seed import policy_registry as registry
+from seed.operator_trust import operator_trust_policy
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,15 @@ class InstallationPacket:
     enrollment_template: str
     boundary_manifest: str
     stack_policy: str
+
+
+@dataclass(frozen=True)
+class ActivationPacket:
+    """Trust-only proposed update; neither authorization nor installed evidence."""
+
+    installation: InstallationPacket
+    activation_template: str
+    temporary_stack_policy: str
 
 
 def _require(condition: bool, message: str) -> None:
@@ -301,3 +311,143 @@ def validate_change_set(
         actual == {key: value["Type"] for key, value in targets.items()},
         "Change set does not match the complete installation phase",
     )
+
+
+def build_activation(packet: InstallationPacket) -> ActivationPacket:
+    """Change only three executor trusts in the canonical disabled template.
+
+    Independently authorize activation and verify disabled enrollment, reconciled
+    checkpoints and installed trusted main before executing. Authenticate the
+    current stack template against enrollment_template and the proposed template
+    against activation_template. The temporary policy permits only role Modify;
+    it cannot restrict individual properties or grant IAM authority. Restore the
+    installation's deny-update policy after execution, including on failure.
+    """
+    validate_installation(packet)
+    expected = packet.registry
+    template = json.loads(packet.enrollment_template)
+    targets = []
+    for purpose in ("preview", "apply", "drift"):
+        arn = (
+            f"arn:aws:iam::{expected.account_id}:role/GitHubOperator{purpose.title()}"
+            f"-{expected.environment}"
+        )
+        logical = _logical_id(arn)
+        template["Resources"][logical]["Properties"]["AssumeRolePolicyDocument"] = (
+            json.loads(
+                operator_trust_policy(
+                    expected.environment, purpose, account_id=expected.account_id
+                )
+            )
+        )
+        targets.append(f"LogicalResourceId/{logical}")
+    policy = {
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "Update:Modify",
+                "Principal": "*",
+                "Resource": sorted(targets),
+            },
+            {
+                "Effect": "Deny",
+                "Action": ["Update:Replace", "Update:Delete"],
+                "Principal": "*",
+                "Resource": "*",
+            },
+        ]
+    }
+    return ActivationPacket(
+        packet, registry.canonical_json(template), registry.canonical_json(policy)
+    )
+
+
+def validate_activation(packet: ActivationPacket) -> None:
+    """Recompute both artifacts so forged trust or unrelated edits fail closed."""
+    _require(isinstance(packet, ActivationPacket), "Activation packet required")
+    _require(
+        packet == build_activation(packet.installation),
+        "Activation packet differs from pinned trust update",
+    )
+
+
+def _trust_detail(details: object) -> None:
+    """Accept the standard summary for one static direct trust-property edit."""
+    _require(isinstance(details, list) and len(details) == 1, "One trust edit required")
+    detail = cast(list, details)[0]
+    _require(isinstance(detail, Mapping), "Malformed trust edit")
+    _require(
+        detail.get("Evaluation") == "Static"
+        and detail.get("ChangeSource") == "DirectModification"
+        and detail.get("CausingEntity") is None,
+        "Only a static direct trust edit is permitted",
+    )
+    target = detail.get("Target")
+    _require(isinstance(target, Mapping), "Malformed trust target")
+    target = cast(Mapping, target)
+    _require(
+        target.get("Attribute") == "Properties"
+        and target.get("Name") == "AssumeRolePolicyDocument"
+        and target.get("RequiresRecreation") == "Never",
+        "Only the non-replacing trust property may change",
+    )
+    _require(
+        target.get("Path") in (None, "/Properties/AssumeRolePolicyDocument")
+        and target.get("AttributeChangeType") in (None, "Modify"),
+        "Unexpected trust property path or operation",
+    )
+
+
+def _activation_resource(change: object) -> Mapping:
+    """Reject replacement, removal, nested changes and any non-property scope."""
+    _require(isinstance(change, Mapping), "Malformed activation change")
+    change = cast(Mapping, change)
+    _require(change.get("Type") == "Resource", "Unexpected activation change type")
+    resource = change.get("ResourceChange")
+    _require(isinstance(resource, Mapping), "Malformed activation resource")
+    resource = cast(Mapping, resource)
+    _require(
+        resource.get("Action") == "Modify"
+        and resource.get("ResourceType") == "AWS::IAM::Role"
+        and resource.get("Replacement") == "False"
+        and resource.get("Scope") == ["Properties"],
+        "Only non-replacing role property modification is permitted",
+    )
+    _require(
+        resource.get("ChangeSetId") is None and resource.get("PolicyAction") is None,
+        "Nested or policy-action change forbidden",
+    )
+    _trust_detail(resource.get("Details"))
+    return resource
+
+
+def validate_activation_change_set(
+    packet: ActivationPacket, *, changes: object
+) -> None:
+    """Check complete authenticated standard DescribeChangeSet resource summaries.
+
+    Caller requirements from validate_change_set and build_activation apply. The
+    summaries do not prove the proposed trust values: authenticate the exact
+    canonical before/after templates too. This is not a drift-reconciliation or
+    already-active no-op phase; all three disabled executors must change.
+    """
+    validate_activation(packet)
+    _require(isinstance(changes, list), "Complete activation change list required")
+    targets = {
+        _logical_id(p.arn): _name_path(p.arn)[0]
+        for p in packet.installation.registry.principals
+        if not p.existing
+    }
+    actual = set()
+    for change in cast(list, changes):
+        resource = _activation_resource(change)
+        logical = resource.get("LogicalResourceId")
+        _require(isinstance(logical, str), "Malformed activation logical identity")
+        logical = cast(str, logical)
+        _require(logical in targets and logical not in actual, "Unexpected executor")
+        _require(
+            resource.get("PhysicalResourceId") == targets[logical],
+            "Executor physical identity changed",
+        )
+        actual.add(logical)
+    _require(actual == set(targets), "All three executor trust changes required")
