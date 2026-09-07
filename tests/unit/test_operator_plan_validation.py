@@ -845,9 +845,7 @@ def test_full_new_values_and_precise_diff_diagnostics():
     assert validate(data).changed_urns
 
 
-@pytest.mark.parametrize(
-    "payload", [b'{"x":1e10000}', b'{"x":0.125}', b"[" * 2000 + b"]" * 2000]
-)
+@pytest.mark.parametrize("payload", [b'{"x":1e10000}', b"[" * 2000 + b"]" * 2000])
 def test_numeric_and_deep_json_are_bounded(payload):
     data = fixture()
     with pytest.raises(ValueError):
@@ -857,6 +855,10 @@ def test_numeric_and_deep_json_are_bounded(payload):
             encoded(data["checkpoint"]),
             catalog=data["catalog"],
         )
+
+
+def test_json_decoder_preserves_finite_fractional_values():
+    assert validation._decode(b'{"value":0.125}') == {"value": 0.125}
 
 
 @pytest.mark.parametrize(

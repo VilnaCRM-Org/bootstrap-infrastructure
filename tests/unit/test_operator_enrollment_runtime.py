@@ -196,15 +196,26 @@ def test_complete_collection_all_accounts_and_modes(environment, purpose, encodi
         assert observed == registry.ObservedPolicy(
             policy.arn, "v3", policy.document_json
         )
+    executor_trust = {
+        f"arn:aws:iam::{expected.account_id}:role/"
+        f"GitHubOperator{role_purpose.title()}-{environment}": json.loads(
+            operator_trust_policy(
+                environment, role_purpose, account_id=expected.account_id
+            )
+        )
+        for role_purpose in ("preview", "apply", "drift")
+    }
     for principal, observed in zip(expected.principals, actual.principals, strict=True):
         assert observed.arn == principal.arn
         assert observed.boundary_arn == principal.boundary_arn
         assert observed.attachment_arns == principal.attachment_arns
-        assert json.loads(observed.trust_json) == json.loads(
-            runtime._document(
-                reader.role_metadata(principal)["AssumeRolePolicyDocument"]
-            )
-        )
+        if principal.frozen_config:
+            expected_trust = json.loads(principal.frozen_config.trust_json)
+        elif principal.existing:
+            expected_trust = registry.DISABLED_TRUST
+        else:
+            expected_trust = executor_trust[principal.arn]
+        assert json.loads(observed.trust_json) == expected_trust
         name = principal.arn.rsplit("/", 1)[-1]
         assert dict(observed.inline_policies) == {
             key: json.dumps(json.loads(value), sort_keys=True, separators=(",", ":"))
