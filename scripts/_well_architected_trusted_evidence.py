@@ -83,7 +83,18 @@ def _digest(value: object) -> bool:
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
 
 
+def parse_timestamp(value: object) -> dt.datetime:
+    """Accept UTC Z on every supported Python while requiring timezone awareness."""
+    _require(isinstance(value, str), "Invalid evidence timestamp")
+    value = cast(str, value)
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    parsed = dt.datetime.fromisoformat(normalized)
+    _require(parsed.tzinfo is not None, "Evidence timestamp must be timezone-aware")
+    return parsed
+
+
 def _path(root: Path, name: str) -> Path:
+    _require(not root.is_symlink(), "Evidence symlinks are forbidden")
     part = PurePosixPath(name)
     _require(
         bool(name)
@@ -119,8 +130,8 @@ def _target(manifest: dict[str, Any], expected: Target, now: dt.datetime) -> Non
     _require(_digest(expected.runtime_sha256), "Invalid runtime digest")
     _require(expected.pr > 0 and expected.repository_id > 0, "Invalid server identity")
     try:
-        issued = dt.datetime.fromisoformat(manifest["issued_at"])
-        expires = dt.datetime.fromisoformat(manifest["expires_at"])
+        issued = parse_timestamp(manifest["issued_at"])
+        expires = parse_timestamp(manifest["expires_at"])
         valid = issued <= now < expires and expires - issued <= dt.timedelta(hours=24)
     except (KeyError, ValueError, TypeError) as error:
         raise ValueError("Invalid evidence approval time bounds") from error

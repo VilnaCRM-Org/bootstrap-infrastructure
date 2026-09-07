@@ -38,7 +38,7 @@ These checks are intended to be marked as required in branch protection:
 | `Policy` | `make test-policy` | Enforces the custom Pulumi CrossGuard policy pack |
 | `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
 | `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |
-| `Test Account Evidence` | `make report-well-architected-evidence` | Fails trusted PR and main evidence runs when final Well-Architected readiness is below 5/5 |
+| `Test Account Evidence` | Protected trusted publisher; complete live collector | App-pinned exact-head acceptance; unresolved readiness remains failure |
 
 `make test-security` aggregates Gitleaks, dependency audit, and Bandit.
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
@@ -528,3 +528,5 @@ Generate the complete dependency closure with
 [`scripts/scaffold_infrastructure_repository.py`](../scripts/scaffold_infrastructure_repository.py).
 See [the governance runbook](governance-stack.md); real workload capability and
 current-head deployment/manual acceptance remain separate prerequisites.
+
+The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher retains the complete live collector and the existing required context with its pinned App issuer.

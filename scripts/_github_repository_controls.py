@@ -40,6 +40,7 @@ REQUIRED_STATUS_CHECKS = (
 
 OPERATIONS_ALERT_RECONCILE_ENVIRONMENT = "operations-alert-reconcile"
 GOVERNANCE_ENVIRONMENT = "governance"
+SERVICE_DRIFT_ENVIRONMENTS = ("test-drift", "prod-drift")
 
 
 def required_status_checks_rule(*, promotion_app_id: int) -> dict[str, Any]:
@@ -210,6 +211,44 @@ def operations_alert_reconcile_environment_payload(
 def governance_environment_payload(reviewer_id: int) -> dict[str, Any]:
     """Build the protected governance GitHub environment payload."""
     return protected_reviewer_environment_payload(reviewer_id)
+
+
+def service_drift_environment_payload() -> dict[str, Any]:
+    """Unattended drift has no approval gate and only the main branch."""
+    return {
+        "wait_timer": 0,
+        "can_admins_bypass": False,
+        "reviewers": [],
+        "deployment_branch_policy": {
+            "protected_branches": False,
+            "custom_branch_policies": True,
+        },
+    }
+
+
+def service_drift_environment_verification_blockers(
+    environment: Mapping[str, Any],
+) -> list[str]:
+    """Fail closed on weaker boundaries or additional unattended execution gates."""
+    blockers = []
+    if not environment_is_main_only(environment):
+        blockers.append("Scheduled drift environment must allow only main.")
+    if environment.get("can_admins_bypass") is not False:
+        blockers.append("Scheduled drift environment must disable admin bypass.")
+    if environment.get("reviewers", []) != []:
+        blockers.append("Scheduled drift environment must not require reviewers.")
+    if (
+        type(environment.get("wait_timer", 0)) is not int
+        or environment.get("wait_timer", 0) != 0
+    ):
+        blockers.append("Scheduled drift environment must not have a wait timer.")
+    rules = environment.get("protection_rules", [])
+    if not isinstance(rules, list) or any(
+        not isinstance(rule, Mapping) or rule.get("type") != "branch_policy"
+        for rule in rules
+    ):
+        blockers.append("Scheduled drift environment has an unknown execution gate.")
+    return blockers
 
 
 def required_status_check_items(rule: object) -> Sequence[object]:
@@ -418,6 +457,9 @@ def _is_user_reviewer(item: object) -> bool:
     if not isinstance(person, Mapping):
         return False
     identity = person.get("id")
+    if "reviewer" in item and "id" in item:
+        if type(item["id"]) is not int or item["id"] != identity:
+            return False
     return type(identity) is int and identity > 0
 
 

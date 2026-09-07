@@ -490,7 +490,21 @@ def test_all_governance_roles_require_bootstrap_owned_boundaries(
             if typ == "aws:iam/role:Role"
         ]
         assert len(roles) == 6  # trio, two config readers, one replication role
+        scheduled_roles = []
         for name, state in roles:
+            for statement in json.loads(state["assumeRolePolicy"])["Statement"]:
+                conditions = statement.get("Condition", {}).get("StringEquals", {})
+                if conditions.get("token.actions.githubusercontent.com:workflow") == (
+                    "Service Scheduled Drift"
+                ):
+                    scheduled_roles.append(name)
+                    assert conditions["token.actions.githubusercontent.com:ref"] == (
+                        "refs/heads/main"
+                    )
+                    assert conditions["token.actions.githubusercontent.com:sub"] == [
+                        "repo:VilnaCRM-Org/user-service-infrastructure:environment:"
+                        f"{environment}-drift"
+                    ]
             family = (
                 "GovernanceReplicationBoundary"
                 if "replication-role" in name
@@ -500,6 +514,13 @@ def test_all_governance_roles_require_bootstrap_owned_boundaries(
                 f"arn:aws:iam::123456789012:policy/{family}-"
                 f"user-service-infrastructure-{environment}"
             )
+        suffix = "test" if environment == "test" else "prod-preview"
+        assert sorted(scheduled_roles) == sorted(
+            [
+                f"gov-boundary-{environment}-drift-role",
+                f"gov-boundary-{environment}-configuration-github-ci-config-read-role-{suffix}",
+            ]
+        )
         managed_policy_names = [
             state["name"]
             for typ, _, state in _resources_created_since(pulumi_mocks, start)

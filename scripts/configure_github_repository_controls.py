@@ -81,6 +81,7 @@ ADDITIONAL_PROTECTED_ENVIRONMENTS = (
     "prod-preview",
     "governance-preview",
 )
+SERVICE_PROTECTED_ENVIRONMENTS = ("test", "test-preview", "prod", "prod-preview")
 
 
 def _run_gh_api(
@@ -317,6 +318,137 @@ def _existing_rules(existing: dict[str, Any] | None) -> list:
     return rules if isinstance(rules, list) else []
 
 
+def _service_protected_blockers(repo: str, reviewer_id: int) -> list[str]:
+    """A drift-only setup must preserve the existing protected service quartet."""
+    blockers = []
+    for name in SERVICE_PROTECTED_ENVIRONMENTS:
+        blockers.extend(
+            _environment_verification_blockers(
+                repo,
+                environment_name=name,
+                reviewer_id=reviewer_id,
+                blocker_fn=lambda payload, reviewer: (
+                    _protected_environment_verification_blockers(
+                        payload, reviewer, label="Service deployment environment"
+                    )
+                ),
+            )
+        )
+    return blockers
+
+
+def _service_environment_names(repo: str) -> set[str]:
+    """Require a complete inventory before treating an environment as absent."""
+    response = _run_gh_api([f"repos/{repo}/environments?per_page=100"])
+    if not isinstance(response, dict):
+        raise ValueError("Service environment inventory must be an object.")
+    rows = response.get("environments")
+    count = response.get("total_count")
+    if not isinstance(rows, list) or type(count) is not int or count != len(rows):
+        raise ValueError("Service environment inventory must be complete.")
+    return _validated_service_names(rows)
+
+
+def _validated_service_names(rows: list) -> set[str]:
+    names = [row.get("name") for row in rows if isinstance(row, dict)]
+    if len(names) != len(rows) or any(not isinstance(n, str) or not n for n in names):
+        raise ValueError("Service environment names must be non-empty strings.")
+    if len({name.casefold() for name in names}) != len(names):
+        raise ValueError("Service environment inventory contains duplicate names.")
+    _reject_service_drift_aliases(names)
+    return set(names)
+
+
+def _reject_service_drift_aliases(names: list[str]) -> None:
+    reserved = set(_repository_controls.SERVICE_DRIFT_ENVIRONMENTS)
+    if any(name.casefold() in reserved and name not in reserved for name in names):
+        raise ValueError("Scheduled drift environment names must use exact casing.")
+
+
+def _service_drift_blockers(repo: str, name: str) -> list[str]:
+    """Validate actual environment and complete branch-policy readback."""
+    endpoint = f"repos/{repo}/environments/{name}"
+    environment = _run_gh_api([endpoint])
+    if not isinstance(environment, dict):
+        return ["Scheduled drift environment must be a JSON object."]
+    policies = _validated_branch_policies(
+        _run_gh_api([f"{endpoint}/deployment-branch-policies"])
+    )
+    return _repository_controls.service_drift_environment_verification_blockers(
+        {**environment, "deployment_branch_policies": policies}
+    )
+
+
+def configure_service_drift(
+    repo: str, reviewer: str, *, apply: bool, verify_only: bool
+) -> None:
+    """Create only missing drift environments; never rewrite existing controls."""
+    if apply and not _repo_admin_allowed(repo):
+        raise RuntimeError(
+            "repository admin rights are required for service drift setup."
+        )
+    reviewer_id = _github_user_id(reviewer)
+    blockers = _service_protected_blockers(repo, reviewer_id)
+    existing = _service_environment_names(repo)
+    names = _repository_controls.SERVICE_DRIFT_ENVIRONMENTS
+    blockers.extend(_existing_service_drift_blockers(repo, existing, verify_only))
+    if blockers:
+        raise RuntimeError(" ".join(blockers))
+    payload = _repository_controls.service_drift_environment_payload()
+    if apply:
+        _apply_missing_service_drift(repo, existing)
+        blockers = _service_protected_blockers(repo, reviewer_id)
+        blockers.extend(_existing_service_drift_blockers(repo, set(names), True))
+        if blockers:
+            raise RuntimeError(" ".join(blockers))
+    print(
+        json.dumps(
+            {
+                "mode": "service-drift-only",
+                "environments": {name: payload for name in names},
+                "branchPolicies": [{"name": "main", "type": "branch"}],
+                "verified": apply or verify_only,
+            },
+            indent=2,
+        )
+    )
+
+
+def _apply_missing_service_drift(repo: str, existing: set[str]) -> None:
+    for name in _repository_controls.SERVICE_DRIFT_ENVIRONMENTS:
+        if name not in existing:
+            _create_service_drift_environment(repo, name)
+
+
+def _existing_service_drift_blockers(
+    repo: str, existing: set[str], require_present: bool
+) -> list[str]:
+    blockers = []
+    for name in _repository_controls.SERVICE_DRIFT_ENVIRONMENTS:
+        if name in existing:
+            blockers.extend(_service_drift_blockers(repo, name))
+        elif require_present:
+            blockers.append(f"Scheduled drift environment {name} is missing.")
+    return blockers
+
+
+def _create_service_drift_environment(repo: str, name: str) -> None:
+    endpoint = f"repos/{repo}/environments/{name}"
+    _run_gh_api(
+        [endpoint, "--method", "PUT"],
+        input_payload=_repository_controls.service_drift_environment_payload(),
+    )
+    policies = _validated_branch_policies(
+        _run_gh_api([f"{endpoint}/deployment-branch-policies"])
+    )
+    if policies:
+        raise RuntimeError("New drift environment has unexpected branch policies.")
+    _run_gh_api(
+        [f"{endpoint}/deployment-branch-policies", "--method", "POST"],
+        input_payload={"name": "main", "type": "branch"},
+    )
+
+
 def _apply_ruleset(
     repo: str, existing: dict[str, Any] | None, payload: dict[str, Any]
 ) -> None:
@@ -448,9 +580,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo", required=True, help="Repository in owner/name form.")
     parser.add_argument(
         "--promotion-app-id",
-        required=True,
         type=int,
         help="Dedicated GitHub App ID allowed to publish promotion proof.",
+    )
+    parser.add_argument(
+        "--service-drift-only",
+        action="store_true",
+        help=(
+            "Configure only governed-service drift environments; "
+            "preserve protected deployments."
+        ),
     )
     parser.add_argument(
         "--prod-reviewer",
@@ -483,6 +622,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line interface."""
     args = build_parser().parse_args(argv)
     try:
+        if args.service_drift_only:
+            configure_service_drift(
+                args.repo,
+                args.prod_reviewer,
+                apply=args.apply,
+                verify_only=args.verify_only,
+            )
+            return 0
+        if args.promotion_app_id is None:
+            raise ValueError(
+                "--promotion-app-id is required for normal controls setup."
+            )
         configure(
             args.repo,
             args.prod_reviewer,

@@ -131,30 +131,52 @@
       "pillar": "Operational Excellence",
       "score": 4,
       "status": "unresolved",
-      "rationale": "All eight baseline operator/platform/governance/backend-only service targets have successful local saved-plan apply and refreshed drift receipts. Subsequent PR204 TEST governance comment run 34062796631 at ffae8ec17ef7e2c4610fd699f4a2aa2f30734654 also completed plan, apply and drift; PROD and promotion proof were skipped. Exact subsequent receipts and their separate source bindings are recorded in technical-operating-review-2026-09-06.json. This does not certify downstream workload acceptance or the forthcoming corrected source.",
-      "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion, downstream service live/manual acceptance and successful recovery remain. Completed baseline PROD governance and both service targets are no longer listed as missing. No score increase is inferred from baseline or TEST-only success.",
+      "rationale": "Deployment-risk controls have direct evidence: exact saved plans, preflight/account/source checks, bounded IAM, eight baseline apply/drift pairs and the ffae PR204 TEST governance comment plan/apply/drift. Score4 reflects implemented and exercised deployment safeguards, while final same-head protected PROD promotion remains incomplete. R6 additionally proves bounded Backup restore/content/cleanup; it is not protected promotion.",
+      "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion and downstream deployment validation remain. Existing safeguards justify4, but TEST-only comment success does not justify5.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
         "doc:docs/well-architected-current-review-2026-09-06.md",
         "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
-        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
-      ]
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "All eight baseline operator/platform/governance/backend-only service targets have successful local saved-plan apply and refreshed drift receipts. Subsequent PR204 TEST governance comment run 34062796631 at ffae8ec17ef7e2c4610fd699f4a2aa2f30734654 also completed plan, apply and drift; PROD and promotion proof were skipped. Exact subsequent receipts and their separate source bindings are recorded in technical-operating-review-2026-09-06.json. This does not certify downstream workload acceptance or the forthcoming corrected source.",
+          "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion, downstream service live/manual acceptance and successful recovery remain. Completed baseline PROD governance and both service targets are no longer listed as missing. No score increase is inferred from baseline or TEST-only success."
+        }
+      ],
+      "evidenceReviewedAt": "2026-09-07T00:40:05.751210+00:00",
+      "reviewScope": "Actual later technical source/receipt review; original matrix reviewedAt is historical and does not date these later additions."
     },
     {
       "id": "OPS7",
       "pillar": "Operational Excellence",
       "score": 3,
       "status": "unresolved",
-      "rationale": "All eight baseline operator/platform/governance/backend-only service targets have successful local saved-plan apply and refreshed drift receipts. Subsequent PR204 TEST governance comment run 34062796631 at ffae8ec17ef7e2c4610fd699f4a2aa2f30734654 also completed plan, apply and drift; PROD and promotion proof were skipped. Exact subsequent receipts and their separate source bindings are recorded in technical-operating-review-2026-09-06.json. This does not certify downstream workload acceptance or the forthcoming corrected source.",
-      "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion, downstream service live/manual acceptance and successful recovery remain. Completed baseline PROD governance and both service targets are no longer listed as missing. No score increase is inferred from baseline or TEST-only success.",
+      "rationale": "Operational support readiness is broader than deployment safeguards: existing runbooks, eight baseline apply/drift pairs, verified alert transport and successful R6 recovery provide partial readiness. Score3 remains because downstream live/manual support acceptance and current complete operational readiness evidence are not established; successful deployment alone does not prove ongoing support readiness. No human response or personal business commitment is inferred.",
+      "primaryBlocker": "Complete current operational readiness and downstream service/manual support acceptance, plus final protected promotion. This broader support-evidence gap explains score3 versus OPS6 deployment-risk score4; no score increase is made.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
         "doc:docs/well-architected-current-review-2026-09-06.md",
         "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
-        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
-      ]
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "All eight baseline operator/platform/governance/backend-only service targets have successful local saved-plan apply and refreshed drift receipts. Subsequent PR204 TEST governance comment run 34062796631 at ffae8ec17ef7e2c4610fd699f4a2aa2f30734654 also completed plan, apply and drift; PROD and promotion proof were skipped. Exact subsequent receipts and their separate source bindings are recorded in technical-operating-review-2026-09-06.json. This does not certify downstream workload acceptance or the forthcoming corrected source.",
+          "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion, downstream service live/manual acceptance and successful recovery remain. Completed baseline PROD governance and both service targets are no longer listed as missing. No score increase is inferred from baseline or TEST-only success."
+        }
+      ],
+      "evidenceReviewedAt": "2026-09-07T00:40:05.751210+00:00",
+      "reviewScope": "Actual later technical source/receipt review; original matrix reviewedAt is historical and does not date these later additions."
     },
     {
       "id": "OPS8",
@@ -306,14 +328,23 @@
       "pillar": "Security",
       "score": 4,
       "status": "unresolved",
-      "rationale": "All four observed checkpoints use cloud AWS KMS; three existing buckets enforce AES256 SSE-S3, TLS, public blocks and versioning. Recovery copies use explicit SSE-KMS.",
-      "primaryBlocker": "Successful Backup integrity drill and explicit current retention-lock disposition remain; this technical data-retention decision does not renew the expired ObjectLock/VaultLock exemption.",
+      "rationale": "All four observed checkpoints use cloud AWS KMS; three existing buckets enforce AES256 SSE-S3, TLS, public blocks and versioning. Recovery copies use explicit SSE-KMS. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 integrity requirement passed. Current Object Lock/Vault Lock implementation or explicit current retention-lock disposition remains; R6 does not renew the expired exemption.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
         "doc:docs/well-architected-current-review-2026-09-06.md",
         "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
-        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "All four observed checkpoints use cloud AWS KMS; three existing buckets enforce AES256 SSE-S3, TLS, public blocks and versioning. Recovery copies use explicit SSE-KMS.",
+          "primaryBlocker": "Successful Backup integrity drill and explicit current retention-lock disposition remain; this technical data-retention decision does not renew the expired ObjectLock/VaultLock exemption."
+        }
       ]
     },
     {
@@ -350,7 +381,7 @@
       "score": 4,
       "status": "unresolved",
       "rationale": "Current-main source contains pinned dependencies, isolated loaders, CodeQL/Bandit/secrets/dependency gates and exact source-review receipts.",
-      "primaryBlocker": "Fresh default-branch metadata has zero open Dependabot alerts and two open HIGH CodeQL alerts (#11/#12). Source gate mitigation is reviewed but alert disposition and final changed-evidence CI remain pending.",
+      "primaryBlocker": "Historical default-branch GitHub metadata at source5c873f86 recorded zero Dependabot alerts and two open HIGH CodeQL alerts (#11/#12). Current bootstrap alert disposition and final changed-source CI still require fresh evidence; downstream repository checks do not close these bootstrap alerts.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
@@ -416,15 +447,30 @@
       "pillar": "Reliability",
       "score": 4,
       "status": "unresolved",
-      "rationale": "Replication and failure-mode source contracts remain; migration preserved physical-owner partition and encrypted checkpoint semantics.",
-      "primaryBlocker": "Three current checkpoint replicas match version/ETag/size. Live TEST platform logging target server-access/<bucket>/ is outside actual central allow aws-logs/*; narrow source repair and post-apply delivery verification remain. Service logging prefix matches but actual delivered access-log sample is absent.",
+      "rationale": "Historical replica metadata matched version/ETag/size. Subsequent reviewed TEST and PROD platform logging saved-plan applies and refreshed drifts passed, installing aws-logs/<bucket>/ prefixes aligned with the existing central allow. This repair proof is distinct from actual delivered S3 server-access log samples.",
+      "primaryBlocker": "Post-repair delivered S3 server-access log samples for the platform and service buckets remain unverified by this review. The old server-access prefix defect is fixed; no longer list source repair or apply as pending.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
         "doc:docs/well-architected-current-review-2026-09-06.md",
         "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
-        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
-      ]
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:outputs/test-platform-logging-plan-review.json",
+        "file:outputs/test-platform-logging-apply-execution.json",
+        "file:outputs/test-platform-logging-drift-execution.json",
+        "file:outputs/prod-platform-logging-plan-review.json",
+        "file:outputs/prod-platform-logging-apply-execution.json",
+        "file:outputs/prod-platform-logging-drift-execution.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "Replication and failure-mode source contracts remain; migration preserved physical-owner partition and encrypted checkpoint semantics.",
+          "primaryBlocker": "Three current checkpoint replicas match version/ETag/size. Live TEST platform logging target server-access/<bucket>/ is outside actual central allow aws-logs/*; narrow source repair and post-apply delivery verification remain. Service logging prefix matches but actual delivered access-log sample is absent."
+        }
+      ],
+      "evidenceReviewedAt": "2026-09-07T00:48:50.145860+00:00"
     },
     {
       "id": "REL6",
@@ -474,14 +520,23 @@
       "pillar": "Reliability",
       "score": 3,
       "status": "unresolved",
-      "rationale": "Versioned/encrypted S3 state and Backup source/runbooks exist; April restore is historical and recent failed restore cleanup is recorded.",
-      "primaryBlocker": "R3 canary content and cleanup passed according to root; delivered Put/Get CloudTrail proof and actual successful restore/content verification remain pending. No date-only renewal.",
+      "rationale": "Versioned/encrypted S3 state and Backup source/runbooks exist; April restore is historical and recent failed restore cleanup is recorded. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 closes the current successful restore/content/cleanup requirement. The question contract also requires current backup health and Vault/Object Lock or a current exemption; retain unresolved until those distinct controls are verified or legitimately decided.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
         "doc:docs/well-architected-current-review-2026-09-06.md",
         "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
-        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "Versioned/encrypted S3 state and Backup source/runbooks exist; April restore is historical and recent failed restore cleanup is recorded.",
+          "primaryBlocker": "R3 canary content and cleanup passed according to root; delivered Put/Get CloudTrail proof and actual successful restore/content verification remain pending. No date-only renewal."
+        }
       ]
     },
     {
@@ -502,14 +557,23 @@
       "pillar": "Reliability",
       "score": 3,
       "status": "unresolved",
-      "rationale": "Source has explicit state/KMS/replication/backup recovery runbooks; actual migration failure stopped before unsafe retry.",
-      "primaryBlocker": "Current technical incident tabletop and real migration failure recovery refreshed. Successful measured Backup/degraded recovery remains unproved; migration is not a Backup restore drill.",
+      "rationale": "Source has explicit state/KMS/replication/backup recovery runbooks; actual migration failure stopped before unsafe retry. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 supplies measured Backup recovery after real failed attempts. Remaining component/degraded-mode requirements, including current repaired log-delivery verification, are not established by the single-object restore.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
         "doc:docs/well-architected-current-review-2026-09-06.md",
         "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
-        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "Source has explicit state/KMS/replication/backup recovery runbooks; actual migration failure stopped before unsafe retry.",
+          "primaryBlocker": "Current technical incident tabletop and real migration failure recovery refreshed. Successful measured Backup/degraded recovery remains unproved; migration is not a Backup restore drill."
+        }
       ]
     },
     {
@@ -517,14 +581,23 @@
       "pillar": "Reliability",
       "score": 4,
       "status": "unresolved",
-      "rationale": "Current focused/full source validation receipts and real synthetic maintenance/migration refusal tests provide substantial test evidence.",
-      "primaryBlocker": "Real SNS/SQS/GitHub route and acknowledgement passed. Remaining restore and service runtime/promotion scenarios must succeed before full acceptance.",
+      "rationale": "Current focused/full source validation receipts and real synthetic maintenance/migration refusal tests provide substantial test evidence. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 restore reliability scenario passed. Final service runtime and protected same-head TEST/PROD promotion scenarios remain.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
         "doc:docs/well-architected-current-review-2026-09-06.md",
         "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
-        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "Current focused/full source validation receipts and real synthetic maintenance/migration refusal tests provide substantial test evidence.",
+          "primaryBlocker": "Real SNS/SQS/GitHub route and acknowledgement passed. Remaining restore and service runtime/promotion scenarios must succeed before full acceptance."
+        }
       ]
     },
     {
@@ -532,14 +605,23 @@
       "pillar": "Reliability",
       "score": 3,
       "status": "unresolved",
-      "rationale": "PROD ownership migration finalized without physical resource recreation; reviewed recovery ordering and historical TEST drill exist. TEST and PROD operator/platform local saved-plan apply and refreshed no-change drift now succeeded; these are not PR-comment protected promotion or downstream service/DR acceptance.",
-      "primaryBlocker": "No current successful PROD recovery drill or actual production RTO/RPO/communications commitment is supplied; TEST/local migration outcomes do not substitute.",
+      "rationale": "PROD ownership migration finalized without physical resource recreation; reviewed recovery ordering and historical TEST drill exist. TEST and PROD operator/platform local saved-plan apply and refreshed no-change drift now succeeded; these are not PR-comment protected promotion or downstream service/DR acceptance. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 is a TEST-only single-object recovery with measured job duration; no current PROD recovery drill or production RTO/RPO/communications commitment is supplied.",
       "evidenceRefs": [
         "source:5c873f86fa956f6b96a09e2887297905467b8562",
         "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
         "doc:docs/well-architected-current-review-2026-09-06.md",
         "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
-        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "PROD ownership migration finalized without physical resource recreation; reviewed recovery ordering and historical TEST drill exist. TEST and PROD operator/platform local saved-plan apply and refreshed no-change drift now succeeded; these are not PR-comment protected promotion or downstream service/DR acceptance.",
+          "primaryBlocker": "No current successful PROD recovery drill or actual production RTO/RPO/communications commitment is supplied; TEST/local migration outcomes do not substitute."
+        }
       ]
     },
     {
@@ -844,5 +926,29 @@
     }
   ],
   "reviewer": "Codex (delegated technical review)",
-  "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562"
+  "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+  "supplementalTechnicalReview": {
+    "reviewedAt": "2026-09-07T00:20:17.535057+00:00",
+    "reviewer": "Codex security_review (delegated technical reviewer; root executed the live drill)",
+    "scope": "R6 restore only; original reviewedAt/sourceCommit and other observations retained. No personal approval or blanket freshness renewal.",
+    "evidence": "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+  },
+  "receiptBindings": {
+    "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json": "ac448e163e3eeca0f7b71299ccd82e7211d74c98b2cc566894fabd9bc4620baa",
+    "outputs/test-platform-logging-plan-review.json": "f38e3fe6bc6560cd50fbcfbe3a56857c883216fe3d7848a4eaa68dd7514744bc",
+    "outputs/test-platform-logging-apply-execution.json": "79b663cb1035bbe00f3b4fefaa04c9edf175f0e74242455437b852108ba73269",
+    "outputs/test-platform-logging-drift-execution.json": "400ebd91e22a69a25fcf49c78573b7fe3017cbcdf69fb0197bdffb844091109e",
+    "outputs/prod-platform-logging-plan-review.json": "3dfbff3c316346e1422cfcc32019e8cce0d1de54f1e5f6c88e6cee82bd4fdce8",
+    "outputs/prod-platform-logging-apply-execution.json": "45e10d2f6eefe4470b5b4e0d3d1ed85d8dae874c6ca1321d3504c99197a204b1",
+    "outputs/prod-platform-logging-drift-execution.json": "c5c13957f7eab6a5bef4ca618d13b67b7434e44f312a157a2832a95a551c56e4"
+  },
+  "reviewCorrection": {
+    "reviewedAt": "2026-09-07T00:40:05.751210+00:00",
+    "reviewer": "Codex security_review (delegated technical reviewer)",
+    "findingIds": [
+      3945750842,
+      3945750847
+    ],
+    "scope": "Distinguish OPS6/OPS7 scores and date actual supplemental evidence review. No score/status/counter change or blanket historical freshness renewal."
+  }
 }

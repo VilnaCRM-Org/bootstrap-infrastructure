@@ -9380,6 +9380,11 @@ def test_run_up_stack_rejects_direct_apply_in_github_actions(
     ):
         monkeypatch.setattr(module, name, forbidden_preparation)
     assert module.main(["up"]) == 1
+    assert "pulumi-up-plan" in capsys.readouterr().err
+    assert module.main(["destroy"]) == 1
+    destroy_message = capsys.readouterr().err
+    assert "separately authorized local operation" in destroy_message
+    assert "pulumi-up-plan" not in destroy_message
     assert module._run_up_stack(context, "test") == 1  # nosec B101
     assert "direct Pulumi up is disabled in GitHub Actions" in (  # nosec B101
         capsys.readouterr().err

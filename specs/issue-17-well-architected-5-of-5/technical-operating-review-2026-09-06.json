@@ -24,7 +24,8 @@
     "outputs/pr78-live-read-role-authorization-qa.json": "43f7bedc53324f9198eb32e7a0ca76d57d43c09b5659fbdfdd79a42898f90617",
     "work/wa-runtime-closure/remaining-evidence/metadata.json": "06739ce21e72ddee0a9c9176d69b3c6c2fe60b8e802c284beceff32c33ad4851",
     "work/wa-runtime-closure/remaining-evidence/logging-supplement.json": "e42376f851470e3db6948280a47cdada299e91fcc7293420e1bfc86a8b50aff8",
-    "work/wa-runtime-closure/remaining-evidence/github-security.json": "68b7993a2b4c65abc34f55a800868234824b9eed67b287edfd8cdc79c9cedcac"
+    "work/wa-runtime-closure/remaining-evidence/github-security.json": "68b7993a2b4c65abc34f55a800868234824b9eed67b287edfd8cdc79c9cedcac",
+    "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json": "ac448e163e3eeca0f7b71299ccd82e7211d74c98b2cc566894fabd9bc4620baa"
   },
   "classificationAndRetentionDecisions": [
     {
@@ -178,12 +179,6 @@
     "dependabotOpen": 0,
     "pathsSourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562"
   },
-  "remainingRuntimeLimits": [
-    "No successful R3 Backup restore yet; delivered canary event proof pending at parent status.",
-    "PROD governance reviewed plan is not yet an apply/drift receipt here; service initialization and true downstream TEST/PROD promotion remain separate.",
-    "Platform access-log target is outside the current allowed prefix; source repair assigned to another agent, not claimed applied.",
-    "No personal Kravalg approval or renewed production RTO/RPO/lock exemption has been fabricated."
-  ],
   "sourceBindings": {
     "pulumi/repositories.bootstrap.json": "cc87f64b1b1005bd2a2a447ce695c8d1fca236f2280ed03b112afdf930b814ad",
     "pulumi/repositories.governance.json": "1c375faf18edbd3de08ccf7c94b57afd0af0059f5ccad23f792a13a646286a7b",
@@ -310,5 +305,31 @@
       }
     },
     "remaining": "The new initializer correction still requires a frozen source review and current-head validation. Final same-revision PROD comment promotion, downstream live acceptance, successful restore and unresolved WA requirements remain. Prior snapshot observations and historical receipt hashes above are preserved."
+  },
+  "historicalRuntimeLimits": {
+    "observedAt": "2026-09-06T21:28:37.505289+00:00",
+    "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+    "limits": [
+      "No successful R3 Backup restore yet; delivered canary event proof pending at parent status.",
+      "PROD governance reviewed plan is not yet an apply/drift receipt here; service initialization and true downstream TEST/PROD promotion remain separate.",
+      "Platform access-log target is outside the current allowed prefix; source repair assigned to another agent, not claimed applied.",
+      "No personal Kravalg approval or renewed production RTO/RPO/lock exemption has been fabricated."
+    ],
+    "scope": "Original snapshot before subsequentDeploymentProgress; preserved history, not current absence assertions."
+  },
+  "remainingRuntimeLimits": [
+    "PROD governance apply/drift and all eight local baseline pairs are now evidenced by subsequentDeploymentProgress. Current same-head protected TEST/PROD promotion and downstream workload/support acceptance still require separate receipts.",
+    "R6 TEST Backup restore/content/cleanup passed; no PROD restore or production RTO/RPO/communications commitment is inferred.",
+    "Current repaired platform logging delivery and final CodeQL/current-source checks require their own later receipts; historical source observations above are not assertions about current deployed state.",
+    "No personal Kravalg approval, organization SSO approval or renewed production retention-lock exemption is represented."
+  ],
+  "reviewCorrection": {
+    "reviewedAt": "2026-09-07T00:40:05.751210+00:00",
+    "reviewer": "Codex security_review (delegated technical reviewer)",
+    "findingIds": [
+      3945750845
+    ],
+    "scope": "Reconcile historical limits against exact later PROD governance PASS receipt hashes and R6 TEST outcome. Preserve original observation dates and source hashes.",
+    "restoreEvidence": "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
   }
 }

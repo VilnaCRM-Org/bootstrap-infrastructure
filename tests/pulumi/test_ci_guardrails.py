@@ -442,199 +442,51 @@ def test_nightly_guardrails_workflow_covers_drift_and_scorecard() -> None:
     assert any("upload-sarif@" in uses for uses in scorecard_uses)  # nosec B101
 
 
-def test_well_architected_evidence_workflow_uploads_enforced_reports() -> None:
-    """Keep the Well-Architected evidence workflow enforced and artifact-backed."""
+def test_well_architected_data_workflow_is_unprivileged_and_advisory() -> None:
+    """PR data checks cannot impersonate the protected App evidence result."""
     workflow = _workflow("well-architected-evidence.yml")
-    actionlint_config = yaml.safe_load(ACTIONLINT_CONFIG.read_text(encoding="utf-8"))
-    jobs = workflow["jobs"]
     triggers = _triggers(workflow)
-    evidence_steps = jobs["test_account_evidence"]["steps"]
-    mode_step = next(
-        step
-        for step in jobs["evidence_mode"]["steps"]
-        if step.get("name") == "Select evidence mode"
+    assert set(triggers) == {"pull_request", "push", "schedule", "workflow_dispatch"}
+    assert triggers["push"]["branches"] == ["main"]
+    assert set(workflow["jobs"]) == {"evidence_data"}
+    assert workflow["permissions"] == {"contents": "read"}
+    job = workflow["jobs"]["evidence_data"]
+    assert job["name"] == "Well-Architected Data Validation (Advisory)"
+    assert job["permissions"] == {"contents": "read"}
+    assert "environment" not in job
+    steps = job["steps"]
+    checkout = next(
+        step for step in steps if step.get("uses", "").startswith("actions/checkout@")
     )
-    preflight_step = next(
-        step
-        for step in evidence_steps
-        if step.get("name") == "Validate evidence prerequisites"
-    )
-    oidc_step = next(
-        step
-        for step in evidence_steps
-        if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
-    )
-    ci_config_step = next(
-        step for step in evidence_steps if step.get("id") == "ci_config"
-    )
-    ci_config_target_step = next(
-        step
-        for step in evidence_steps
-        if step.get("name") == "Select test AWS CI configuration"
-    )
-    checkout_step = next(
-        step
-        for step in evidence_steps
-        if step.get("uses", "").startswith("actions/checkout@")
-    )
-    wait_step = next(
-        step
-        for step in evidence_steps
-        if step.get("name") == "Wait for PR checks before evidence snapshot"
-    )
-    collector_step = next(
-        step
-        for step in evidence_steps
-        if step.get("name") == "Collect Well-Architected evidence"
-    )
-    upload_step = next(
-        step
-        for step in evidence_steps
-        if step.get("uses", "").startswith("actions/upload-artifact@")
-    )
-    enforce_step = next(
-        step
-        for step in evidence_steps
-        if step.get("name") == "Enforce Well-Architected evidence"
-    )
-    unprivileged_run = next(
-        step.get("run", "")
-        for step in jobs["unprivileged_evidence"]["steps"]
-        if step.get("name") == "Record skipped AWS evidence"
-    )
-
-    assert "pull_request" in triggers  # nosec B101
-    assert triggers["push"]["branches"] == ["main"]  # nosec B101
-    assert triggers["schedule"] == [{"cron": "17 6 9 * *"}]  # nosec B101
-    assert "workflow_dispatch" in triggers  # nosec B101
-    assert workflow["permissions"] == {"contents": "read"}  # nosec B101
-    assert workflow["concurrency"]["cancel-in-progress"] is True  # nosec B101
-    assert jobs["evidence_mode"]["outputs"] == {  # nosec B101
-        "privileged": "${{ steps.evidence_mode.outputs.privileged }}"
-    }
-    assert "Fork pull request detected" in mode_step["run"]  # nosec B101
-    assert "environment" not in jobs["test_account_evidence"]  # nosec B101
-    assert (  # nosec B101
-        ci_config_step["with"]["environment"]
-        == "${{ steps.ci_config_target.outputs.environment }}"
-    )
-    assert (  # nosec B101
-        ci_config_step["with"]["config-role-arn"]
-        == "${{ steps.ci_config_target.outputs.config-role-arn }}"
-    )
-    assert "AWS_TEST_PR_CI_CONFIG_ROLE_ARN" in ci_config_target_step["run"]  # nosec B101
-    assert "AWS_TEST_CI_CONFIG_ROLE_ARN" in ci_config_target_step["run"]  # nosec B101
-    assert "must be set" in ci_config_target_step["run"]  # nosec B101
-    assert "||" not in ci_config_step["with"]["config-role-arn"]  # nosec B101
-    assert "OPERATIONS_TOPIC_ARN" in ci_config_step["with"]["required-keys"]  # nosec B101
-    assert jobs["test_account_evidence"]["permissions"] == {  # nosec B101
-        "contents": "read",
-        "id-token": "write",
-        "pull-requests": "read",
-        "vulnerability-alerts": "read",
-    }
-    actionlint_ignores = actionlint_config["paths"][
-        ".github/workflows/well-architected-evidence.yml"
-    ]["ignore"]
-    assert any("vulnerability-alerts" in item for item in actionlint_ignores)  # nosec B101
-    assert (  # nosec B101
-        checkout_step["with"]["ref"]
-        == "${{ github.event.pull_request.head.sha || github.sha }}"
-    )
-    assert checkout_step["with"]["persist-credentials"] is False  # nosec B101
-    assert "expected_checks=(" in wait_step["run"]  # nosec B101
-    assert "Test Account Evidence" not in wait_step["run"]  # nosec B101
-    assert "OPERATIONS_TOPIC_ARN" in preflight_step["run"]  # nosec B101
-    for evidence_name in (
-        "RESTORE_DRILL_EVIDENCE",
-        "QUESTION_MATRIX_EVIDENCE",
-        "EXTERNAL_CONTROL_EVIDENCE",
-        "ALERT_ROUTE_OBSERVATION_EVIDENCE",
-        "SECURITY_ACCOUNT_ATTESTATION_EVIDENCE",
-        "PRODUCTION_DR_OWNER_EVIDENCE",
+    assert checkout["with"]["persist-credentials"] is False
+    commands = "\n".join(step.get("run", "") for step in steps)
+    assert 'env -i HOME="$HOME" PATH="$PATH"' in commands
+    assert "tests/unit/test_well_architected_evidence_data.py" in commands
+    assert "--no-cov" in commands
+    assert "does not grant Well-Architected acceptance" in commands
+    assert "env" not in workflow and "env" not in job
+    for step in steps:
+        assert "env" not in step
+        assert not step.get("uses", "").startswith(
+            ("aws-actions/", "./", "VilnaCRM-Org/")
+        )
+    text = str(workflow)
+    for credential in (
+        "secrets.",
+        "github.token",
+        "id-token",
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "AWS_",
     ):
-        assert evidence_name in preflight_step["run"]  # nosec B101
-    assert "12-digit AWS account ID" in preflight_step["run"]  # nosec B101
-    assert "SNS topic ARN" in preflight_step["run"]  # nosec B101
-    assert (  # nosec B101
-        jobs["test_account_evidence"]["env"]["DEPENDABOT_EXCEPTION_EVIDENCE"]
-        == "${{ vars.DEPENDABOT_EXCEPTION_EVIDENCE }}"
+        assert credential not in text
+    assert "Test Account Evidence" not in {
+        item["name"] for item in workflow["jobs"].values()
+    }
+    config = yaml.safe_load(ACTIONLINT_CONFIG.read_text())
+    assert ".github/workflows/well-architected-evidence.yml" not in config.get(
+        "paths", {}
     )
-    assert (  # nosec B101
-        jobs["test_account_evidence"]["env"]["RESTORE_DRILL_EVIDENCE"]
-        == "specs/issue-17-well-architected-5-of-5/"
-        "restore-drill-evidence-2026-04-27.json"
-    )
-    question_matrix_evidence = (
-        "specs/issue-17-well-architected-5-of-5/"
-        "question-matrix-evidence-2026-09-06.json"
-    )
-    assert (  # nosec B101
-        jobs["test_account_evidence"]["env"]["QUESTION_MATRIX_EVIDENCE"]
-        == question_matrix_evidence
-    )
-    external_control_evidence = (
-        "specs/issue-17-well-architected-5-of-5/"
-        "external-control-evidence-2026-09-06.json"
-    )
-    assert (  # nosec B101
-        jobs["test_account_evidence"]["env"]["EXTERNAL_CONTROL_EVIDENCE"]
-        == external_control_evidence
-    )
-    alert_route_evidence = (
-        "${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE || "
-        "'specs/issue-17-well-architected-5-of-5/"
-        "alert-route-observation-2026-09-06-technical.json' }}"
-    )
-    assert (  # nosec B101
-        jobs["test_account_evidence"]["env"]["ALERT_ROUTE_OBSERVATION_EVIDENCE"]
-        == alert_route_evidence
-    )
-    security_attestation_evidence = (
-        "${{ vars.SECURITY_ACCOUNT_ATTESTATION_EVIDENCE || "
-        "'specs/issue-17-well-architected-5-of-5/"
-        "security-account-attestation-2026-09-06-technical.json' }}"
-    )
-    assert (  # nosec B101
-        jobs["test_account_evidence"]["env"]["SECURITY_ACCOUNT_ATTESTATION_EVIDENCE"]
-        == security_attestation_evidence
-    )
-    production_dr_evidence = (
-        "${{ vars.PRODUCTION_DR_OWNER_EVIDENCE || "
-        "'specs/issue-17-well-architected-5-of-5/"
-        "production-dr-owner-2026-05-17.json' }}"
-    )
-    assert (  # nosec B101
-        jobs["test_account_evidence"]["env"]["PRODUCTION_DR_OWNER_EVIDENCE"]
-        == production_dr_evidence
-    )
-    assert (  # nosec B101
-        oidc_step["with"]["role-to-assume"]
-        == "${{ steps.ci_config.outputs.aws-preview-role-arn }}"
-    )
-    assert (  # nosec B101
-        oidc_step["with"]["allowed-account-ids"]
-        == "${{ steps.ci_config.outputs.aws-account-id }}"
-    )
-    assert "uv==0.9.21" in " ".join(  # nosec B101
-        step.get("run", "") for step in evidence_steps
-    )
-    assert (  # nosec B101
-        "./scripts/collect_well_architected_evidence.py" in collector_step["run"]
-    )
-    assert "make verify-well-architected-questions" in collector_step["run"]  # nosec B101
-    assert "make report-well-architected-closeout" in collector_step["run"]  # nosec B101
-    assert "owner-closeout-bundle.md" in collector_step["run"]  # nosec B101
-    assert "Well-Architected Closeout Audit" in collector_step["run"]  # nosec B101
-    assert "GITHUB_STEP_SUMMARY" in collector_step["run"]  # nosec B101
-    assert "exit 1" not in collector_step["run"]  # nosec B101
-    assert upload_step["with"]["name"] == "well-architected-evidence"  # nosec B101
-    assert upload_step["with"]["path"] == ".artifacts/well-architected"  # nosec B101
-    assert upload_step["with"]["retention-days"] == 90  # nosec B101
-    assert "github.event_name != 'schedule'" in enforce_step["if"]  # nosec B101
-    assert "steps.collector.outputs.exit_code != '0'" in enforce_step["if"]  # nosec B101
-    assert "exit 1" in enforce_step["run"]  # nosec B101
-    assert "credentials are unavailable to untrusted forks" in unprivileged_run  # nosec B101
 
 
 def test_new_guardrail_scripts_and_configs_are_present() -> None:

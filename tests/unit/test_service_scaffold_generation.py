@@ -117,6 +117,7 @@ def test_generation_is_complete_and_hashes_every_input(tmp_path):
         "scripts/initialize_service_stack.py",
         ".github/workflows/pulumi-pr-commands.yml",
         ".github/workflows/self-deploy.yml",
+        ".github/workflows/scheduled-drift.yml",
         ".github/workflows/initialize-stack.yml",
         ".github/workflows/governance-promotion.yml",
         "scripts/governance_promotion.py",

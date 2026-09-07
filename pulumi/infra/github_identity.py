@@ -83,3 +83,37 @@ def validate_trust_policy_size(document: str) -> str:
             "update the supported contract; do not remove identity claims."
         )
     return document
+
+
+def scheduled_drift_trust_statement(
+    provider_arn: str,
+    repository: str,
+    environment: str,
+    repository_id: str | None,
+    owner_id: str | None,
+) -> dict[str, object]:
+    """Bind unattended service drift to its distinct main-only environment."""
+    if environment not in ("test", "prod"):
+        raise ValueError("Scheduled service drift supports only test and prod.")
+    return {
+        "Effect": "Allow",
+        "Principal": {"Federated": provider_arn},
+        "Action": "sts:AssumeRoleWithWebIdentity",
+        "Condition": {
+            "StringEquals": {
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+                "token.actions.githubusercontent.com:sub": expand_subjects(
+                    [f"repo:{repository}:environment:{environment}-drift"],
+                    repository,
+                    repository_id,
+                    owner_id,
+                ),
+                "token.actions.githubusercontent.com:repository": repository,
+                **identity_conditions(repository_id, owner_id),
+                "token.actions.githubusercontent.com:ref": "refs/heads/main",
+                "token.actions.githubusercontent.com:workflow": (
+                    "Service Scheduled Drift"
+                ),
+            }
+        },
+    }

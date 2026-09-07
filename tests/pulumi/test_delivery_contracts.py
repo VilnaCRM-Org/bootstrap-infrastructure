@@ -791,10 +791,6 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
             "prod-preview",
             "${{ steps.ci_config.outputs.aws-drift-role-arn }}",
         ),
-        ("well-architected-evidence.yml", "test_account_evidence"): (
-            test_pr_environment,
-            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
-        ),
         ("operations-alert-triage.yml", "triage_operations_alerts"): (
             "test",
             "${{ steps.ci_config.outputs.aws-operations-alert-triage-role-arn }}",

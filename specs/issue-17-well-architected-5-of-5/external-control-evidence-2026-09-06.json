@@ -5,9 +5,8 @@
   "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
   "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
   "controlCount": 8,
-  "unresolvedControlCount": 2,
+  "unresolvedControlCount": 1,
   "unresolvedControlIds": [
-    "backup_restore",
     "production_approval"
   ],
   "evidenceLocation": "docs/well-architected-current-review-2026-09-06.md",
@@ -31,12 +30,24 @@
     },
     {
       "id": "backup_restore",
-      "status": "unresolved",
+      "status": "passed",
       "evidence": [
-        "R3 canary content and cleanup passed according to root; delivered Put/Get CloudTrail proof and actual successful restore/content verification remain pending. No date-only renewal.",
-        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json"
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json",
+        "Actual TEST R6 job 4d9f551a-92cd-42df-9ef1-a3dd38cafc11 COMPLETED; exact content, positive pre-start canary CloudTrail delivery and full cleanup verified."
       ],
-      "unresolvedReason": "R3 canary content and cleanup passed according to root; delivered Put/Get CloudTrail proof and actual successful restore/content verification remain pending. No date-only renewal."
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "ae7c30953314343b297bf6d7f639104cdc929e49e22476768d630ca70f5ec48e",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "id": "backup_restore",
+          "status": "unresolved",
+          "evidence": [
+            "R3 canary content and cleanup passed according to root; delivered Put/Get CloudTrail proof and actual successful restore/content verification remain pending. No date-only renewal.",
+            "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json"
+          ],
+          "unresolvedReason": "R3 canary content and cleanup passed according to root; delivered Put/Get CloudTrail proof and actual successful restore/content verification remain pending. No date-only renewal."
+        }
+      ]
     },
     {
       "id": "finops",
@@ -79,5 +90,14 @@
       ],
       "unresolvedReason": "Actual current same-head platform TEST/PROD protected PR-comment deployments and PROD approval remain; five local apply/drift pairs are not promotion substitution. Downstream protected environments are installed; service outcomes remain pending."
     }
-  ]
+  ],
+  "supplementalTechnicalReview": {
+    "reviewedAt": "2026-09-07T00:20:17.535057+00:00",
+    "reviewer": "Codex security_review (delegated technical reviewer; root executed the live drill)",
+    "scope": "R6 restore only; original reviewedAt/sourceCommit and other observations retained. No personal approval or blanket freshness renewal.",
+    "evidence": "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+  },
+  "receiptBindings": {
+    "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json": "ac448e163e3eeca0f7b71299ccd82e7211d74c98b2cc566894fabd9bc4620baa"
+  }
 }

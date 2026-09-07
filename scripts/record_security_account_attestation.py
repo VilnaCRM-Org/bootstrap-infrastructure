@@ -67,6 +67,7 @@ def _blocker_lines(check: dict[str, Any]) -> str:
 
 def render_attestation(report: dict[str, Any], args: argparse.Namespace) -> str:
     check, evidence = _iam_access_check(report)
+    _validate_technical_account_evidence(args, evidence)
     action_lines = _markdown_list(args.action, "No follow-up actions recorded.")
 
     return "\n".join(
@@ -181,6 +182,7 @@ def structured_attestation(
 ) -> dict[str, object]:
     """Return machine-readable, non-secret security-owner attestation evidence."""
     _check, evidence = _iam_access_check(report)
+    _validate_technical_account_evidence(args, evidence)
     if not args.action:
         raise ValueError(
             "structured security account attestation requires at least one --action"
@@ -208,6 +210,16 @@ def structured_attestation(
             for field in SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
         },
     }
+
+
+def _validate_technical_account_evidence(
+    args: argparse.Namespace, evidence: dict[str, Any]
+) -> None:
+    """A technical no-active-keys claim requires an observed exact zero count."""
+    if args.approval_decision.strip().lower() == "technical_review":
+        count = evidence.get("activeUserAccessKeyCount")
+        if type(count) is not int or count != 0:
+            raise ValueError("Technical review requires observed zero active IAM keys.")
 
 
 def _validate_attestation_choices(args: argparse.Namespace) -> None:

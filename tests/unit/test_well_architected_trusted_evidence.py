@@ -294,3 +294,30 @@ def test_duplicate_report_rows_cannot_cover_missing_controls(bundle):
             target=target,
             current_head=target.head_sha,
         )
+
+
+def test_symlink_bundle_root_is_not_an_authenticated_evidence_directory(bundle):
+    root, manifest, target, now = bundle
+    link = root / "linked-root"
+    link.symlink_to(root, target_is_directory=True)
+    with pytest.raises(ValueError, match="symlinks"):
+        verify((link, manifest, target, now))
+
+
+@pytest.mark.parametrize("value", [None, 0, "invalid", "2026-09-06T00:00:00"])
+def test_timestamp_requires_text_and_timezone(value):
+    with pytest.raises(ValueError):
+        trusted.parse_timestamp(value)
+
+
+def test_utc_z_bundle_works_with_python310_parser_semantics(bundle, monkeypatch):
+    class Python310DateTime(dt.datetime):
+        @classmethod
+        def fromisoformat(cls, value):
+            assert not value.endswith("Z"), "Python 3.10 does not accept UTC Z"
+            return super().fromisoformat(value)
+
+    monkeypatch.setattr(trusted.dt, "datetime", Python310DateTime)
+    for field in ("issued_at", "expires_at"):
+        bundle[1][field] = bundle[1][field].replace("+00:00", "Z")
+    assert verify(bundle) == bundle[1]

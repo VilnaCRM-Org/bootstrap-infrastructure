@@ -1,0 +1,406 @@
+{
+  "schema_version": 1,
+  "status": "R6_REVIEW_CANDIDATE_NOT_EXECUTED",
+  "account": "891377212104",
+  "region": "eu-central-1",
+  "profile": "vilnacrm-test",
+  "drill_id": "20260907-r6-c3d205a2",
+  "candidate_expires_at": "2026-09-07T03:30:00Z",
+  "prior_result": "R5 completed with a partial-restore warning: three PutObject attempts to test.json.bak explicitly denied while test.json was restored byte-exact. R5 remains failed; R6 selects the backed-up .bak object whose complete prefix inventory has no siblings.",
+  "prior_job_id": "8a1ef01a-bd29-4732-939c-40fcb654604b",
+  "prior_artifacts": {
+    "work/wa-runtime-closure/restore-r5/proposal.json": "6d9988990c1a8c6a5cb4c2a5b508e709bb9d5a4e1c0fed3088c0d3ae3e58722b",
+    "work/wa-runtime-closure/restore-r5/execute.py": "7f96075639a5828484be4b2eef529c4bf5378ebd82269866749d41b690bb9d6f",
+    "work/wa-runtime-closure/restore-r5/four-key-relationships.json": "7a513d5a9c68c0a34461c995ed562259cf2780cf56c9ef5ba616db162d15f06c",
+    "work/wa-runtime-closure/restore-r5/content-integrity-only.json": "1514bf01d7b430923446556258f2b31f7074e74f84f1d0f293f382c862ea77cc",
+    "work/wa-runtime-closure/restore-r6/selection-metadata.json": "e4cf0667e2209246521ccc9cc80e67df4952c836fe76af951594d1ed120572a2",
+    "work/wa-runtime-closure/restore-r6/selected-source-hash.json": "811c0d38004eb1bfdbcdcbccda42bfac1253abb15465ba061edc52b4211bb04c"
+  },
+  "diagnostic_change": {
+    "mode": "Append BASIC selector; no AdvancedEventSelectors conversion",
+    "added_selector": {
+      "ReadWriteType": "All",
+      "IncludeManagementEvents": false,
+      "DataResources": [
+        {
+          "Type": "AWS::S3::Object",
+          "Values": [
+            "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/"
+          ]
+        }
+      ],
+      "ExcludeManagementEventSources": []
+    },
+    "preservation": "Existing selectors remain exact first array elements; no trail settings, management coverage, KMS key, delivery destination, vault notification or subscriber changes.",
+    "before_selector_payload_sha256": "d13c903620035b96f43776d9e41ff52cf3adbf45c406c48ba9bb3cbc90029194",
+    "after_selector_payload_sha256": "34580db2b1c5d0a223d5a636f3b365a21b8aedce68f28ce130b41068416d40ad",
+    "exclusive_change_window_required": true,
+    "maximum_selector_window_minutes": 120,
+    "automatic_overwrite_on_concurrent_change": false
+  },
+  "retry_inputs": {
+    "selection": {
+      "recovery_point_arn": "arn:aws:backup:eu-central-1:891377212104:recovery-point:pulumi-bootstrap-infrastructure-test-sta-20260905051952-07bdf25f",
+      "backup_vault_name": "s3-backup-vault-3b9f5bf",
+      "recovery_status": "COMPLETED",
+      "vault_key_arn": "arn:aws:kms:eu-central-1:891377212104:key/31489f45-efef-412a-affb-51b1103f6d02",
+      "vault_key_manager": "AWS",
+      "vault_key_enabled": true,
+      "recovery_creation_utc": "2026-09-05T05:00:00Z",
+      "recovery_completion_utc": "2026-09-05T05:45:41.860Z",
+      "recovery_metadata_snapshot_utc": "2026-09-05T05:40:32Z",
+      "source_bucket": "pulumi-bootstrap-infrastructure-test-state",
+      "source_key": "state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak",
+      "source_version_id": "hG.O7vsYLU05uqnGDn.Zr4DH0mfNevE9",
+      "expected_bytes": 1135467,
+      "source_last_modified": "2026-06-08T02:41:58Z",
+      "next_newer_source_version_at": "2026-09-05T20:35:11Z",
+      "source_encryption": "AES256",
+      "source_checksum_crc64nvme": null,
+      "expected_sha256": "9a520cb11d36bc20723ca305b2598f5e27a7c7a18e507060f72d90250dabbc21",
+      "sha256_status": "Exact version read once in memory, never parsed or persisted; fixed SHA256 bound before execution.",
+      "version_selection_note": "Complete version listing has one distinct matching key and no markers. The selected version is uniquely latest before the whole recovery interval; newer version first appears after backup completion. Actual R5 denied PutObject to this .bak key establishes recovery-point inclusion independently; live R6 must still prove clean content restore."
+    },
+    "destination": {
+      "bucket": "bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2",
+      "region": "eu-central-1",
+      "versioning": "Enabled",
+      "ownership": "BucketOwnerEnforced",
+      "encryption": {
+        "SSEAlgorithm": "AES256"
+      },
+      "block_public_access": {
+        "BlockPublicAcls": true,
+        "IgnorePublicAcls": true,
+        "BlockPublicPolicy": true,
+        "RestrictPublicBuckets": true
+      },
+      "policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "RequireTLS",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": [
+              "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2",
+              "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/*"
+            ],
+            "Condition": {
+              "Bool": {
+                "aws:SecureTransport": "false"
+              }
+            }
+          },
+          {
+            "Sid": "OnlyExpectedRestoreKey",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": [
+              "s3:PutObject",
+              "s3:PutObjectTagging"
+            ],
+            "NotResource": "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak"
+          },
+          {
+            "Sid": "OnlyBackupRoleWritesData",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": [
+              "s3:PutObject",
+              "s3:PutObjectTagging"
+            ],
+            "Resource": "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/*",
+            "Condition": {
+              "ArnNotEquals": {
+                "aws:PrincipalArn": "arn:aws:iam::891377212104:role/BackupRestoreDrill-test-20260907-r6-c3d205a2"
+              }
+            }
+          },
+          {
+            "Sid": "RejectExplicitDifferentEncryption",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak",
+            "Condition": {
+              "Null": {
+                "s3:x-amz-server-side-encryption": "false"
+              },
+              "StringNotEquals": {
+                "s3:x-amz-server-side-encryption": "AES256"
+              }
+            }
+          }
+        ]
+      },
+      "lifecycle_fallback": {
+        "current_days": 1,
+        "noncurrent_days": 1,
+        "abort_incomplete_multipart_days": 1
+      },
+      "tags": {
+        "Project": "bootstrap-infrastructure",
+        "App": "bootstrap-infrastructure",
+        "Environment": "test",
+        "Owner": "Kravalg",
+        "Purpose": "restore-validation",
+        "DataClassification": "confidential",
+        "Criticality": "low",
+        "RetentionClass": "disposable",
+        "CostCenter": "engineering",
+        "RestoreDrillId": "20260907-r6-c3d205a2"
+      },
+      "existence": "Must be confirmed absent immediately before creation; never adopt or empty an existing bucket."
+    },
+    "temporary_restore_role": {
+      "name": "BackupRestoreDrill-test-20260907-r6-c3d205a2",
+      "arn": "arn:aws:iam::891377212104:role/BackupRestoreDrill-test-20260907-r6-c3d205a2",
+      "max_session_duration_seconds": 3600,
+      "trust_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "backup.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole",
+            "Condition": {
+              "StringEquals": {
+                "aws:SourceAccount": "891377212104"
+              },
+              "ArnLike": {
+                "aws:SourceArn": "arn:aws:backup:eu-central-1:891377212104:*"
+              },
+              "DateLessThan": {
+                "aws:CurrentTime": "2026-09-07T03:30:00Z"
+              }
+            }
+          }
+        ]
+      },
+      "inline_policy_name": "RestoreExactlyOneObject",
+      "inline_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "ReadOnlyDrillBucketMetadata",
+            "Effect": "Allow",
+            "Action": [
+              "s3:ListBucket",
+              "s3:ListBucketVersions",
+              "s3:GetBucketVersioning",
+              "s3:GetBucketLocation",
+              "s3:GetBucketOwnershipControls"
+            ],
+            "Resource": "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2"
+          },
+          {
+            "Sid": "RestoreOnlySelectedObject",
+            "Effect": "Allow",
+            "Action": [
+              "s3:GetObject",
+              "s3:GetObjectVersion",
+              "s3:GetObjectTagging",
+              "s3:PutObject",
+              "s3:PutObjectTagging",
+              "s3:DeleteObject",
+              "s3:ListMultipartUploadParts"
+            ],
+            "Resource": "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak"
+          },
+          {
+            "Sid": "DenyOtherS3Resources",
+            "Effect": "Deny",
+            "Action": "s3:*",
+            "NotResource": [
+              "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2",
+              "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak"
+            ]
+          },
+          {
+            "Sid": "DenyAfterDrillWindow",
+            "Effect": "Deny",
+            "Action": "*",
+            "Resource": "*",
+            "Condition": {
+              "DateGreaterThan": {
+                "aws:CurrentTime": "2026-09-07T03:30:00Z"
+              }
+            }
+          }
+        ]
+      },
+      "managed_policy_attachments": [],
+      "source_bucket_permissions": [],
+      "kms_permissions": [],
+      "notes": [
+        "Explicit source-account/region-bound Backup trust is proposed fail-closed; actual AssumeRole context must satisfy it. Do not silently remove conditions if service compatibility fails.",
+        "No IAM mutation, backup job control, bucket creation/configuration, source reads/writes, unrelated bucket access or KMS wildcard grants. Existing Backup roles and boundaries remain unchanged.",
+        "SSE-S3 source and destination need no customer KMS data-plane grant. Vault key remains AWS-managed and existing Backup service encryption configuration is untouched. Any unexpected KMS denial requires exact-key cause review before retry."
+      ],
+      "permissions_boundary": {
+        "name": "BackupRestoreBoundary-test-20260907-r6-c3d205a2",
+        "arn": "arn:aws:iam::891377212104:policy/BackupRestoreBoundary-test-20260907-r6-c3d205a2",
+        "document": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "ReadOnlyDrillBucketMetadata",
+              "Effect": "Allow",
+              "Action": [
+                "s3:ListBucket",
+                "s3:ListBucketVersions",
+                "s3:GetBucketVersioning",
+                "s3:GetBucketLocation",
+                "s3:GetBucketOwnershipControls"
+              ],
+              "Resource": "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2"
+            },
+            {
+              "Sid": "RestoreOnlySelectedObject",
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetObject",
+                "s3:GetObjectVersion",
+                "s3:GetObjectTagging",
+                "s3:PutObject",
+                "s3:PutObjectTagging",
+                "s3:DeleteObject",
+                "s3:ListMultipartUploadParts"
+              ],
+              "Resource": "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak"
+            },
+            {
+              "Sid": "DenyOtherS3Resources",
+              "Effect": "Deny",
+              "Action": "s3:*",
+              "NotResource": [
+                "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2",
+                "arn:aws:s3:::bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2/state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak"
+              ]
+            },
+            {
+              "Sid": "DenyAfterDrillWindow",
+              "Effect": "Deny",
+              "Action": "*",
+              "Resource": "*",
+              "Condition": {
+                "DateGreaterThan": {
+                  "aws:CurrentTime": "2026-09-07T03:30:00Z"
+                }
+              }
+            }
+          ]
+        },
+        "must_exist_before_role_creation": true
+      }
+    },
+    "restore_request": {
+      "RecoveryPointArn": "arn:aws:backup:eu-central-1:891377212104:recovery-point:pulumi-bootstrap-infrastructure-test-sta-20260905051952-07bdf25f",
+      "Metadata": {
+        "DestinationBucketName": "bootstrap-restore-drill-891377212104-20260907-r6-c3d205a2",
+        "EncryptionType": "SSE-S3",
+        "ItemsToRestore": "[\"s3://pulumi-bootstrap-infrastructure-test-state/state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak\"]",
+        "RestoreACLs": "false",
+        "RestoreLatestVersionsUpTo": "1"
+      },
+      "IamRoleArn": "arn:aws:iam::891377212104:role/BackupRestoreDrill-test-20260907-r6-c3d205a2",
+      "IdempotencyToken": "20260907-r6-c3d205a2",
+      "ResourceType": "S3",
+      "CopySourceTagsToRestoredResource": false
+    },
+    "tracked_control_records": [
+      "disposable S3 bucket",
+      "IAM restore role",
+      "customer-managed permissions-boundary policy",
+      "inline restore policy"
+    ]
+  },
+  "log_extraction": {
+    "location": "s3://bootstrap-891377212104-eu-central-1-test-cloudtrail/AWSLogs/891377212104/CloudTrail/eu-central-1/YYYY/MM/DD/",
+    "window": "selector installation minus5minutes through cleanup plus30minutes; include UTC date rollover",
+    "source": "Delivered .json.gz CloudTrail log objects; LookupEvents cannot supply data events. No new Athena/Lake/log group or notification resource.",
+    "bounds": {
+      "maximum_log_objects": 300,
+      "maximum_compressed_bytes_per_object": 10485760,
+      "maximum_decompressed_bytes_per_object": 52428800,
+      "maximum_total_compressed_bytes": 104857600,
+      "maximum_total_decompressed_bytes": 524288000
+    },
+    "processing": "List exact account/region/date prefixes, bind log object version/ETag and expected owner; decompress in memory. Never persist raw logs or arbitrary request/response payloads. Fail diagnostic-incomplete on limits, malformed gzip/JSON, unexpected identity or stale delivery.",
+    "filter": "Exact window AND recipient account AND S3 bucket identity/new object ARN; retain all new-bucket callers so failed calls without full role context are not discarded. Separately label exact restore-role sessionIssuer ARN. S3 management events for the exact bucket use existing management logs.",
+    "output_allowlist": [
+      "eventTime",
+      "eventID",
+      "eventSource",
+      "eventName",
+      "awsRegion",
+      "recipientAccountId",
+      "requestID",
+      "readOnly",
+      "errorCode",
+      "matched_new_bucket:boolean",
+      "matched_restore_role:boolean",
+      "known_role_arn_or_other",
+      "log_object_key",
+      "log_object_version_or_etag",
+      "log_compressed_sha256"
+    ],
+    "omit": [
+      "object contents",
+      "credential/accessKeyId/session token",
+      "full userIdentity/requestParameters/responseElements",
+      "tag values",
+      "raw errorMessage",
+      "raw unrelated management events"
+    ],
+    "request_interpretation": "Only exact event/request identity supports a denied-action finding. Missing events or successful PutObject alone cannot identify root cause. Source/internal-service failures outside the new bucket are outside this selector."
+  },
+  "cost": {
+    "maximum_usd": 1,
+    "region": "eu-central-1",
+    "restore_gb_price_usd": 0.024,
+    "restore_bytes": 1135467,
+    "estimated_restore_usd": 2.7251208000000003e-05,
+    "cloudtrail_1000_events_usd": 0.001,
+    "not_a_billing_cap": true,
+    "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/eu-central-1/index.json"
+  },
+  "remaining_holds": [
+    "Independent root review must pass before any R6 phase; no R6 writes have occurred.",
+    "R5 resources must be cleaned and exact original CloudTrail selectors restored before R6 prepare.",
+    "At selector installation at least 120 minutes remain before 2026-09-07T03:30:00Z expiry. Preserve 15-minute stabilization, 90-minute canary reserve, 30-minute actual-delivery proof, 60-minute restore reserve, 120-minute selector cap."
+  ],
+  "primary_sources": {
+    "selectors": "https://docs.aws.amazon.com/awscloudtrail/latest/APIReference/API_PutEventSelectors.html",
+    "basic": "https://docs.aws.amazon.com/awscloudtrail/latest/APIReference/API_EventSelector.html",
+    "event_history": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/cloudtrail-logging-s3-info.html",
+    "coverage": "https://docs.aws.amazon.com/AmazonS3/latest/userguide/logging-with-S3.html",
+    "delivery": "https://docs.aws.amazon.com/awscloudtrail/latest/userguide/get-and-view-cloudtrail-log-files.html",
+    "pricing": "https://aws.amazon.com/cloudtrail/pricing/",
+    "restore": "https://docs.aws.amazon.com/aws-backup/latest/devguide/restoring-s3.html"
+  },
+  "positive_canary": {
+    "bytes": 51,
+    "sha256": "3fd0bf27d06b16fcf54526b39c4ec3d1e9ca09e2352018f96319b05447b9aa8a",
+    "root_arn": "arn:aws:iam::891377212104:root",
+    "maximum_exception_seconds": 600,
+    "maximum_diagnostic_seconds": 7200,
+    "maximum_proof_wait_seconds": 1800,
+    "policy_restored_before_restore": true,
+    "one_shot_start": true,
+    "minimum_selector_stabilization_seconds": 900,
+    "minimum_window_remaining_before_canary_seconds": 5400
+  },
+  "selection_proof": {
+    "version_listing_limit": 1000,
+    "observed_version_count": 762,
+    "observed_delete_marker_count": 0,
+    "observed_distinct_matching_keys": 1,
+    "recovery_point_item_evidence": "R5 three exact .bak PutObject events, bound in prior_artifacts; no assertion of a new backup index API result.",
+    "execution_guard": "Repeat complete exact-prefix ListObjectVersions at existing source_metadata preconditions; reject truncation, any sibling, any delete marker, wrong recovery-time version or interval mutation."
+  }
+}

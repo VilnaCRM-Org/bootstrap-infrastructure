@@ -1,0 +1,18 @@
+{
+  "aws_mutations": 0,
+  "observed_at": "2026-09-06T23:25:55.114333+00:00",
+  "source_bucket": "pulumi-bootstrap-infrastructure-test-state",
+  "source_key": "state/pr-preview/.pulumi/stacks/bootstrap-infrastructure/test.json.bak",
+  "source_version_id": "hG.O7vsYLU05uqnGDn.Zr4DH0mfNevE9",
+  "bytes": 1135467,
+  "sha256": "9a520cb11d36bc20723ca305b2598f5e27a7c7a18e507060f72d90250dabbc21",
+  "source_encryption": "AES256",
+  "source_etag": "\"ad2b3e397f12fe22492e4ea372fe5d7e\"",
+  "source_last_modified": "2026-06-08T02:41:58Z",
+  "head_checksum_fields": {
+    "ChecksumCRC64NVME": "BKiX6Jg6mcE=",
+    "ChecksumType": "FULL_OBJECT"
+  },
+  "body_persisted": false,
+  "body_parsed": false
+}

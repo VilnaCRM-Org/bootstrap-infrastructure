@@ -218,8 +218,9 @@ def test_generator_rejects_unearned_technical_approval(field, value):
         recording._validate_attestation_choices(args)
 
 
+@pytest.mark.parametrize("active_keys", [0, 1, None, False, -1, "0"])
 def test_generator_technical_record_roundtrips_without_human_coverage(
-    tmp_path, technical_payload
+    tmp_path, technical_payload, active_keys
 ):
     args = argparse.Namespace(
         workload="bootstrap-infrastructure",
@@ -243,6 +244,12 @@ def test_generator_technical_record_roundtrips_without_human_coverage(
             }
         ]
     }
+    report["checks"][0]["evidence"]["activeUserAccessKeyCount"] = active_keys
+    if type(active_keys) is not int or active_keys != 0:
+        for render in (recording.structured_attestation, recording.render_attestation):
+            with pytest.raises(ValueError, match="observed zero active IAM keys"):
+                render(report, args)
+        return
     payload = recording.structured_attestation(report, args)
     path = tmp_path / "record.json"
     path.write_text(json.dumps(payload))

@@ -1,0 +1,188 @@
+name: Trusted Well-Architected Publisher
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: trusted-well-architected-publisher
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Authenticate protected evidence approval
+    if: github.ref == 'refs/heads/main' && github.run_attempt == 1
+    environment: governance-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      pr: ${{ steps.approval.outputs.pr }}
+      head_sha: ${{ steps.approval.outputs.head_sha }}
+      approval_sha256: ${{ steps.approval.outputs.approval_sha256 }}
+      read_role_arn: ${{ steps.approval.outputs.read_role_arn }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Authenticate manifest and exact main runtime before any credential request
+        id: approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WA_APPROVAL: ${{ vars.WA_PUBLISHER_APPROVAL }}
+          WA_APPROVAL_SHA256: ${{ vars.WA_PUBLISHER_APPROVAL_SHA256 }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$RUNNER_TEMP/wa-prepared"
+          printf '%s' "$WA_APPROVAL" > "$RUNNER_TEMP/wa-prepared/approval.json"
+          python3 -I scripts/publish_well_architected.py prepare \
+            --approval "$RUNNER_TEMP/wa-prepared/approval.json" \
+            --approval-sha256 "$WA_APPROVAL_SHA256" --source-sha "$GITHUB_SHA" \
+            --bundle "$RUNNER_TEMP/wa-prepared/bundle" \
+            --output "$RUNNER_TEMP/wa-prepared/verified.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: trusted-wa-approved-inputs
+          path: ${{ runner.temp }}/wa-prepared
+          retention-days: 7
+          if-no-files-found: error
+
+  collect:
+    name: Collect trusted Well-Architected evidence
+    needs: prepare
+    if: github.ref == 'refs/heads/main' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WA_APPROVAL_SHA256: ${{ needs.prepare.outputs.approval_sha256 }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.prepare.outputs.head_sha }}
+          path: pr-data
+          persist-credentials: false
+          submodules: false
+          lfs: false
+      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: trusted-wa-approved-inputs
+          path: ${{ runner.temp }}/wa-prepared
+      - name: Revalidate exact approved PR data before AWS credentials
+        run: |
+          python3 -I trusted/scripts/publish_well_architected.py verify \
+            --approval "$RUNNER_TEMP/wa-prepared/approval.json" \
+            --approval-sha256 "$WA_APPROVAL_SHA256" --source-sha "$GITHUB_SHA" \
+            --bundle "$RUNNER_TEMP/wa-prepared/bundle" --data-root "$GITHUB_WORKSPACE/pr-data"
+      - name: Install only trusted pinned collector dependencies
+        working-directory: trusted
+        run: |
+          python3 -m pip install --user 'uv==0.9.21'
+          "$HOME/.local/bin/uv" sync --frozen --no-install-project
+      - name: Configure the existing main-ref read-only role
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ needs.prepare.outputs.read_role_arn }}
+          role-session-name: gha-trusted-wa-${{ github.run_id }}
+          aws-region: eu-central-1
+          allowed-account-ids: '891377212104'
+      - name: Execute the complete trusted collector
+        working-directory: trusted
+        run: |
+          .venv/bin/python -I scripts/publish_well_architected.py collect \
+            --approval "$RUNNER_TEMP/wa-prepared/approval.json" \
+            --approval-sha256 "$WA_APPROVAL_SHA256" --source-sha "$GITHUB_SHA" \
+            --bundle "$RUNNER_TEMP/wa-prepared/bundle" --data-root "$GITHUB_WORKSPACE/pr-data" \
+            --output "$RUNNER_TEMP/wa-result/result.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: trusted-wa-collector-result
+          path: ${{ runner.temp }}/wa-result
+          retention-days: 90
+          if-no-files-found: error
+
+  publish:
+    name: Publish exact-head Well-Architected result
+    needs: [prepare, collect]
+    if: github.ref == 'refs/heads/main' && github.run_attempt == 1
+    environment: governance-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    env:
+      WA_APPROVAL_SHA256: ${{ needs.prepare.outputs.approval_sha256 }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: trusted-wa-approved-inputs
+          path: ${{ runner.temp }}/wa-prepared
+      - uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: trusted-wa-collector-result
+          path: ${{ runner.temp }}/wa-result
+      - name: Verify protected approval is still current before App credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CURRENT_APPROVAL_SHA256: ${{ vars.WA_PUBLISHER_APPROVAL_SHA256 }}
+        run: |
+          test "$CURRENT_APPROVAL_SHA256" = "$WA_APPROVAL_SHA256"
+          python3 -I scripts/publish_well_architected.py verify \
+            --approval "$RUNNER_TEMP/wa-prepared/approval.json" \
+            --approval-sha256 "$WA_APPROVAL_SHA256" --source-sha "$GITHUB_SHA" \
+            --bundle "$RUNNER_TEMP/wa-prepared/bundle"
+      - name: Install trusted publisher dependencies before App credentials
+        run: |
+          python3 -m pip install --user 'uv==0.9.21'
+          "$HOME/.local/bin/uv" sync --frozen --no-install-project
+      - name: Create the dedicated evidence App token
+        id: app
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: '4840884'
+          private-key: ${{ secrets.GOVERNANCE_PROMOTION_APP_PRIVATE_KEY }}
+          permission-statuses: write
+          permission-actions: read
+          permission-contents: read
+          permission-pull-requests: read
+          permission-administration: read
+          permission-vulnerability-alerts: read
+      - name: Publish unchanged required context from the trusted complete result
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          .venv/bin/python -I scripts/publish_well_architected.py publish \
+            --approval "$RUNNER_TEMP/wa-prepared/approval.json" \
+            --approval-sha256 "$WA_APPROVAL_SHA256" --source-sha "$GITHUB_SHA" \
+            --bundle "$RUNNER_TEMP/wa-prepared/bundle" --result "$RUNNER_TEMP/wa-result/result.json" \
+            --receipt "$RUNNER_TEMP/wa-publication/receipt.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: trusted-wa-publication-receipt
+          path: ${{ runner.temp }}/wa-publication
+          retention-days: 90
+          if-no-files-found: warn

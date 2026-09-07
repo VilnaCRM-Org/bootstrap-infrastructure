@@ -183,3 +183,39 @@ def test_multiple_status_rules_cannot_silently_discard_the_first():
 def test_ruleset_update_rejects_invalid_or_shared_promotion_issuer(app_id):
     with pytest.raises(ValueError):
         controls.ruleset_payload(promotion_app_id=app_id)
+
+
+@pytest.mark.parametrize(
+    "direct_id,nested_id", [(7, 8), (8, 7), (True, 7), (None, 7), ("7", 7)]
+)
+@pytest.mark.parametrize("nested", [False, True])
+def test_conflicting_dual_reviewer_identity_fails_before_sole_user_check(
+    direct_id, nested_id, nested
+):
+    environment = controls.protected_reviewer_environment_payload(7)
+    environment["deployment_branch_policies"] = [{"name": "main", "type": "branch"}]
+    item = {"type": "User", "id": direct_id, "reviewer": {"id": nested_id}}
+    environment["reviewers"] = [item]
+    if nested:
+        environment["reviewers"] = [{"type": "User", "id": 7}]
+        environment["protection_rules"] = [
+            {"type": "required_reviewers", "reviewers": [item]}
+        ]
+    assert any(
+        "malformed or non-user reviewer" in blocker
+        for blocker in controls.protected_environment_verification_blockers(
+            environment, 7, label="Test environment"
+        )
+    )
+
+
+def test_matching_dual_reviewer_identity_preserves_official_response_shapes():
+    environment = controls.protected_reviewer_environment_payload(7)
+    environment["deployment_branch_policies"] = [{"name": "main", "type": "branch"}]
+    environment["reviewers"] = [{"type": "User", "id": 7, "reviewer": {"id": 7}}]
+    assert (
+        controls.protected_environment_verification_blockers(
+            environment, 7, label="Test environment"
+        )
+        == []
+    )

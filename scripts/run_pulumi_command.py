@@ -587,10 +587,14 @@ def _run_up_plan_stack(
 
 def _direct_ci_up_forbidden(context: CommandContext, command: str = "up") -> bool:
     if context.env.get("GITHUB_ACTIONS") == "true":
+        guidance = (
+            "destroy is available only through a separately authorized local operation."
+            if command == "destroy"
+            else "generate and apply a reviewed saved plan with pulumi-plan and "
+            "pulumi-up-plan."
+        )
         print(
-            f"error: direct Pulumi {command} is disabled in GitHub Actions; "
-            "generate and apply a reviewed saved plan with pulumi-plan and "
-            "pulumi-up-plan.",
+            f"error: direct Pulumi {command} is disabled in GitHub Actions; {guidance}",
             file=sys.stderr,
         )
         return True

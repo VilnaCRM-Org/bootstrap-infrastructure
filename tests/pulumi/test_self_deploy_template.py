@@ -306,10 +306,24 @@ def test_template_carries_no_static_aws_keys_via_file_scan() -> None:
 
 def test_scheduled_drift_uses_only_protected_main_read_roles():
     """Scheduled runs cannot enter comment apply or promotion jobs."""
-    workflow = _workflow_document()
-    assert workflow[True]["schedule"]
+    dispatch = _workflow_document()
+    workflow = yaml.safe_load(
+        (WORKFLOW_PATH.parent / "scheduled-drift.yml").read_text()
+    )
+    assert set(workflow[True]) == {"schedule"}
+    assert workflow[True]["schedule"] == [{"cron": "17 3 * * *"}]
+    assert set(dispatch[True]) == {"repository_dispatch"}
+    assert set(workflow["jobs"]) == {
+        "scheduled_test_drift",
+        "scheduled_prod_drift",
+    }
+    assert not set(workflow["jobs"]) & set(dispatch["jobs"])
+    assert workflow["name"] == "Service Scheduled Drift"
+    assert dispatch["name"] == "Service Self Deploy"
+    assert "needs.preflight" not in str(workflow)
+    assert "client_payload" not in str(workflow)
     assert (
-        workflow["jobs"]["preflight"]["if"]
+        dispatch["jobs"]["preflight"]["if"]
         == "github.event_name == 'repository_dispatch'"
     )
     for environment in ("test", "prod"):
@@ -318,7 +332,7 @@ def test_scheduled_drift_uses_only_protected_main_read_roles():
             job["if"]
             == "github.event_name == 'schedule' && github.ref == 'refs/heads/main'"
         )
-        assert job["environment"] == f"{environment}-preview"
+        assert job["environment"] == f"{environment}-drift"
         assert "needs" not in job
         assert job["permissions"]["id-token"] == "write"
         steps = job["steps"]
@@ -365,3 +379,60 @@ def test_scheduled_drift_uses_only_protected_main_read_roles():
         )
         assert steps[-1]["run"] == "make test-drift"
         assert "pulumi-up" not in str(job) and "deployments: write" not in str(job)
+
+
+def test_pr_destructive_gates_exclude_scheduled_execution():
+    """PR-head gates explicitly exclude schedule even before needs resolution."""
+    jobs = _workflow_document()["jobs"]
+    dispatch = "github.event_name == 'repository_dispatch'"
+    for environment in ("test", "prod"):
+        job = jobs[f"{environment}_destructive_diff"]
+        expected = dispatch
+        if environment == "prod":
+            expected += " && needs.preflight.outputs.target_environment == 'prod'"
+        assert " ".join(job.get("if", "").split()) == expected
+        assert "preflight" in job["needs"]
+        assert f"{environment}_preview" in job["needs"]
+
+
+def test_state_operations_share_cross_workflow_stack_mutex():
+    """A cron drift and a PR state operation cannot hold the same stack at once."""
+
+    def load(name):
+        return yaml.safe_load((SCAFFOLD_DIR / ".github/workflows" / name).read_text())
+
+    workflows = {
+        name: load(name) for name in ("self-deploy.yml", "scheduled-drift.yml")
+    }
+    operations = {"make pulumi-plan", "make pulumi-up-plan", "make test-drift"}
+    state_jobs = {
+        name: (workflow, job)
+        for workflow in workflows.values()
+        for name, job in workflow["jobs"].items()
+        if any(step.get("run") in operations for step in job["steps"])
+    }
+    assert set(state_jobs) == {
+        "test_preview",
+        "test_apply",
+        "test_post_apply_drift",
+        "prod_preview",
+        "prod_apply",
+        "prod_post_apply_drift",
+        "scheduled_test_drift",
+        "scheduled_prod_drift",
+    }
+    groups = {}
+    for name, (workflow, job) in state_jobs.items():
+        environment = "test" if "test" in name else "prod"
+        group = (
+            "pulumi-state-${{ github.repository }}-" + environment + "-" + environment
+        )
+        assert job["concurrency"] == {"group": group, "cancel-in-progress": False}
+        assert workflow["concurrency"]["group"] != group
+        if name.startswith("scheduled_"):
+            assert job["environment"] == environment + "-drift"
+        else:
+            assert job["environment"] in {environment, environment + "-preview"}
+        groups.setdefault(environment, set()).add(group)
+    assert len(groups["test"]) == len(groups["prod"]) == 1
+    assert groups["test"].isdisjoint(groups["prod"])

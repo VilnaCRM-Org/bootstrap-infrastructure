@@ -2,3 +2,14 @@ title = "VilnaCRM infrastructure-template Gitleaks configuration"
 
 [extend]
 useDefault = true
+
+# Immutable R6 receipt binding: this exact value is a reviewed file SHA256.
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Exact reviewed R5 relationship receipt hash within R6 proposal"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^specs/issue-17-well-architected-5-of-5/restore-r6-receipts/proposal[.]json$''']
+regexes = ['''(?m)^[ \t]*"work/wa-runtime-closure/restore-r5/four-key-relationships[.]json": "7a513d5a9c68c0a34461c995ed562259cf2780cf56c9ef5ba616db162d15f06c",?[ \t]*$''']

@@ -22,6 +22,7 @@ from .config import settings as default_settings
 from .github_identity import (
     expand_subjects,
     identity_conditions,
+    scheduled_drift_trust_statement,
     validate_trust_policy_size,
 )
 from .iam import GitHubOidcRoles
@@ -183,6 +184,7 @@ class _CiRoleSpec:
     subjects: Sequence[str]
     policy_documents: Sequence[tuple[str, str]]
     permissions_boundary: pulumi.Input[str] | None = None
+    scheduled_drift_environment: str | None = None
 
 
 @dataclass(frozen=True)
@@ -367,6 +369,7 @@ def _deployment_assume_role_policy(
     owner_id: str | None = None,
     branch_ref: str | None = None,
     workflow_name: str | None = None,
+    scheduled_drift_environment: str | None = None,
 ) -> str:
     """Build the trust policy for one GitHub OIDC CI role."""
     document = json.dumps(
@@ -410,6 +413,18 @@ def _deployment_assume_role_policy(
         },
         sort_keys=True,
     )
+    if scheduled_drift_environment is not None:
+        payload = json.loads(document)
+        payload["Statement"].append(
+            scheduled_drift_trust_statement(
+                oidc_provider_arn,
+                repository,
+                scheduled_drift_environment,
+                repository_id,
+                owner_id,
+            )
+        )
+        document = json.dumps(payload, sort_keys=True)
     return validate_trust_policy_size(document)
 
 
@@ -730,6 +745,8 @@ def _create_role(
     spec: _CiRoleSpec,
 ) -> aws.iam.Role:
     """Create or import one GitHub OIDC CI role and its inline policies."""
+    if spec.scheduled_drift_environment is not None and spec.purpose != "drift":
+        raise ValueError("Scheduled service trust is restricted to drift roles.")
     if spec.purpose == "apply":
         # This consumer attaches every document as customer-managed, including
         # Automation's otherwise-inline first document.
@@ -751,6 +768,7 @@ def _create_role(
                 branch_ref=(
                     None if spec.purpose == "preview" else _branch_ref(context.settings)
                 ),
+                scheduled_drift_environment=spec.scheduled_drift_environment,
             ),
         ),
         tags=base_tags(

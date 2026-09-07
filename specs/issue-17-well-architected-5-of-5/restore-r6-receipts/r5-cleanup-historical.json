@@ -1,0 +1,1 @@
+{"cleanup_complete":true,"diagnostics_restored":true,"drill_passed":false,"phase":"cleanup","selector_sha256":"d13c903620035b96f43776d9e41ff52cf3adbf45c406c48ba9bb3cbc90029194","trail_health":{"delivery_errors_present":false,"delivery_recent":true,"healthy":true,"is_logging":true,"latest_successful_delivery":"2026-09-06T23:19:22+00:00","status_available":true}}

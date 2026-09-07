@@ -1,4 +1,4 @@
-name: Well-Architected Evidence
+name: Well-Architected Data Validation
 
 on:
   pull_request:
@@ -13,355 +13,37 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 defaults:
   run:
     shell: bash
 
-permissions:
-  contents: read
-
 jobs:
-  evidence_mode:
-    name: Evidence Mode
+  evidence_data:
+    name: Well-Architected Data Validation (Advisory)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      privileged: ${{ steps.evidence_mode.outputs.privileged }}
-    env:
-      GITHUB_EVENT_NAME: ${{ github.event_name }}
-      GITHUB_REF: ${{ github.ref }}
-      GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-      GITHUB_REPOSITORY_NAME: ${{ github.repository }}
-    steps:
-      - name: Select evidence mode
-        id: evidence_mode
-        run: |
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && \
-            "${GITHUB_REF}" != "refs/heads/main" ]]; then
-            echo "::error::Manual evidence collection must run from main."
-            exit 1
-          fi
-          privileged=true
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
-            "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
-            privileged=false
-            echo "::notice::Fork pull request detected; running without AWS credentials."
-          fi
-          echo "privileged=${privileged}" >> "${GITHUB_OUTPUT}"
-
-  test_account_evidence:
-    name: Test Account Evidence
-    if: ${{ needs.evidence_mode.outputs.privileged == 'true' }}
-    runs-on: ubuntu-latest
-    needs:
-      - evidence_mode
-    timeout-minutes: 20
+    timeout-minutes: 10
     permissions:
       contents: read
-      id-token: write
-      pull-requests: read
-      vulnerability-alerts: read
-    env:
-      RESTORE_DRILL_EVIDENCE: specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-04-27.json
-      QUESTION_MATRIX_EVIDENCE: specs/issue-17-well-architected-5-of-5/question-matrix-evidence-2026-09-06.json
-      EXTERNAL_CONTROL_EVIDENCE: specs/issue-17-well-architected-5-of-5/external-control-evidence-2026-09-06.json
-      DEPENDABOT_EXCEPTION_EVIDENCE: ${{ vars.DEPENDABOT_EXCEPTION_EVIDENCE }}
-      ALERT_ROUTE_OBSERVATION_EVIDENCE: ${{ vars.ALERT_ROUTE_OBSERVATION_EVIDENCE || 'specs/issue-17-well-architected-5-of-5/alert-route-observation-2026-09-06-technical.json' }}
-      SECURITY_ACCOUNT_ATTESTATION_EVIDENCE: ${{ vars.SECURITY_ACCOUNT_ATTESTATION_EVIDENCE || 'specs/issue-17-well-architected-5-of-5/security-account-attestation-2026-09-06-technical.json' }}
-      PRODUCTION_DR_OWNER_EVIDENCE: ${{ vars.PRODUCTION_DR_OWNER_EVIDENCE || 'specs/issue-17-well-architected-5-of-5/production-dr-owner-2026-05-17.json' }}
-      PR_NUMBER: ${{ github.event.pull_request.number }}
-      GH_TOKEN: ${{ github.token }}
-      GITHUB_TOKEN: ${{ github.token }}
-      WELL_ARCHITECTED_CURRENT_CHECK_NAME: Test Account Evidence
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-
-      - name: Select test AWS CI configuration
-        id: ci_config_target
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          AWS_TEST_PR_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN }}
-          AWS_TEST_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            ci_environment="test-pr"
-            config_role_arn="${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}"
-            config_variable_name="AWS_TEST_PR_CI_CONFIG_ROLE_ARN"
-          else
-            ci_environment="test"
-            config_role_arn="${AWS_TEST_CI_CONFIG_ROLE_ARN}"
-            config_variable_name="AWS_TEST_CI_CONFIG_ROLE_ARN"
-          fi
-          if [[ -z "${config_role_arn}" ]]; then
-            printf 'error: %s must be set for %s AWS CI configuration.\n' \
-              "${config_variable_name}" "${ci_environment}" >&2
-            exit 1
-          fi
-          {
-            echo "environment=${ci_environment}"
-            echo "config-role-arn=${config_role_arn}"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Load test AWS CI configuration
-        id: ci_config
-        # The action is absent from pre-installation main. Use its reviewed,
-        # immutable revision; never execute the PR checkout's credential loader.
-        uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@d1297f1f00658c351dd6b94e510b394835b13ede
-        with:
-          environment: ${{ steps.ci_config_target.outputs.environment }}
-          config-role-arn: ${{ steps.ci_config_target.outputs.config-role-arn }}
-          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
-          aws-region: ${{ vars.AWS_TEST_REGION }}
-          purpose: Well-Architected evidence
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
-            OPERATIONS_TOPIC_ARN,OPERATIONS_CLOUDTRAIL_NAME
-
-      - name: Validate evidence prerequisites
-        run: |
-          missing=()
-          for name in \
-            AWS_ACCOUNT_ID \
-            AWS_PREVIEW_ROLE_ARN \
-            OPERATIONS_TOPIC_ARN \
-            OPERATIONS_CLOUDTRAIL_NAME \
-            RESTORE_DRILL_EVIDENCE \
-            QUESTION_MATRIX_EVIDENCE \
-            EXTERNAL_CONTROL_EVIDENCE \
-            ALERT_ROUTE_OBSERVATION_EVIDENCE \
-            SECURITY_ACCOUNT_ATTESTATION_EVIDENCE \
-            PRODUCTION_DR_OWNER_EVIDENCE; do
-            if [[ -z "${!name}" ]]; then
-              missing+=("${name}")
-            fi
-          done
-          if [[ "${#missing[@]}" -gt 0 ]]; then
-            printf 'error: Well-Architected evidence is missing %s\n' "${missing[*]}" >&2
-            exit 1
-          fi
-          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
-            echo "error: AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
-            exit 1
-          fi
-          if [[ "${OPERATIONS_TOPIC_ARN}" != arn:aws:sns:* ]]; then
-            echo "error: OPERATIONS_TOPIC_ARN must be an SNS topic ARN." >&2
-            exit 1
-          fi
-          for path in \
-            "${RESTORE_DRILL_EVIDENCE}" \
-            "${QUESTION_MATRIX_EVIDENCE}" \
-            "${EXTERNAL_CONTROL_EVIDENCE}" \
-            "${ALERT_ROUTE_OBSERVATION_EVIDENCE}" \
-            "${SECURITY_ACCOUNT_ATTESTATION_EVIDENCE}" \
-            "${PRODUCTION_DR_OWNER_EVIDENCE}"; do
-            if [[ ! -f "${path}" ]]; then
-              printf 'error: evidence file is missing: %s\n' "${path}" >&2
-              exit 1
-            fi
-          done
-
-      - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
-        with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
-          role-session-name: gha-wa-evidence-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
-
-      - name: Emit evidence context
-        run: |
-          account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
-          echo "Backend type: s3"
-          echo "Commit SHA: ${GITHUB_SHA}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
-          echo "Current AWS account ID: ${account_id}"
-          echo "AWS region: ${AWS_REGION}"
-          echo "Role purpose: Well-Architected evidence"
-
-      - name: Install uv for host-side collector
+      - name: Install pinned test runtime without cloud credentials
         run: python3 -m pip install --user 'uv==0.9.21'
-
-      - name: Wait for PR checks before evidence snapshot
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Validate selected committed evidence and receipt hashes
         run: |
-          expected_checks=(
-            "Actionlint"
-            "Architecture"
-            "Bandit"
-            "CodeQL"
-            "CodeQL (actions)"
-            "CodeQL (python)"
-            "CodeRabbit"
-            "Coverage"
-            "Dependency Audit"
-            "Dependency Hygiene"
-            "Dependency Review"
-            "Destructive Diff Gate"
-            "Evidence Mode"
-            "Hadolint"
-            "IAM Validation"
-            "Integration"
-            "Local Battery"
-            "Maintainability"
-            "Mutation"
-            "Policy"
-            "Preview"
-            "Preview Mode"
-            "Ruff"
-            "Run Bats Tests"
-            "Secrets Scan"
-            "Structural"
-            "Ty"
-            "Unit"
-            "Yamllint"
-            "qlty check"
-            "qlty fmt"
-          )
-          deadline=$((SECONDS + 600))
-          while true; do
-            rollup="$(gh pr view "${PR_NUMBER}" \
-              --repo "${GITHUB_REPOSITORY}" \
-              --json statusCheckRollup)"
-            missing=()
-            pending=()
-            failing=()
-            for check_name in "${expected_checks[@]}"; do
-              state="$(jq -r --arg name "${check_name}" '
-                [
-                  .statusCheckRollup[]
-                  | select((.name // .context) == $name)
-                  | if .__typename == "StatusContext" then
-                      .state
-                    elif .status == "COMPLETED" then
-                      (.conclusion // "UNKNOWN")
-                    else
-                      (.status // "UNKNOWN")
-                    end
-                ][-1] // ""
-              ' <<< "${rollup}")"
-              if [[ -z "${state}" ]]; then
-                missing+=("${check_name}")
-              elif [[ "${state}" == "SUCCESS" ]]; then
-                continue
-              elif [[ "${state}" =~ ^(PENDING|QUEUED|IN_PROGRESS|WAITING|REQUESTED)$ ]]; then
-                pending+=("${check_name}:${state}")
-              else
-                failing+=("${check_name}:${state}")
-              fi
-            done
-            if [[ "${#missing[@]}" -eq 0 && "${#pending[@]}" -eq 0 ]]; then
-              if [[ "${#failing[@]}" -gt 0 ]]; then
-                printf '::notice::PR checks reached terminal non-success states: %s\n' \
-                  "${failing[*]}"
-              else
-                echo "PR checks are settled for the evidence snapshot."
-              fi
-              break
-            fi
-            if [[ "${SECONDS}" -ge "${deadline}" ]]; then
-              printf '::notice::Timed out waiting for PR checks; missing: %s; pending: %s\n' \
-                "${missing[*]:-none}" \
-                "${pending[*]:-none}"
-              break
-            fi
-            printf 'Waiting for PR checks before evidence snapshot; missing: %s; pending: %s\n' \
-              "${missing[*]:-none}" \
-              "${pending[*]:-none}"
-            sleep 20
-          done
-
-      - name: Collect Well-Architected evidence
-        id: collector
-        run: |
-          export REPO_PYTHON="${HOME}/.local/bin/uv run python"
-          set +e
-          # Controller installation retains the existing 24 required checks.
-          # Remove these explicit contexts after the main controller is installed
-          # and the App-issued Governance Promotion check is enrolled (25 total).
-          # See docs/ci-guardrails.md: Controller installation evidence.
-          mkdir -p .artifacts/well-architected
-          "${HOME}/.local/bin/uv" run python \
-            ./scripts/collect_well_architected_evidence.py \
-            --output .artifacts/well-architected/evidence.json \
-            --markdown-output .artifacts/well-architected/evidence.md \
-            --required-status-check "Ruff" \
-            --required-status-check "Ty" \
-            --required-status-check "Maintainability" \
-            --required-status-check "Architecture" \
-            --required-status-check "Structural" \
-            --required-status-check "Dependency Hygiene" \
-            --required-status-check "Coverage" \
-            --required-status-check "Local Battery" \
-            --required-status-check "Mutation" \
-            --required-status-check "Run Bats Tests" \
-            --required-status-check "Secrets Scan" \
-            --required-status-check "Dependency Audit" \
-            --required-status-check "Bandit" \
-            --required-status-check "Dependency Review" \
-            --required-status-check "Actionlint" \
-            --required-status-check "Yamllint" \
-            --required-status-check "Hadolint" \
-            --required-status-check "Preview" \
-            --required-status-check "Destructive Diff Gate" \
-            --required-status-check "IAM Validation" \
-            --required-status-check "Policy" \
-            --required-status-check "CodeQL (python)" \
-            --required-status-check "CodeQL (actions)" \
-            --required-status-check "Test Account Evidence"
-          collector_status=$?
-          set -e
-          echo "exit_code=${collector_status}" >> "${GITHUB_OUTPUT}"
-          make verify-well-architected-questions
-          make report-well-architected-closeout
-          if [[ -f .artifacts/well-architected/evidence.md ]]; then
-            cat .artifacts/well-architected/evidence.md >> "${GITHUB_STEP_SUMMARY}"
-          fi
-          if [[ -f .artifacts/well-architected/owner-closeout-bundle.md ]]; then
-            {
-              echo
-              echo "## Well-Architected Closeout Audit"
-              echo
-              cat .artifacts/well-architected/owner-closeout-bundle.md
-            } >> "${GITHUB_STEP_SUMMARY}"
-          fi
-          if [[ "${collector_status}" -eq 0 ]]; then
-            echo "::notice::Well-Architected evidence passed all readiness gates."
-          else
-            echo "::notice::Well-Architected evidence reported blockers; see uploaded artifacts."
-          fi
-
-      - name: Upload Well-Architected evidence artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: well-architected-evidence
-          path: .artifacts/well-architected
-          retention-days: 90
-
-      - name: Enforce Well-Architected evidence
-        if: ${{ github.event_name != 'schedule' && steps.collector.outputs.exit_code != '0' }}
-        run: |
-          echo "error: Well-Architected evidence enforcement is enabled and blockers remain." >&2
-          exit 1
-
-  unprivileged_evidence:
-    name: Evidence (Unprivileged)
-    if: ${{ needs.evidence_mode.outputs.privileged != 'true' }}
-    runs-on: ubuntu-latest
-    needs:
-      - evidence_mode
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Record skipped AWS evidence
+          env -i HOME="$HOME" PATH="$PATH" \
+            "$HOME/.local/bin/uv" run --frozen pytest --no-cov -q \
+            tests/unit/test_well_architected_evidence_data.py
+      - name: State advisory scope
         run: |
           {
-            echo "# Well-Architected Evidence"
-            echo
-            echo "Fork pull request detected. AWS-backed evidence collection was skipped because credentials are unavailable to untrusted forks."
-          } >> "${GITHUB_STEP_SUMMARY}"
+            echo 'Selected evidence schema and receipt integrity only.'
+            echo 'Unresolved questions and owner decisions remain visible in the records.'
+            echo 'This advisory job does not grant Well-Architected acceptance.'
+            echo 'The protected trusted publisher alone emits App-pinned Test Account Evidence after the complete live collector.'
+          } >> "$GITHUB_STEP_SUMMARY"
