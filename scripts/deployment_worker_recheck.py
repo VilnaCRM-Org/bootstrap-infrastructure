@@ -83,29 +83,21 @@ def _recheck_selection(contract: DeploymentContract) -> None:
     preflight.require(selection == contract.selection, "Admitted selection changed")
 
 
-def recheck_worker(
-    contract: DeploymentContract, *, scope: str, environment: str
-) -> tuple[DeploymentStep, ...]:
-    """Return this selected node's schedule after current precredential checks.
-
-    ``contract`` must be decoded from an authenticated admission artifact from
-    this root run. The installed workflow must supply this worker's fixed scope
-    and account, never unchecked dispatch fields. Protected approval may take
-    longer than the admission age limit; all identity and rights checks remain.
-    PROD ordering and the full TEST barrier remain the coordinator's obligation.
-    """
+def _admission_controller(contract: DeploymentContract) -> ControllerMetadata:
+    """Bind a semantically validated admission to the current trusted context."""
     controller = _controller_metadata()
     _validate_contract(contract)
     preflight.require(
         controller == contract.identity.controller,
         "Worker controller identity differs from admission",
     )
-    steps = tuple(
-        step
-        for step in contract.schedule
-        if step.scope == scope and step.environment == environment
-    )
-    preflight.require(bool(steps), "Worker scope/account is not selected")
+    return controller
+
+
+def _recheck_admitted_facts(
+    contract: DeploymentContract, controller: ControllerMetadata
+) -> None:
+    """Authenticate current source, rights and protections without claiming again."""
     selector_sha256 = hashlib.sha256(
         Path(deployment_scopes.__file__).read_bytes()
     ).hexdigest()
@@ -115,4 +107,33 @@ def recheck_worker(
     _verify_controller_run(controller)
     _recheck_selection(contract)
     _verify_environments(contract)
+
+
+def recheck_admission(contract: DeploymentContract) -> None:
+    """Recheck a root admission, including an empty scope, without authorizing AWS.
+
+    Root account barriers and credential-free validation use this after artifact
+    authentication. Credential workers must still use the selected-node check.
+    """
+    _recheck_admitted_facts(contract, _admission_controller(contract))
+
+
+def recheck_worker(
+    contract: DeploymentContract, *, scope: str, environment: str
+) -> tuple[DeploymentStep, ...]:
+    """Return this selected node's schedule after current precredential checks.
+
+    ``contract`` must come from an authenticated artifact in this root run. Fixed
+    worker scope/account cannot come from unchecked dispatch fields. Protected
+    approval may outlast admission expiry; identity and rights checks still apply.
+    PROD ordering and the full TEST barrier remain the coordinator's obligation.
+    """
+    controller = _admission_controller(contract)
+    steps = tuple(
+        step
+        for step in contract.schedule
+        if step.scope == scope and step.environment == environment
+    )
+    preflight.require(bool(steps), "Worker scope/account is not selected")
+    _recheck_admitted_facts(contract, controller)
     return steps

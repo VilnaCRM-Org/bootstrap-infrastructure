@@ -106,6 +106,28 @@ def test_callable_verifies_transport_and_real_worker_without_outputs(artifact, g
     assert sum(path.endswith("/actions/runs/100") for path, _ in github.calls) == 2
 
 
+def test_root_loader_has_no_worker_outputs(artifact, github):
+    args = {
+        key: artifact.args[key]
+        for key in ("artifact_id", "artifact_sha256", "contract_sha256")
+    }
+    assert runtime.load_verified_admission(**args) == artifact.contract
+    assert artifact.downloads == ["123"]
+    assert not artifact.output.exists()
+    assert any("/environments/" in path for path, _ in github.calls)
+
+
+def test_root_loader_rechecks_rights(artifact, github):
+    github.evidence["permission"] = "read"
+    args = {
+        key: artifact.args[key]
+        for key in ("artifact_id", "artifact_sha256", "contract_sha256")
+    }
+    with pytest.raises(ValueError):
+        runtime.load_verified_admission(**args)
+    assert not artifact.output.exists()
+
+
 def test_receipt_name_is_exact(artifact):
     name = (
         "deployment-receipt-100-1-platform-test-" + artifact.contract.identity.head_sha

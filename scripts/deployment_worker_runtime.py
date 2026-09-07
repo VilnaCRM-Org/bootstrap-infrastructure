@@ -40,6 +40,7 @@ from deployment_controller import (  # noqa: E402
 from deployment_controller_runtime import _controller_metadata  # noqa: E402
 from deployment_worker_recheck import (  # noqa: E402
     _verify_controller_run,
+    recheck_admission,
     recheck_worker,
 )
 
@@ -53,12 +54,10 @@ OUTPUT_FIELDS = (
 )
 
 
-def _check_arguments(
+def _check_artifact_arguments(
     artifact_id: str,
     artifact_sha256: str,
     contract_sha256: str,
-    scope: str,
-    environment: str,
 ) -> None:
     """Close every externally supplied identity before constructing API paths."""
     for value, pattern, label in (
@@ -70,6 +69,17 @@ def _check_arguments(
             isinstance(value, str) and re.fullmatch(pattern, value) is not None,
             f"Invalid {label}",
         )
+
+
+def _check_arguments(
+    artifact_id: str,
+    artifact_sha256: str,
+    contract_sha256: str,
+    scope: str,
+    environment: str,
+) -> None:
+    """Require artifact identifiers plus a closed worker scope/account pair."""
+    _check_artifact_arguments(artifact_id, artifact_sha256, contract_sha256)
     preflight.require(scope in ("operator", "governance", "platform"), "Invalid scope")
     preflight.require(environment in ("test", "prod"), "Invalid environment")
 
@@ -188,16 +198,14 @@ def _contract_bytes(raw: bytes, *, member_name: str = "contract.json") -> bytes:
     return payload
 
 
-def load_verified_contract(
+def _load_contract_artifact(
     *,
     artifact_id: str,
     artifact_sha256: str,
     contract_sha256: str,
-    scope: str,
-    environment: str,
 ) -> DeploymentContract:
-    """Authenticate immutable artifact transport, decode and recheck actual facts."""
-    _check_arguments(artifact_id, artifact_sha256, contract_sha256, scope, environment)
+    """Authenticate immutable transport and decode; current admission checks follow."""
+    _check_artifact_arguments(artifact_id, artifact_sha256, contract_sha256)
     controller = _controller_metadata()
     _verify_controller_run(controller)
     _verify_artifact(artifact_id, artifact_sha256, controller)
@@ -210,7 +218,41 @@ def load_verified_contract(
         hashlib.sha256(payload).hexdigest() == contract_sha256,
         "Contract file SHA256 differs",
     )
-    contract = decode_deployment_contract(payload)
+    return decode_deployment_contract(payload)
+
+
+def load_verified_admission(
+    *, artifact_id: str, artifact_sha256: str, contract_sha256: str
+) -> DeploymentContract:
+    """Authenticate a root admission for credential-free validation or barriers.
+
+    An empty selection is valid here. This does not authorize a credential job;
+    selected account workers must call ``load_verified_contract`` instead.
+    """
+    contract = _load_contract_artifact(
+        artifact_id=artifact_id,
+        artifact_sha256=artifact_sha256,
+        contract_sha256=contract_sha256,
+    )
+    recheck_admission(contract)
+    return contract
+
+
+def load_verified_contract(
+    *,
+    artifact_id: str,
+    artifact_sha256: str,
+    contract_sha256: str,
+    scope: str,
+    environment: str,
+) -> DeploymentContract:
+    """Authenticate immutable artifact transport and recheck a selected worker."""
+    _check_arguments(artifact_id, artifact_sha256, contract_sha256, scope, environment)
+    contract = _load_contract_artifact(
+        artifact_id=artifact_id,
+        artifact_sha256=artifact_sha256,
+        contract_sha256=contract_sha256,
+    )
     recheck_worker(contract, scope=scope, environment=environment)
     return contract
 

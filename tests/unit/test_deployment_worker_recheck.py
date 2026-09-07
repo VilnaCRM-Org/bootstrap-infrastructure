@@ -23,19 +23,14 @@ github = _github_fixture
 ROOT_ENDPOINT = f"repos/{worker.REPOSITORY}/actions/runs/100"
 
 
-@pytest.fixture
-def admitted(github):
-    """Produce a real admitted artifact, then observe only subsequent worker reads."""
-    from deployment_controller_runtime import accept
-
-    accept()
-    contract = decode_deployment_contract(github.contract.read_bytes())
+def root_run(contract):
+    """Documented API identity for this test's actual admission."""
     repository = {
         "full_name": worker.REPOSITORY,
         "id": worker.REPOSITORY_ID,
         "owner": {"id": worker.OWNER_ID},
     }
-    github.overrides[ROOT_ENDPOINT] = {
+    return {
         "id": 100,
         "run_attempt": 1,
         "event": "repository_dispatch",
@@ -45,6 +40,16 @@ def admitted(github):
         "repository": repository,
         "head_repository": deepcopy(repository),
     }
+
+
+@pytest.fixture
+def admitted(github):
+    """Produce a real admitted artifact, then observe only subsequent worker reads."""
+    from deployment_controller_runtime import accept
+
+    accept()
+    contract = decode_deployment_contract(github.contract.read_bytes())
+    github.overrides[ROOT_ENDPOINT] = root_run(contract)
     github.calls.clear()
     github.events.clear()
     github.writes.clear()
@@ -56,6 +61,28 @@ def admitted(github):
     assert not any("/statuses" in path for path, _ in github.calls)
     assert github.contract.read_bytes() == original_artifact
     assert github.output.read_bytes() == original_output
+
+
+def test_root_recheck_never_grants_worker_access(github, monkeypatch):
+    from deployment_controller_runtime import accept
+
+    set_request(github, monkeypatch, scopes=())
+    contract = accept()
+    github.overrides[ROOT_ENDPOINT] = root_run(contract)
+    github.calls.clear()
+    github.writes.clear()
+    assert worker.recheck_admission(contract) is None
+    assert github.calls[0][0] == ROOT_ENDPOINT
+    assert not any("/environments/" in path for path, _ in github.calls)
+    assert not github.writes
+    with pytest.raises(ValueError, match="not selected"):
+        worker.recheck_worker(contract, scope="platform", environment="test")
+
+
+def test_root_recheck_rejects_read_only(admitted, github):
+    github.evidence["permission"] = "read"
+    with pytest.raises(ValueError):
+        worker.recheck_admission(admitted)
 
 
 @pytest.mark.parametrize("scope", ["operator", "governance", "platform"])
