@@ -242,7 +242,17 @@ def zip_bytes(names):
 
 
 @pytest.mark.parametrize(
-    "name", ["../escape", "/escape", "folder\\escape", "folder//escape", "folder/"]
+    "name",
+    [
+        "../escape",
+        "/escape",
+        "folder\\escape",
+        "folder//escape",
+        "folder/",
+        "C:/escape",
+        "C:escape",
+        "//server/share/escape",
+    ],
 )
 def test_artifact_path_traversal_and_aliases_rejected(tmp_path, name):
     with pytest.raises(ValueError):
@@ -334,12 +344,31 @@ def test_self_migration_rechecks_requirements_and_keeps_other_ci_failures(
         host, "legacy_evidence_checks", lambda value: {url: {"conclusion": "failure"}}
     )
     own = {
+        "id": 53644588964,
         "context": "Test Account Evidence",
         "state": "failure",
         "target_url": "old",
-        "creator": {"login": host.APP_SLUG + "[bot]"},
+        "creator": {
+            "login": host.APP_SLUG + "[bot]",
+            "id": host.APP_BOT_ID,
+            "type": "Bot",
+        },
     }
-    monkeypatch.setattr(host, "gh", lambda path: {"total_count": 1, "statuses": [own]})
+    monkeypatch.setattr(
+        host,
+        "gh",
+        lambda path: (
+            [own]
+            if "/statuses?" in path
+            else {
+                "total_count": 1,
+                "statuses": [
+                    {key: value for key, value in own.items() if key != "creator"}
+                ],
+            }
+        ),
+    )
+    monkeypatch.setattr(host, "command", lambda argv: json.dumps([own]))
     entries = [
         {
             "__typename": "StatusContext",
@@ -731,6 +760,22 @@ def test_app_api_fixed_host_no_redirect_and_empty_delete(monkeypatch):
     monkeypatch.setattr(app.urllib.request, "build_opener", lambda *a: Opener())
     assert app.api("synthetic", "app") == {}
     assert seen[0].full_url == "https://api.github.com/app"
+    payload = {
+        "repositories": ["bootstrap-infrastructure"],
+        "permissions": {"statuses": "write"},
+    }
+    assert (
+        app.api(
+            "synthetic",
+            "app/installations/1/access_tokens",
+            method="POST",
+            payload=payload,
+        )
+        == {}
+    )
+    assert seen[1].get_method() == "POST"
+    assert seen[1].get_header("Content-type") == "application/json"
+    assert json.loads(seen[1].data) == payload
     assert (
         app.NoRedirect().redirect_request(
             None, None, 302, None, None, "https://foreign"
@@ -881,7 +926,7 @@ def test_cli_prepare_verify_publish_and_local_bootstrap_modes(
 
 
 def test_observed_source_commit_is_verified_not_only_self_hashed(monkeypatch, tmp_path):
-    source = b"reviewed source\n"
+    source = b"reviewed source\r\nnon-UTF8: \xff\r\n"
     receipt = {
         "sourceCommit": "a" * 40,
         "sourceBindings": {"scripts/x.py": host.sha(source)},
@@ -897,15 +942,16 @@ def test_observed_source_commit_is_verified_not_only_self_hashed(monkeypatch, tm
     }
     calls = []
 
-    def run(argv):
+    def run(argv, **kwargs):
         calls.append(argv)
+        assert "text" not in kwargs
         assert "?ref=" + "a" * 40 in argv[2]
-        return source.decode()
+        return subprocess.CompletedProcess(argv, 0, source, b"")
 
-    monkeypatch.setattr(host, "command", run)
+    monkeypatch.setattr(host.subprocess, "run", run)
     host.verify_observed_sources(manifest, tmp_path)
     assert len(calls) == 1
-    monkeypatch.setattr(host, "command", lambda argv: "replacement")
+    monkeypatch.setattr(host, "command_bytes", lambda argv: b"replacement")
     with pytest.raises(ValueError, match="GitHub commit"):
         host.verify_observed_sources(manifest, tmp_path)
 
@@ -1179,3 +1225,194 @@ def test_approval_and_result_accept_utc_z_with_python310_parser(approved, monkey
     record = host.result(approved, expected, "77")
     record["collected_at"] = record["collected_at"].replace("+00:00", "Z")
     assert host.verify_result(approved, record, "77") == expected
+
+
+@pytest.fixture
+def prior_app_status():
+    """Shape observed from the creator-bearing REST status list."""
+    return {
+        "id": 53644588964,
+        "context": "Test Account Evidence",
+        "state": "failure",
+        "target_url": f"https://github.com/{host.REPOSITORY}/pull/204",
+        "creator": {
+            "id": 325299966,
+            "login": "vilnacrm-infrastructure-evidence[bot]",
+            "type": "Bot",
+        },
+    }
+
+
+def test_creator_lookup_matches_exact_current_id_with_prior_publication_history(
+    monkeypatch, approved, prior_app_status
+):
+    """Real combined status omits creator; older same-context statuses are normal."""
+    monkeypatch.setattr(host, "verify_issuer", lambda: None)
+    monkeypatch.setattr(host, "legacy_evidence_checks", lambda value: {})
+    current = {
+        key: value for key, value in prior_app_status.items() if key != "creator"
+    }
+    history = [
+        prior_app_status,
+        {**prior_app_status, "id": 53644588000, "state": "pending"},
+    ]
+    calls = []
+
+    def api(argv, **kwargs):
+        assert argv[:2] == ["gh", "api"]
+        assert kwargs["text"] is True
+        path = argv[2]
+        calls.append(path)
+        if path.endswith("/statuses?per_page=100"):
+            payload = history
+        else:
+            assert path.endswith("/status?per_page=100")
+            payload = {"statuses": [current], "total_count": 1}
+        return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+
+    monkeypatch.setattr(host.subprocess, "run", api)
+    entries = [
+        {
+            "__typename": "StatusContext",
+            "context": "Test Account Evidence",
+            "state": "FAILURE",
+            "targetUrl": current["target_url"],
+        },
+        {"__typename": "CheckRun", "name": "Unit", "conclusion": "FAILURE"},
+    ]
+
+    def runner(argv, **kw):
+        return subprocess.CompletedProcess(
+            argv, 0, json.dumps({"statusCheckRollup": entries}), ""
+        )
+
+    for _ in range(2):
+        adapter, receipt = host.self_status_runner(runner, approved)
+        assert (
+            json.loads(adapter(["gh", "pr", "view"]).stdout)["statusCheckRollup"]
+            == entries[1:]
+        )
+        assert receipt["previousAppStatus"] == [prior_app_status]
+    assert calls == [
+        f"repos/{host.REPOSITORY}/commits/{approved['head_sha']}/{suffix}?per_page=100"
+        for _ in range(2)
+        for suffix in ("status", "statuses")
+    ]
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"id": True},
+        {"id": "53644588964"},
+        {"id": 0},
+        {"state": "SUCCESS"},
+        {"state": []},
+        {"target_url": None},
+        {"target_url": ""},
+    ],
+)
+def test_invalid_current_status_cannot_be_authenticated(
+    monkeypatch, approved, prior_app_status, change
+):
+    def no_lookup(path):
+        raise AssertionError("Malformed current identity must fail before lookup")
+
+    monkeypatch.setattr(host, "gh", no_lookup)
+    with pytest.raises(ValueError, match="Malformed current"):
+        host._authenticated_current_status({**prior_app_status, **change}, approved)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"context": "another check"},
+        {"state": "success"},
+        {"target_url": "https://example.invalid/other"},
+        {"creator": None},
+        {"creator": {}},
+        {"creator": {"id": 325299966, "login": "foreign[bot]", "type": "Bot"}},
+        {"creator": {"id": 1, "login": host.APP_SLUG + "[bot]", "type": "Bot"}},
+        {
+            "creator": {
+                "id": "325299966",
+                "login": host.APP_SLUG + "[bot]",
+                "type": "Bot",
+            }
+        },
+        {
+            "creator": {
+                "id": 325299966,
+                "login": host.APP_SLUG + "[bot]",
+                "type": "User",
+            }
+        },
+    ],
+)
+def test_creator_metadata_mismatch_is_never_excluded(
+    monkeypatch, approved, prior_app_status, change
+):
+    monkeypatch.setattr(
+        host, "command", lambda argv: json.dumps([{**prior_app_status, **change}])
+    )
+    with pytest.raises(ValueError):
+        host._authenticated_current_status(prior_app_status, approved)
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["object", "full_page", "missing", "duplicate", "nonobject", "bad_id", "other_id"],
+)
+def test_incomplete_or_ambiguous_creator_inventory_is_rejected(
+    monkeypatch, approved, prior_app_status, case
+):
+    histories = {
+        "object": {},
+        "full_page": [{**prior_app_status, "id": i + 1} for i in range(100)],
+        "missing": [],
+        "duplicate": [prior_app_status, prior_app_status],
+        "nonobject": [None],
+        "bad_id": [{**prior_app_status, "id": False}],
+        "other_id": [{**prior_app_status, "id": 123}],
+    }
+    monkeypatch.setattr(host, "command", lambda argv: json.dumps(histories[case]))
+    with pytest.raises(ValueError):
+        host._authenticated_current_status(prior_app_status, approved)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        None,
+        {"statuses": None},
+        {"statuses": [None]},
+        {"statuses": [], "total_count": False},
+        {"statuses": [], "total_count": 1},
+    ],
+)
+def test_malformed_combined_inventory_is_rejected(monkeypatch, approved, response):
+    monkeypatch.setattr(host, "verify_issuer", lambda: None)
+    monkeypatch.setattr(host, "gh", lambda path: response)
+    with pytest.raises(ValueError):
+        host.self_status_runner(lambda *a: None, approved)
+
+
+@pytest.mark.parametrize("returncode,raw", [(1, b"private"), (0, b"x" * 16_000_001)])
+def test_raw_source_transport_rejects_failure_and_excess(monkeypatch, returncode, raw):
+    monkeypatch.setattr(
+        host.subprocess,
+        "run",
+        lambda *a, **kw: subprocess.CompletedProcess(a, returncode, raw, b""),
+    )
+    with pytest.raises(ValueError):
+        host.command_bytes(["gh", "api", "fixed"])
+
+
+def test_status_list_transport_rejects_invalid_json(monkeypatch, approved):
+    monkeypatch.setattr(
+        host.subprocess,
+        "run",
+        lambda *a, **kw: subprocess.CompletedProcess(a, 0, "not-json", ""),
+    )
+    with pytest.raises(ValueError):
+        host._status_history(approved)

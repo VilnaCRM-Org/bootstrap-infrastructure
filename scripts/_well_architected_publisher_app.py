@@ -30,6 +30,7 @@ def api(
         headers={
             "Authorization": "Bearer " + token,
             "Accept": "application/vnd.github+json",
+            "Content-Type": "application/json",
             "X-GitHub-Api-Version": "2022-11-28",
         },
         data=None if payload is None else json.dumps(payload).encode(),

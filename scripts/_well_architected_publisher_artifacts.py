@@ -9,7 +9,7 @@ import stat
 import subprocess  # nosec B404
 import time
 import zipfile
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import BinaryIO, cast
 
 from _well_architected_trusted_evidence import MAX_BUNDLE_BYTES, MAX_FILES, _require
@@ -27,7 +27,7 @@ def download(repository: str, artifact_id: int) -> bytes:
         _require(process.stdout is not None, "Missing artifact stream")
         stdout = cast(BinaryIO, process.stdout)
         with selectors.DefaultSelector() as selector:
-            selector.register(process.stdout, selectors.EVENT_READ)
+            selector.register(stdout, selectors.EVENT_READ)
             deadline = time.monotonic() + 120
             while True:
                 _require(time.monotonic() < deadline, "Artifact download timed out")
@@ -69,6 +69,7 @@ def extract(raw: bytes, destination: Path) -> None:
             _require(
                 not item.is_dir()
                 and not path.is_absolute()
+                and not PureWindowsPath(item.filename).drive
                 and ".." not in path.parts
                 and str(path) == item.filename
                 and "\\" not in item.filename,

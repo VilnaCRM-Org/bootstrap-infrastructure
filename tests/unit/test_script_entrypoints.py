@@ -1734,13 +1734,13 @@ def test_record_security_account_attestation_force_overwrites_without_identity(
             "--security-owner",
             "security-owner",
             "--human-access-posture",
-            "MFA posture accepted.",
+            "mfa_sso_verified",
             "--active-key-decision",
-            "No active-key exception needed.",
+            "no_active_keys",
             "--permissions-boundary-decision",
-            "Boundary exemption accepted.",
+            "approved_exemption",
             "--approval-decision",
-            "Approved.",
+            "approved",
             "--force",
         ]
     )
@@ -1774,13 +1774,13 @@ def test_record_security_account_attestation_handles_unstructured_identity(
             "--security-owner",
             "security-owner",
             "--human-access-posture",
-            "MFA posture accepted.",
+            "mfa_sso_verified",
             "--active-key-decision",
-            "Exception accepted.",
+            "approved_exception",
             "--permissions-boundary-decision",
-            "Boundary exemption accepted.",
+            "approved_exemption",
             "--approval-decision",
-            "Approved.",
+            "approved",
         ]
     )
 

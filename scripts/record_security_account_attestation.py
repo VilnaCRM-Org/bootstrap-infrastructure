@@ -67,6 +67,7 @@ def _blocker_lines(check: dict[str, Any]) -> str:
 
 def render_attestation(report: dict[str, Any], args: argparse.Namespace) -> str:
     check, evidence = _iam_access_check(report)
+    _validate_attestation_choices(args)
     _validate_technical_account_evidence(args, evidence)
     action_lines = _markdown_list(args.action, "No follow-up actions recorded.")
 

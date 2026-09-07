@@ -10,7 +10,7 @@ import os
 import re
 import subprocess  # nosec B404
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 import _github_evidence_environment as boundary
@@ -28,6 +28,7 @@ ACCOUNT = "891377212104"
 REGION = "eu-central-1"
 APP_ID = 4840884
 APP_SLUG = "vilnacrm-infrastructure-evidence"
+APP_BOT_ID = 325299966
 WORKFLOW = ".github/workflows/trusted-well-architected.yml"
 COLLECT_JOB = "Collect trusted Well-Architected evidence"
 SELECTORS = {
@@ -46,6 +47,14 @@ def command(argv: list[str], *, cwd: Path | None = None) -> str:
     )  # nosec B603
     _require(result.returncode == 0, "Trusted metadata command failed")
     _require(len(result.stdout) <= 16_000_000, "Metadata output exceeds bound")
+    return result.stdout
+
+
+def command_bytes(argv: list[str]) -> bytes:
+    """Preserve immutable source bytes without universal-newline decoding."""
+    result = subprocess.run(argv, check=False, capture_output=True, timeout=120)  # nosec B603
+    _require(result.returncode == 0, "Trusted source command failed")
+    _require(len(result.stdout) <= 16_000_000, "Source output exceeds bound")
     return result.stdout
 
 
@@ -478,22 +487,86 @@ def verify_issuer() -> None:
     _require(found, "Required App evidence context is not installed")
 
 
+def _status_history(value: dict[str, Any]) -> list[dict[str, Any]]:
+    """Read a bounded complete page containing authenticated status creators."""
+    rows = json.loads(
+        command(
+            [
+                "gh",
+                "api",
+                f"repos/{REPOSITORY}/commits/{value['head_sha']}/statuses?per_page=100",
+            ]
+        )
+    )
+    _require(
+        isinstance(rows, list) and len(rows) < 100,
+        "Incomplete status creator inventory",
+    )
+    _require(all(isinstance(item, dict) for item in rows), "Malformed status history")
+    identities = [item.get("id") for item in rows]
+    _require(
+        all(type(identity) is int and identity > 0 for identity in identities),
+        "Malformed status history identity",
+    )
+    _require(len(set(identities)) == len(identities), "Ambiguous status history")
+    return rows
+
+
+def _authenticated_current_status(
+    current: dict[str, Any], value: dict[str, Any]
+) -> dict[str, Any]:
+    """Bind creator-bearing history to the exact combined-current status ID."""
+    identity = current.get("id")
+    _require(type(identity) is int and identity > 0, "Malformed current status ID")
+    _require(
+        current.get("state") in ("pending", "success", "failure", "error"),
+        "Malformed current status state",
+    )
+    _require(
+        isinstance(current.get("target_url"), str) and bool(current["target_url"]),
+        "Malformed current status URL",
+    )
+    matched = [item for item in _status_history(value) if item["id"] == identity]
+    _require(len(matched) == 1, "Current status absent from creator inventory")
+    actual = matched[0]
+    _require(
+        all(
+            actual.get(field) == current.get(field)
+            for field in ("id", "context", "state", "target_url")
+        ),
+        "Current status creator metadata differs",
+    )
+    creator = actual.get("creator")
+    _require(isinstance(creator, dict), "Missing status creator")
+    creator = cast(dict[str, Any], creator)
+    _require(
+        type(creator.get("id")) is int
+        and creator["id"] == APP_BOT_ID
+        and creator.get("login") == APP_SLUG + "[bot]"
+        and creator.get("type") == "Bot",
+        "Foreign evidence status issuer",
+    )
+    return actual
+
+
 def self_status_runner(runner, value: dict[str, Any]):
     """Exclude only the preceding verified App status from its own reevaluation."""
     verify_issuer()
     status = gh(f"repos/{REPOSITORY}/commits/{value['head_sha']}/status?per_page=100")
-    rows = status.get("statuses", [])
+    _require(isinstance(status, dict), "Malformed current status inventory")
+    rows = status.get("statuses")
+    _require(isinstance(rows, list), "Malformed current status inventory")
+    _require(all(isinstance(item, dict) for item in rows), "Malformed current status")
     _require(
-        status.get("total_count") == len(rows) and len(rows) < 100,
+        type(status.get("total_count")) is int
+        and status["total_count"] == len(rows)
+        and len(rows) < 100,
         "Incomplete current status inventory",
     )
     own = [item for item in rows if item.get("context") == "Test Account Evidence"]
     _require(len(own) <= 1, "Ambiguous evidence status")
     if own:
-        _require(
-            own[0].get("creator", {}).get("login") == APP_SLUG + "[bot]",
-            "Foreign evidence status issuer",
-        )
+        own = [_authenticated_current_status(own[0], value)]
 
     legacy = legacy_evidence_checks(value)
 
@@ -592,7 +665,7 @@ def verify_observed_sources(manifest: dict[str, Any], root: Path) -> None:
             key = (commit, path)
             if key in checked:
                 continue
-            remote = command(
+            remote = command_bytes(
                 [
                     "gh",
                     "api",
@@ -602,7 +675,7 @@ def verify_observed_sources(manifest: dict[str, Any], root: Path) -> None:
                 ]
             )
             _require(
-                sha(remote.encode()) == expected,
+                sha(remote) == expected,
                 "Declared historical source differs from GitHub commit",
             )
             checked.add(key)

@@ -258,3 +258,37 @@ def test_generator_technical_record_roundtrips_without_human_coverage(
     )
     assert blockers == []
     assert "human_access" not in controls
+
+
+@pytest.mark.parametrize(
+    "renderer", [recording.render_attestation, recording.structured_attestation]
+)
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("human_access_posture", "mfa_sso_verified"),
+        ("active_key_decision", "accepted_risk"),
+        ("permissions_boundary_decision", "approved_exemption"),
+    ],
+)
+def test_every_attestation_format_rejects_unearned_technical_claim(
+    renderer, field, value
+):
+    args = argparse.Namespace(
+        approval_decision="technical_review",
+        human_access_posture="not_assessed",
+        active_key_decision="no_active_keys",
+        permissions_boundary_decision="boundary_verified",
+        action=["Objective metadata only"],
+    )
+    setattr(args, field, value)
+    report = {
+        "checks": [
+            {
+                "name": "aws_iam_account_access",
+                "evidence": {"activeUserAccessKeyCount": 0},
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="Technical review"):
+        renderer(report, args)
