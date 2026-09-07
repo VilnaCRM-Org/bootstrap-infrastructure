@@ -294,7 +294,13 @@ def test_tools_reject_substitution_and_pin_project_and_provider(installed, monke
     results = iter([b"a" * 40, b"v3.223.0", b"7.23.0", b"7.23.0"])
     monkeypatch.setattr(transport, "run", lambda *_args, **_kwargs: next(results))
     installed.tools("a" * 40)
-    assert (installed.work / "home/plugins").is_symlink()
+    home = installed.area / "pulumi-home"
+    assert (home / "plugins").is_symlink()
+    assert home.stat().st_mode & 0o777 == 0o755
+    assert installed.child_env["PULUMI_HOME"] == str(home)
+    assert installed.child_env["PULUMI_CREDENTIALS_PATH"] == str(
+        installed.work / "credentials"
+    )
     monkeypatch.setattr(transport, "run", lambda *_args, **_kwargs: b"foreign")
     with pytest.raises(ValueError, match="source-head"):
         installed.tools("a" * 40)
@@ -412,6 +418,18 @@ def test_actual_no_network_container_smoke(tmp_path):
         "        try: action()\n"
         "        except PermissionError: pass\n"
         "        else: raise AssertionError('protected input was mutable')\n"
+        "home = Path(os.environ['PULUMI_HOME'])\n"
+        "plugins = home / 'plugins'\n"
+        "assert plugins.is_symlink()\n"
+        "assert plugins.resolve() == Path('/opt/operator-plugins/plugins')\n"
+        "assert home.stat().st_uid == 0 and home.parent.stat().st_uid == 0\n"
+        "for action in (plugins.unlink, lambda: home.chmod(0o777),\n"
+        "               lambda: home.rename(home.with_name('hijacked')),\n"
+        "               lambda: (home / 'plugins-override').symlink_to('/tmp'),\n"
+        "               lambda: os.replace(Path(os.environ['HOME']), home)):\n"
+        "    try: action()\n"
+        "    except PermissionError: pass\n"
+        "    else: raise AssertionError('trusted plugin path was mutable')\n"
         "pulumi.export('smoke', pulumi.Config().require('value'))\n"
     )
     code = r"""
@@ -605,3 +623,67 @@ print("PINNED-CONTAINER-SMOKE-PASS: no network, no AWS calls, synthetic local re
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "PINNED-CONTAINER-SMOKE-PASS" in result.stdout
+
+
+@pytest.mark.parametrize("kind", ["symlink-device", "fifo", "oversize"])
+def test_project_read_is_bounded_regular_input(installed, monkeypatch, kind):
+    plugin = installed.area / "plugins/resource-aws-v7.23.0/pulumi-resource-aws"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_bytes(b"synthetic-public-binary")
+    monkeypatch.setattr(transport, "PLUGIN", plugin)
+    monkeypatch.setattr(
+        transport, "PLUGIN_SHA256", hashlib.sha256(plugin.read_bytes()).hexdigest()
+    )
+    results = iter([b"a" * 40, b"v3.223.0", b"7.23.0", b"7.23.0"])
+    monkeypatch.setattr(transport, "run", lambda *_args, **_kwargs: next(results))
+    monkeypatch.setattr(transport, "MAX_BYTES", 128)
+    path = installed.source / "pulumi/github-ci-bootstrap/Pulumi.yaml"
+    path.unlink()
+    if kind == "symlink-device":
+        path.symlink_to("/dev/zero")
+    elif kind == "fifo":
+        os.mkfifo(path)
+    else:
+        path.write_bytes(b"x" * 129)
+    with pytest.raises(
+        ValueError, match="private-file-required|private-document-bound"
+    ):
+        installed.tools("a" * 40)
+    assert not (installed.area / "pulumi-home").exists()
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"plugins": {"providers": [{"name": "aws", "path": "./untrusted"}]}},
+        {"packages": {"aws": {"source": "./untrusted"}}},
+        {"config": {"aws:accessKey": {"value": "synthetic-only"}}},
+        {"main": "./untrusted"},
+        {"description": {}},
+    ],
+)
+def test_project_discovery_overrides_fail(installed, monkeypatch, extra):
+    project = {"name": "github-ci-bootstrap", "runtime": {"name": "python"}, **extra}
+    _reject_project(installed, monkeypatch, project)
+
+
+@pytest.mark.parametrize("project", [None, [], "not-an-object"])
+def test_nonmapping_project_fails_cleanly(installed, monkeypatch, project):
+    _reject_project(installed, monkeypatch, project)
+
+
+def _reject_project(installed, monkeypatch, project):
+    plugin = installed.area / "plugins/resource-aws-v7.23.0/pulumi-resource-aws"
+    plugin.parent.mkdir(parents=True)
+    plugin.write_bytes(b"synthetic-public-binary")
+    monkeypatch.setattr(transport, "PLUGIN", plugin)
+    monkeypatch.setattr(
+        transport, "PLUGIN_SHA256", hashlib.sha256(plugin.read_bytes()).hexdigest()
+    )
+    results = iter([b"a" * 40, b"v3.223.0", b"7.23.0", b"7.23.0"])
+    monkeypatch.setattr(transport, "run", lambda *_args, **_kwargs: next(results))
+    path = installed.source / "pulumi/github-ci-bootstrap/Pulumi.yaml"
+    path.write_text(transport.yaml.safe_dump(project))
+    with pytest.raises(ValueError, match="operator-project-runtime"):
+        installed.tools("a" * 40)
+    assert not (installed.area / "pulumi-home").exists()
