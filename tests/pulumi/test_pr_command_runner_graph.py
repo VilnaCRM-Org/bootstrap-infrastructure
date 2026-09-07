@@ -1,4 +1,4 @@
-"""Evaluate the installed controller YAML conditions; simulate only pure account reduction.
+"""Evaluate controller YAML conditions and pure account reduction.
 
 These tests prove graph ordering and fail-closed condition semantics. They do not
 authenticate GitHub job/artifact provenance or prove deployed infrastructure.
@@ -40,6 +40,20 @@ SUBSETS = [
     tuple(scope for scope, bit in zip(SCOPES, bits) if bit)
     for bits in itertools.product((False, True), repeat=3)
 ]
+
+
+def test_publisher_serializes_with_scope_status_writer():
+    assert JOBS["publish_promotion"]["concurrency"] == {
+        "group": "promotion-status-${{ needs.preflight.outputs.pull_request_number }}",
+        "cancel-in-progress": False,
+    }
+    scope = yaml.safe_load(
+        (SOURCE / ".github/workflows/governance-promotion.yml").read_text()
+    )
+    assert scope["concurrency"] == {
+        "group": "promotion-status-${{ github.event.pull_request.number }}",
+        "cancel-in-progress": False,
+    }
 
 
 def evaluate_ast(node):
@@ -265,7 +279,11 @@ def test_literal_call_contract_permissions_and_locks_are_exact():
         if name not in calls
     )
     assert WORKFLOW["concurrency"]["group"].startswith("pulumi-command-")
-    assert all("concurrency" not in job for job in JOBS.values())
+    assert all(
+        "concurrency" not in job
+        for name, job in JOBS.items()
+        if name != "publish_promotion"
+    )
 
 
 def test_one_existing_admission_and_no_raw_payload_worker_routes():

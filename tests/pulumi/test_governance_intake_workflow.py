@@ -35,7 +35,8 @@ def run_step(name, *, cwd, environment):
     return subprocess.run(
         ["bash", "-euo", "pipefail", "-c", step(name)["run"]],
         cwd=cwd,
-        env={"PATH": os.defpath, **environment},
+        env={"PATH": str(Path(sys.executable).parent) + os.pathsep + os.defpath,
+             **environment},
         capture_output=True,
         text=True,
         check=True,
