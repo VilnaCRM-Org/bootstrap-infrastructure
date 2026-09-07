@@ -254,6 +254,17 @@ def _validate_changed_filenames(changed: list[dict]) -> None:
         ),
         "Changed-file filenames must be nonempty strings",
     )
+    require(
+        all(
+            "previous_filename" not in item
+            or (
+                isinstance(item["previous_filename"], str)
+                and bool(item["previous_filename"])
+            )
+            for item in changed
+        ),
+        "Changed-file previous filenames must be nonempty strings",
+    )
 
 
 def _validate_scope_source(pr: dict, repository: str) -> None:

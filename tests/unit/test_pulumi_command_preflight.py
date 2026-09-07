@@ -796,3 +796,71 @@ def test_scope_records_are_copied_and_preserve_deletions_and_rename_sources(
     changed[0]["previous_filename"] = "docs/unrelated.md"
     assert result["changed_file_records"][0]["previous_filename"] == "Makefile"
     assert result["changed_file_records"] is not changed
+
+
+@pytest.mark.parametrize("arguments", [[], ["--governance"], ["--service"]])
+@pytest.mark.parametrize("previous", [None, 42, True, [], {}, ""])
+def test_all_preflight_routes_reject_malformed_rename_sources_before_scope(
+    monkeypatch, tmp_path, arguments, previous
+):
+    request, evidence = fixture_data(action="plan")
+    set_request_env(monkeypatch, request)
+    for name, value in {
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_EVENT_NAME": "repository_dispatch",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_OUTPUT": str(tmp_path / "output"),
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(preflight, "collect_intake_evidence", lambda request: evidence)
+
+    class AdmissionTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return evidence["now"]
+
+    monkeypatch.setattr(preflight, "datetime", AdmissionTime)
+    changed = [
+        {
+            "filename": "docs/moved.md",
+            "status": "renamed",
+            "previous_filename": previous,
+        },
+        {"filename": "README.md", "status": "modified"},
+    ]
+    calls = _scope_scan_runtime(
+        monkeypatch, evidence, evidence["pr"], evidence["pr"], changed
+    )
+    with pytest.raises(ValueError, match="previous filenames must be nonempty strings"):
+        preflight.main(arguments)
+    assert len(calls) == 2  # Stop at compare, before rights/protections or claim I/O.
+    outputs = (tmp_path / "output").read_text().splitlines()
+    assert outputs and all(line.startswith("feedback_") for line in outputs)
+
+
+@pytest.mark.parametrize("governance,service", [(True, False), (False, True)])
+def test_valid_rename_source_remains_visible_to_legacy_and_service_routing(
+    monkeypatch, governance, service
+):
+    request, evidence = fixture_data(action="plan")
+    changed = [
+        {
+            "filename": "docs/moved.md",
+            "status": "renamed",
+            "previous_filename": "Makefile",
+        },
+        {"filename": "README.md", "status": "modified"},
+    ]
+    _scope_scan_runtime(monkeypatch, evidence, evidence["pr"], evidence["pr"], changed)
+    collected = preflight.collect_evidence(request, intake=evidence)
+    collected["now"] = evidence["now"]
+    assert collected["files"] == ["docs/moved.md", "Makefile", "README.md", ""]
+    assert collected["changed_file_records"] == changed
+    assert (
+        preflight.validate_request(
+            request, collected, governance=governance, service=service
+        )["head_sha"]
+        == request["head_sha"]
+    )
+    with pytest.raises(ValueError, match="wrong governance scope"):
+        preflight.validate_request(request, collected, governance=False)
