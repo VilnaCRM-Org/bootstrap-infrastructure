@@ -65,6 +65,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "deployment_controller",
         "deployment_contract_io",
         "deployment_controller_runtime",
+        "deployment_worker_recheck",
         "deployment_schedule",
         "deployment_scopes",
         "governance_paths",

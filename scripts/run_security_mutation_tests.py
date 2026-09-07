@@ -51,6 +51,7 @@ REQUIREMENTS = {
         "authenticate_intake",
         "validate_request",
         "validate_request_identity",
+        "validate_current_request_identity",
         "read_request",
         "claim_request",
         "verify_environments",

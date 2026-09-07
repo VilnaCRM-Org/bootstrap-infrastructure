@@ -91,6 +91,46 @@ def test_service_scope_preserves_authentication_for_control_file_changes():
         preflight.validate_request(request, evidence, governance=False, service=True)
 
 
+def test_current_identity_allows_approval_wait_but_every_admission_keeps_expiry():
+    request, evidence = fixture_data()
+    evidence["now"] = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
+    assert (
+        preflight.validate_current_request_identity(request, evidence)["head_sha"]
+        == request["head_sha"]
+    )
+    with pytest.raises(ValueError, match="Expired command"):
+        preflight.validate_request_identity(request, evidence)
+    for service in (False, True):
+        with pytest.raises(ValueError, match="Expired command"):
+            preflight.validate_request(
+                request, evidence, governance=True, service=service
+            )
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("comment", "updated_at"), "2026-09-05T12:00:01Z"),
+        (("run", "created_at"), "2026-09-05T12:06:00Z"),
+        (("run", "actor", "id"), 99),
+        (("pr", "state"), "closed"),
+        (("pr", "head", "sha"), "d" * 40),
+        (("pr", "base", "sha"), "d" * 40),
+        (("permission",), "read"),
+        (("comment", "user", "login"), "Kravalg"),
+    ],
+)
+def test_approval_wait_never_relaxes_current_identity(path, value):
+    request, evidence = fixture_data()
+    evidence["now"] = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
+    current = evidence
+    for key in path[:-1]:
+        current = current[key]
+    current[path[-1]] = value
+    with pytest.raises(ValueError):
+        preflight.validate_current_request_identity(request, evidence)
+
+
 @pytest.mark.parametrize("validator", ["legacy", "identity"])
 @pytest.mark.parametrize(
     "path,value",
@@ -699,6 +739,19 @@ def test_complete_compare_cannot_survive_post_scan_revision_or_count_change(
         ({"filename": "README.md"}, "must be an array"),
         (None, "must be an array"),
         ([None, {"filename": "README.md"}], "must be objects"),
+        ([{}, {"filename": "README.md"}], "filenames must be nonempty strings"),
+        (
+            [{"filename": None}, {"filename": "README.md"}],
+            "filenames must be nonempty strings",
+        ),
+        (
+            [{"filename": ""}, {"filename": "README.md"}],
+            "filenames must be nonempty strings",
+        ),
+        (
+            [{"filename": 42}, {"filename": "README.md"}],
+            "filenames must be nonempty strings",
+        ),
     ],
 )
 def test_scope_scan_rejects_incomplete_or_malformed_file_envelope(

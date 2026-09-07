@@ -72,16 +72,18 @@ def authenticate_intake(request: dict, evidence: dict):
     return command
 
 
-def validate_request_identity(request: dict, evidence: dict) -> dict:
-    """Require authenticated origin and current authorization, independent of scope."""
+def validate_current_request_identity(request: dict, evidence: dict) -> dict:
+    """Recheck immutable origin and current rights after an admitted approval wait.
+
+    This does not admit new requests: admission must also enforce freshness via
+    ``validate_request_identity``. No payload field can disable that check.
+    """
     command = authenticate_intake(request, evidence)
     pr, comment = evidence["pr"], evidence["comment"]
     require(pr["state"] == "open" and pr["merged"] is False, "PR closed or merged")
     require(pr["head"]["sha"] == request["head_sha"], "PR head moved")
     require(pr["base"]["ref"] == "main", "PR must target main")
     require(pr["base"]["sha"] == evidence["scope_base_sha"], "PR base moved")
-    created = datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00"))
-    require(0 <= (evidence["now"] - created).total_seconds() <= 900, "Expired command")
     require(
         evidence["permission"] in {"write", "maintain", "admin"},
         "Write access required",
@@ -96,6 +98,16 @@ def validate_request_identity(request: dict, evidence: dict) -> dict:
         "display_command": command.display_command,
         "base_sha": evidence["scope_base_sha"],
     }
+
+
+def validate_request_identity(request: dict, evidence: dict) -> dict:
+    """Require current identity and a fresh command for initial admission."""
+    outputs = validate_current_request_identity(request, evidence)
+    created = datetime.fromisoformat(
+        evidence["comment"]["created_at"].replace("Z", "+00:00")
+    )
+    require(0 <= (evidence["now"] - created).total_seconds() <= 900, "Expired command")
+    return outputs
 
 
 def validate_request(
@@ -203,6 +215,7 @@ def collect_evidence(request: dict[str, str], *, intake: dict | None = None) -> 
         all(isinstance(item, dict) for item in changed),
         "Changed-file records must be objects",
     )
+    _validate_changed_filenames(changed)
     records = [dict(item) for item in changed]
     files = [
         name
@@ -230,6 +243,17 @@ def collect_evidence(request: dict[str, str], *, intake: dict | None = None) -> 
         "changed_file_count": count,
         "files": files,
     }
+
+
+def _validate_changed_filenames(changed: list[dict]) -> None:
+    """Reject malformed filenames before flattening authenticated compare records."""
+    require(
+        all(
+            isinstance(item.get("filename"), str) and bool(item["filename"])
+            for item in changed
+        ),
+        "Changed-file filenames must be nonempty strings",
+    )
 
 
 def _validate_scope_source(pr: dict, repository: str) -> None:
