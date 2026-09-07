@@ -68,6 +68,8 @@ CENTRAL_EXECUTION_FILES = frozenset(
         "scripts/deployment_controller_runtime.py",
         "scripts/deployment_contract_io.py",
         "scripts/deployment_worker_recheck.py",
+        "scripts/deployment_worker_runtime.py",
+        "scripts/deployment_worker_receipt.py",
         "scripts/pulumi_command_preflight.py",
         "scripts/pulumi_pr_comment.py",
         "scripts/governance_promotion.py",
@@ -80,6 +82,8 @@ CENTRAL_EXECUTION_FILES = frozenset(
         ".github/actions/load-aws-ci-env/action.yml",
         ".github/workflows/pulumi-pr-commands.yml",
         ".github/workflows/pulumi-pr-command-runner.yml",
+        ".github/workflows/pulumi-platform-account.yml",
+        ".github/workflows/pulumi-governance-account.yml",
         ".github/workflows/pulumi-governance.yml",
         ".github/workflows/governance-promotion.yml",
     }
