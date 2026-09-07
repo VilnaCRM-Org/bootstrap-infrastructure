@@ -74,6 +74,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "deployment_worker_recheck",
         "deployment_worker_runtime",
         "governance_paths",
+        "operator_plan_envelope",
         "pulumi_command_preflight",
         "pulumi_pr_comment",
         "_script_support",
@@ -107,6 +108,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "infra",
         "policy",
         "reviewed_iam",
+        "validate_ci_environment",
         "validate_repository_catalogs",
     ]
     assert deptry["known_first_party"] == expected_first_party  # nosec B101

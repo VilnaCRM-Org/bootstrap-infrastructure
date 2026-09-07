@@ -368,6 +368,7 @@ def test_security_classification_is_independent() -> None:
         ("scripts/deployment_receipt_runtime.py", False),
         ("scripts/deployment_account_barrier.py", False),
         ("scripts/deployment_input_validation.py", False),
+        ("scripts/operator_plan_envelope.py", False),
         ("scripts/pulumi_command_preflight.py", True),
         ("scripts/pulumi_pr_comment.py", True),
         ("scripts/governance_promotion.py", True),
@@ -383,7 +384,7 @@ def test_security_classification_is_independent() -> None:
         (".github/workflows/pulumi-platform-account.yml", False),
         (".github/workflows/pulumi-governance-account.yml", False),
         (".github/workflows/pulumi-governance.yml", False),
-        (".github/workflows/governance-promotion.yml", True),
+        (".github/workflows/governance-promotion.yml", False),
     ],
 )
 def test_coordinator_execution_inputs_select_conservative_validation(

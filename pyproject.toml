@@ -9,6 +9,7 @@ authors = [
     { name = "Mykyta Mozghovoi", email = "n.mozgowoi2017@gmail.com" },
 ]
 dependencies = [
+    "cryptography==50.0.1",
     "pulumi>=3.200.0,<4",
     "pulumi-aws>=7.0,<8",
     "pulumi-policy>=1.20.0,<2",
@@ -73,6 +74,7 @@ known_first_party = [
     "deployment_worker_recheck",
     "deployment_worker_runtime",
     "governance_paths",
+    "operator_plan_envelope",
     "pulumi_command_preflight",
     "pulumi_pr_comment",
     "_script_support",
@@ -106,6 +108,7 @@ known_first_party = [
     "infra",
     "policy",
     "reviewed_iam",
+    "validate_ci_environment",
     "validate_repository_catalogs",
 ]
 
