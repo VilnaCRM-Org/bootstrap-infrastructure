@@ -136,9 +136,9 @@ def test_account_tokens_have_disjoint_subjects(purpose):
         )
         claims[environment] = document["Statement"][0]["Condition"]["StringEquals"]
     issuer = "token.actions.githubusercontent.com:"
-    assert claims["test"][issuer + "environment"] != claims["prod"][
-        issuer + "environment"
-    ]
+    assert (
+        claims["test"][issuer + "environment"] != claims["prod"][issuer + "environment"]
+    )
     assert set(claims["test"][issuer + "sub"]).isdisjoint(
         claims["prod"][issuer + "sub"]
     )
