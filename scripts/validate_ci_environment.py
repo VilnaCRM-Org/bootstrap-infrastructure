@@ -128,7 +128,9 @@ def _validate_backend_url(value: str) -> str | None:
 
 
 def _validate_pulumi_dir(value: str) -> str | None:
-    if re.fullmatch(r"pulumi(?:/[A-Za-z0-9_.-]+)*", value):
+    if re.fullmatch(r"pulumi(?:/[A-Za-z0-9_.-]+)*", value) and all(
+        part not in {".", ".."} for part in value.split("/")
+    ):
         return None
     return "must be a safe Pulumi project path"
 

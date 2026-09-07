@@ -12,6 +12,7 @@ from typing import Any, cast
 
 import _github_evidence_environment as _evidence_environment
 import _github_repository_controls as _repository_controls
+from _github_environment_controls import complete_branch_policies
 
 REQUIRED_STATUS_CHECKS = _repository_controls.REQUIRED_STATUS_CHECKS
 OPERATIONS_ALERT_RECONCILE_ENVIRONMENT = (
@@ -165,8 +166,8 @@ def _environment_verification_blockers(
         dict(environment_payload) if isinstance(environment_payload, Mapping) else None
     )
     if environment is not None and isinstance(branch_response, Mapping):
-        environment["deployment_branch_policies"] = branch_response.get(
-            "branch_policies"
+        environment["deployment_branch_policies"] = complete_branch_policies(
+            branch_response
         )
     return blocker_fn(environment, reviewer_id)
 
@@ -211,10 +212,8 @@ def _validated_branch_policies(response: object) -> list[dict[str, Any]]:
     ids = [policy["id"] for policy in result]
     if len(set(ids)) != len(ids):
         raise ValueError("Environment branch-policy ids must be unique.")
-    if "total_count" in response:
-        count = response["total_count"]
-        if type(count) is not int or count != len(result):
-            raise ValueError("Environment branch-policy listing is incomplete.")
+    if complete_branch_policies(response) is None:
+        raise ValueError("Environment branch-policy listing is incomplete.")
     return sorted(result, key=lambda policy: policy["id"])
 
 

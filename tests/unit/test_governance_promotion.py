@@ -365,7 +365,7 @@ def test_cli_checks_actual_evidence_environment_before_app_auth(
         promotion,
         "gh",
         lambda endpoint: (
-            {"branch_policies": [{"name": branch, "type": "branch"}]}
+            {"total_count": 1, "branch_policies": [{"name": branch, "type": "branch"}]}
             if endpoint.endswith("/deployment-branch-policies")
             else promotion.evidence_environment.payload()
         ),

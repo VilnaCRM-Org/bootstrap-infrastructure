@@ -108,9 +108,11 @@ def _bucket_exists(name: str, *, provider: aws.Provider | None = None) -> bool:
         return True
 
 
-def _log_bucket_policy(bucket_arn: str, account_id: str) -> str:
+def _log_bucket_policy(
+    bucket_arn: str, account_id: str, source_bucket_names: Sequence[str] = ()
+) -> str:
     """Build the TLS-only policy with CloudTrail and log delivery permissions."""
-    return f"""
+    policy = json.loads(f"""
 {{
   "Version": "2012-10-17",
   "Statement": [
@@ -156,28 +158,30 @@ def _log_bucket_policy(bucket_arn: str, account_id: str) -> str:
       "Condition": {{
         "StringEquals": {{"aws:SourceAccount": "{account_id}"}}
       }}
-    }},
-    {{
-      "Sid": "AllowLogDelivery",
-      "Effect": "Allow",
-      "Principal": {{"Service": "logging.s3.amazonaws.com"}},
-      "Action": "s3:PutObject",
-      "Resource": "{bucket_arn}/aws-logs/*",
-      "Condition": {{
-        "StringEquals": {{
-          "s3:x-amz-acl": "bucket-owner-full-control",
-          "aws:SourceAccount": "{account_id}"
-        }}
-      }}
     }}
   ]
 }}
-"""
+""")
+    policy["Statement"].extend(
+        {
+            "Sid": f"AllowLogDelivery{index}",
+            "Effect": "Allow",
+            "Principal": {"Service": "logging.s3.amazonaws.com"},
+            "Action": "s3:PutObject",
+            "Resource": f"{bucket_arn}/aws-logs/{source}/*",
+            "Condition": {
+                "ArnLike": {"aws:SourceArn": f"arn:aws:s3:::{source}"},
+                "StringEquals": {"aws:SourceAccount": account_id},
+            },
+        }
+        for index, source in enumerate(source_bucket_names)
+    )
+    return json.dumps(policy)
 
 
 def _log_bucket_policy_from_values(values: Sequence[str]) -> str:
     """Build the logging bucket policy from Pulumi output values."""
-    return _log_bucket_policy(values[0], values[1])
+    return _log_bucket_policy(values[0], values[1], values[2:])
 
 
 def _replication_assume_role_policy(arn: str, account_id: str) -> str:
@@ -246,6 +250,7 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
         settings: BootstrapSettings | None = None,
         replication_region: str | None = None,
         manage_replication_role: bool = True,
+        source_bucket_names: Sequence[str] = (),
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         """Initialize the central logging buckets component."""
@@ -426,7 +431,9 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             policy=apply_output(
                 cast(
                     pulumi.Output[Sequence[str]],
-                    pulumi.Output.all(bucket.arn, account.account_id),
+                    pulumi.Output.all(
+                        bucket.arn, account.account_id, *source_bucket_names
+                    ),
                 ),
                 _log_bucket_policy_from_values,
             ),
@@ -439,7 +446,14 @@ class CentralLoggingBuckets(pulumi.ComponentResource):
             policy=apply_output(
                 cast(
                     pulumi.Output[Sequence[str]],
-                    pulumi.Output.all(replica_bucket.arn, account.account_id),
+                    pulumi.Output.all(
+                        replica_bucket.arn,
+                        account.account_id,
+                        *(
+                            _replica_bucket_name(source, resolved_region)
+                            for source in source_bucket_names
+                        ),
+                    ),
                 ),
                 _log_bucket_policy_from_values,
             ),

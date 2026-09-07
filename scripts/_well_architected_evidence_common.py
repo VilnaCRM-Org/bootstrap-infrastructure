@@ -23,6 +23,9 @@ class OptionalOwnerEvidenceSpec:
     required_fields: Sequence[str]
     payload_blockers: Callable[[dict[str, Any], dict[str, object]], list[str]]
     summary: Callable[[Path, dict[str, Any]], dict[str, object]]
+    max_review_age_days: int | None = (
+        _structured_evidence.STRUCTURED_EVIDENCE_MAX_AGE_DAYS
+    )
 
 
 def _check(
@@ -82,6 +85,7 @@ def _optional_owner_evidence_coverage(
         evidence_path,
         spec.label,
         spec.required_fields,
+        max_review_age_days=spec.max_review_age_days,
     )
     blockers.extend(spec.payload_blockers(payload, live_evidence))
     return spec.summary(evidence_path, payload), blockers

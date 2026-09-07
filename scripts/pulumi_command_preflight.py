@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from _github_environment_controls import complete_branch_policies
 from _github_repository_controls import protected_environment_verification_blockers
 from governance_paths import paths_touch_governance
 from pulumi_pr_comment import parse_command, write_outputs
@@ -245,7 +246,7 @@ def verify_environments(request: dict[str, str], *, governance: bool) -> None:
             f"{name} environment and branch policies must be objects",
         )
         environment = dict(environment)
-        environment["deployment_branch_policies"] = policies.get("branch_policies")
+        environment["deployment_branch_policies"] = complete_branch_policies(policies)
         blockers = protected_environment_verification_blockers(
             environment, reviewer, label=name
         )

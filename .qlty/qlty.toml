@@ -72,7 +72,7 @@ name = "gitleaks"
 
 # Single-file scans do not discover the repository-root Gitleaks configuration.
 [plugins.definitions.gitleaks.drivers.lint]
-script = "gitleaks detect --no-git --source=${target} --config=.gitleaks.toml --exit-code=101 -f sarif -r ${tmpfile}"
+script = "gitleaks detect --no-git --source=${target} --config=.gitleaks.toml --redact --exit-code=101 -f sarif -r ${tmpfile}"
 
 [[plugin]]
 name = "hadolint"

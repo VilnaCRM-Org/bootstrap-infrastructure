@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "closed_at": "2026-09-07T01:41:36.854950+00:00",
+  "status": "CLOSED_PASS_NO_FURTHER_LIVE_TESTING",
+  "user_stop_applies_to": [
+    "TEST R6",
+    "PROD R1"
+  ],
+  "aws_calls_during_closure": 0,
+  "source_receipt": {
+    "path": "work/wa-runtime-closure/prod-restore-r1/execution-receipt.json",
+    "sha256": "70acd4bd53e8f9736660faf37d8f9cbe28dad683e56634c09e3865d05732901d"
+  },
+  "sanitized_final_receipt": {
+    "schema_version": 1,
+    "status": "PASS_RESTORE_AND_CLEANUP",
+    "observed_at": "2026-09-07T01:39:18.420035+00:00",
+    "account": "933245420672",
+    "region": "eu-central-1",
+    "profile": "vilnacrm-prod",
+    "caller": "arn:aws:iam::933245420672:root",
+    "transport": "Pinned Python -I, clean environment, existing temporary login/custom credential process; no root AssumeRole or static credentials.",
+    "drill_id": "20260907-pr1-aa28e15b",
+    "job_id": "b69bee4a-9257-4780-823c-f32c925ed4a4",
+    "job_start_count": 1,
+    "job_status": "COMPLETED",
+    "status_message_empty": true,
+    "warning_rule": "Unchanged frozen verifier required empty StatusMessage before all integrity checks. No warning or partial-restore acceptance.",
+    "created_at": "2026-09-07T01:31:34.715000+00:00",
+    "completed_at": "2026-09-07T01:35:50.253000+00:00",
+    "rto_seconds": 255.538,
+    "bytes": 966849,
+    "sha256": "d82dd035f10dc4891d580a82aa8e480c11f758283433cf00dd71efbdcac60de4",
+    "exact_single_key_version_inventory": true,
+    "delete_markers_and_multipart_uploads_absent": true,
+    "source_and_restored_version_hashes_equal": true,
+    "source_checkpoint_body_parsed_or_persisted": false,
+    "source_selection": {
+      "source_bucket": "pulumi-bootstrap-infrastructure-prod-state",
+      "source_key": "state/prod/.pulumi/stacks/bootstrap-infrastructure/prod.json.bak",
+      "source_version_id": "fb4EhICmi.8DY_eRzKfaecYnJ_XK23OW",
+      "source_last_modified": "2026-05-18T05:46:35Z",
+      "expected_bytes": 966849,
+      "expected_sha256": "d82dd035f10dc4891d580a82aa8e480c11f758283433cf00dd71efbdcac60de4",
+      "recovery_point_arn": "arn:aws:backup:eu-central-1:933245420672:recovery-point:pulumi-bootstrap-infrastructure-prod-sta-20260906051825-571eed14",
+      "recovery_creation_utc": "2026-09-06T05:00:00Z",
+      "recovery_completion_utc": "2026-09-06T05:43:36.228000Z",
+      "recovery_metadata_snapshot_utc": "2026-09-06T05:36:56Z"
+    },
+    "diagnostics": {
+      "installed_at": "2026-09-07T01:09:07.651315+00:00",
+      "earliest_canary_at": "2026-09-07T01:24:07.651315+00:00",
+      "canary_intent_at": "2026-09-07T01:24:36.114557+00:00",
+      "canary_bytes": 52,
+      "canary_content_verified": true,
+      "actual_put_get_delivery_verified": true,
+      "collection_attempts": 4,
+      "canary_deleted": true,
+      "root_write_exception_removed": true,
+      "original_selector_restored": true,
+      "original_selector_sha256": "efee0f9907e04888edc0f97c09f3d8a379ab166d0d551d1de5b9be337a3e13b4",
+      "trail_health": {
+        "delivery_errors_present": false,
+        "delivery_recent": true,
+        "healthy": true,
+        "is_logging": true,
+        "latest_successful_delivery": "2026-09-07T01:37:04+00:00",
+        "status_available": true
+      },
+      "exclusive_selector_window_released": true
+    },
+    "cleanup": {
+      "complete": true,
+      "temporary_bucket_and_object_absent": true,
+      "temporary_role_and_inline_absent": true,
+      "temporary_boundary_absent": true,
+      "verification": "Frozen cleanup used exact names/IDs, terminal job check, confined inventory and absent-resource readbacks; original selector restoration checked complete payload and original trail settings."
+    },
+    "historical_failure_preserved": {
+      "receipt": "work/wa-runtime-closure/prod-restore-r1/execution/observe-1.json",
+      "exit_code": 1,
+      "error_type": "Hold",
+      "exact_failed_predicate_not_recorded": true,
+      "subsequent_read_only_diagnosis": "Job RUNNING, no warning, all nine metadata checks passed. Unchanged observe-2 returned RUNNING; unchanged observe-3 fully passed after completion.",
+      "mutation_replayed": false,
+      "verifier_changed": false,
+      "failed_receipt_overwritten": false
+    },
+    "frozen_source_hashes_unchanged": true,
+    "reviewed_manifest_sha256": "722605acb71ca720269142a871a78637d1556b7cb98d5b54b06eab32d246ccb6",
+    "execution_scope": [
+      "One new disposable PROD restore bucket, bounded temporary restore role/inline/boundary, and one temporary bucket-specific data-event selector.",
+      "One 52-byte exact-key canary followed by exact-version cleanup, then one AWS Backup restore job.",
+      "Source version and restored version were hashed in memory; no source modifications, customer KMS grants or inherited TEST client factories."
+    ],
+    "limits": [
+      "Single-object technical PROD restore proof only; no human production-owner acceptance, RPO approval, retention waiver or full application disaster-recovery claim.",
+      "Initial observation Hold remains an unexplained early read failure. It was neither erased nor used as acceptance; all final conditions passed with the same verifier."
+    ],
+    "evidence_sha256": {
+      "work/wa-runtime-closure/prod-restore-r1/reviewed-manifest.json": "722605acb71ca720269142a871a78637d1556b7cb98d5b54b06eab32d246ccb6",
+      "work/wa-runtime-closure/prod-restore-r1/readiness.json": "acdae72554c8746fa52be2fc2b39572bc6c0ce21d5019f4766f10f8e5693907d",
+      "outputs/prod-restore-r1-independent-review.json": "ec2f56da6f5cc1e2fdf0ac89b53b63366082ad28aeb5f1158aa2f4380bcbb97b",
+      "work/wa-runtime-closure/prod-restore-r1/proposal.json": "4d161fa963fae1f9ab4a1174df4c97d1423cd58914af1ed3538d2e89292da874",
+      "work/wa-runtime-closure/prod-restore-r1/execute.py": "368fff4e1b82832d7316b3d1e6d1758da08b8a69c9317b59b4d58f76065aadb9",
+      "work/wa-runtime-closure/prod-restore-r1/cloudtrail-before.json": "71eeba9dd3f295007c96bdf06d163b83c6328c5cf968c29da6806cf4b34ff3fb",
+      "work/wa-runtime-closure/prod-restore-r1/private/20260907-pr1-aa28e15b/state.json": "da594d339044ca802063a5288e6ca9384c3d99bfbc08fdb50eb2703d3cc3899a",
+      "work/wa-runtime-closure/prod-restore-r1/private/20260907-pr1-aa28e15b/diagnostics.json": "1433f260aa323db404310d07609b13e7ec595556c47aad7c1933d21830ba04bf",
+      "work/wa-runtime-closure/prod-restore-r1/execution/canary-cleanup.json": "44be09afa34c67749473ed8d849fb61d6fa7524195bcd5a1d4dd926b8c2066d5",
+      "work/wa-runtime-closure/prod-restore-r1/execution/canary.json": "65d37e9968985e8ea08f463a064c9c10af11c42a08e220dde3a70c32828052b8",
+      "work/wa-runtime-closure/prod-restore-r1/execution/cleanup.json": "4e60364a6598df3f94530ba3a228b7acd5bda8034a63350d6aa4e341a23185b2",
+      "work/wa-runtime-closure/prod-restore-r1/execution/diagnostics-collect-1.json": "6effd70a65f8077d84351622347550f9aa6cb5678dfccb0ba21ff46192d4143e",
+      "work/wa-runtime-closure/prod-restore-r1/execution/diagnostics-collect-2.json": "6effd70a65f8077d84351622347550f9aa6cb5678dfccb0ba21ff46192d4143e",
+      "work/wa-runtime-closure/prod-restore-r1/execution/diagnostics-collect-3.json": "e8d2362cb483fe9dcb9c580a6342e9572eee1a8fbcb31a4d55f4bbd908b67630",
+      "work/wa-runtime-closure/prod-restore-r1/execution/diagnostics-collect-4.json": "9708a7e08273a095f62320ede1cb08a6477d5a390e9390b64c30ceda9289e15b",
+      "work/wa-runtime-closure/prod-restore-r1/execution/diagnostics-install.json": "bfe21821f996aaeac3f0a9d97942dac6f6325c3483751558a5d7d7dae5824928",
+      "work/wa-runtime-closure/prod-restore-r1/execution/job-readback-private.json": "83824e46333b11557773dd70248631f3540d566c196040cc1cfa6f19dcbb17cc",
+      "work/wa-runtime-closure/prod-restore-r1/execution/observation-diagnosis.json": "bed2e0cf9aff0f890a12b252dbd1306080b263a7f780766230cef5a4a9387b74",
+      "work/wa-runtime-closure/prod-restore-r1/execution/observe-1.json": "bb2fedef7849ff621e12a9f00b7a1d73b8b64bf3072caab6b7b048cbabc1fe5a",
+      "work/wa-runtime-closure/prod-restore-r1/execution/observe-2.json": "69609b402bb4d276a1719cbd26572caa44d7182d22106dfaa657d3a11c6bb235",
+      "work/wa-runtime-closure/prod-restore-r1/execution/observe-3.json": "6d4ecc3ae2cfb2f1b065923600beb5816fd6e38f80ecb2738948def5e3ddd525",
+      "work/wa-runtime-closure/prod-restore-r1/execution/phase-timing.json": "de5bf45ab4356594366831d830abbafe2f2c75bbb61eee907e63f663eb22516e",
+      "work/wa-runtime-closure/prod-restore-r1/execution/prepare.json": "d2577472910734acf626f68630b2d5dd60b671c55c6832395ba08a6d733308c1",
+      "work/wa-runtime-closure/prod-restore-r1/execution/start.json": "7b0317e44514862701275c2e97f80c9b99d1da6c762e4e1db6f6a4f047f03f1f",
+      "work/wa-runtime-closure/prod-restore-r1/execution/diagnose_observation.py": "1920c0355efa48b86a1d540ad060fd446d126ea701d6e261b61bc0159e525911"
+    }
+  },
+  "local_verification": {
+    "frozen_files": 15,
+    "frozen_hashes_all_match": true,
+    "receipt_evidence_files": 25,
+    "receipt_evidence_hashes_all_match": true,
+    "private_state_not_copied": true
+  },
+  "existing_offline_test_evidence": {
+    "passed": 65,
+    "test_command": "work/operator-executor-current/.venv/bin/python -m pytest -q test_execute.py test_prod_transport.py --cov=execute --cov-report=term-missing --cov-report=json:coverage.json",
+    "coverage": 92.1875,
+    "coverage_limit": "CLI entry/error-print lines and inherited branches are not all covered; no 100% claim. All added PROD endpoint/caller/temporary credential and complete-prefix positive/negative scenarios pass.",
+    "ruff_check": "PASS",
+    "ruff_format": "PASS",
+    "test_file_sha256": {
+      "work/wa-runtime-closure/prod-restore-r1/test_execute.py": "fdbfedf35211ca44724b12dfd88a73b290700ee4d78eca5cf6890b6c1ec6df9c",
+      "work/wa-runtime-closure/prod-restore-r1/test_prod_transport.py": "062e69834081953237e2738fb85cf7e832ed1f6c2c8ae5f8f970882ac95fbeab",
+      "work/wa-runtime-closure/prod-restore-r1/coverage.json": "303f8b1c67ad9d0a2e2817cbc53ddfcbfdbf9ded4878862d5bcc60d1f4ac846e"
+    },
+    "tests_rerun_for_archive": false
+  },
+  "minimal_reusable_coverage_plan": [
+    "Use scripts/_well_architected_trusted_evidence.py receiptBindings/file-map validation with an independently reviewed manifest to bind the sanitized closure receipt; preserve source/head/runtime/expiry checks.",
+    "Use scripts/_well_architected_restore_evidence.py restore_drill_evidence for the existing workload/environment/completedAt/validationResult/cleanupConfirmed record, while preserving its separate production-owner evidence checks. It does not itself prove raw byte hashes or no-warning status; retain the hash-bound execution receipt for those facts.",
+    "Retain tests/unit/test_well_architected_evidence_data.py and test_well_architected_trusted_evidence.py receipt fixtures plus the 65 existing offline restore regressions. Add a focused existing-validator fixture only if integrating the closure exposes a real schema gap; no new framework or live test."
+  ],
+  "live_work_prohibited": [
+    "No more restore jobs, canaries or observation calls for TEST R6 or PROD R1.",
+    "No further cloud calls are needed to close these completed drills."
+  ]
+}

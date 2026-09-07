@@ -458,3 +458,33 @@ def test_invalid_uris_are_not_printed_or_exported(
 )
 def test_stack_list_rejects_qualified_or_colon_names(value):
     assert validator._validate_stack_list(value) is not None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "pulumi/.",
+        "pulumi/..",
+        "pulumi/a/../b",
+        "pulumi/./governance",
+        "pulumi/a/../../outside",
+    ],
+)
+def test_pulumi_project_path_rejects_dot_segments(value):
+    environment = {**_valid_environment(), "PULUMI_DIR": value}
+    assert validator.validate_environment(("PULUMI_DIR",), environment)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "pulumi",
+        "pulumi/governance",
+        "pulumi/service-v1",
+        "pulumi/with.dot",
+        "pulumi/a_b/c-2",
+    ],
+)
+def test_pulumi_project_path_preserves_documented_relative_paths(value):
+    environment = {**_valid_environment(), "PULUMI_DIR": value}
+    assert validator.validate_environment(("PULUMI_DIR",), environment) == []

@@ -111,7 +111,10 @@ def structured_owner_evidence(
         PRODUCTION_DR_OWNER_ALLOWED_APPROVALS,
     )
     _validate_structured_dates(
-        "Production DR owner evidence", args.review_date, args.expiry_date
+        "Production DR owner evidence",
+        args.review_date,
+        args.expiry_date,
+        max_review_age_days=None,
     )
     _validate_iso_date(
         "Production DR owner evidence next-review-date",

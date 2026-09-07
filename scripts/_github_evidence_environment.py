@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from _github_environment_controls import environment_is_main_only
+from _github_environment_controls import (
+    complete_branch_policies,
+    environment_is_main_only,
+)
 
 NAME = "governance-evidence"
 
@@ -33,7 +36,10 @@ def verification_blockers(environment: dict, policies: dict) -> list[str]:
     ):
         blockers.append("Evidence environment must use custom branch restrictions.")
     if not environment_is_main_only(
-        {**environment, "deployment_branch_policies": policies.get("branch_policies")}
+        {
+            **environment,
+            "deployment_branch_policies": complete_branch_policies(policies),
+        }
     ):
         blockers.append("Evidence environment must allow only the main branch.")
     return blockers

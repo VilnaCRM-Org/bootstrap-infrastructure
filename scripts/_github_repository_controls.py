@@ -454,7 +454,7 @@ def _is_user_reviewer(item: object) -> bool:
     if item.get("type") != "User":
         return False
     person = item.get("reviewer", item)
-    if not isinstance(person, Mapping):
+    if not isinstance(person, Mapping) or person.get("type") != "User":
         return False
     identity = person.get("id")
     if "reviewer" in item and "id" in item:

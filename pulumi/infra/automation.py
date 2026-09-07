@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -52,6 +53,7 @@ _AUTOMATION_MANAGED_POLICY_GROUPS: tuple[tuple[str, frozenset[str]], ...] = (
                 "PassBootstrapRolesToS3Replication",
                 "ReadPlatformCiSecrets",
                 "ManageBootstrapBackup",
+                "ConfigureBootstrapBackupRetentionLock",
                 "ManageBootstrapEcr",
             }
         ),
@@ -517,6 +519,44 @@ def _automation_backup_resources(account_id: str) -> list[str]:
     ]
 
 
+def _automation_backup_lock_statements(
+    account_id: str, settings: BootstrapSettings
+) -> list[dict[str, Any]]:
+    """Authorize governance retention only on an explicitly bound owned vault."""
+    arn = settings.platform_backup_vault_arn
+    if arn is None:
+        return []
+    if (
+        re.fullmatch(
+            rf"arn:aws:backup:[a-z0-9-]+:{re.escape(account_id)}:backup-vault:[A-Za-z0-9_-]{{2,50}}",
+            arn,
+        )
+        is None
+    ):
+        raise ValueError(
+            "platformBackupVaultArn must be an exact account-local vault ARN"
+        )
+    return [
+        {
+            "Sid": "ConfigureBootstrapBackupRetentionLock",
+            "Effect": "Allow",
+            "Action": ["backup:PutBackupVaultLockConfiguration"],
+            "Resource": arn,
+            "Condition": {
+                "StringEquals": {
+                    AWS_RESOURCE_TAG_ENVIRONMENT_KEY: settings.environment,
+                    AWS_RESOURCE_TAG_PURPOSE_KEY: "s3-backup",
+                },
+                "NumericEquals": {"backup:MinRetentionDays": "90"},
+                "Null": {
+                    "backup:ChangeableForDays": "true",
+                    "backup:MaxRetentionDays": "true",
+                },
+            },
+        }
+    ]
+
+
 def _automation_eventbridge_resources(
     account_id: str, settings: BootstrapSettings
 ) -> list[str]:
@@ -933,6 +973,7 @@ def _automation_policy(
                     "Action": list(_AUTOMATION_BACKUP_ACTIONS),
                     "Resource": _automation_backup_resources(account_id),
                 },
+                *_automation_backup_lock_statements(account_id, settings),
                 {
                     "Sid": "ManageBootstrapEcr",
                     "Effect": "Allow",

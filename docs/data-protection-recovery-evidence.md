@@ -33,13 +33,40 @@ details.
 
 ## Vault Lock And Object Lock Decision
 
-Current decision: documented exemption, not implementation, for this PR.
+Current design: retain mutable active S3 state with versioning, encrypted Pulumi
+secrets, replication and a separately protected AWS Backup copy. S3 objects are
+not claimed to be locked. The 2026-08-07 Object Lock and Vault Lock exemptions
+expired and are not renewed by this change.
 
-| Control | Decision | Rationale | Owner | Expiry | Fallback |
-| --- | --- | --- | --- | --- | --- |
-| S3 Object Lock | Exempt for current state, log, replica, and Config buckets. | Object Lock must be enabled at bucket creation and changes recovery semantics. Current controls use versioning, lifecycle, replication, AWS Backup, public-access block, TLS-only policy, and restore drills. Introducing immutable S3 retention requires a migration plan and production owner approval. | SRE plus security reviewer | 2026-08-07 or before production approval, whichever comes first | Keep SEC8/REL9 evidence below 5/5 for any new immutable-retention requirement until a migration or renewed exemption is approved. |
-| AWS Backup Vault Lock | Exempt for the current test workload. | Backup Vault Lock can make retention changes irreversible. The repository has a successful workload-scoped restore drill, 90-day backup retention, and no production approval evidence yet; applying immutable retention requires SRE and production-owner approval. | SRE | 2026-08-07 or before production approval, whichever comes first | Do not claim production recovery immutability until Vault Lock is enabled or a production-owner exemption is recorded. |
-| S3 SSE-KMS for state and log buckets | Exempt for current state and central log buckets. | Pulumi secret values are protected by the KMS-backed secrets provider; SSE-S3 avoids coupling state availability to an additional bucket KMS key during bootstrap recovery. CloudTrail management events and operations SNS use KMS where the audit/alert path needs a dedicated customer-managed key. | Security reviewer plus SRE | Per storage architecture change | Revisit before storing new secret-bearing data classes or adding customer-facing data. |
+| Control | Decision | Validation and limits |
+| --- | --- | --- |
+| S3 Object Lock | Do not introduce retention locks on the active state, log, replica or Config buckets. Recovery retention is enforced on the AWS Backup copy. | Versioning, lifecycle, encryption and replication remain unchanged. Object Lock can be enabled on eligible existing buckets; the previous creation-only statement was incorrect. This design does not claim immutable live objects or compliance-mode retention. |
+| AWS Backup Vault Lock | `S3BackupPlan` declares a protected governance-mode lock with a 90-day minimum, matching the existing daily plan. `ChangeableForDays` and maximum retention are omitted. | Require reviewed TEST and PROD apply, no-drift and `DescribeBackupVault` evidence (`Locked=true`, `MinRetentionDays=90`, no `LockDate`). Governance mode remains removable by independently authorized administrators. Existing recovery-point lifecycle values are unchanged. |
+| S3 SSE-KMS for state and log buckets | Keep default SSE-S3 and KMS-encrypted Pulumi secret values. CloudTrail and operations SNS retain their dedicated KMS controls. | No change to encryption or recovery access. Reassess if these buckets receive new secret-bearing data classes. |
+
+The operator setting `platformBackupVaultArn` binds the additional permission to
+one exact account-local, environment-tagged `s3-backup` vault. Configure it from
+reviewed platform output/metadata before the operator permission apply. No value
+means no new grant. The grant permits only `PutBackupVaultLockConfiguration` with
+minimum 90 days and absent compliance/max parameters; it grants neither lock
+removal nor recovery-point deletion. `DescribeBackupVault` is already permitted.
+Pulumi protection rejects ordinary removal/replacement of the lock resource.
+
+Existing bindings to verify before installation:
+
+- TEST: `arn:aws:backup:eu-central-1:891377212104:backup-vault:s3-backup-vault-3b9f5bf`.
+- PROD: `arn:aws:backup:eu-central-1:933245420672:backup-vault:s3-backup-vault-3dab3a7`.
+
+Installation order is operator permission preview/apply, then platform lock
+preview/apply, followed by vault metadata and drift checks. A source declaration
+alone does not close SEC8/REL9: retain their unresolved live-control status until
+both installations are verified. No new restore drill is required by this
+retention-only change; preserve the actual TEST R6 and PROD R1 drill records.
+
+AWS documents the [reversible governance-mode and existing recovery-point
+semantics](https://docs.aws.amazon.com/aws-backup/latest/devguide/vault-lock.html),
+[exact vault permission and retention condition keys](https://docs.aws.amazon.com/service-authorization/latest/reference/list_backup.html),
+and [enabling Object Lock on existing buckets](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-configure.html).
 
 ## Restore Runbook
 

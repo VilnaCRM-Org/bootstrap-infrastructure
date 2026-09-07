@@ -8,6 +8,7 @@ config:
       github-oidc-policy-bootstrap-infrastructure: github-oidc-policy-bootstrap-infrastructure-f01bc5a
   github-ci-bootstrap:platformLoggingReplicationRoleName: central-logging-replication-role-2ff5487
   github-ci-bootstrap:platformBackupRoleName: s3-backup-role-827eba6
+  github-ci-bootstrap:platformBackupVaultArn: arn:aws:backup:eu-central-1:933245420672:backup-vault:s3-backup-vault-3dab3a7
   github-ci-bootstrap:githubRepositoryId: "1098568429"
   github-ci-bootstrap:githubRepositoryOwnerId: "114362548"
   github-ci-bootstrap:awsAccountId: "933245420672"

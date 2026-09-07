@@ -21,7 +21,7 @@ LOCAL_CANDIDATE_CLOSURE = {
         "0a56fbd02fc6c06dbf88b1821abf9db5272a19311b0baf0fd03852587e491644"
     ),
     "scripts/validate_ci_environment.py": (
-        "598cce5370e9132c935c919f1b256debaa19744af988e7a61e1bd24e0ddc2d93"
+        "b114889477d2c1aa8d158a6e307a58a8693b24a0ccedb5e469a5c546f64fcde9"
     ),
 }
 

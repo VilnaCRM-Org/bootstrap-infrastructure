@@ -25,9 +25,9 @@ def policy(identifier=1, name="main", kind="branch"):
         {"branch_policies": None},
         {"branch_policies": {}},
         {"branch_policies": "main"},
-        {"branch_policies": [policy(1, "*"), None]},
-        {"branch_policies": [policy(1, "*"), {}]},
-        {"branch_policies": [policy(1, "*"), policy(1)]},
+        {"total_count": 2, "branch_policies": [policy(1, "*"), None]},
+        {"total_count": 2, "branch_policies": [policy(1, "*"), {}]},
+        {"total_count": 2, "branch_policies": [policy(1, "*"), policy(1)]},
         {"branch_policies": [], "total_count": 1},
         {"branch_policies": [policy()], "total_count": True},
         {"branch_policies": [policy()], "total_count": "1"},
@@ -52,7 +52,8 @@ def test_bad_response_never_mutates(monkeypatch, response):
 def test_bad_policy_id_never_mutates(monkeypatch, identifier):
     """Only positive integer IDs may become a DELETE endpoint."""
     test_bad_response_never_mutates(
-        monkeypatch, {"branch_policies": [policy(1, "*"), policy(identifier)]}
+        monkeypatch,
+        {"total_count": 2, "branch_policies": [policy(1, "*"), policy(identifier)]},
     )
 
 
@@ -60,7 +61,8 @@ def test_bad_policy_id_never_mutates(monkeypatch, identifier):
 def test_bad_policy_name_never_mutates(monkeypatch, name):
     """Invalid names must fail before processing any valid extra rule."""
     test_bad_response_never_mutates(
-        monkeypatch, {"branch_policies": [policy(1, "*"), policy(2, name)]}
+        monkeypatch,
+        {"total_count": 2, "branch_policies": [policy(1, "*"), policy(2, name)]},
     )
 
 
@@ -68,7 +70,8 @@ def test_bad_policy_name_never_mutates(monkeypatch, name):
 def test_bad_policy_type_never_mutates(monkeypatch, kind):
     """Unknown rule kinds cannot be silently removed as though understood."""
     test_bad_response_never_mutates(
-        monkeypatch, {"branch_policies": [policy(1, "*"), policy(2, kind=kind)]}
+        monkeypatch,
+        {"total_count": 2, "branch_policies": [policy(1, "*"), policy(2, kind=kind)]},
     )
 
 
@@ -117,7 +120,7 @@ def test_evidence_bad_list_holds_mutation(monkeypatch):
 
     def api(args, **kwargs):
         calls.append((args, kwargs))
-        return {"branch_policies": [policy(1, "*"), None]}
+        return {"total_count": 2, "branch_policies": [policy(1, "*"), None]}
 
     monkeypatch.setattr(controls, "_run_gh_api", api)
     with pytest.raises(ValueError):
@@ -135,7 +138,7 @@ def test_policy_api_failure_is_reported(monkeypatch):
         calls.append((args, kwargs))
         if "DELETE" in args:
             raise RuntimeError("GitHub policy deletion failed")
-        return {"branch_policies": [policy(1, "*")]}
+        return {"total_count": 1, "branch_policies": [policy(1, "*")]}
 
     monkeypatch.setattr(controls, "_run_gh_api", api)
     with pytest.raises(RuntimeError, match="deletion failed"):

@@ -131,6 +131,14 @@ class S3BackupPlan(pulumi.ComponentResource):
             opts=base_opts,
         )
 
+        self.vault_lock = aws.backup.VaultLockConfiguration(
+            f"{name}-vault-lock",
+            backup_vault_name=backup_vault.name,
+            min_retention_days=90,
+            # Omitting changeable_for_days keeps governance mode reversible.
+            opts=pulumi.ResourceOptions(parent=self, protect=True),
+        )
+
         backup_role = aws.iam.Role(
             f"{name}-role",
             name=platform_role_name(configured_settings, "backup"),

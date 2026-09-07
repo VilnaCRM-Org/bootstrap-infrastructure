@@ -4,6 +4,21 @@ from collections.abc import Mapping
 from typing import Any
 
 
+def complete_branch_policies(response: object) -> list[Any] | None:
+    """Accept only a complete GitHub branch-policy response, never a partial page."""
+    if not isinstance(response, Mapping):
+        return None
+    policies = response.get("branch_policies")
+    count = response.get("total_count")
+    if (
+        not isinstance(policies, list)
+        or type(count) is not int
+        or count != len(policies)
+    ):
+        return None
+    return policies
+
+
 def environment_is_main_only(environment: Mapping[str, Any]) -> bool:
     """Require an exact main branch rule, including separately fetched policies."""
     policies = environment.get("deployment_branch_policies")

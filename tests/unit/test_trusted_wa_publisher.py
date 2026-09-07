@@ -341,10 +341,13 @@ def test_self_migration_rechecks_requirements_and_keeps_other_ci_failures(
     monkeypatch.setattr(host, "verify_issuer", lambda: None)
     url = f"https://github.com/{host.REPOSITORY}/actions/runs/10/job/11"
     monkeypatch.setattr(
-        host, "legacy_evidence_checks", lambda value: {url: {"conclusion": "failure"}}
+        host,
+        "legacy_evidence_checks",
+        lambda value: {url: {"conclusion": "failure", "node_id": "CR_legacy"}},
     )
     own = {
         "id": 53644588964,
+        "node_id": "SC_kwDOQXrS7c8AAAAMfYgN_w",
         "context": "Test Account Evidence",
         "state": "failure",
         "target_url": "old",
@@ -368,23 +371,37 @@ def test_self_migration_rechecks_requirements_and_keeps_other_ci_failures(
             }
         ),
     )
-    monkeypatch.setattr(host, "command", lambda argv: json.dumps([own]))
+    monkeypatch.setattr(
+        host,
+        "command",
+        lambda argv: json.dumps(
+            _rollup_response(approved, entries) if argv[2] == "graphql" else [own]
+        ),
+    )
     entries = [
         {
             "__typename": "StatusContext",
+            "id": "SC_kwDOQXrS7c8AAAAMfYgN_w",
             "context": "Test Account Evidence",
             "state": "FAILURE",
             "targetUrl": "old",
         },
         {
             "__typename": "CheckRun",
+            "id": "CR_legacy",
             "name": "Test Account Evidence",
             "detailsUrl": url,
             "conclusion": "FAILURE",
         },
-        {"__typename": "CheckRun", "name": "Unit", "conclusion": "FAILURE"},
+        {
+            "__typename": "CheckRun",
+            "id": "CR_unit",
+            "name": "Unit",
+            "conclusion": "FAILURE",
+        },
         {
             "__typename": "StatusContext",
+            "id": "SC_promotion",
             "context": "Governance Promotion",
             "state": "FAILURE",
         },
@@ -408,6 +425,7 @@ def test_live_legacy_identity_is_exact_path_head_app_and_event(monkeypatch, appr
     url = f"https://github.com/{host.REPOSITORY}/actions/runs/10/job/11"
     check = {
         "id": 11,
+        "node_id": "CR_legacy",
         "name": "Test Account Evidence",
         "app": {"id": 15368},
         "details_url": url,
@@ -426,7 +444,7 @@ def test_live_legacy_identity_is_exact_path_head_app_and_event(monkeypatch, appr
             {"total_count": 1, "check_runs": [check]} if "check-runs" in path else run
         ),
     )
-    assert url in host.legacy_evidence_checks(approved)
+    assert host.legacy_evidence_checks(approved)[url]["node_id"] == "CR_legacy"
     run["path"] = ".github/workflows/other.yml"
     assert host.legacy_evidence_checks(approved) == {}
     check["app"]["id"] = 99
@@ -614,7 +632,7 @@ def test_environment_and_bundle_validate_real_boundaries(
         host,
         "gh",
         lambda path: (
-            {"branch_policies": valid["deployment_branch_policies"]}
+            {"total_count": 1, "branch_policies": valid["deployment_branch_policies"]}
             if path.endswith("deployment-branch-policies")
             else valid
         ),
@@ -1232,6 +1250,7 @@ def prior_app_status():
     """Shape observed from the creator-bearing REST status list."""
     return {
         "id": 53644588964,
+        "node_id": "SC_kwDOQXrS7c8AAAAMfYgN_w",
         "context": "Test Account Evidence",
         "state": "failure",
         "target_url": f"https://github.com/{host.REPOSITORY}/pull/204",
@@ -1263,7 +1282,10 @@ def test_creator_lookup_matches_exact_current_id_with_prior_publication_history(
         assert kwargs["text"] is True
         path = argv[2]
         calls.append(path)
-        if path.endswith("/statuses?per_page=100"):
+        if path == "graphql":
+            assert "head=" + approved["head_sha"] in argv
+            payload = _rollup_response(approved, entries)
+        elif path.endswith("/statuses?per_page=100"):
             payload = history
         else:
             assert path.endswith("/status?per_page=100")
@@ -1274,11 +1296,17 @@ def test_creator_lookup_matches_exact_current_id_with_prior_publication_history(
     entries = [
         {
             "__typename": "StatusContext",
+            "id": "SC_kwDOQXrS7c8AAAAMfYgN_w",
             "context": "Test Account Evidence",
             "state": "FAILURE",
             "targetUrl": current["target_url"],
         },
-        {"__typename": "CheckRun", "name": "Unit", "conclusion": "FAILURE"},
+        {
+            "__typename": "CheckRun",
+            "id": "CR_unit",
+            "name": "Unit",
+            "conclusion": "FAILURE",
+        },
     ]
 
     def runner(argv, **kw):
@@ -1293,11 +1321,17 @@ def test_creator_lookup_matches_exact_current_id_with_prior_publication_history(
             == entries[1:]
         )
         assert receipt["previousAppStatus"] == [prior_app_status]
-    assert calls == [
-        f"repos/{host.REPOSITORY}/commits/{approved['head_sha']}/{suffix}?per_page=100"
-        for _ in range(2)
-        for suffix in ("status", "statuses")
-    ]
+    assert (
+        calls
+        == [
+            *[
+                f"repos/{host.REPOSITORY}/commits/{approved['head_sha']}/{suffix}?per_page=100"
+                for suffix in ("status", "statuses")
+            ],
+            "graphql",
+        ]
+        * 2
+    )
 
 
 @pytest.mark.parametrize(
@@ -1306,6 +1340,10 @@ def test_creator_lookup_matches_exact_current_id_with_prior_publication_history(
         {"id": True},
         {"id": "53644588964"},
         {"id": 0},
+        {"node_id": None},
+        {"node_id": ""},
+        {"node_id": "bad id"},
+        {"node_id": 123},
         {"state": "SUCCESS"},
         {"state": []},
         {"target_url": None},
@@ -1327,6 +1365,7 @@ def test_invalid_current_status_cannot_be_authenticated(
     "change",
     [
         {"context": "another check"},
+        {"node_id": "SC_different"},
         {"state": "success"},
         {"target_url": "https://example.invalid/other"},
         {"creator": None},
@@ -1416,3 +1455,233 @@ def test_status_list_transport_rejects_invalid_json(monkeypatch, approved):
     )
     with pytest.raises(ValueError):
         host._status_history(approved)
+
+
+def _rollup_response(approved, rows):
+    return {
+        "data": {
+            "repository": {
+                "object": {
+                    "oid": approved["head_sha"],
+                    "statusCheckRollup": {
+                        "contexts": {
+                            "nodes": rows,
+                            "totalCount": len(rows),
+                            "pageInfo": {"hasNextPage": False},
+                        }
+                    },
+                }
+            }
+        }
+    }
+
+
+def test_identity_rollup_preserves_foreign_same_metadata_and_all_other_checks(
+    monkeypatch, approved, prior_app_status
+):
+    """Foreign immutable identity cannot inherit the authenticated App exemption."""
+    monkeypatch.setattr(host, "verify_issuer", lambda: None)
+    monkeypatch.setattr(host, "legacy_evidence_checks", lambda value: {})
+    monkeypatch.setattr(
+        host,
+        "gh",
+        lambda path: {
+            "total_count": 1,
+            "statuses": [prior_app_status],
+        },
+    )
+    own = {
+        "__typename": "StatusContext",
+        "id": prior_app_status["node_id"],
+        "context": prior_app_status["context"],
+        "state": "FAILURE",
+        "targetUrl": prior_app_status["target_url"],
+    }
+    foreign = {**own, "id": "SC_foreign"}
+    other = {
+        "__typename": "CheckRun",
+        "id": "CR_unrelated",
+        "name": "Unit",
+        "conclusion": "FAILURE",
+    }
+    rows = [own, foreign, other]
+    monkeypatch.setattr(
+        host,
+        "command",
+        lambda argv: json.dumps(
+            _rollup_response(approved, rows)
+            if argv[2] == "graphql"
+            else [prior_app_status]
+        ),
+    )
+    adapter, _ = host.self_status_runner(
+        lambda argv: subprocess.CompletedProcess(
+            argv, 0, json.dumps({"statusCheckRollup": [own]}), ""
+        ),
+        approved,
+    )
+    actual = json.loads(adapter(["gh", "pr", "view"]).stdout)
+    assert actual["statusCheckRollup"] == [foreign, other]
+    # A concurrent foreign replacement with identical display fields is rejected.
+    rows.remove(own)
+    with pytest.raises(ValueError, match="Authenticated evidence status changed"):
+        adapter(["gh", "pr", "view"])
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"__typename": "CheckRun"},
+        {"context": "foreign"},
+        {"state": "SUCCESS"},
+        {"targetUrl": "changed"},
+    ],
+)
+def test_authenticated_node_with_changed_metadata_is_rejected(
+    monkeypatch, approved, prior_app_status, change
+):
+    monkeypatch.setattr(host, "verify_issuer", lambda: None)
+    monkeypatch.setattr(host, "legacy_evidence_checks", lambda value: {})
+    monkeypatch.setattr(
+        host, "gh", lambda path: {"total_count": 1, "statuses": [prior_app_status]}
+    )
+    monkeypatch.setattr(host, "command", lambda argv: json.dumps([prior_app_status]))
+    monkeypatch.setattr(
+        host,
+        "_identity_rollup",
+        lambda value: [
+            {
+                "__typename": "StatusContext",
+                "id": prior_app_status["node_id"],
+                "context": prior_app_status["context"],
+                "state": "FAILURE",
+                "targetUrl": prior_app_status["target_url"],
+                **change,
+            }
+        ],
+    )
+    adapter, _ = host.self_status_runner(
+        lambda argv: subprocess.CompletedProcess(
+            argv, 0, '{"statusCheckRollup": []}', ""
+        ),
+        approved,
+    )
+    with pytest.raises(ValueError, match="Authenticated evidence status changed"):
+        adapter(["gh", "pr", "view"])
+
+
+@pytest.mark.parametrize(
+    "path,replacement",
+    [
+        (("errors",), [{"message": "partial result"}]),
+        (("data",), None),
+        (("data", "repository"), None),
+        (("data", "repository", "object"), None),
+        (("data", "repository", "object", "oid"), "f" * 40),
+        (("data", "repository", "object", "statusCheckRollup"), None),
+        (("data", "repository", "object", "statusCheckRollup", "contexts"), None),
+    ],
+)
+def test_identity_rollup_rejects_bad_envelope(monkeypatch, approved, path, replacement):
+    payload = _rollup_response(approved, [])
+    node = payload
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = replacement
+    monkeypatch.setattr(host, "command", lambda argv: json.dumps(payload))
+    with pytest.raises(ValueError):
+        host._identity_rollup(approved)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"nodes": None},
+        {"totalCount": True},
+        {"totalCount": 2},
+        {"pageInfo": {}},
+        {"pageInfo": None},
+        {"pageInfo": {"hasNextPage": True}},
+        {
+            "nodes": [{"__typename": "CheckRun", "id": f"CR_{i}"} for i in range(100)],
+            "totalCount": 100,
+        },
+        {"nodes": [None]},
+        {"nodes": [{"__typename": "Unknown", "id": "X_one"}]},
+        {"nodes": [{"__typename": "CheckRun"}]},
+        {"nodes": [{"__typename": "CheckRun", "id": "bad id"}]},
+        {"nodes": [{"__typename": "CheckRun", "id": "CR_one"}] * 2, "totalCount": 2},
+    ],
+)
+def test_identity_rollup_rejects_bad_inventory(monkeypatch, approved, change):
+    payload = _rollup_response(approved, [{"__typename": "CheckRun", "id": "CR_one"}])
+    payload["data"]["repository"]["object"]["statusCheckRollup"]["contexts"].update(
+        change
+    )
+    monkeypatch.setattr(host, "command", lambda argv: json.dumps(payload))
+    with pytest.raises(ValueError):
+        host._identity_rollup(approved)
+
+
+def test_legacy_only_adapter_keeps_all_unrelated_typed_nodes(monkeypatch, approved):
+    monkeypatch.setattr(host, "verify_issuer", lambda: None)
+    monkeypatch.setattr(host, "gh", lambda path: {"total_count": 0, "statuses": []})
+    monkeypatch.setattr(
+        host,
+        "legacy_evidence_checks",
+        lambda value: {"exact-legacy": {"node_id": "CR_old"}},
+    )
+    rows = [
+        {
+            "__typename": "CheckRun",
+            "id": "CR_old",
+            "name": "Test Account Evidence",
+            "detailsUrl": "exact-legacy",
+        },
+        {
+            "__typename": "CheckRun",
+            "id": "CR_foreign",
+            "name": "Test Account Evidence",
+            "detailsUrl": "exact-legacy",
+            "status": "IN_PROGRESS",
+        },
+    ]
+    monkeypatch.setattr(
+        host, "command", lambda argv: json.dumps(_rollup_response(approved, rows))
+    )
+    adapter, _ = host.self_status_runner(
+        lambda argv: subprocess.CompletedProcess(
+            argv, 0, '{"statusCheckRollup": []}', ""
+        ),
+        approved,
+    )
+    assert (
+        json.loads(adapter(["gh", "pr", "view"]).stdout)["statusCheckRollup"]
+        == rows[1:]
+    )
+
+
+@pytest.mark.parametrize("identity", [None, "", 123, "bad id"])
+def test_legacy_exemption_requires_real_node_identity(monkeypatch, approved, identity):
+    check = {
+        "id": 11,
+        "node_id": identity,
+        "name": "Test Account Evidence",
+        "app": {"id": 15368},
+        "details_url": f"https://github.com/{host.REPOSITORY}/actions/runs/10/job/11",
+    }
+    run = {
+        "id": 10,
+        "head_sha": approved["head_sha"],
+        "path": ".github/workflows/well-architected-evidence.yml",
+        "event": "pull_request",
+    }
+    monkeypatch.setattr(
+        host,
+        "gh",
+        lambda path: (
+            {"total_count": 1, "check_runs": [check]} if "check-runs" in path else run
+        ),
+    )
+    with pytest.raises(ValueError, match="Malformed legacy check node ID"):
+        host.legacy_evidence_checks(approved)

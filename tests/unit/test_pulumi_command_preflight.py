@@ -285,7 +285,10 @@ def test_verify_environments_requires_current_protections(
     def api(path):
         calls.append(path)
         if path.endswith("/deployment-branch-policies"):
-            return {"branch_policies": [{"name": "main", "type": "branch"}]}
+            return {
+                "total_count": 1,
+                "branch_policies": [{"name": "main", "type": "branch"}],
+            }
         return {"id": 10} if path == "users/Kravalg" else environment
 
     monkeypatch.setattr(preflight, "gh", api)

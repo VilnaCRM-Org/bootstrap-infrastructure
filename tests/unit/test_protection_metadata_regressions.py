@@ -44,7 +44,7 @@ def test_required_check_names_do_not_substitute_for_strictness(strict):
         None,
         {},
         {"type": "Team", "id": 7},
-        {"type": "Team", "reviewer": {"id": 7}},
+        {"type": "Team", "reviewer": {"type": "User", "id": 7}},
         {"type": "User", "reviewer": None},
         {"type": "User", "id": True},
         {"type": "User", "id": 0},
@@ -92,7 +92,9 @@ def test_exact_user_reviewer_survives_both_github_response_shapes():
                 {"type": "wait_timer"},
                 {
                     "type": "required_reviewers",
-                    "reviewers": [{"type": "User", "reviewer": {"id": 7}}],
+                    "reviewers": [
+                        {"type": "User", "reviewer": {"type": "User", "id": 7}}
+                    ],
                 },
             ]
         },
@@ -194,7 +196,11 @@ def test_conflicting_dual_reviewer_identity_fails_before_sole_user_check(
 ):
     environment = controls.protected_reviewer_environment_payload(7)
     environment["deployment_branch_policies"] = [{"name": "main", "type": "branch"}]
-    item = {"type": "User", "id": direct_id, "reviewer": {"id": nested_id}}
+    item = {
+        "type": "User",
+        "id": direct_id,
+        "reviewer": {"type": "User", "id": nested_id},
+    }
     environment["reviewers"] = [item]
     if nested:
         environment["reviewers"] = [{"type": "User", "id": 7}]
@@ -212,10 +218,92 @@ def test_conflicting_dual_reviewer_identity_fails_before_sole_user_check(
 def test_matching_dual_reviewer_identity_preserves_official_response_shapes():
     environment = controls.protected_reviewer_environment_payload(7)
     environment["deployment_branch_policies"] = [{"name": "main", "type": "branch"}]
-    environment["reviewers"] = [{"type": "User", "id": 7, "reviewer": {"id": 7}}]
+    environment["reviewers"] = [
+        {"type": "User", "id": 7, "reviewer": {"type": "User", "id": 7}}
+    ]
     assert (
         controls.protected_environment_verification_blockers(
             environment, 7, label="Test environment"
         )
         == []
     )
+
+
+@pytest.mark.parametrize("nested_type", [None, "Team", "Organization", "Bot", 1])
+def test_nested_reviewer_must_explicitly_be_a_user(nested_type):
+    person = {"id": 7}
+    if nested_type is not None:
+        person["type"] = nested_type
+    assert not controls.environment_has_only_user_reviewers(
+        {"reviewers": [{"type": "User", "reviewer": person}]}
+    )
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        None,
+        [],
+        {},
+        {"branch_policies": None, "total_count": 0},
+        {"branch_policies": [], "total_count": False},
+    ],
+)
+def test_complete_branch_policy_response_rejects_malformed_envelopes(response):
+    from _github_environment_controls import complete_branch_policies
+
+    assert complete_branch_policies(response) is None
+
+
+@pytest.mark.parametrize("count", [None, True, "1", -1, 0, 2])
+def test_partial_branch_policy_page_cannot_establish_main_only(count, monkeypatch):
+    import _github_evidence_environment as evidence
+    import configure_github_repository_controls as configure
+    import pulumi_command_preflight as preflight
+    from _github_environment_controls import complete_branch_policies
+
+    rows = [{"id": 1, "name": "main", "type": "branch"}]
+    response = {"branch_policies": rows}
+    if count is not None:
+        response["total_count"] = count
+    assert complete_branch_policies(response) is None
+    assert evidence.verification_blockers(evidence.payload(), response)
+    environment = controls.protected_reviewer_environment_payload(7)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
+
+    def read_api(path):
+        if path == "users/Kravalg":
+            return {"id": 7}
+        return response if path.endswith("deployment-branch-policies") else environment
+
+    monkeypatch.setattr(preflight, "gh", read_api)
+    with pytest.raises(ValueError, match="only the main branch"):
+        preflight.verify_environments(
+            {"command": "plan", "target_environment": "test"}, governance=False
+        )
+    monkeypatch.setattr(configure, "_run_gh_api", lambda args: read_api(args[0]))
+    assert configure._environment_verification_blockers(
+        "org/repo",
+        environment_name="test-preview",
+        reviewer_id=7,
+        blocker_fn=lambda env, reviewer: (
+            controls.protected_environment_verification_blockers(
+                env, reviewer, label="test-preview"
+            )
+        ),
+    )
+    with pytest.raises(ValueError, match="listing is incomplete"):
+        configure._validated_branch_policies(response)
+
+
+def test_complete_branch_policy_response_retains_exact_rows_and_input():
+    from _github_environment_controls import complete_branch_policies
+
+    response = {
+        "total_count": 1,
+        "branch_policies": [{"id": 1, "name": "main", "type": "branch"}],
+    }
+    before = copy.deepcopy(response)
+    assert complete_branch_policies(response) == before["branch_policies"]
+    assert response == before
+    assert complete_branch_policies({"total_count": 0, "branch_policies": []}) == []

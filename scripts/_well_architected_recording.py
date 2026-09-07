@@ -229,7 +229,11 @@ def validate_choice(field: str, value: str, allowed_values: frozenset[str]) -> N
 
 
 def validate_structured_dates(
-    label: str, reviewed_at_value: str, expires_at_value: str
+    label: str,
+    reviewed_at_value: str,
+    expires_at_value: str,
+    *,
+    max_review_age_days: int | None = STRUCTURED_EVIDENCE_MAX_AGE_DAYS,
 ) -> None:
     reviewed_at = parse_iso_date_or_timestamp(reviewed_at_value)
     if reviewed_at is None:
@@ -237,10 +241,11 @@ def validate_structured_dates(
     now = dt.datetime.now(dt.timezone.utc)
     if reviewed_at > now + dt.timedelta(minutes=5):
         raise ValueError(f"{label} review-date is in the future.")
-    if now - reviewed_at > dt.timedelta(days=STRUCTURED_EVIDENCE_MAX_AGE_DAYS):
+    if max_review_age_days is not None and now - reviewed_at > dt.timedelta(
+        days=max_review_age_days
+    ):
         raise ValueError(
-            f"{label} review-date is older than "
-            f"{STRUCTURED_EVIDENCE_MAX_AGE_DAYS} days."
+            f"{label} review-date is older than {max_review_age_days} days."
         )
     if not expires_at_value.strip():
         raise ValueError(f"{label} JSON output requires --expiry-date.")

@@ -866,8 +866,9 @@ def test_record_alert_route_observation_json_rejects_invalid_decision(
     assert not json_output.exists()  # nosec B101
 
 
+@pytest.mark.parametrize("review_age_days", [0, 60])
 def test_record_production_dr_owner_evidence_writes_owner_review(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, review_age_days: int
 ) -> None:
     """Render non-secret production DR owner evidence from restore metadata."""
     module = load_script_module(monkeypatch, "record_production_dr_owner_evidence")
@@ -875,7 +876,14 @@ def test_record_production_dr_owner_evidence_writes_owner_review(
     output = tmp_path / "production-dr-owner.md"
     json_output = tmp_path / "production-dr-owner.json"
     evidence.write_text(json.dumps(_production_dr_evidence_report()), encoding="utf-8")
-    review_date = module.dt.datetime.now(module.dt.timezone.utc).date().isoformat()
+    review_date = (
+        (
+            module.dt.datetime.now(module.dt.timezone.utc)
+            - module.dt.timedelta(days=review_age_days)
+        )
+        .date()
+        .isoformat()
+    )
     expiry_date = (
         (module.dt.datetime.now(module.dt.timezone.utc) + module.dt.timedelta(days=60))
         .date()
@@ -937,6 +945,8 @@ def test_record_production_dr_owner_evidence_writes_owner_review(
     structured = json.loads(json_output.read_text(encoding="utf-8"))
     assert structured["owner"] == "SRE"  # nosec B101
     assert structured["approval"] == "approved"  # nosec B101
+    assert structured["reviewedAt"] == review_date  # nosec B101
+    assert structured["expiresAt"] == expiry_date  # nosec B101
     assert structured["restoreDrillEvidence"]["validationResult"] == "passed"  # nosec B101
 
 
@@ -1736,7 +1746,7 @@ def test_record_security_account_attestation_force_overwrites_without_identity(
             "--human-access-posture",
             "mfa_sso_verified",
             "--active-key-decision",
-            "no_active_keys",
+            "approved_exception",
             "--permissions-boundary-decision",
             "approved_exemption",
             "--approval-decision",
@@ -3078,7 +3088,7 @@ def test_configure_github_repository_controls_verification_helpers(
                 "reviewers": [
                     {
                         "type": "User",
-                        "reviewer": {"id": 9444106, "login": "Kravalg"},
+                        "reviewer": {"type": "User", "id": 9444106, "login": "Kravalg"},
                     }
                 ],
             }
@@ -3124,7 +3134,7 @@ def test_configure_github_repository_controls_verification_helpers(
                 "reviewers": [
                     {
                         "type": "User",
-                        "reviewer": {"id": 9444106, "login": "Kravalg"},
+                        "reviewer": {"type": "User", "id": 9444106, "login": "Kravalg"},
                     }
                 ],
             },
@@ -3219,7 +3229,7 @@ def test_configure_github_repository_controls_verification_helpers(
         module,
         "_run_gh_api",
         lambda _args, **_kwargs: (
-            {"branch_policies": [{"name": "main", "type": "branch"}]}
+            {"total_count": 1, "branch_policies": [{"name": "main", "type": "branch"}]}
             if _args[0].endswith("/deployment-branch-policies")
             else environment
         ),
@@ -3569,7 +3579,7 @@ def test_configure_github_repository_controls_apply_paths(
 
     def fake_run_gh_api(args, *, input_payload=None):
         calls.append((list(args), dict(input_payload or {})))
-        return {"branch_policies": []} if len(args) == 1 else {}
+        return {"total_count": 0, "branch_policies": []} if len(args) == 1 else {}
 
     monkeypatch.setattr(module, "_run_gh_api", fake_run_gh_api)
     monkeypatch.setattr(module, "_main_ruleset", lambda _repo: existing)
@@ -5187,7 +5197,10 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
             (
                 _last_arg_endswith("/deployment-branch-policies"),
                 _json_response(
-                    {"branch_policies": [{"name": "main", "type": "branch"}]}
+                    {
+                        "total_count": 1,
+                        "branch_policies": [{"name": "main", "type": "branch"}],
+                    }
                 ),
             ),
             (
@@ -5522,7 +5535,10 @@ def test_collect_well_architected_evidence_reports_failed_controls(  # noqa: C90
             (
                 _last_arg_endswith("/deployment-branch-policies"),
                 _json_response(
-                    {"branch_policies": [{"name": "main", "type": "branch"}]}
+                    {
+                        "total_count": 1,
+                        "branch_policies": [{"name": "main", "type": "branch"}],
+                    }
                 ),
             ),
             (
@@ -7083,6 +7099,104 @@ def test_sns_alert_route_rejects_bad_observation_evidence(
         {key: value for key, value in route_evidence.items() if key != "sqsQueue"},
     )
     assert "fields: sqsQueue" in " ".join(missing_live_queue_blockers)  # nosec B101
+
+
+@pytest.mark.parametrize(
+    ("observed_at", "changes", "blocker"),
+    [
+        ("2026-10-08T00:00:00Z", {}, ""),
+        ("2027-10-06T23:59:59Z", {}, ""),
+        ("2027-10-07T00:00:00Z", {}, "expired"),
+        ("2027-10-08T00:00:00Z", {}, "expired"),
+        ("2026-10-08T00:00:00Z", {"reviewedAt": "2026-10-09"}, "future"),
+        ("2026-10-08T00:00:00Z", {"reviewedAt": "invalid"}, "ISO-8601"),
+        ("2026-10-08T00:00:00Z", {"reviewedAt": ""}, "required field"),
+        ("2026-10-08T00:00:00Z", {"expiresAt": "invalid"}, "ISO-8601"),
+        ("2026-10-08T00:00:00Z", {"expiresAt": ""}, "required field"),
+        ("2026-10-08T00:00:00Z", {"approval": "revoked"}, "approval must"),
+        (
+            "2026-10-08T00:00:00Z",
+            {"restoreDrillEvidence": {}},
+            "does not match",
+        ),
+    ],
+)
+def test_production_dr_policy_uses_explicit_validity_without_renewing_approval(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    observed_at: str,
+    changes: dict[str, object],
+    blocker: str,
+) -> None:
+    """A dated policy remains valid only until its actual approved expiry."""
+    module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    observed = module.dt.datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+
+    class ObservationDateTime(module.dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return observed
+
+    monkeypatch.setattr(module.dt, "datetime", ObservationDateTime)
+    restore = {
+        "workload": "bootstrap-infrastructure",
+        "environment": "test",
+        "completedAt": "2026-09-07T01:00:00Z",
+        "targetRestoreLocation": "s3://synthetic-dr-test",
+        "validationResult": "passed",
+        "cleanupConfirmed": True,
+    }
+    payload = {
+        **dict.fromkeys(module.PRODUCTION_DR_OWNER_TEXT_FIELDS, "Owner policy"),
+        "workload": "bootstrap-infrastructure",
+        "environment": "prod",
+        "owner": "policy-owner",
+        "approvedBy": "policy-reviewer",
+        "reviewedAt": "2026-09-07T02:15:16.955360+00:00",
+        "expiresAt": "2027-10-07",
+        "nextReviewDate": "2026-10-07",
+        "approval": "approved",
+        "evidence": ["Synthetic owner decision; no live attestation."],
+        "remediationPlan": "Keep technical restore evidence current.",
+        "restoreDrillEvidence": restore,
+        **changes,
+    }
+    path = tmp_path / "production-policy.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    original = path.read_bytes()
+    _, blockers = module._production_dr_owner_coverage(path, restore)  # noqa: SLF001
+    if blocker:
+        assert blocker in " ".join(blockers)  # nosec B101
+    else:
+        assert blockers == []  # nosec B101
+        # All other structured records retain the default 30-day freshness gate.
+        _, default_blockers = module._read_required_structured_evidence(  # noqa: SLF001
+            path, "Other evidence", module.PRODUCTION_DR_OWNER_REQUIRED_FIELDS
+        )
+        assert any("older than 30 days" in item for item in default_blockers)  # nosec B101
+        # An approved policy cannot turn missing recent AWS restores into a pass.
+        runner = _runner_from_cases(
+            [
+                (
+                    _starts_with(
+                        [
+                            "aws",
+                            "backup",
+                            "list-restore-jobs",
+                            "--by-created-after",
+                            (observed - module.dt.timedelta(days=90)).strftime(
+                                "%Y-%m-%dT%H:%M:%SZ"
+                            ),
+                        ]
+                    ),
+                    _json_response([]),
+                ),
+            ]
+        )
+        health = module.aws_restore_jobs(90, runner=runner)
+        assert health["status"] == "failed"  # nosec B101
+        assert health["evidence"]["windowDays"] == 90  # nosec B101
+    assert path.read_bytes() == original  # nosec B101
 
 
 def test_restore_drill_rejects_bad_production_dr_owner_evidence(

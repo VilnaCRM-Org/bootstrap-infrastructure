@@ -75,7 +75,9 @@ def test_rejects_missing_or_enabled_administrator_bypass(bypass):
     ) == ["test allows administrator bypass."]
 
 
-@pytest.mark.parametrize("branch_response", [None, [], {}, {"branch_policies": []}])
+@pytest.mark.parametrize(
+    "branch_response", [None, [], {}, {"total_count": 0, "branch_policies": []}]
+)
 def test_comment_preflight_requires_independently_readable_main_rule(
     monkeypatch, branch_response
 ):
@@ -102,11 +104,12 @@ def test_branch_rule_convergence_removes_tags_and_wildcards(monkeypatch):
     def api(args, **kwargs):
         calls.append((args, kwargs))
         return {
+            "total_count": 3,
             "branch_policies": [
                 {"id": 1, "name": "main", "type": "branch"},
                 {"id": 2, "name": "main", "type": "tag"},
                 {"id": 3, "name": "*", "type": "branch"},
-            ]
+            ],
         }
 
     monkeypatch.setattr(configure, "_run_gh_api", api)

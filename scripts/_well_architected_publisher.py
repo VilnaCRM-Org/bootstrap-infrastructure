@@ -518,6 +518,7 @@ def _authenticated_current_status(
     """Bind creator-bearing history to the exact combined-current status ID."""
     identity = current.get("id")
     _require(type(identity) is int and identity > 0, "Malformed current status ID")
+    _require(_node_id(current.get("node_id")), "Malformed current status node ID")
     _require(
         current.get("state") in ("pending", "success", "failure", "error"),
         "Malformed current status state",
@@ -532,7 +533,7 @@ def _authenticated_current_status(
     _require(
         all(
             actual.get(field) == current.get(field)
-            for field in ("id", "context", "state", "target_url")
+            for field in ("id", "node_id", "context", "state", "target_url")
         ),
         "Current status creator metadata differs",
     )
@@ -547,6 +548,80 @@ def _authenticated_current_status(
         "Foreign evidence status issuer",
     )
     return actual
+
+
+def _node_id(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and re.fullmatch(r"[A-Za-z0-9_-]+={0,2}", value) is not None
+    )
+
+
+def _identity_rollup(value: dict[str, Any]) -> list[dict[str, Any]]:
+    """Read a complete exact-head rollup with real GraphQL immutable node IDs."""
+    query = """query($head: GitObjectID!) {
+      repository(owner: "VilnaCRM-Org", name: "bootstrap-infrastructure") {
+        object(oid: $head) { ... on Commit { oid statusCheckRollup {
+          contexts(first: 100) { totalCount pageInfo { hasNextPage }
+            nodes { __typename
+              ... on StatusContext { id context state targetUrl }
+              ... on CheckRun { id name status conclusion detailsUrl }
+            }
+          }
+        } } }
+      }
+    }"""
+    payload = _json(
+        command(
+            [
+                "gh",
+                "api",
+                "graphql",
+                "-f",
+                "query=" + query,
+                "-f",
+                "head=" + value["head_sha"],
+            ]
+        ).encode()
+    )
+    _require(not payload.get("errors"), "Status rollup GraphQL errors")
+    data = payload.get("data")
+    _require(isinstance(data, dict), "Missing status rollup data")
+    repository = cast(dict[str, Any], data).get("repository")
+    _require(isinstance(repository, dict), "Missing status rollup repository")
+    commit = cast(dict[str, Any], repository).get("object")
+    _require(isinstance(commit, dict), "Missing status rollup commit")
+    commit = cast(dict[str, Any], commit)
+    _require(commit.get("oid") == value["head_sha"], "Status rollup head differs")
+    rollup = commit.get("statusCheckRollup")
+    _require(isinstance(rollup, dict), "Missing status rollup")
+    contexts = cast(dict[str, Any], rollup).get("contexts")
+    _require(isinstance(contexts, dict), "Missing status rollup inventory")
+    contexts = cast(dict[str, Any], contexts)
+    rows = contexts.get("nodes")
+    _require(isinstance(rows, list), "Malformed status rollup inventory")
+    rows = cast(list[dict[str, Any]], rows)
+    _require(
+        type(contexts.get("totalCount")) is int
+        and contexts["totalCount"] == len(rows) < 100
+        and isinstance(contexts.get("pageInfo"), dict)
+        and contexts["pageInfo"].get("hasNextPage") is False,
+        "Incomplete status rollup inventory",
+    )
+    _require(
+        all(
+            isinstance(row, dict)
+            and row.get("__typename") in {"StatusContext", "CheckRun"}
+            and _node_id(row.get("id"))
+            for row in rows
+        ),
+        "Malformed status rollup identity",
+    )
+    _require(
+        len({row["id"] for row in rows}) == len(rows),
+        "Duplicate status rollup identity",
+    )
+    return rows
 
 
 def self_status_runner(runner, value: dict[str, Any]):
@@ -582,21 +657,27 @@ def self_status_runner(runner, value: dict[str, Any]):
         entries = payload.get("statusCheckRollup")
         if not isinstance(entries, list):
             return result
+        entries = _identity_rollup(value)
         previous = own[0] if own else {}
+        if own:
+            matched = [entry for entry in entries if entry["id"] == previous["node_id"]]
+            _require(
+                len(matched) == 1
+                and matched[0].get("__typename") == "StatusContext"
+                and matched[0].get("context") == previous["context"]
+                and str(matched[0].get("state", "")).lower() == previous["state"]
+                and matched[0].get("targetUrl") == previous["target_url"],
+                "Authenticated evidence status changed in rollup",
+            )
         payload["statusCheckRollup"] = [
             entry
             for entry in entries
-            if not (
-                bool(own)
-                and entry.get("__typename") == "StatusContext"
-                and entry.get("context") == "Test Account Evidence"
-                and str(entry.get("state", "")).lower() == previous.get("state")
-                and entry.get("targetUrl") == previous.get("target_url")
-            )
+            if not (bool(own) and entry["id"] == previous["node_id"])
             and not (
                 entry.get("__typename") == "CheckRun"
                 and entry.get("name") == "Test Account Evidence"
                 and entry.get("detailsUrl") in legacy
+                and entry["id"] == legacy[entry["detailsUrl"]]["node_id"]
             )
         ]
         return subprocess.CompletedProcess(
@@ -641,8 +722,10 @@ def legacy_evidence_checks(value: dict[str, Any]) -> dict[str, dict[str, Any]]:
             and run.get("path") == ".github/workflows/well-architected-evidence.yml"
             and run.get("event") == "pull_request"
         ):
+            _require(_node_id(check.get("node_id")), "Malformed legacy check node ID")
             known[url] = {
                 "check_id": check["id"],
+                "node_id": check["node_id"],
                 "run_id": run["id"],
                 "conclusion": check.get("conclusion"),
                 "reason": (
