@@ -1,6 +1,8 @@
 # Reusable governance worker only; activation belongs to the root controller.
 # Hold this backend lock across the account graph; callers must not reacquire it.
 # Disable the legacy governance route before activation: it has only a PR lock.
+# Install all six account/purpose environments and matching exact trust first;
+# legacy shared governance subjects are deliberately not compatible.
 name: Pulumi Governance Account
 'on':
   workflow_call:
@@ -194,7 +196,7 @@ jobs:
       issues: read
       pull-requests: read
       id-token: write
-    environment: governance-preview
+    environment: ${{ format('{0}-governance-preview', inputs.account) }}
     env:
       PULUMI_SKIP_UPDATE_CHECK: 'true'
       PULUMI_DIR: pulumi/governance
@@ -346,7 +348,7 @@ jobs:
       issues: read
       pull-requests: read
       id-token: write
-    environment: governance-preview
+    environment: ${{ format('{0}-governance-preview', inputs.account) }}
     env:
       PULUMI_SKIP_UPDATE_CHECK: 'true'
       PULUMI_DIR: pulumi/governance
@@ -437,7 +439,7 @@ jobs:
       issues: read
       pull-requests: read
       id-token: write
-    environment: governance
+    environment: ${{ format('{0}-governance', inputs.account) }}
     env:
       PULUMI_SKIP_UPDATE_CHECK: 'true'
       PULUMI_DIR: pulumi/governance
@@ -577,7 +579,7 @@ jobs:
       issues: read
       pull-requests: read
       id-token: write
-    environment: governance-preview
+    environment: ${{ format('{0}-governance-drift', inputs.account) }}
     env:
       PULUMI_SKIP_UPDATE_CHECK: 'true'
       PULUMI_DIR: pulumi/governance
