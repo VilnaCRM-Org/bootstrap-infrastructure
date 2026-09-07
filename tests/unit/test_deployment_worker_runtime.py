@@ -148,14 +148,17 @@ def test_receipt_name_is_exact(artifact):
         )
 
 
-def test_receipt_archive_has_one_exact_file():
-    raw = make_zip([("receipt.json", b"{}\n")])
-    assert runtime._contract_bytes(raw, member_name="receipt.json") == b"{}\n"
+@pytest.mark.parametrize("name", ["receipt.json", "proof.json"])
+def test_receipt_or_proof_archive_has_one_exact_file(name):
+    raw = make_zip([(name, b"{}\n")])
+    assert runtime._contract_bytes(raw, member_name=name) == b"{}\n"
     with pytest.raises(ValueError, match="Artifact member must be contract.json"):
         runtime._contract_bytes(raw)
-    with pytest.raises(ValueError, match="Artifact member must be receipt.json"):
+    with pytest.raises(ValueError, match="Artifact member must be " + name):
+        runtime._contract_bytes(make_zip([("contract.json", b"{}")]), member_name=name)
+    with pytest.raises(ValueError, match="exactly one"):
         runtime._contract_bytes(
-            make_zip([("contract.json", b"{}")]), member_name="receipt.json"
+            make_zip([(name, b"{}"), ("extra.json", b"{}")]), member_name=name
         )
 
 

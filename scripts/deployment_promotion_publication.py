@@ -142,7 +142,7 @@ def revalidate_publication(
     Original artifact references and needs come from trusted root edges, never
     fields extracted from the supplied proof. The underlying collector rechecks
     current PR/request/controller identity and both full account graphs. It rejects
-    plan, TEST-only, empty selections and unsupported operator evidence.
+    plan, TEST-only, empty selections and incomplete selected worker evidence.
     """
     prepared = _prepared_proof(proof_payload, proof_file_sha256)
     current = build_promotion_proof(

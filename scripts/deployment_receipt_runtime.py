@@ -52,7 +52,9 @@ OUTPUT_FIELDS = frozenset(
 
 def _worker_names(scope: str, environment: str) -> dict[str, str]:
     """Match fixed caller names and the installed reusable worker display names."""
-    preflight.require(scope in ("platform", "governance"), "Unsupported receipt scope")
+    preflight.require(
+        scope in ("platform", "governance", "operator"), "Unsupported receipt scope"
+    )
     preflight.require(environment in ("test", "prod"), "Invalid receipt environment")
     display_names = {
         "resolve": "Validate fixed account and authenticated admission",

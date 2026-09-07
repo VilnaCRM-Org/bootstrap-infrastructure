@@ -182,7 +182,9 @@ def _urn(value: Any, catalog: Mapping[str, Any]) -> str:
     return urn
 
 
-def _state(value: Any, catalog: Mapping[str, Any]) -> dict[str, Any]:
+def _state(
+    value: Any, catalog: Mapping[str, Any], *, redacted_preview: bool = False
+) -> dict[str, Any]:
     row = _object(value, {"urn", "type", "custom"}, _STATE_FIELDS)
     urn = _urn(row["urn"], catalog)
     _require(urn.split("::")[2].split("$")[-1] == row["type"], "urn-type")
@@ -225,7 +227,7 @@ def _state(value: Any, catalog: Mapping[str, Any]) -> dict[str, Any]:
     ):
         _strings(row.get(key, []))
     _project(row.get("inputs", {}))
-    _input_shape(row)
+    _input_shape(row, redacted_preview=redacted_preview)
     return row
 
 
@@ -281,7 +283,7 @@ def _input_fields(row: dict[str, Any]) -> None:
             )
 
 
-def _input_shape(row: dict[str, Any]) -> None:
+def _input_shape(row: dict[str, Any], *, redacted_preview: bool = False) -> None:
     kind, inputs = row["type"], row.get("inputs", {})
     _input_fields(row)
     string_keys = {
@@ -318,8 +320,22 @@ def _input_shape(row: dict[str, Any]) -> None:
         "thumbprintLists",
     } & inputs.keys():
         _strings(inputs[key])
+    _secret_inputs(inputs, redacted_preview=redacted_preview)
+
+
+def _secret_inputs(inputs: dict[str, Any], *, redacted_preview: bool) -> None:
+    """Distinguish secret-bearing saved inputs from the CLI preview projection."""
     for key in {"secretString", "secretBinary"} & inputs.keys():
-        _require(isinstance(inputs[key], (str, dict)), "secret-input-shape")
+        # The CLI preview has a public redacted projection. Only that surface
+        # may use its exact placeholder; checkpoint and saved-plan inputs must
+        # retain Pulumi's secret wrapper.
+        if redacted_preview and inputs[key] == "[secret]":
+            continue
+        _require(
+            isinstance(inputs[key], dict)
+            and inputs[key].get(SIGNATURE) == WIRE_VALUE_TAG,
+            "secret-input-shape",
+        )
         _require(isinstance(_project(inputs[key]), str), "secret-input-shape")
 
 
@@ -980,7 +996,7 @@ def _preview_steps(
 def _preview_state(
     value: Any, expected: dict[str, Any], *, new: bool, catalog: Mapping[str, Any]
 ) -> None:
-    row = _state(value, catalog)
+    row = _state(value, catalog, redacted_preview=True)
     _require(
         row["urn"] == expected["urn"] and _ownership(row) == _ownership(expected),
         "preview-ownership",

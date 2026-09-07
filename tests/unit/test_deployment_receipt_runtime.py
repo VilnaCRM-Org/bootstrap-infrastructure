@@ -153,7 +153,7 @@ def load(state, **changes):
     "receipt_data",
     [
         (scope, environment, command)
-        for scope in ("platform", "governance")
+        for scope in ("platform", "governance", "operator")
         for environment in ("test", "prod")
         for command in ("up", "plan")
     ],
@@ -167,7 +167,7 @@ def test_authenticates_selected_node_and_all_actual_jobs(receipt_data):
     assert any("/environments/" in path for path in paths)
 
 
-@pytest.mark.parametrize("scope", ["platform", "governance"])
+@pytest.mark.parametrize("scope", ["platform", "governance", "operator"])
 def test_fixed_job_names_and_outputs_match_installed_reusable_workers(scope):
     workflow = yaml.safe_load(
         (ROOT / f".github/workflows/pulumi-{scope}-account.yml").read_text()
@@ -183,7 +183,6 @@ def test_fixed_job_names_and_outputs_match_installed_reusable_workers(scope):
 @pytest.mark.parametrize(
     "scope,environment",
     [
-        ("operator", "test"),
         ("unknown", "test"),
         (None, "test"),
         ([], "test"),
@@ -311,6 +310,15 @@ def test_job_provenance_is_exact(receipt_data, field, value):
         load(receipt_data)
 
 
+@pytest.mark.parametrize(
+    "receipt_data",
+    [
+        ("platform", "test", "up"),
+        ("operator", "test", "up"),
+        ("operator", "prod", "up"),
+    ],
+    indirect=True,
+)
 @pytest.mark.parametrize("stage", range(7))
 @pytest.mark.parametrize("result", ["failure", "cancelled", "skipped", None])
 def test_no_selected_up_stage_may_fail_or_skip(receipt_data, stage, result):
@@ -320,6 +328,15 @@ def test_no_selected_up_stage_may_fail_or_skip(receipt_data, stage, result):
         load(receipt_data)
 
 
+@pytest.mark.parametrize(
+    "receipt_data",
+    [
+        ("platform", "test", "up"),
+        ("operator", "test", "up"),
+        ("operator", "prod", "up"),
+    ],
+    indirect=True,
+)
 @pytest.mark.parametrize("stage", range(7))
 def test_every_selected_stage_must_exist(receipt_data, stage):
     receipt_data.jobs.pop(stage)
@@ -426,6 +443,15 @@ def test_plan_cannot_receipt_actual_apply_or_drift_execution(receipt_data, stage
         load(receipt_data)
 
 
+@pytest.mark.parametrize(
+    "receipt_data",
+    [
+        ("platform", "test", "up"),
+        ("operator", "test", "up"),
+        ("operator", "prod", "up"),
+    ],
+    indirect=True,
+)
 def test_current_source_and_permission_are_rechecked(receipt_data):
     receipt_data.github.evidence["permission"] = "read"
     with pytest.raises(ValueError):

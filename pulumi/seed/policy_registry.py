@@ -521,11 +521,14 @@ def _mutable_attachment_sets(registry: SeedRegistry) -> dict[str, set[str]]:
         f"user-service-infrastructure-{registry.environment}-{suffix}"
         for suffix in ("pulumi-backend", "secret-read-deny")
     }
-    # Existing governor positive boundary permits attachment operations on the
-    # exact six governed roles. Admit only these two already cataloged policies;
-    # a new governed repository/policy requires a separately reviewed registry.
+    # Only the service apply role owns these mutable grants. Read, configuration
+    # and replication roles retain their exact enrolled attachment sets.
+    service_apply = (
+        f"arn:aws:iam::{registry.account_id}:role/GitHubCiApply-"
+        f"user-service-infrastructure-{registry.environment}"
+    )
     for principal in registry.principals:
-        if principal.owner_project == "governance":
+        if principal.owner_project == "governance" and principal.arn == service_apply:
             permitted[principal.arn] = service_policies
     return permitted
 

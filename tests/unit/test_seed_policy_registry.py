@@ -562,7 +562,7 @@ def test_current_mutable_grants_can_change_only_inside_each_project_catalog(
     expected = build(environment)
     observed = active_observation_for(expected)
     permitted = registry._mutable_attachment_sets(expected)
-    assert len(permitted) == 19
+    assert len(permitted) == 14
     by_arn = {p.arn: p for p in expected.principals}
     for arn, allowed in permitted.items():
         role = by_arn[arn]
@@ -617,7 +617,11 @@ def test_cross_project_or_unknown_mutable_attachments_are_rejected(owner, foreig
         for p in expected.principals
         if p.owner_project == "github-ci-bootstrap" and p.arn in permitted
     )
-    service = next(p for p in expected.principals if p.owner_project == "governance")
+    service = next(
+        p
+        for p in expected.principals
+        if p.owner_project == "governance" and p.arn in permitted
+    )
     candidates = {
         "service": next(iter(permitted[service.arn])),
         "operator": next(iter(permitted[operator.arn])),
@@ -637,6 +641,33 @@ def test_cross_project_or_unknown_mutable_attachments_are_rejected(owner, foreig
     )
     with pytest.raises(registry.RegistryError, match="permitted policy identities"):
         registry.verify_active_enrollment(expected, replace(observed, principals=roles))
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_service_apply_grants_cannot_be_attached_to_other_service_roles(environment):
+    expected = build(environment)
+    observed = active_observation_for(expected)
+    permitted = registry._mutable_attachment_sets(expected)
+    service = [p for p in expected.principals if p.owner_project == "governance"]
+    apply = next(p for p in service if p.arn in permitted)
+    assert apply.arn.endswith(
+        f"/GitHubCiApply-user-service-infrastructure-{environment}"
+    )
+    others = [p for p in service if p != apply]
+    assert len(others) == 5
+    for role in others:
+        assert role.arn not in permitted
+        for policy in permitted[apply.arn]:
+            roles = tuple(
+                replace(p, attachment_arns=p.attachment_arns + (policy,))
+                if p.arn == role.arn
+                else p
+                for p in observed.principals
+            )
+            with pytest.raises(registry.RegistryError, match="attachment set changed"):
+                registry.verify_active_enrollment(
+                    expected, replace(observed, principals=roles)
+                )
 
 
 @pytest.mark.parametrize("index", range(24))

@@ -169,7 +169,8 @@ def _download_zip(artifact_id: str) -> bytes:
 def _contract_bytes(raw: bytes, *, member_name: str = "contract.json") -> bytes:
     """Read one bounded regular protocol document without extracting paths."""
     preflight.require(
-        member_name in ("contract.json", "receipt.json", "test.json", "prod.json"),
+        member_name
+        in ("contract.json", "receipt.json", "test.json", "prod.json", "proof.json"),
         "Unsupported artifact member",
     )
     preflight.require(len(raw) <= MAX_ZIP_BYTES, "Artifact ZIP exceeds bound")

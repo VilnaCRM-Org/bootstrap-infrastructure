@@ -219,6 +219,36 @@ def test_real_composition_binds_current_identity_and_both_accounts(promotion):
     assert "plan_artifact" not in json.dumps(proof)
 
 
+@pytest.mark.parametrize(
+    "receipt_data",
+    [("operator", "test", "up", ("operator", "governance", "platform"))],
+    indirect=True,
+)
+@pytest.mark.parametrize("failed_account", [None, "test", "prod"])
+def test_all_three_scopes_require_actual_operator_jobs(promotion, failed_account):
+    if failed_account:
+        selected = next(
+            item
+            for item in promotion.state.jobs
+            if item["name"] == f"operator_{failed_account} / Apply saved operator plan"
+        )
+        selected["conclusion"] = "failure"
+        publish_jobs(promotion.state)
+        with pytest.raises(ValueError, match="did not complete"):
+            prove(promotion)
+        return
+    proof = prove(promotion)
+    assert proof["scopes"] == ["operator", "governance", "platform"]
+    assert len(proof["jobs"]) == 46
+    assert all(
+        proof["workers"][name]["result"] == "success" for name in runtime.WORKERS
+    )
+    assert (
+        proof["barriers"]["prod"]["barrier"]["test_barrier_digest"]
+        == (proof["barriers"]["test"]["barrier"]["barrier_digest"])
+    )
+
+
 @pytest.mark.parametrize("receipt_data", [PLATFORM_ONLY], indirect=True)
 def test_prepare_cli_writes_only_after_verification(promotion, monkeypatch):
     assert cli(promotion, monkeypatch) == 0

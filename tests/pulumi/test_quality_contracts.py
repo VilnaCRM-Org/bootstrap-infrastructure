@@ -78,6 +78,8 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "governance_paths",
         "operator_aws_read",
         "operator_enrollment_runtime",
+        "operator_execution_runtime",
+        "operator_execution_transport",
         "operator_plan_envelope",
         "operator_plan_validation",
         "pulumi_command_preflight",
