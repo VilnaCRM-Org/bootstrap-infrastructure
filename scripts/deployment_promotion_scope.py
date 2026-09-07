@@ -17,8 +17,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import argparse  # noqa: E402
 import hashlib  # noqa: E402
 import json  # noqa: E402
+import lzma  # noqa: E402
 import os  # noqa: E402
 import re  # noqa: E402
+import zipfile  # noqa: E402
+import zlib  # noqa: E402
 from dataclasses import asdict  # noqa: E402
 from typing import Any, cast  # noqa: E402
 
@@ -162,7 +165,16 @@ def _artifact_document(
     _verify_artifact(identifier, archive_sha, controller, expected_name=name)
     raw = _download_zip(identifier)
     require(hashlib.sha256(raw).hexdigest() == archive_sha, "Artifact archive differs")
-    document = _contract_bytes(raw, member_name=member)
+    try:
+        document = _contract_bytes(raw, member_name=member)
+    except (
+        zipfile.BadZipFile,
+        EOFError,
+        NotImplementedError,
+        zlib.error,
+        lzma.LZMAError,
+    ) as error:
+        raise ValueError("Invalid artifact archive") from error
     require(
         hashlib.sha256(document).hexdigest() == file_sha, "Artifact document differs"
     )

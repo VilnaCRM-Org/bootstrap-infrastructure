@@ -333,7 +333,10 @@ def _validate_policy_inventory(policies: tuple) -> None:
 def _validate_closure(policies: tuple, principals: tuple) -> None:
     policy_map = {p.arn: p for p in policies}
     _require(len(policy_map) == len(policies) == 55, "Expected 55 seed policies")
-    _require(len({p.arn for p in principals}) == 24, "Expected 24 principals")
+    _require(
+        len({p.arn for p in principals}) == len(principals) == 24,
+        "Expected 24 principals",
+    )
     _require(sum(p.existing for p in principals) == 21, "Expected 21 existing roles")
     _validate_policy_inventory(policies)
     _require(sum(p.frozen_config is not None for p in principals) == 1, "Config freeze")

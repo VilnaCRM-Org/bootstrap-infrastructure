@@ -175,12 +175,17 @@ def test_pulumi_commands_use_private_full_plans_and_isolated_child(
     def execute(command, **kwargs):
         calls.append((command, kwargs))
         config = Path(command[command.index("--config-file") + 1])
-        assert config.stat().st_mode & 0o777 == 0o600
+        assert config.stat().st_mode & 0o777 == 0o440
+        assert config.parent == installed.inputs
+        assert config.parent.stat().st_mode & 0o777 == 0o710
         if stage != "apply":
             Path(command[command.index("--save-plan") + 1]).write_bytes(
                 b'{"plan":true}'
             )
         else:
+            saved = Path(command[command.index("--plan") + 1])
+            assert saved.parent == installed.inputs
+            assert saved.stat().st_mode & 0o777 == 0o440
             assert (
                 Path(command[command.index("--plan") + 1]).read_bytes()
                 == b'{"saved":true}'
@@ -206,6 +211,29 @@ def test_pulumi_commands_use_private_full_plans_and_isolated_child(
         assert "--refresh" in command and "--expect-no-changes" in command
     assert not list(installed.work.glob("*.plan"))
     assert not list(installed.work.glob("*.yaml"))
+    assert not list(installed.inputs.iterdir())
+
+
+@pytest.mark.parametrize("field", ["profile", "accessKey", "endpoints", "assumeRoles"])
+def test_config_credentials_stop_before_child_execution(
+    installed, checkpoint, monkeypatch, field
+):
+    snapshot = installed.snapshot()
+    path = installed.source / "pulumi/github-ci-bootstrap/Pulumi.test.yaml"
+    path.write_text(f"config:\n  aws:{field}: synthetic-denied\n")
+    monkeypatch.setattr(transport, "run", lambda *_a, **_k: pytest.fail("child ran"))
+    with pytest.raises(ValueError, match="credential-or-endpoint"):
+        installed.pulumi("preview", snapshot)
+    assert not list(installed.inputs.iterdir())
+
+
+def test_external_config_environment_is_not_loaded(installed, checkpoint, monkeypatch):
+    snapshot = installed.snapshot()
+    path = installed.source / "pulumi/github-ci-bootstrap/Pulumi.test.yaml"
+    path.write_text("environment: synthetic-external-config\nconfig: {}\n")
+    monkeypatch.setattr(transport, "run", lambda *_a, **_k: pytest.fail("child ran"))
+    with pytest.raises(ValueError, match="operator-config-source"):
+        installed.pulumi("preview", snapshot)
 
 
 def test_actual_subprocess_bounds_and_redacts(tmp_path, monkeypatch):
@@ -244,6 +272,15 @@ def test_strict_private_json_and_files(tmp_path):
     alias.symlink_to(path)
     with pytest.raises(ValueError):
         transport.private_read(alias)
+
+
+def test_child_output_ownership_remains_writable(tmp_path, monkeypatch):
+    owners = []
+    monkeypatch.setattr(transport.os, "chown", lambda *args: owners.append(args))
+    path = tmp_path / "preview-output"
+    transport.private_write(path, b"synthetic-output", child=True)
+    assert owners == [(path, 2000, 2000)]
+    assert path.stat().st_mode & 0o777 == 0o600
 
 
 def test_tools_reject_substitution_and_pin_project_and_provider(installed, monkeypatch):
@@ -359,8 +396,22 @@ def test_actual_no_network_container_smoke(tmp_path):
     )
     (project / "__main__.py").write_text(
         "import os, pulumi, pulumi_aws\n"
+        "from pathlib import Path\n"
         "assert os.geteuid() == 2000\n"
         "assert 'GH_TOKEN' not in os.environ\n"
+        "for name in ('PROTECTED_PLAN', 'PROTECTED_CONFIG'):\n"
+        "    if name not in os.environ: continue\n"
+        "    path = Path(os.environ[name])\n"
+        "    assert path.read_bytes()\n"
+        "    attacker = Path(os.environ['HOME']) / 'replacement'\n"
+        "    attacker.write_bytes(b'synthetic-not-a-plan')\n"
+        "    for action in (lambda: path.write_bytes(b'changed'), path.unlink,\n"
+        "                   lambda: path.chmod(0o600),\n"
+        "                   lambda: os.replace(attacker, path),\n"
+        "                   lambda: path.parent.chmod(0o777)):\n"
+        "        try: action()\n"
+        "        except PermissionError: pass\n"
+        "        else: raise AssertionError('protected input was mutable')\n"
         "pulumi.export('smoke', pulumi.Config().require('value'))\n"
     )
     code = r"""
@@ -428,9 +479,9 @@ with tempfile.TemporaryDirectory() as directory:
     )
     t.run([t.PYTHON, "-I", "-c", daemon], env=port.child_env, cwd=port.work, child=True)
     assert not t._child_pids()
-    config = port.work / "synthetic.yaml"
-    t.private_write(
-        config, b"config:\n  operator-offline-smoke:value: synthetic-only\n", child=True
+    config = port.inputs / "synthetic.yaml"
+    t.protected_write(
+        config, b"config:\n  operator-offline-smoke:value: synthetic-only\n"
     )
     (port.work / "backend").mkdir()
     os.chown(port.work / "backend", 2000, 2000)
@@ -438,6 +489,7 @@ with tempfile.TemporaryDirectory() as directory:
         **port.child_env,
         "PULUMI_BACKEND_URL": "file://" + str(port.work / "backend"),
         "PULUMI_CONFIG_PASSPHRASE": "synthetic-only",
+        "PROTECTED_CONFIG": str(config),
     }
     base = [t.PULUMI, "-C", "/smoke"]
     initializer = port.work / "initializer"
@@ -459,6 +511,13 @@ with tempfile.TemporaryDirectory() as directory:
         cwd=port.work,
         child=True,
     )
+    # Bind the existing synthetic passphrase provider before making config read-only,
+    # just as production _configuration supplies existing cloud provider state.
+    initial_config = t.yaml.safe_load((initializer / "Pulumi.smoke.yaml").read_text())
+    assert initial_config["encryptionsalt"]
+    initial_config["config"] = {"operator-offline-smoke:value": "synthetic-only"}
+    config.unlink()
+    t.protected_write(config, t.yaml.safe_dump(initial_config).encode())
     plan = port.work / "smoke.plan"
     preview = t.run(
         base
@@ -480,8 +539,20 @@ with tempfile.TemporaryDirectory() as directory:
         child=True,
     )
     assert t.private_read(plan) and b"synthetic-only" in preview
+    reviewed = port.inputs / "reviewed.plan"
+    expected = t.private_read(plan)
+    t.protected_write(reviewed, expected)
+    replay = t.run(
+        base + ["up", "--stack", "smoke", "--config-file", str(config),
+                "--non-interactive", "--json", "--yes", "--plan", str(reviewed)],
+        env={**local, "PROTECTED_PLAN": str(reviewed)},
+        cwd=port.work,
+        child=True,
+    )
+    assert b"synthetic-only" in replay
+    assert t.private_read(reviewed) == expected
     assert not t._child_pids()
-print("PINNED-CONTAINER-SMOKE-PASS: no network, no AWS calls, no apply")
+print("PINNED-CONTAINER-SMOKE-PASS: no network, no AWS calls, synthetic local replay")
 """
     root = Path(__file__).resolve().parents[2]
     # The local checkout may be a worktree; hosted checkout has a normal .git.

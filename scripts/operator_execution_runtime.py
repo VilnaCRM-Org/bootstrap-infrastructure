@@ -41,7 +41,7 @@ from operator_execution_transport import (  # noqa: E402
     require,
     run,
 )
-from operator_plan_validation import _diff, validate_operator_plan  # noqa: E402
+from operator_plan_validation import _goal_inputs, validate_operator_plan  # noqa: E402
 from pulumi_ci_guardrails import find_destructive_steps  # noqa: E402
 from seed import policy_registry as registry  # noqa: E402
 
@@ -189,14 +189,11 @@ def _same(before, after):
 def _iam(plan, checkpoint, transport):
     """Validate every private goal's IAM document with the actual AWS analyzer."""
     goals = decode(plan)["resourcePlans"]
-    prior = {
-        row["urn"]: row.get("inputs", {})
-        for row in decode(checkpoint)["deployment"]["resources"]
-    }
+    prior = {row["urn"]: row for row in decode(checkpoint)["deployment"]["resources"]}
     for urn, value in goals.items():
         goal = value.get("goal")
         if goal:
-            inputs = _diff(goal.get("inputDiff", {}), prior.get(urn, {}))
+            inputs = _goal_inputs(goal, prior.get(urn), tuple(value["steps"]))
             for key in ("policy", "assumeRolePolicy"):
                 document = inputs.get(key)
                 if document is not None:

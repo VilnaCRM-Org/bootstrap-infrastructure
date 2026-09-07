@@ -204,7 +204,34 @@ def collect_enrollment(
         and re.fullmatch(r"[A-Za-z0-9_+=,.@-]{2,64}", arn[len(prefix) :]) is not None,
         "Wrong operator caller; root and foreign roles are rejected",
     )
+    name = f"GitHubOperator{purpose.title()}-{expected.environment}"
+    _bind_operator_session(
+        caller,
+        role_arn=f"arn:aws:iam::{expected.account_id}:role/{name}",
+        session=cast(str, arn)[len(prefix) :],
+        call=call,
+    )
     return _collect_metadata(expected, call=call)
+
+
+def _bind_operator_session(
+    caller: Mapping[str, Any], *, role_arn: str, session: str, call: AwsRead
+) -> None:
+    """Bind the session to the current IAM role incarnation, not a historical pin."""
+    name = role_arn.rsplit("/", 1)[-1]
+    role = _object(_read(call, "iam", "get_role", RoleName=name).get("Role"))
+    role_id = role.get("RoleId")
+    _require(
+        role.get("Arn") == role_arn
+        and role.get("RoleName") == name
+        and type(role_id) is str
+        and re.fullmatch(r"AROA[A-Z0-9]{12,124}", role_id) is not None,
+        "Live operator role metadata does not match executor identity",
+    )
+    _require(
+        caller.get("UserId") == f"{role_id}:{session}",
+        "Operator session does not match immutable role identity",
+    )
 
 
 def _collect_metadata(

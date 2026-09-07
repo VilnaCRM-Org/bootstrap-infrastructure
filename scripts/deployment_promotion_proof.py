@@ -231,6 +231,27 @@ def _verify_order(
             )
         for account in ("test", "prod"):
             _verify_worker_order(scope, account, jobs)
+    _verify_scope_order(contract, jobs)
+
+
+def _verify_scope_order(
+    contract: DeploymentContract, jobs: dict[str, dict[str, Any]]
+) -> None:
+    """Each selected account worker must finish before the next scope starts."""
+    scopes = contract.selection.stacks
+    for account in ("test", "prod"):
+        for previous, current in zip(scopes, scopes[1:]):
+            prior_receipt = next(
+                name
+                for name, stage in _worker_names(previous, account).items()
+                if stage == "receipt"
+            )
+            completed = _timestamp(jobs[prior_receipt]["completed_at"])
+            for name in _worker_names(current, account):
+                preflight.require(
+                    completed <= _timestamp(jobs[name]["started_at"]),
+                    f"{current} {account} preceded {previous} worker completion",
+                )
 
 
 def _worker_dependencies(scope: str) -> dict[str, tuple[str, ...]]:

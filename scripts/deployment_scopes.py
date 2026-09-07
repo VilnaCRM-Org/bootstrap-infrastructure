@@ -61,6 +61,7 @@ CENTRAL_EXECUTION_FILES = frozenset(
         "scripts/prepare_policy_pack.py",
         "scripts/run_pulumi_preview.py",
         "scripts/run_pulumi_drift_check.py",
+        "scripts/validate_repository_catalogs.py",
         "scripts/deployment_scopes.py",
         "scripts/deployment_schedule.py",
         "scripts/deployment_controller.py",
@@ -280,6 +281,7 @@ def _path_impact(path: str) -> PathImpact:
             STACK_ORDER,
             scaffold,
             execution_validation=True,
+            catalog_validation=path == "scripts/validate_repository_catalogs.py",
             reason="Conservative shared execution/policy validation",
         )
     if scaffold:

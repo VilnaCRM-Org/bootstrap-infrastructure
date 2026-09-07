@@ -143,16 +143,18 @@ def promotion(graph, monkeypatch):
     dependencies = promotion_dependencies(graph)
     # Synthetic API fixtures model distinct jobs; they are not hosted QA evidence.
     stages = {}
-    for scope in graph.state.contract.selection.stacks:
+    scopes = graph.state.contract.selection.stacks
+    spacing, duration = (2, 1) if len(scopes) > 1 else (8, 4)
+    for scope_index, scope in enumerate(scopes):
         for account in ("test", "prod"):
             for index, name in enumerate(runtime._worker_names(scope, account)):
-                stages[name] = index * 8
+                stages[name] = scope_index * 16 + index * spacing
     for item in graph.state.jobs:
         minute = 2 if "_test / " in item["name"] else 4
         second = stages[item["name"]]
         item.update(
             started_at=timestamp(minute, second),
-            completed_at=timestamp(minute, second + 4),
+            completed_at=timestamp(minute, second + duration),
         )
     for index, (name, minute) in enumerate(
         zip(runtime.ROOT_JOBS, (0, 1, 3, 5), strict=True)
@@ -688,3 +690,40 @@ def test_same_instant_completion_and_start_is_valid(promotion, account):
     after["started_at"] = before["completed_at"]
     publish_jobs(promotion.state)
     assert prove(promotion)["completion_kind"] == "apply-drift"
+
+
+@pytest.mark.parametrize(
+    "receipt_data",
+    [
+        ("operator", "test", "up", ("operator", "governance")),
+        ("operator", "test", "up", ("operator", "platform")),
+        ("governance", "test", "up", ("governance", "platform")),
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("account", ["test", "prod"])
+@pytest.mark.parametrize("overlap", [False, True])
+def test_selected_scope_waits_for_prior_worker(
+    promotion, monkeypatch, account, overlap
+):
+    previous, current = promotion.state.contract.selection.stacks
+    prior_name = next(
+        name
+        for name, stage in runtime._worker_names(previous, account).items()
+        if stage == "receipt"
+    )
+    current_name = next(iter(runtime._worker_names(current, account)))
+    rows = {row["name"]: row for row in promotion.state.jobs}
+    finish = runtime._timestamp(rows[current_name]["started_at"])
+    if overlap:
+        finish += timedelta(microseconds=1)
+    rows[prior_name]["completed_at"] = finish.isoformat().replace("+00:00", "Z")
+    publish_jobs(promotion.state)
+    if overlap:
+        with pytest.raises(
+            ValueError, match=f"{current} {account} preceded {previous}"
+        ):
+            cli(promotion, monkeypatch)
+        assert not promotion.proof_path.exists() and not promotion.output_path.exists()
+    else:
+        assert prove(promotion)["completion_kind"] == "apply-drift"

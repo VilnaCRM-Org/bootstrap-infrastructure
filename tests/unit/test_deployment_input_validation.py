@@ -841,7 +841,7 @@ def test_real_process_timeout_is_bounded(tmp_path, monkeypatch, close_streams):
         )
 
 
-def test_noisy_child_ignoring_term_is_killed(tmp_path, monkeypatch):
+def test_noisy_child_ignoring_termination_is_killed(tmp_path, monkeypatch):
     monkeypatch.setattr(runtime, "MAX_OUTPUT_BYTES", 1)
     monkeypatch.setattr(runtime, "TERMINATE_TIMEOUT", 0.05)
     program = (

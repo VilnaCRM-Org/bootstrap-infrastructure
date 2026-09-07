@@ -824,6 +824,81 @@ def test_pinned_delete_before_create_plan_and_replacement_markers():
     assert validate(data).changed_urns == (new["urn"],)
 
 
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("legacy", [False, True])
+def test_plan_keeps_safe_config_and_project_secret_values(environment, legacy):
+    data = fixture(environment)
+    prefix = "aws:config:" if legacy else "aws:"
+    data["plan"]["config"] = {
+        prefix + "region": data["catalog"]["region"],
+        prefix + "allowedAccountIds": [data["catalog"]["account_id"]],
+        "github-ci-bootstrap:writeSecretValues": True,
+        "github-ci-bootstrap:ciConfig": {"secure": "synthetic-encrypted-setting"},
+    }
+    assert validate(data).changed_urns == ()
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize(
+    "option",
+    [
+        "accessKey",
+        "secretKey",
+        "token",
+        "profile",
+        "assumeRole",
+        "assumeRoles",
+        "assumeRoleWithWebIdentity",
+        "endpoints",
+        "sharedCredentialsFiles",
+        "sharedConfigFiles",
+        "httpProxy",
+        "insecure",
+        "s3UsePathStyle",
+    ],
+)
+def test_plan_config_cannot_redirect_provider_or_credentials(option, legacy):
+    data = fixture()
+    prefix = "aws:config:" if legacy else "aws:"
+    data["plan"]["config"] = {prefix + option: "synthetic-denied-setting"}
+    with pytest.raises(ValueError, match="credential-or-endpoint"):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        None,
+        [],
+        {1: "value"},
+        {"aws": {}},
+        {"aws:config:region:extra": "value"},
+        {"aws:version": "other"},
+        {"aws:__defaults": []},
+        {"other:profile": "value"},
+        {"aws:region": "eu-central-1", "aws:config:region": "eu-central-1"},
+        {"aws:region": "us-east-1"},
+        {"aws:region": {"secure": "hidden"}},
+        {"aws:allowedAccountIds": ["933245420672"]},
+        {"aws:skipCredentialsValidation": True},
+        {"aws:skipRegionValidation": "true"},
+        {"aws:skipRequestingAccountId": True},
+    ],
+)
+def test_ambiguous_config_and_account_overrides_fail(config):
+    data = fixture()
+    data["plan"]["config"] = config
+    with pytest.raises(ValueError):
+        validate(data)
+
+
+def test_config_key_type_is_checked_before_regex():
+    with pytest.raises(ValueError, match="operator-config-key"):
+        validation.validate_operator_configuration(
+            {1: "value"}, account_id="891377212104", region="eu-central-1"
+        )
+
+
 def test_full_new_values_and_precise_diff_diagnostics():
     data = fixture()
     change(

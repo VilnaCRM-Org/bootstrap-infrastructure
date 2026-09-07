@@ -69,6 +69,7 @@ def select_records(records: list[Mapping[str, object]]) -> DeploymentScopes:
             False,
             True,
         ),
+        ("scripts/validate_repository_catalogs.py", ALL, False, True, True),
         ("pulumi/repositories.schema.json", (), False, False, True),
         ("pulumi/repositories.example.json", (), False, False, True),
         ("pulumi/governance/Pulumi.test.yaml", ("governance",), False, False, False),
@@ -424,3 +425,17 @@ def test_scaffold_copy_inventory_has_not_drifted() -> None:
     assert set(ast.literal_eval(copied)) == SCAFFOLD_RUNTIME_FILES
     for path in SCAFFOLD_RUNTIME_FILES:
         assert select(path).scaffold_validation
+
+
+@pytest.mark.parametrize(
+    "status", ["added", "modified", "removed", "renamed", "copied"]
+)
+def test_catalog_validator_keeps_runtime_checks(status):
+    path = "scripts/validate_repository_catalogs.py"
+    record = {"filename": path, "status": status}
+    if status in ("renamed", "copied"):
+        record.update(filename="docs/former-validator.py", previous_filename=path)
+    selected = select_records([record])
+    assert selected.stacks == ALL
+    assert selected.catalog_validation and selected.execution_validation
+    assert not selected.scaffold_validation

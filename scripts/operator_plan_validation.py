@@ -18,9 +18,10 @@ import binascii
 import hashlib
 import json
 import math
+import re
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, cast
 
 from seed.policy_registry import CATALOG_HASHES, document_hash
 
@@ -498,6 +499,40 @@ def _provider_inputs(inputs: dict[str, Any], catalog: Mapping[str, Any]) -> None
         in ([catalog["account_id"]], json.dumps([catalog["account_id"]])),
         "aws-provider-account",
     )
+
+
+def validate_operator_configuration(
+    value: Any, *, account_id: str, region: str
+) -> None:
+    """Reject CLI/provider credential sources and redirects before PR execution.
+
+    Pulumi 3.223 serializes plan config with the same value shapes as stack YAML.
+    Accept its legacy namespace:config:key spelling, but reject aliases that
+    collide. Project settings remain program data; only closed AWS settings may
+    influence the CLI's default provider. The caller authenticates account/region.
+    """
+    _require(type(value) is dict, "operator-config")
+    inputs: dict[str, Any] = {
+        "version": "7.23.0",
+        "region": region,
+        "allowedAccountIds": [account_id],
+    }
+    seen = set()
+    for key, item in value.items():
+        match = (
+            re.fullmatch(r"(aws|github-ci-bootstrap):(?:config:)?([^:\s]+)", key)
+            if type(key) is str
+            else None
+        )
+        _require(match is not None, "operator-config-key")
+        namespace, name = cast(re.Match[str], match).groups()
+        identity = (namespace, name)
+        _require(identity not in seen, "duplicate-operator-config-key")
+        seen.add(identity)
+        if namespace == "aws":
+            _require(name not in {"version", "__defaults"}, "operator-config-key")
+            inputs[name] = item
+    _provider_inputs(inputs, {"account_id": account_id, "region": region})
 
 
 def _parent(
@@ -1158,7 +1193,11 @@ def _validate_operator_plan(
         {"manifest", "resourcePlans", "config"},
     )
     _manifest(plan["manifest"])
-    _require(isinstance(plan.get("config", {}), dict), "plan-config")
+    validate_operator_configuration(
+        plan.get("config", {}),
+        account_id=catalog["account_id"],
+        region=catalog["region"],
+    )
     goals = plan["resourcePlans"]
     _require(isinstance(goals, dict) and bool(goals), "plan-goals")
     preview = _preview_steps(preview_payload, catalog)
