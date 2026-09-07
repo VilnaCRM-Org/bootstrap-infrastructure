@@ -2984,7 +2984,7 @@ def test_configure_github_repository_controls_payloads(
         module.main(
             [
                 "--promotion-app-id",
-                "12345",
+                "4840884",
                 "--repo",
                 "VilnaCRM-Org/bootstrap-infrastructure",
             ]
@@ -3005,7 +3005,7 @@ def test_configure_github_repository_controls_payloads(
         module.main(
             [
                 "--promotion-app-id",
-                "12345",
+                "4840884",
                 "--repo",
                 "VilnaCRM-Org/bootstrap-infrastructure",
                 "--dry-run",
@@ -4979,6 +4979,11 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
 ) -> None:
     """Metadata evidence collector should score proven controls without secrets."""
     module = load_script_module(monkeypatch, "collect_well_architected_evidence")
+    monkeypatch.setattr(
+        module._github_repository_evidence,
+        "_current_promotion",
+        lambda pr, head: {"head_sha": head, "state": "success"},
+    )
     reviewed_at = module.dt.datetime.now(module.dt.timezone.utc).isoformat()
     restore_evidence = tmp_path / "restore-drill.json"
     restore_evidence.write_text(
@@ -5125,7 +5130,7 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
             ),
             (
                 _starts_with(["git", "-C", str(PROJECT_ROOT), "rev-parse"]),
-                _text_response("abc123\n"),
+                _text_response("a" * 40 + "\n"),
             ),
             (
                 _starts_with(["git", "-C", str(PROJECT_ROOT), "status"]),
@@ -5144,7 +5149,7 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                     {
                         "mergeStateStatus": "CLEAN",
                         "reviewDecision": "APPROVED",
-                        "headRefOid": "abc123",
+                        "headRefOid": "a" * 40,
                         "headRefName": "feature",
                         "statusCheckRollup": [
                             {
@@ -5232,10 +5237,22 @@ def test_collect_well_architected_evidence_success_path(  # noqa: C901
                 ),
             ),
             (
+                _last_arg_endswith("/rulesets?per_page=100"),
+                _json_response([]),
+            ),
+            (
                 _starts_with(["gh", "api"]),
                 _json_response(
                     {
-                        "required_status_checks": {"contexts": ["Unit"]},
+                        "required_status_checks": {
+                            "contexts": ["Unit", "Infrastructure Promotion"],
+                            "checks": [
+                                {
+                                    "context": "Infrastructure Promotion",
+                                    "app_id": 4840884,
+                                }
+                            ],
+                        },
                         "required_pull_request_reviews": {
                             "required_approving_review_count": 1
                         },
@@ -7747,7 +7764,7 @@ def test_collect_well_architected_evidence_reads_ruleset_fallback(
         raise AssertionError(command)  # pragma: no cover
 
     evidence = module.github_branch_protection(
-        "VilnaCRM-Org/bootstrap-infrastructure",
+        "org/service-infrastructure",
         "main",
         expected_required_status_checks=("Unit", "Policy"),
         runner=runner,
@@ -8515,7 +8532,7 @@ def test_collect_well_architected_evidence_reports_missing_required_checks(
         raise AssertionError(command)  # pragma: no cover
 
     evidence = module.github_branch_protection(
-        "VilnaCRM-Org/bootstrap-infrastructure",
+        "org/service-infrastructure",
         "main",
         expected_required_status_checks=("Preview", "IAM Validation"),
         runner=runner,

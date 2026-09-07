@@ -70,6 +70,7 @@ known_first_party = [
     "deployment_promotion_proof",
     "deployment_promotion_emitter",
     "deployment_promotion_publication",
+    "deployment_promotion_scope",
     "deployment_receipt_runtime",
     "deployment_schedule",
     "deployment_scopes",

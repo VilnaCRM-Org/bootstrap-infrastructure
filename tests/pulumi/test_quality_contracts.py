@@ -70,6 +70,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "deployment_promotion_proof",
         "deployment_promotion_emitter",
         "deployment_promotion_publication",
+        "deployment_promotion_scope",
         "deployment_receipt_runtime",
         "deployment_schedule",
         "deployment_scopes",

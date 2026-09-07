@@ -371,6 +371,7 @@ def test_security_classification_is_independent() -> None:
         ("scripts/deployment_promotion_proof.py", False),
         ("scripts/deployment_promotion_publication.py", False),
         ("scripts/deployment_promotion_emitter.py", False),
+        ("scripts/deployment_promotion_scope.py", False),
         ("scripts/operator_enrollment_runtime.py", False),
         ("scripts/operator_aws_read.py", False),
         ("scripts/operator_execution_runtime.py", False),

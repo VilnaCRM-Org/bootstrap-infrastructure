@@ -74,6 +74,7 @@ CENTRAL_EXECUTION_FILES = frozenset(
         "scripts/deployment_input_validation.py",
         "scripts/deployment_promotion_proof.py",
         "scripts/deployment_promotion_emitter.py",
+        "scripts/deployment_promotion_scope.py",
         "scripts/deployment_promotion_publication.py",
         "scripts/operator_enrollment_runtime.py",
         "scripts/operator_execution_runtime.py",

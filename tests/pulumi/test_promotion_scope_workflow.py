@@ -19,11 +19,11 @@ def test_scope_source_and_read_permissions():
     assert job["environment"] == "governance-evidence"
     steps = job["steps"]
     assert steps[0]["with"] == {
-        "ref": "${{ github.event.repository.default_branch }}",
+        "ref": "${{ github.sha }}",
         "persist-credentials": False,
     }
     assert steps[1]["run"] == (
-        "python3 scripts/governance_promotion.py verify-environment"
+        "python3 -I scripts/deployment_promotion_scope.py verify-environment"
     )
-    assert steps[-1]["run"] == "python3 scripts/governance_promotion.py scope"
+    assert steps[-1]["run"] == "python3 -I scripts/deployment_promotion_scope.py scope"
     assert not any("path" in step.get("with", {}) for step in steps)
