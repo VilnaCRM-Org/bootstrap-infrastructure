@@ -223,7 +223,8 @@ class OperatorTransport:
             "PATH": "/opt/pulumi:/usr/local/bin:/usr/bin:/bin",
             "USER": "operator-program",
             "HOME": str(self.work),
-            "PULUMI_HOME": str(self.work / "home"),
+            "PULUMI_HOME": str(self.area / "pulumi-home"),
+            "PULUMI_CREDENTIALS_PATH": str(self.work / "credentials"),
             "PULUMI_BACKEND_URL": "s3://" + self.bucket,
             "AWS_REGION": "eu-central-1",
             "AWS_ACCOUNT_ID": self.account,
@@ -280,17 +281,23 @@ class OperatorTransport:
             "aws-sdk-version",
         )
         project = yaml.safe_load(
-            (self.source / "pulumi/github-ci-bootstrap/Pulumi.yaml").read_text()
+            private_read(self.source / "pulumi/github-ci-bootstrap/Pulumi.yaml")
         )
         require(
-            project.get("name") == "github-ci-bootstrap"
-            and project.get("runtime") == {"name": "python"},
+            type(project) is dict
+            and project.keys() <= {"name", "runtime", "description"}
+            and project.get("name") == "github-ci-bootstrap"
+            and project.get("runtime") == {"name": "python"}
+            and type(project.get("description", "")) is str,
             "operator-project-runtime",
         )
-        home = self.work / "home"
-        home.mkdir()
-        os.chown(home, 2000, 2000)
+        # Neither the plugin link nor its parent may be renamed by the PR UID.
+        home = self.area / "pulumi-home"
+        home.mkdir(mode=0o755)
         (home / "plugins").symlink_to(PLUGIN.parent.parent, target_is_directory=True)
+        workspace = home / "workspaces"
+        workspace.mkdir(mode=0o700)
+        os.chown(workspace, 2000, 2000)
 
     def aws(self, service, operation, arguments, output=None):
         """Issue internal fixed-coordinate AWS calls with private output."""
