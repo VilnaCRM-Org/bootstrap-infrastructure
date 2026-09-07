@@ -12,9 +12,12 @@ from collections.abc import Callable
 from typing import Any, TypeVar, cast
 
 from deployment_controller import (
+    AccountNodeReceipt,
     ControllerMetadata,
     DeploymentContract,
     DeploymentIdentity,
+    StageResult,
+    _receipt_digest,
     _validate_contract,
 )
 from deployment_schedule import DeploymentStep
@@ -207,16 +210,11 @@ def _bounded_text(payload: str | bytes) -> str:
     return text
 
 
-def decode_deployment_contract(payload: str | bytes) -> DeploymentContract:
-    """Decode at most 1 MiB of strict UTF-8 JSON and verify canonical semantics.
-
-    The installed controller validator recomputes scope from the normalized paths
-    using its trusted selector, then verifies schedule and content digests. The
-    caller must authenticate that these are the original complete artifact facts.
-    """
+def _load_document(payload: str | bytes) -> object:
+    """Apply identical bounded, duplicate-free JSON transport rules to artifacts."""
     text = _bounded_text(payload)
     try:
-        value = json.loads(
+        return json.loads(
             text,
             object_pairs_hook=_unique_object,
             parse_constant=_reject_number,
@@ -224,6 +222,53 @@ def decode_deployment_contract(payload: str | bytes) -> DeploymentContract:
         )
     except RecursionError as error:
         raise ValueError("Contract JSON nesting is too deep") from error
-    contract = _contract(value)
+
+
+def decode_deployment_contract(payload: str | bytes) -> DeploymentContract:
+    """Decode strict JSON and recompute canonical selection, schedule and digests.
+
+    The caller must authenticate the original complete artifact facts separately.
+    """
+    contract = _contract(_load_document(payload))
     _validate_contract(contract)
     return contract
+
+
+def _stage_result(value: object) -> StageResult:
+    """Decode one exact operation/result pair without accepting additional claims."""
+    return StageResult(**_fields(value, {"operation": _string, "result": _string}))
+
+
+def decode_account_receipt(
+    payload: str | bytes,
+    *,
+    contract: DeploymentContract,
+    scope: str,
+    environment: str,
+) -> AccountNodeReceipt:
+    """Bind a strict receipt to one selected node and its successful operations.
+
+    This validates content only. The controller must authenticate the artifact
+    and actual trusted worker jobs before using the receipt for an account barrier.
+    """
+    _validate_contract(contract)
+    if not any(
+        step.scope == scope and step.environment == environment
+        for step in contract.schedule
+    ):
+        raise ValueError("Receipt node is not selected in the admitted schedule")
+    receipt = AccountNodeReceipt(
+        **_fields(
+            _load_document(payload),
+            {
+                "identity": _identity,
+                "contract_digest": _string,
+                "selection_digest": _string,
+                "scope": _string,
+                "environment": _string,
+                "stages": lambda items: _array(items, _stage_result),
+            },
+        )
+    )
+    _receipt_digest(contract, receipt, scope, environment)
+    return receipt

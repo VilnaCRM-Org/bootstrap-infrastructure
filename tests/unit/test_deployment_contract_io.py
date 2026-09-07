@@ -14,6 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import deployment_contract_io as contract_io  # noqa: E402
+from deployment_worker_receipt import build_worker_receipt  # noqa: E402
 from test_deployment_controller import build  # noqa: E402
 
 
@@ -277,3 +278,99 @@ def test_decoding_does_not_consume_claim_or_fetch_external_evidence(
     result = contract_io.decode_deployment_contract(encode(document))
     assert result == build()
     assert document == original
+
+
+def receipt_document(contract, scope="operator", environment="test"):
+    receipt = build_worker_receipt(
+        contract,
+        scope=scope,
+        environment=environment,
+        results={
+            "plan": "success",
+            "destructive": "success",
+            "iam": "success",
+            "apply": "success" if contract.identity.command == "up" else "skipped",
+            "drift": "success" if contract.identity.command == "up" else "skipped",
+        },
+    )
+    return receipt, json.loads(encode(asdict(receipt)))
+
+
+@pytest.mark.parametrize("scope", ["operator", "governance", "platform"])
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("command", ["plan", "up"])
+def test_receipt_roundtrip_from_actual_worker(scope, environment, command):
+    contract = build((scope,), command=command, target="prod")
+    receipt, document = receipt_document(contract, scope, environment)
+    result = contract_io.decode_account_receipt(
+        (encode(document) + "\n").encode(),
+        contract=contract,
+        scope=scope,
+        environment=environment,
+    )
+    assert result == receipt
+    assert type(result.stages) is tuple
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("identity", "head_sha"), "f" * 40),
+        (("identity", "base_sha"), "f" * 40),
+        (("identity", "controller", "run_id"), "99999"),
+        (("identity", "controller", "run_attempt"), True),
+        (("contract_digest",), "f" * 64),
+        (("selection_digest",), "f" * 64),
+        (("scope",), "platform"),
+        (("environment",), "prod"),
+        (("stages",), []),
+        (("stages",), None),
+        (("stages", 0, "operation"), "apply"),
+        (("stages", 0, "result"), "skipped"),
+        (("stages", 0, "result"), "failure"),
+        (("stages", 0, "result"), "cancelled"),
+    ],
+)
+def test_receipt_cannot_change_identity_or_omit_successful_stages(path, value):
+    contract = build(("operator",), command="up", target="test")
+    _, document = receipt_document(contract)
+    at(document, path[:-1])[path[-1]] = value
+    with pytest.raises(ValueError):
+        contract_io.decode_account_receipt(
+            encode(document), contract=contract, scope="operator", environment="test"
+        )
+
+
+@pytest.mark.parametrize("path", [(), ("identity",), ("stages", 0)])
+def test_receipt_cannot_add_claims_or_duplicate_json_fields(path):
+    contract = build(("operator",))
+    _, document = receipt_document(contract)
+    at(document, path)["attacker"] = True
+    with pytest.raises(ValueError, match="exactly the required fields"):
+        contract_io.decode_account_receipt(
+            encode(document), contract=contract, scope="operator", environment="test"
+        )
+    duplicate = encode(document).replace(
+        '"attacker":true', '"attacker":true,"attacker":false'
+    )
+    with pytest.raises(ValueError, match="Duplicate"):
+        contract_io.decode_account_receipt(
+            duplicate, contract=contract, scope="operator", environment="test"
+        )
+
+
+@pytest.mark.parametrize(
+    "scopes,scope,environment",
+    [
+        ((), "operator", "test"),
+        (("operator",), "governance", "test"),
+        (("operator",), "operator", "prod"),
+        (("operator",), "operator", "staging"),
+    ],
+)
+def test_empty_or_unrequested_node_cannot_issue_receipt(scopes, scope, environment):
+    contract = build(scopes, target="test")
+    with pytest.raises(ValueError, match="not selected"):
+        contract_io.decode_account_receipt(
+            "{}", contract=contract, scope=scope, environment=environment
+        )
