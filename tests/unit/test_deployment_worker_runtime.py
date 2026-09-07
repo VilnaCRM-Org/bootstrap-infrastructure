@@ -286,7 +286,7 @@ def test_zip_rejects_encrypted_member():
         runtime._contract_bytes(bytes(raw))
 
 
-def test_zip_rejects_nul_aliased_member_name():
+def test_zip_rejects_nul_alias():
     raw = make_zip([("contract.jsonX", b"{}")]).replace(
         b"contract.jsonX", b"contract.json\x00"
     )
