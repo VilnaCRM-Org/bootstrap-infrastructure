@@ -16,8 +16,8 @@ GOVERNANCE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pulumi-governanc
 GOVERNANCE_STATUS_CONTEXT = "Governance Apply"
 # The complete global required-status-check set enforced by the live `main`
 # ruleset. "Governance Apply" is intentionally NOT here: it is an informational
-# commit status posted by the governance runner, and the governance merge gate
-# is CODEOWNERS + the protected `governance` environment, not a global check.
+# legacy informational status; central promotion now belongs to the protected
+# aggregate publisher. Retiring the old runner must not weaken repository controls.
 LEGACY_REQUIRED_STATUS_CHECKS = (
     "Ruff",
     "Ty",
@@ -333,13 +333,6 @@ def test_verify_applied_controls_blocks_on_weak_governance(
         )  # noqa: SLF001
 
 
-def _governance_status_run_text() -> str:
-    """Concatenate every `run` body in the governance-status job for assertions."""
-    workflow = yaml.safe_load(GOVERNANCE_WORKFLOW.read_text(encoding="utf-8"))
-    status_job = workflow["jobs"]["governance_status"]
-    return "\n".join(step.get("run", "") for step in status_job.get("steps", []))
-
-
 def test_required_status_checks_keep_existing_contexts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -354,21 +347,25 @@ def test_required_status_checks_keep_existing_contexts(
     )
 
 
-def test_governance_runner_posts_governance_apply_status_context(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The runner posts the `Governance Apply` commit status to the head SHA.
-
-    This is an INFORMATIONAL status (it surfaces the gated apply result), not a
-    global required check: the governance runner fires on `repository_dispatch`
-    and posts that exact context to the verified head SHA (architecture §7.5).
-    """
-    run_text = _governance_status_run_text()
-
-    # The runner posts a commit status to the verified head SHA.
-    assert "statuses/${HEAD_SHA}" in run_text  # nosec B101
-    # The runner still posts the informational `Governance Apply` context.
-    assert f'context="{GOVERNANCE_STATUS_CONTEXT}"' in run_text  # nosec B101
+def test_retired_governance_has_no_status_authority() -> None:
+    """Old informational status cannot overwrite aggregate promotion evidence."""
+    legacy = yaml.safe_load(GOVERNANCE_WORKFLOW.read_text())
+    assert legacy["permissions"] == {}
+    assert set(legacy["jobs"]) == {"retired"}
+    retired = legacy["jobs"]["retired"]
+    assert retired["permissions"] == {}
+    assert "exit 1" in retired["steps"][0]["run"]
+    assert "statuses/" not in json.dumps(legacy)
+    root = yaml.safe_load(
+        (GOVERNANCE_WORKFLOW.parent / "pulumi-pr-command-runner.yml").read_text()
+    )
+    comment = root["jobs"]["comment_result"]
+    assert "feedback_pull_request_number" in comment["if"]
+    assert "statuses/" not in json.dumps(comment)
+    publisher = root["jobs"]["publish_promotion"]
+    assert publisher["environment"] == "governance-evidence"
+    assert "deployment_promotion_emitter.py" in json.dumps(publisher)
+    assert "prepare_promotion" in publisher["needs"]
 
 
 def test_existing_weak_review_rules_are_hardened(monkeypatch):

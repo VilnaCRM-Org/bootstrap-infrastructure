@@ -71,17 +71,22 @@ def test_only_fixed_account_and_trusted_artifact_inputs_are_callable():
         assert forbidden not in PATH.read_text()
 
 
-def test_whole_worker_owns_account_backend_lock_and_legacy_route_stays_separate():
+def test_worker_lock_and_retired_route():
     assert WORKFLOW["concurrency"] == {
         "group": "bootstrap-infrastructure-governance-${{ inputs.account }}-state",
         "cancel-in-progress": False,
     }
     assert all("concurrency" not in job for job in JOBS.values())
-    # Legacy has no account backend lock. Its retirement is a root activation step.
+    # Retired dispatch cannot bypass the account worker or claim a PR.
     legacy = yaml.safe_load(
         (ROOT / ".github/workflows/pulumi-governance.yml").read_text()
     )
-    assert legacy["concurrency"]["group"].startswith("pulumi-command-")
+    assert legacy["permissions"] == {}
+    assert set(legacy["jobs"]) == {"retired"}
+    retired = legacy["jobs"]["retired"]
+    assert retired["permissions"] == {}
+    assert "exit 1" in retired["steps"][0]["run"]
+    assert all("uses" not in step for step in retired["steps"])
     assert "Disable the legacy governance route before activation" in PATH.read_text()
 
 
