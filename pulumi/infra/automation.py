@@ -929,7 +929,10 @@ def _automation_policy(
                 {
                     "Sid": "ReadPlatformCiSecrets",
                     "Effect": "Allow",
-                    "Action": ["secretsmanager:DescribeSecret"],
+                    "Action": [
+                        "secretsmanager:DescribeSecret",
+                        "secretsmanager:GetResourcePolicy",
+                    ],
                     "Resource": _automation_ci_secret_resources(
                         account_id, settings, repo_name
                     ),

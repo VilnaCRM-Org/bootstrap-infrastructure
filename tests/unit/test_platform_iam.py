@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+from iam_statement_matcher import iam_statement_matches
 from infra import automation, config, platform_iam, security_account_controls
 from infra.bootstrap_settings import BootstrapSettings
 from infra.ci_bootstrap import _role_specs
@@ -140,6 +141,100 @@ def test_control_boundary_attaches_to_apply_only():
         "apply": arn,
         "drift": None,
     }
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_control_boundary_allows_platform_provider_metadata_with_exact_alias(
+    environment,
+):
+    """Saved-plan preparation describes the existing platform provider key."""
+    document = platform_iam.platform_control_boundary(
+        ACCOUNT, settings(environment), REPO.name
+    )
+    grants = [
+        item
+        for item in json.loads(document)["Statement"]
+        if "kms:Decrypt" in values(item["Action"])
+    ]
+    assert grants == [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+            ],
+            "Resource": f"arn:aws:kms:*:{ACCOUNT}:key/*",
+            "Condition": {
+                "ForAnyValue:StringEquals": {
+                    "kms:ResourceAliases": (
+                        f"alias/pulumi-platform-bootstrap-{environment}"
+                    )
+                }
+            },
+        }
+    ]
+    assert len(document) <= 6144
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("boundary", [False, True])
+def test_ci_secret_metadata_scope_and_value_denials(environment, boundary):
+    cfg = settings(environment)
+    build = (
+        platform_iam.platform_control_boundary
+        if boundary
+        else automation._automation_policy
+    )
+    statements = json.loads(build(ACCOUNT, cfg, REPO.name))["Statement"]
+    allows = [item for item in statements if item["Effect"] == "Allow"]
+    denies = [item for item in statements if item["Effect"] == "Deny"]
+    prefix = f"arn:aws:secretsmanager:eu-central-1:{ACCOUNT}:secret:/"
+    suffixes = (
+        ("test", "test-pr") if environment == "test" else ("prod", "prod-preview")
+    )
+    for suffix in suffixes:
+        resource = f"{prefix}{REPO.name}/ci/{suffix}-Ab12Cd"
+        for action in ("DescribeSecret", "GetResourcePolicy"):
+            qualified = f"secretsmanager:{action}"
+            assert any(
+                iam_statement_matches(item, qualified, resource) for item in allows
+            )
+            for foreign in (
+                resource.replace(ACCOUNT, "111111111111"),
+                resource.replace(REPO.name, "other-infrastructure"),
+                resource.replace(f"/ci/{suffix}-", "/runtime/config-"),
+                resource.replace(f"/ci/{suffix}-", "/ci/other-"),
+            ):
+                assert not any(
+                    iam_statement_matches(item, qualified, foreign) for item in allows
+                )
+        for action in ("GetSecretValue", "BatchGetSecretValue"):
+            assert any(
+                iam_statement_matches(item, f"secretsmanager:{action}", resource)
+                for item in denies
+            )
+        for action in (
+            "GetSecretValue",
+            "BatchGetSecretValue",
+            "PutResourcePolicy",
+            "DeleteSecret",
+        ):
+            assert not any(
+                iam_statement_matches(item, f"secretsmanager:{action}", resource)
+                for item in allows
+            )
+
+
+def test_ci_secret_resource_compaction_preserves_uncovered_patterns():
+    resources = ["prefix-*", "prefix-child-*", "other-*", "exact", "else"]
+    assert platform_iam._compact_ci_secret_resources(resources) == [
+        "prefix-*",
+        "other-*",
+        "exact",
+        "else",
+    ]
 
 
 @pytest.mark.parametrize("adopt", [False, True])

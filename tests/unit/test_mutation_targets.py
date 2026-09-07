@@ -562,7 +562,8 @@ def test_mutation_target_github_automation_policy_uses_explicit_actions(monkeypa
     assert "CreateBootstrapCiSecrets" not in statements
     assert "ManageBootstrapCiSecrets" not in statements
     assert statements["ReadPlatformCiSecrets"]["Action"] == [
-        "secretsmanager:DescribeSecret"
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:GetResourcePolicy",
     ]
     assert statements["DenyBootstrapSqsConsumption"] == {  # nosec B101
         "Sid": "DenyBootstrapSqsConsumption",
