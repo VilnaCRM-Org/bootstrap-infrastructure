@@ -106,6 +106,42 @@ def test_callable_verifies_transport_and_real_worker_without_outputs(artifact, g
     assert sum(path.endswith("/actions/runs/100") for path, _ in github.calls) == 2
 
 
+def test_receipt_name_is_exact(artifact):
+    name = (
+        "deployment-receipt-100-1-platform-test-" + artifact.contract.identity.head_sha
+    )
+    artifact.metadata["name"] = name
+    runtime._verify_artifact(
+        "123",
+        artifact.args["artifact_sha256"],
+        artifact.contract.identity.controller,
+        expected_name=name,
+    )
+    with pytest.raises(ValueError, match="Artifact name differs"):
+        runtime._verify_artifact(
+            "123",
+            artifact.args["artifact_sha256"],
+            artifact.contract.identity.controller,
+        )
+
+
+def test_receipt_archive_has_one_exact_file():
+    raw = make_zip([("receipt.json", b"{}\n")])
+    assert runtime._contract_bytes(raw, member_name="receipt.json") == b"{}\n"
+    with pytest.raises(ValueError, match="Artifact member must be contract.json"):
+        runtime._contract_bytes(raw)
+    with pytest.raises(ValueError, match="Artifact member must be receipt.json"):
+        runtime._contract_bytes(
+            make_zip([("contract.json", b"{}")]), member_name="receipt.json"
+        )
+
+
+@pytest.mark.parametrize("name", ["../receipt.json", "request.json", "", None])
+def test_unknown_member_kind_is_rejected(name):
+    with pytest.raises(ValueError, match="Unsupported artifact member"):
+        runtime._contract_bytes(b"", member_name=name)
+
+
 def test_cli_exposes_only_validated_fields_and_no_raw_evidence(
     artifact, monkeypatch, capsys
 ):

@@ -75,7 +75,11 @@ def _check_arguments(
 
 
 def _verify_artifact(
-    artifact_id: str, digest: str, controller: ControllerMetadata
+    artifact_id: str,
+    digest: str,
+    controller: ControllerMetadata,
+    *,
+    expected_name: str | None = None,
 ) -> None:
     """Bind the documented GitHub artifact/run fields to trusted root outputs."""
     artifact = _object(
@@ -84,7 +88,11 @@ def _verify_artifact(
     )
     expected = {
         "id": int(artifact_id),
-        "name": f"deployment-selection-{controller.run_id}-1",
+        "name": (
+            expected_name
+            if expected_name is not None
+            else f"deployment-selection-{controller.run_id}-1"
+        ),
         "expired": False,
         "digest": f"sha256:{digest}",
     }
@@ -148,17 +156,20 @@ def _download_zip(artifact_id: str) -> bytes:
             process.stdout.close()
 
 
-def _contract_bytes(raw: bytes) -> bytes:
-    """Read one bounded regular contract.json member without extracting paths."""
+def _contract_bytes(raw: bytes, *, member_name: str = "contract.json") -> bytes:
+    """Read one bounded regular protocol document without extracting paths."""
+    preflight.require(
+        member_name in ("contract.json", "receipt.json"), "Unsupported artifact member"
+    )
     preflight.require(len(raw) <= MAX_ZIP_BYTES, "Artifact ZIP exceeds bound")
     with zipfile.ZipFile(io.BytesIO(raw)) as archive:
         entries = archive.infolist()
         preflight.require(len(entries) == 1, "Artifact must contain exactly one member")
         member = entries[0]
         preflight.require(
-            member.filename == member.orig_filename == "contract.json"
+            member.filename == member.orig_filename == member_name
             and not member.is_dir(),
-            "Artifact member must be contract.json",
+            f"Artifact member must be {member_name}",
         )
         preflight.require(not member.flag_bits & 1, "Encrypted artifact rejected")
         preflight.require(
