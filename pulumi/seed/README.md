@@ -80,9 +80,10 @@ existing-role guard documents.
 
 `verify_active_enrollment` rechecks the complete enrolled policy/role inventory,
 immutable guards, frozen Config grant and bounded project-specific attachments.
-It requires the three exact executor OIDC trusts, using `operator-preview`,
-`operator`, and `operator-drift` respectively. Apply and drift use distinct
-environment subjects so a drift token cannot assume the apply role.
+It requires the three exact executor OIDC trusts, using account-qualified environments such as `test-operator-preview`,
+`test-operator`, and `test-operator-drift` (and the corresponding `prod-` names).
+Account and purpose use distinct subjects so a TEST or drift token cannot assume
+a PROD or apply role.
 The result still grants no activation or deployment authority.
 
 `scripts/operator_enrollment_runtime.py` collects metadata through an injected

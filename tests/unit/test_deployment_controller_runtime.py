@@ -263,9 +263,12 @@ def test_accept_claims_once_after_checks_then_persists_canonical_contract(
         if "/environments/" in path and not path.endswith("/deployment-branch-policies")
     ]
     assert environment_reads == [
-        "operator-preview",
-        "operator",
-        "operator-drift",
+        "test-operator-preview",
+        "test-operator",
+        "test-operator-drift",
+        "prod-operator-preview",
+        "prod-operator",
+        "prod-operator-drift",
         "governance-preview",
         "governance",
         "test-preview",
@@ -444,12 +447,17 @@ def test_changed_file_collection_races_do_not_claim(github, observation, field):
 @pytest.mark.parametrize(
     "scopes,command,target,expected",
     [
-        (("operator",), "plan", "prod", ["operator-preview"]),
+        (
+            ("operator",),
+            "plan",
+            "prod",
+            ["test-operator-preview", "prod-operator-preview"],
+        ),
         (
             ("operator",),
             "up",
             "test",
-            ["operator-preview", "operator", "operator-drift"],
+            ["test-operator-preview", "test-operator", "test-operator-drift"],
         ),
         (("governance",), "up", "prod", ["governance-preview", "governance"]),
         (("governance",), "plan", "test", ["governance-preview"]),
@@ -493,9 +501,12 @@ def test_unreadable_reviewer_identity_blocks_claim(github, response):
 @pytest.mark.parametrize(
     "target",
     [
-        "operator-preview",
-        "operator",
-        "operator-drift",
+        "test-operator-preview",
+        "test-operator",
+        "test-operator-drift",
+        "prod-operator-preview",
+        "prod-operator",
+        "prod-operator-drift",
         "governance-preview",
         "governance",
         "test-preview",
@@ -529,7 +540,7 @@ def test_each_missing_selected_environment_blocks_claim(github, target):
     ],
 )
 def test_environment_requires_current_complete_main_only_protection(github, change):
-    endpoint = f"repos/{runtime.REPOSITORY}/environments/operator-preview"
+    endpoint = f"repos/{runtime.REPOSITORY}/environments/test-operator-preview"
     environment = {
         "prevent_self_review": True,
         "reviewers": [{"type": "User", "id": 44}],

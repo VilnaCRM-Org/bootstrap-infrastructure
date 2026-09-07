@@ -318,11 +318,7 @@ def _validate_principal(principal: PrincipalRecord, policies: Mapping) -> None:
         _require(policies[principal.boundary_arn].kind in _BOUNDARIES, "Boundary kind")
 
 
-def _validate_closure(policies: tuple, principals: tuple) -> None:
-    policy_map = {p.arn: p for p in policies}
-    _require(len(policy_map) == len(policies) == 55, "Expected 55 seed policies")
-    _require(len({p.arn for p in principals}) == 24, "Expected 24 principals")
-    _require(sum(p.existing for p in principals) == 21, "Expected 21 existing roles")
+def _validate_policy_inventory(policies: tuple) -> None:
     for kind, count in [
         ("existing_capability_boundary", 6),
         ("purpose_capability_boundary", 8),
@@ -332,6 +328,14 @@ def _validate_closure(policies: tuple, principals: tuple) -> None:
         _require(
             sum(p.kind == kind for p in policies) == count, "Policy kind inventory"
         )
+
+
+def _validate_closure(policies: tuple, principals: tuple) -> None:
+    policy_map = {p.arn: p for p in policies}
+    _require(len(policy_map) == len(policies) == 55, "Expected 55 seed policies")
+    _require(len({p.arn for p in principals}) == 24, "Expected 24 principals")
+    _require(sum(p.existing for p in principals) == 21, "Expected 21 existing roles")
+    _validate_policy_inventory(policies)
     _require(sum(p.frozen_config is not None for p in principals) == 1, "Config freeze")
     for principal in principals:
         _validate_principal(principal, policy_map)

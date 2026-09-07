@@ -283,11 +283,14 @@ def _build_image(source: Path, directory: Path, environment: dict[str, str]) -> 
         )
         (context / name).write_text(content)
     recipe = context / "Dockerfile"
-    trusted = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
+    dockerfile_text = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
     boundary = "FROM runtime-base AS dev"
-    _require(trusted.count(boundary) == 1, "Trusted runtime-base stage is unavailable")
+    _require(
+        dockerfile_text.count(boundary) == 1,
+        "Trusted runtime-base stage is unavailable",
+    )
     recipe.write_text(
-        trusted.split(boundary)[0] + "FROM runtime-base AS validation\n"
+        dockerfile_text.split(boundary)[0] + "FROM runtime-base AS validation\n"
         "USER root\n"
         "RUN mkdir -p /deps /home/dev/.venvs/bootstrap-infrastructure "
         "/home/dev/.cache/uv "

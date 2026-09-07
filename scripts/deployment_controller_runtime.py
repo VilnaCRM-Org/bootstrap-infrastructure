@@ -75,22 +75,23 @@ def required_environments(contract: DeploymentContract) -> tuple[str, ...]:
     """List only the protected environments used by the selected account graph."""
     names: list[str] = []
     for scope in contract.selection.stacks:
-        if scope == "platform":
+        if scope in {"platform", "operator"}:
             accounts = (
                 ("test", "prod")
                 if contract.identity.target_environment == "prod"
                 else ("test",)
             )
             for account in accounts:
-                names.append(f"{account}-preview")
+                prefix = account if scope == "platform" else f"{account}-operator"
+                names.append(f"{prefix}-preview")
                 if contract.identity.command == "up":
-                    names.append(account)
+                    names.append(prefix)
+                    if scope == "operator":
+                        names.append(f"{prefix}-drift")
         else:
             names.append(f"{scope}-preview")
             if contract.identity.command == "up":
                 names.append(scope)
-                if scope == "operator":
-                    names.append("operator-drift")
     return tuple(dict.fromkeys(names))
 
 

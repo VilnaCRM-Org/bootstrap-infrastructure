@@ -38,7 +38,7 @@ PROVIDER = "pulumi:providers:aws"
 STACK = "pulumi:pulumi:Stack"
 SIGNATURE = "4dabf18193072939515e22adb298388d"
 # Public Pulumi wire-format tag, not credential material.
-SECRET_SIGNATURE = "1b47061264138c4ac30d75fd1eb44270"  # nosec B105
+WIRE_VALUE_TAG = "1b47061264138c4ac30d75fd1eb44270"
 UNKNOWN = "04da6b54-80e4-46f7-96ec-b56ff0331ba9"
 REPLACEMENTS = {
     ("create-replacement", "replace", "delete-replaced"),
@@ -138,7 +138,7 @@ def _project(value: Any) -> Any:
     if isinstance(value, dict):
         if SIGNATURE in value:
             _require(
-                value[SIGNATURE] == SECRET_SIGNATURE, "unsupported-property-signature"
+                value[SIGNATURE] == WIRE_VALUE_TAG, "unsupported-property-signature"
             )
             _require(
                 set(value) in ({SIGNATURE, "ciphertext"}, {SIGNATURE, "plaintext"}),

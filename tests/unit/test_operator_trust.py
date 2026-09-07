@@ -16,11 +16,12 @@ def test_exact_active_operator_trust_claims_and_subjects(environment, purpose):
     assert len(raw) <= 2048
     assert "*" not in raw
     policy = json.loads(raw)
-    github_environment = {
+    environment_suffix = {
         "preview": "operator-preview",
         "apply": "operator",
         "drift": "operator-drift",
     }[purpose]
+    github_environment = f"{environment}-{environment_suffix}"
     expected_claims = {
         "aud": "sts.amazonaws.com",
         "sub": [
@@ -111,12 +112,33 @@ def test_drift_token_cannot_match_apply_trust(environment):
         operator_trust_policy(environment, "apply", account_id=ACCOUNTS[environment])
     )
     conditions = policy["Statement"][0]["Condition"]["StringEquals"]
-    assert conditions["token.actions.githubusercontent.com:environment"] == "operator"
+    assert conditions["token.actions.githubusercontent.com:environment"] == (
+        f"{environment}-operator"
+    )
     for repository in (
         "VilnaCRM-Org/bootstrap-infrastructure",
         "VilnaCRM-Org@114362548/bootstrap-infrastructure@1098568429",
     ):
-        drift_subject = f"repo:{repository}:environment:operator-drift"
+        drift_subject = f"repo:{repository}:environment:{environment}-operator-drift"
         assert (
             drift_subject not in conditions["token.actions.githubusercontent.com:sub"]
         )
+
+
+@pytest.mark.parametrize("purpose", ["preview", "apply", "drift"])
+def test_account_tokens_have_disjoint_subjects(purpose):
+    claims = {}
+    for environment in ("test", "prod"):
+        document = json.loads(
+            operator_trust_policy(
+                environment, purpose, account_id=ACCOUNTS[environment]
+            )
+        )
+        claims[environment] = document["Statement"][0]["Condition"]["StringEquals"]
+    issuer = "token.actions.githubusercontent.com:"
+    assert claims["test"][issuer + "environment"] != claims["prod"][
+        issuer + "environment"
+    ]
+    assert set(claims["test"][issuer + "sub"]).isdisjoint(
+        claims["prod"][issuer + "sub"]
+    )

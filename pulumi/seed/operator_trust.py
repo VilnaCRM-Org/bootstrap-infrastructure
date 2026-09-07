@@ -37,7 +37,7 @@ def operator_trust_policy(environment: str, purpose: str, *, account_id: str) ->
         raise ValueError("Operator trust account/environment mismatch")
     if type(purpose) is not str or purpose not in _ENVIRONMENTS:
         raise ValueError("Unknown operator executor purpose")
-    github_environment = _ENVIRONMENTS[purpose]
+    github_environment = f"{environment}-{_ENVIRONMENTS[purpose]}"
     subjects = [
         f"repo:{_REPOSITORY}:environment:{github_environment}",
         f"repo:VilnaCRM-Org@{_OWNER_ID}/bootstrap-infrastructure@{_REPOSITORY_ID}"

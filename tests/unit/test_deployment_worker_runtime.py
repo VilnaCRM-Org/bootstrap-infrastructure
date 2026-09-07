@@ -20,6 +20,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import deployment_worker_runtime as runtime  # noqa: E402
+from deployment_controller_runtime import required_environments  # noqa: E402
 from test_deployment_controller_runtime import github as _github_fixture  # noqa: E402
 from test_deployment_worker_recheck import admitted as _admitted_fixture  # noqa: E402
 
@@ -484,16 +485,7 @@ def test_isolated_process_ignores_hostile_cwd_and_pythonpath(
         "users/Kravalg": {"id": 44},
         "request": github.artifact,
     }
-    for name in (
-        "operator-preview",
-        "operator",
-        "governance-preview",
-        "governance",
-        "test-preview",
-        "test",
-        "prod-preview",
-        "prod",
-    ):
+    for name in required_environments(artifact.contract):
         backend[f"{root}/environments/{name}"] = github.protected
         backend[f"{root}/environments/{name}/deployment-branch-policies"] = (
             github.policies

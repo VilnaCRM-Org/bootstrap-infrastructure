@@ -13,3 +13,31 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''^specs/issue-17-well-architected-5-of-5/restore-r6-receipts/proposal[.]json$''']
 regexes = ['''(?m)^[ \t]*"work/wa-runtime-closure/restore-r5/four-key-relationships[.]json": "7a513d5a9c68c0a34461c995ed562259cf2780cf56c9ef5ba616db162d15f06c",?[ \t]*$''']
+
+[[rules.allowlists]]
+description = "Exact SHA256 of reviewed prod-ci-secret-key-metadata.json"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^pulumi/seed/catalogs/(test|prod)[.]json$''']
+regexes = ['''(?m)^[ \t]*"work/issue215\-operator\-executor\-ceilings/prod\-ci\-secret\-key\-metadata\.json": "43d2bb8cd9c6921de6018e12ff4f6136e25feb3ce63edc6f142a396008779460",?[ \t]*$''']
+
+[[rules.allowlists]]
+description = "Exact SHA256 of reviewed prod-source-alias-key-metadata.json"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^pulumi/seed/catalogs/(test|prod)[.]json$''']
+regexes = ['''(?m)^[ \t]*"work/issue215\-operator\-executor\-ceilings/prod\-source\-alias\-key\-metadata\.json": "fb80754ae20d5c807231406a0db7de9ce69725b7b7eb994a3c84a5c34e608a97",?[ \t]*$''']
+
+[[rules.allowlists]]
+description = "Exact SHA256 of reviewed test-ci-secret-key-metadata.json"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^pulumi/seed/catalogs/(test|prod)[.]json$''']
+regexes = ['''(?m)^[ \t]*"work/issue215\-operator\-executor\-ceilings/test\-ci\-secret\-key\-metadata\.json": "0e1a8ba558be24e7cf0ed7b0944abe0f9f5ad5b209f8a6089d6c8c64a1042dfd",?[ \t]*$''']
+
+[[rules.allowlists]]
+description = "Exact SHA256 of reviewed test-source-alias-key-metadata.json"
+condition = "AND"
+regexTarget = "line"
+paths = ['''^pulumi/seed/catalogs/(test|prod)[.]json$''']
+regexes = ['''(?m)^[ \t]*"work/issue215\-operator\-executor\-ceilings/test\-source\-alias\-key\-metadata\.json": "3a9fe5c19e3cca36dff161e130e380e8e3f01205600adc4f8ec7b1f9667ac7ad",?[ \t]*$''']

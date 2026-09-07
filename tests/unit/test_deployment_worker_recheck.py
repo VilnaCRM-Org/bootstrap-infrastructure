@@ -296,7 +296,7 @@ def test_head_race_during_current_collection_is_rejected(admitted, github, obser
 @pytest.mark.parametrize("failure", ["missing", "weakened", "incomplete"])
 def test_current_environment_protection_required(admitted, github, failure):
     if failure == "missing":
-        github.overrides[f"repos/{worker.REPOSITORY}/environments/operator"] = (
+        github.overrides[f"repos/{worker.REPOSITORY}/environments/test-operator"] = (
             RuntimeError("environment missing")
         )
     elif failure == "weakened":

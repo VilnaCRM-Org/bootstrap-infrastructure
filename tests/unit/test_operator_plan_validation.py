@@ -141,7 +141,7 @@ def fixture(environment="test"):
         {
             "secretId": binding["secrets"][0],
             "secretString": {
-                validation.SIGNATURE: validation.SECRET_SIGNATURE,
+                validation.SIGNATURE: validation.WIRE_VALUE_TAG,
                 "ciphertext": "synthetic-test-only",
             },
             "versionStages": ["AWSCURRENT"],
@@ -315,7 +315,7 @@ def test_secret_replacement_uses_pinned_aws_lifecycle():
         validation.VERSION,
         {
             "secretString": {
-                validation.SIGNATURE: validation.SECRET_SIGNATURE,
+                validation.SIGNATURE: validation.WIRE_VALUE_TAG,
                 "ciphertext": "different-synthetic-ciphertext",
             }
         },
@@ -625,7 +625,7 @@ def test_guard_attachment_has_no_mutable_lifecycle():
             validation.VERSION,
             {
                 "secretString": {
-                    validation.SIGNATURE: validation.SECRET_SIGNATURE,
+                    validation.SIGNATURE: validation.WIRE_VALUE_TAG,
                     "ciphertext": [],
                 }
             },
@@ -689,7 +689,7 @@ def test_pinned_delete_before_create_plan_and_replacement_markers():
         validation.VERSION,
         {
             "secretString": {
-                validation.SIGNATURE: validation.SECRET_SIGNATURE,
+                validation.SIGNATURE: validation.WIRE_VALUE_TAG,
                 "plaintext": '"synthetic"',
             }
         },
@@ -842,7 +842,7 @@ def test_plan_plaintext_secret_cannot_be_disguised_as_same():
         validation.VERSION,
         {
             "secretString": {
-                validation.SIGNATURE: validation.SECRET_SIGNATURE,
+                validation.SIGNATURE: validation.WIRE_VALUE_TAG,
                 "plaintext": '"different-synthetic"',
             }
         },
