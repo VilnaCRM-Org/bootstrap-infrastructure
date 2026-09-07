@@ -20,7 +20,11 @@ import pulumi
 
 from .bootstrap_settings import BootstrapSettings
 from .ci_bootstrap import _ci_role_name, _ci_secret_suffixes
-from .ci_config import _ci_config_project, _ci_config_read_role_name
+from .ci_config import (
+    _ci_config_project,
+    _ci_config_read_role_name,
+    _role_permissions_boundary,
+)
 from .github_identity import (
     expand_subjects,
     identity_conditions,
@@ -146,7 +150,11 @@ _SECRET_EDIT = (
 
 @dataclass(frozen=True)
 class GovernanceAutomationArgs:
-    """Explicit account, backend and catalog inputs; no ambient fallbacks."""
+    """Explicit account, backend and catalog inputs; no ambient fallbacks.
+
+    ``external_role_boundaries`` retains independently owned boundaries and must
+    cover all three governor roles. Service-boundary creation is unchanged.
+    """
 
     settings: BootstrapSettings
     repositories: Sequence[ManagedRepository]
@@ -157,6 +165,7 @@ class GovernanceAutomationArgs:
     secrets_provider: str
     partition: str = "aws"
     protect_resources: bool = True
+    external_role_boundaries: Mapping[str, str] | None = None
 
 
 def assert_bootstrap_account(expected: str | None, actual: str) -> None:
@@ -648,6 +657,12 @@ class GovernanceAutomation(pulumi.ComponentResource):
         role = aws.iam.Role(
             f"{name}-{purpose}",
             name=role_name,
+            permissions_boundary=_role_permissions_boundary(
+                role_name,
+                account_id=args.account_id,
+                partition=args.partition,
+                external_role_boundaries=args.external_role_boundaries,
+            ),
             assume_role_policy=apply_output(
                 pulumi.Output.from_input(args.provider_arn),
                 lambda arn: governance_trust_policy(args, purpose, arn),

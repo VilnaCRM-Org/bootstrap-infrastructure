@@ -24,6 +24,7 @@ PROCESS = subprocess.run
 def prepared(tmp_path, monkeypatch):
     source = tmp_path / "source"
     source.mkdir()
+    (source / ".git").mkdir()
     state = SimpleNamespace(
         contract=build(()),
         calls=[],
@@ -39,6 +40,10 @@ def prepared(tmp_path, monkeypatch):
 
     def execute(command, **kwargs):
         state.calls.append((command, kwargs))
+        if "--iidfile" in command:
+            Path(command[command.index("--iidfile") + 1]).write_text(
+                "sha256:" + "d" * 64
+            )
         return subprocess.CompletedProcess(
             command, 0, state.contract.identity.head_sha + "\n"
         )
@@ -91,12 +96,14 @@ def test_selected_fixed_checks_only_after_authentication(prepared, flags):
     )
     digest = prepare(prepared)
     assert len(prepared.authenticated) == 1
-    assert len(prepared.calls) == 1  # Only trusted git HEAD read during auth step.
+    assert (
+        len(prepared.calls) == 2
+    )  # Only trusted git HEAD/base reads during auth step.
     plan = runtime._read_plan(str(prepared.plan), digest)
     runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
-    executed = prepared.calls[2:]
-    assert len(executed) == 2 + 2 * flags[0] + flags[1] + 2 * flags[2]
-    assert [call[0][1:] for call in executed] == [cmd[1:] for cmd in plan["commands"]]
+    assert len(plan["commands"]) == 2 + 2 * flags[0] + flags[1] + 2 * flags[2]
+    assert prepared.calls[-1][0][1:3] == ["run", "--rm"]
+    assert not any("pytest" in call[0] for call in prepared.calls)
     assert prepared.output.read_text() == f"plan_sha256={digest}\n"
     assert "contract_digest" not in prepared.plan.read_text()
 
@@ -107,7 +114,7 @@ def test_run_rejects_authenticated_parent(prepared, monkeypatch, key):
     monkeypatch.setenv(key, "fake-test-credential")
     with pytest.raises(ValueError, match="separate credential-free"):
         runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
-    assert len(prepared.calls) == 1
+    assert len(prepared.calls) == 2
 
 
 def test_prepare_failure_has_no_plan_or_output(prepared, monkeypatch):
@@ -195,7 +202,7 @@ def test_rehashed_malformed_plan_rejected(prepared, field, value):
     digest = rewrite(prepared, lambda plan: plan.update({field: value}))
     with pytest.raises(ValueError):
         runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
-    assert len(prepared.calls) == 1
+    assert len(prepared.calls) == 2
 
 
 @pytest.mark.parametrize("payload", [b"[]", b"null", b"{}", b"invalid"])
@@ -246,7 +253,7 @@ def test_missing_or_source_tool_rejected(prepared, monkeypatch, tool):
         prepare(prepared)
 
 
-def test_first_failure_stops_remaining_checks(prepared, monkeypatch):
+def test_first_failure_stops_remaining_checks(prepared, monkeypatch, capsys):
     digest = prepare(prepared)
     calls = []
 
@@ -254,12 +261,17 @@ def test_first_failure_stops_remaining_checks(prepared, monkeypatch):
         calls.append(command)
         if "rev-parse" in command:
             return SimpleNamespace(stdout=prepared.contract.identity.head_sha)
+        if "cat-file" in command:
+            return SimpleNamespace(stdout="")
         raise subprocess.CalledProcessError(1, command)
 
     monkeypatch.setattr(runtime.subprocess, "run", execute)
     with pytest.raises(subprocess.CalledProcessError):
         runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
-    assert len(calls) == 2
+    assert len(calls) == 3
+    lines = capsys.readouterr().out.splitlines()
+    token = lines[0].removeprefix("::stop-commands::")
+    assert lines[-1] == f"::{token}::"
 
 
 def test_environment_is_allowlisted_fresh_and_has_no_output_authority(
@@ -381,3 +393,312 @@ def test_subprocess_boundary_uses_absolute_argv_without_shell(prepared):
         "--verify",
         "HEAD",
     ]
+
+
+@pytest.mark.parametrize("phase", ["prepare", "run"])
+def test_missing_base_is_explicit(prepared, monkeypatch, phase):
+    digest = prepare(prepared) if phase == "run" else ""
+    original = runtime.subprocess.run
+
+    def execute(command, **kwargs):
+        if "cat-file" in command:
+            raise subprocess.CalledProcessError(1, command)
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(runtime.subprocess, "run", execute)
+    with pytest.raises(ValueError, match="missing admitted base commit"):
+        if phase == "run":
+            runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
+        else:
+            prepare(prepared)
+    if phase == "prepare":
+        assert not prepared.output.exists() and not prepared.plan.exists()
+
+
+def test_real_missing_base_commit(tmp_path):
+    origin = tmp_path / "origin"
+    PROCESS(["git", "init", str(origin)], check=True, capture_output=True)
+    for message in ("base", "head"):
+        PROCESS(
+            [
+                "git",
+                "-C",
+                str(origin),
+                "-c",
+                "user.name=Sandbox Test",
+                "-c",
+                "user.email=sandbox@example.invalid",
+                "commit",
+                "--allow-empty",
+                "-m",
+                message,
+            ],
+            check=True,
+            capture_output=True,
+        )
+    base = PROCESS(
+        [
+            "git",
+            "-C",
+            str(origin),
+            "rev-parse",
+            "HEAD^",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    shallow = tmp_path / "shallow"
+    PROCESS(
+        [
+            "git",
+            "clone",
+            "--depth=1",
+            origin.as_uri(),
+            str(shallow),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    with pytest.raises(ValueError, match="missing admitted base commit"):
+        runtime._verify_base(shallow, base, runtime._environment(str(tmp_path)))
+
+
+@pytest.mark.parametrize("kind", ["file", "symlink"])
+def test_external_git_metadata_rejected(prepared, kind):
+    digest = prepare(prepared)
+    git = prepared.source / ".git"
+    git.rmdir()
+    if kind == "file":
+        git.write_text("gitdir: /host/private")
+    else:
+        git.symlink_to(prepared.source, target_is_directory=True)
+    with pytest.raises(ValueError, match="self-contained"):
+        runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
+
+
+def test_bad_image_id_rejected(tmp_path):
+    path = tmp_path / "image"
+    path.write_text("mutable:latest")
+    with pytest.raises(ValueError, match="Invalid built image"):
+        runtime._image_id(path)
+
+
+@pytest.mark.parametrize("path", ["/bad,path", "/bad\npath", "/bad\rpath"])
+def test_mount_option_injection_rejected(path):
+    with pytest.raises(ValueError, match="Invalid mount"):
+        runtime._mount(Path(path), "/source")
+
+
+def test_container_boundary_is_closed(prepared):
+    digest = prepare(prepared)
+    runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
+    command = prepared.calls[-1][0]
+    for flag in (
+        "--network=none",
+        "--read-only",
+        "--cap-drop=ALL",
+        "--security-opt=no-new-privileges",
+        "--user=1000:1000",
+    ):
+        assert flag in command
+    mounts = [
+        command[index + 1] for index, value in enumerate(command) if value == "--mount"
+    ]
+    assert len(mounts) == 3 and all(value.endswith(",readonly") for value in mounts)
+    assert not any(
+        "docker.sock" in item or "--privileged" in item or "--pid" in item
+        for item in command
+    )
+    assert "sha256:" + "d" * 64 in command
+    assert command[-1] == digest
+    assert not any(
+        "--build-arg" in call[0] or "--secret" in call[0] for call in prepared.calls
+    )
+
+
+def test_dependency_context_is_only_committed_files(prepared, monkeypatch):
+    original = runtime.subprocess.run
+    contexts = []
+
+    def execute(command, **kwargs):
+        if "build" in command:
+            context = Path(command[-1])
+            contexts.append({path.name: path.read_text() for path in context.iterdir()})
+        return original(command, **kwargs)
+
+    monkeypatch.setattr(runtime.subprocess, "run", execute)
+    digest = prepare(prepared)
+    runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
+    assert len(contexts) == 1
+    assert set(contexts[0]) == {"Dockerfile", "pyproject.toml", "uv.lock"}
+    recipe = contexts[0]["Dockerfile"]
+    assert "FROM runtime-base AS validation\n" in recipe
+    assert "FROM runtime-base AS dev" not in recipe
+    assert "@sha256:" in recipe
+    assert (
+        "USER dev\n" in recipe
+        and "uv sync --frozen --all-groups --no-install-project" in recipe
+    )
+    assert [call[0][-1] for call in prepared.calls if "show" in call[0]] == [
+        "HEAD:pyproject.toml",
+        "HEAD:uv.lock",
+    ]
+
+
+def test_workflow_commands_disabled_during_pr_output(prepared, capsys):
+    digest = prepare(prepared)
+    runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
+    lines = capsys.readouterr().out.splitlines()
+    token = lines[0].removeprefix("::stop-commands::")
+    assert len(token) == 64 and lines[-1] == f"::{token}::"
+    assert all(token not in str(call) for call in prepared.calls)
+
+
+def test_inside_offline_registry(tmp_path, monkeypatch):
+    source = tmp_path / "work" / "source"
+    plan = {
+        "head_sha": "a" * 40,
+        "base_sha": "b" * 40,
+        **dict.fromkeys(runtime.FLAGS, False),
+    }
+    plan["commands"] = runtime._commands(plan)
+    calls = []
+    original_path = Path
+    monkeypatch.setattr(
+        runtime,
+        "Path",
+        lambda value: original_path(
+            str(value).replace("/work", str(tmp_path / "work"))
+        ),
+    )
+    monkeypatch.setattr(runtime, "_read_plan", lambda *args: plan)
+    monkeypatch.setattr(
+        runtime.shutil, "copytree", lambda *args, **kwargs: source.mkdir(parents=True)
+    )
+    monkeypatch.setattr(runtime, "_verify_head", lambda *args: None)
+    monkeypatch.setattr(runtime, "_verify_base", lambda *args: None)
+    monkeypatch.setattr(runtime, "_tool", lambda name, _: "/usr/bin/" + name)
+    monkeypatch.setattr(
+        runtime.subprocess,
+        "run",
+        lambda command, **kwargs: calls.append((command, kwargs)),
+    )
+    runtime._inside("c" * 64)
+    assert len(calls) == 2
+    assert calls[1][0][1:5] == ["run", "--frozen", "--no-sync", "--offline"]
+    assert all(call[1]["cwd"] == source for call in calls)
+    assert (
+        calls[1][1]["env"]["UV_PROJECT_ENVIRONMENT"]
+        == "/home/dev/.venvs/bootstrap-infrastructure"
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_INPUT_SANDBOX_TEST") != "1",
+    reason="Requires Docker daemon and pinned image dependency build",
+)
+@pytest.mark.parametrize("all_flags", [False, True])
+def test_real_container_hides_host_files(tmp_path, monkeypatch, all_flags):
+    """Explicit Docker rehearsal; normal unit CI has no daemon/socket mount."""
+    source = tmp_path / "checkout"
+    root = Path(runtime.__file__).resolve().parents[1]
+    PROCESS(
+        ["git", "clone", "--no-hardlinks", str(root), str(source)],
+        check=True,
+        capture_output=True,
+    )
+    canary = tmp_path / "host-secret-canary"
+    output = tmp_path / "runner-command-file"
+    canary.write_text("host-only-canary")
+    output.write_text("original=true\n")
+    # Reproduce the old environment-only boundary: a clean child can still read
+    # and overwrite host files. The container must prevent the same operations.
+    PROCESS(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            "from pathlib import Path; "
+            f"assert Path({str(canary)!r}).read_text() == 'host-only-canary'; "
+            f"Path({str(output)!r}).write_text('forged=true')",
+        ],
+        check=True,
+        env=runtime._environment(str(tmp_path)),
+    )
+    assert output.read_text() == "forged=true"
+    output.write_text("original=true\n")
+    attack = source / "tests/pulumi/test_manifest.py"
+    attack.write_text(
+        attack.read_text() + "\n"
+        "from pathlib import Path\nimport os\n"
+        "def test_container_boundary():\n"
+        "    assert os.getuid() == 1000\n"
+        "    assert 'GITHUB_OUTPUT' not in os.environ\n"
+        f"    paths = [Path({str(canary)!r}), Path({str(output)!r})]\n"
+        "    for path in paths:\n"
+        "        assert not path.exists()\n"
+        "        assert not Path('/proc/1/root' + str(path)).exists()\n"
+        "        try:\n"
+        "            path.write_text('forged=true')\n"
+        "        except OSError:\n"
+        "            pass\n"
+        "        else:\n"
+        "            raise AssertionError('host path writable')\n"
+        "    assert not Path('/var/run/docker.sock').exists()\n"
+        "    assert Path('/proc/1/comm').read_text().strip() == 'python3'\n"
+        "    print('::set-output name=forged::true')\n"
+    )
+    PROCESS(
+        ["git", "-C", str(source), "add", "tests/pulumi/test_manifest.py"], check=True
+    )
+    PROCESS(
+        [
+            "git",
+            "-C",
+            str(source),
+            "-c",
+            "user.name=Sandbox Test",
+            "-c",
+            "user.email=sandbox@example.invalid",
+            "commit",
+            "-m",
+            "Local sandbox fixture",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    head = PROCESS(
+        ["git", "-C", str(source), "rev-parse", "HEAD"],
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    base = PROCESS(
+        ["git", "-C", str(source), "rev-parse", "HEAD^"],
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+    plan = {
+        "schema_version": 1,
+        "head_sha": head,
+        "base_sha": base,
+        "command": "plan",
+        "target_environment": "test",
+        "stacks": [],
+        "source": str(source),
+        **dict.fromkeys(runtime.FLAGS, all_flags),
+    }
+    plan["commands"] = runtime._commands(plan)
+    payload = runtime._canonical(plan)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_bytes(payload)
+    for key in runtime.CREDENTIAL_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    runtime.run(
+        plan_path=str(plan_path), plan_sha256=hashlib.sha256(payload).hexdigest()
+    )
+    assert canary.read_text() == "host-only-canary"
+    assert output.read_text() == "original=true\n"
