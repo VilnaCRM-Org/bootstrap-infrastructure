@@ -300,11 +300,16 @@ def test_supplied_metadata_cannot_authorize_foreign_repository(source, key, valu
         )
 
 
-@pytest.mark.parametrize("side", ["base", "head"])
+@pytest.mark.parametrize("side", ["base", "head", "intake"])
 @pytest.mark.parametrize("owner_id", [1, None, "114362548", True])
 def test_repository_transfer_or_missing_owner_id_rejected(side, owner_id):
     request, evidence, metadata = input_facts()
-    evidence["pr"][side]["repo"]["owner"]["id"] = owner_id
+    repository = (
+        evidence["run"]["head_repository"]
+        if side == "intake"
+        else evidence["pr"][side]["repo"]
+    )
+    repository["owner"]["id"] = owner_id
     with pytest.raises(ValueError, match="owner identity"):
         controller.build_deployment_contract(
             request,
@@ -570,6 +575,19 @@ def test_reducer_rejects_unknown_contract_type_or_schema(schema):
     with pytest.raises(ValueError):
         controller.reduce_account_barrier(
             invalid, environment="test", results=results, receipts=receipts
+        )
+
+
+@pytest.mark.parametrize("identity", [None, {}, "invalid", 1])
+def test_reducer_rejects_malformed_nested_identity(identity):
+    contract = build()
+    results, receipts = node_facts(contract)
+    with pytest.raises(ValueError, match="Invalid deployment identity"):
+        controller.reduce_account_barrier(
+            replace(contract, identity=identity),
+            environment="test",
+            results=results,
+            receipts=receipts,
         )
 
 

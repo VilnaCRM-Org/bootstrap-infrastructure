@@ -181,7 +181,7 @@ def _validate_repository(evidence: dict[str, Any]) -> None:
             and repository["id"] == REPOSITORY_ID,
             "Foreign or missing immutable repository identity",
         )
-    for repository in repositories[:2]:
+    for repository in repositories:
         owner_id = _object(repository.get("owner"), "Repository owner").get("id")
         _require(
             type(owner_id) is int and owner_id == OWNER_ID,
@@ -259,6 +259,7 @@ def _validate_contract(contract: DeploymentContract) -> None:
         "Unsupported contract schema",
     )
     identity = contract.identity
+    _require(type(identity) is DeploymentIdentity, "Invalid deployment identity")
     _require(
         (identity.repository, identity.repository_id, identity.owner_id)
         == (REPOSITORY, REPOSITORY_ID, OWNER_ID),
