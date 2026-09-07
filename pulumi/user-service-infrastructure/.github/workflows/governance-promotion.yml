@@ -3,7 +3,7 @@ name: Governance Promotion Scope
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
 
 concurrency:
   group: promotion-status-${{ github.event.pull_request.number }}
