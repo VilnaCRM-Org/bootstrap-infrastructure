@@ -63,6 +63,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "_pulumi_command_support",
         "_pulumi_stack_config",
         "deployment_controller",
+        "deployment_controller_runtime",
         "deployment_schedule",
         "deployment_scopes",
         "governance_paths",
