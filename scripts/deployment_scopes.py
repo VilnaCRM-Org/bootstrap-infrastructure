@@ -64,6 +64,7 @@ CENTRAL_EXECUTION_FILES = frozenset(
         "scripts/run_pulumi_drift_check.py",
         "scripts/deployment_scopes.py",
         "scripts/deployment_schedule.py",
+        "scripts/deployment_controller.py",
         "scripts/pulumi_command_preflight.py",
         "scripts/pulumi_pr_comment.py",
         "scripts/governance_promotion.py",

@@ -99,6 +99,7 @@ def test_service_scope_preserves_authentication_for_control_file_changes():
         (("run", "path"), ".github/workflows/attacker.yml"),
         (("run", "head_repository", "full_name"), "fork/repo"),
         (("run", "run_attempt"), 2),
+        (("run", "run_attempt"), True),
         (("run", "id"), 13),
         (("artifact", "command"), "plan"),
         (("pr", "state"), "closed"),

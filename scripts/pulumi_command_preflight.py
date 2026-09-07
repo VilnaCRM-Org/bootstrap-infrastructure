@@ -42,7 +42,10 @@ def authenticate_intake(request: dict, evidence: dict):
     require(run["event"] == "issue_comment", "Source must be an issue_comment run")
     require(run["path"] == INTAKE_PATH, "Source must be the trusted intake workflow")
     require(run["head_repository"]["full_name"] == repository, "Foreign intake run")
-    require(run["run_attempt"] == 1, "Re-run intake requests are not accepted")
+    require(
+        type(run["run_attempt"]) is int and run["run_attempt"] == 1,
+        "Re-run intake requests are not accepted",
+    )
     require(str(run["id"]) == request["source_run_id"], "Source run mismatch")
     require(evidence["artifact"] == request, "Dispatch differs from intake artifact")
     require(pr["head"]["repo"]["full_name"] == repository, "Fork PR rejected")
