@@ -7822,7 +7822,10 @@ def test_collect_well_architected_evidence_reads_production_environment(
             command,
             0,
             json.dumps(
-                {"branch_policies": payload["deployment_branch_policies"]}
+                {
+                    "total_count": 1,
+                    "branch_policies": payload["deployment_branch_policies"],
+                }
                 if command[-1].endswith("/deployment-branch-policies")
                 else payload
             ),

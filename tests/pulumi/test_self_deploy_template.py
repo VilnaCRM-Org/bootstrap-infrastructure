@@ -25,6 +25,9 @@ until the operator applies governance, FEASIBILITY-6). They cover:
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -436,3 +439,120 @@ def test_state_operations_share_cross_workflow_stack_mutex():
         groups.setdefault(environment, set()).add(group)
     assert len(groups["test"]) == len(groups["prod"]) == 1
     assert groups["test"].isdisjoint(groups["prod"])
+
+
+_PR_CREDENTIAL_JOB_CASES = [
+    (path, job_id)
+    for path in (
+        WORKFLOW_PATH,
+        ROOT / ".github/workflows/pulumi-governance.yml",
+        ROOT / ".github/workflows/pulumi-pr-command-runner.yml",
+    )
+    for job_id, job in yaml.safe_load(path.read_text())["jobs"].items()
+    if any(
+        step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+        for step in job.get("steps", [])
+    )
+]
+
+
+@pytest.mark.parametrize("workflow_path,job_id", _PR_CREDENTIAL_JOB_CASES)
+@pytest.mark.parametrize(
+    "change,accepted",
+    [
+        ("none", True),
+        ("retarget", False),
+        ("base_moved", False),
+        ("base_missing", False),
+        ("head_moved", False),
+        ("closed", False),
+        ("merged", False),
+        ("checkout_moved", False),
+    ],
+)
+def test_credential_jobs_recheck_authenticated_pr_base(
+    tmp_path, workflow_path, job_id, change, accepted
+):
+    """Execute each credential guard; moved PR metadata cannot reach credentials."""
+    assert len(_PR_CREDENTIAL_JOB_CASES) == 20
+    workflow = yaml.safe_load(workflow_path.read_text())
+    assert (
+        workflow["jobs"]["preflight"]["outputs"]["base_sha"]
+        == "${{ steps.resolve.outputs.base_sha }}"
+    )
+    steps = workflow["jobs"][job_id]["steps"]
+    guard = next(
+        s
+        for s in steps
+        if s.get("name") == "Recheck current PR head before credentials"
+    )
+    loader_index = next(
+        i
+        for i, s in enumerate(steps)
+        if "load-aws-ci-env" in s.get("uses", "")
+        or s.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+    )
+    assert steps.index(guard) < loader_index
+    assert (
+        guard["env"]["EXPECTED_BASE_SHA"] == "${{ needs.preflight.outputs.base_sha }}"
+    )
+    assert guard["env"]["EXPECTED_SHA"] == "${{ needs.preflight.outputs.head_sha }}"
+    head, base = "a" * 40, "b" * 40
+    payload = {
+        "state": "open",
+        "merged": False,
+        "head": {"sha": head},
+        "base": {"ref": "main", "sha": base},
+    }
+    if change == "retarget":
+        payload["base"]["ref"] = "unprotected"
+    elif change == "base_moved":
+        payload["base"]["sha"] = "c" * 40
+    elif change == "base_missing":
+        del payload["base"]
+    elif change == "head_moved":
+        payload["head"]["sha"] = "c" * 40
+    elif change == "closed":
+        payload["state"] = "closed"
+    elif change == "merged":
+        payload["merged"] = True
+    response = tmp_path / "pr.json"
+    response.write_text(json.dumps(payload))
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    for name, body in {
+        "gh": 'cat "$PR_RESPONSE_FILE"',
+        "git": 'printf "%s\\n" "$CHECKOUT_SHA"',
+    }.items():
+        tool = tools / name
+        tool.write_text("#!/bin/sh\n" + body + "\n")
+        tool.chmod(0o755)
+    marker = tmp_path / "credentials-reached"
+    result = subprocess.run(
+        [
+            "bash",
+            "--noprofile",
+            "--norc",
+            "-e",
+            "-o",
+            "pipefail",
+            "-c",
+            guard["run"] + '\nprintf ready > "$CREDENTIAL_MARKER"',
+        ],
+        env={
+            "PATH": str(tools) + os.pathsep + os.environ["PATH"],
+            "GH_TOKEN": "synthetic",
+            "GITHUB_REPOSITORY": "org/repo",
+            "PR_NUMBER": "39",
+            "PR_RESPONSE_FILE": str(response),
+            "EXPECTED_SHA": head,
+            "EXPECTED_BASE_SHA": base,
+            "CHECKOUT_SHA": "c" * 40 if change == "checkout_moved" else head,
+            "CREDENTIAL_MARKER": str(marker),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) is accepted, result.stderr
+    assert marker.exists() is accepted

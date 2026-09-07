@@ -39,13 +39,13 @@ This production DR owner record is generated from metadata-only Well-Architected
 - Retain existing recovery order and escalation through Kravalg / platform-maintainers. Policy validity ends 2027-10-07; next technical/operating evidence review is 2026-10-07.
 - Closed TEST R6 and PROD R1 prove warning-free exact-object restore integrity and cleanup only; approximately 255-second AWS job durations do not establish end-to-end RTO or actual daily RPO achievement.
 - No new restore test is requested. No retention-lock risk acceptance, security exemption, IAM permission exception, or broader production acceptance is renewed by this owner-policy decision.
-- Actual current owner approval: Yes, I approve, but make the policy until October 2027 Root bound the requested expiry to 2027-10-07; ordinary recovery targets and order are unchanged.
+- Actual current owner approval: Yes, I approve, but make the policy until October 2027. Root binding interpretation: expiry 2027-10-07; ordinary recovery targets and order are unchanged.
 - The approved human DR policy expires explicitly on 2027-10-07. The technical/operating evidence review remains due 2026-10-07; separate technical-health and evidence-freshness checks remain applicable. Policy validity does not extend technical evidence freshness. Refresh technical evidence from actual observations or review, never by date-only renewal.
 - Evidence receipt: specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json; SHA256 ac448e163e3eeca0f7b71299ccd82e7211d74c98b2cc566894fabd9bc4620baa.
 - Evidence receipt: specs/issue-17-well-architected-5-of-5/prod-restore-r1-closure-2026-09-07.json; SHA256 1944357572898f58736d5a4b846099eb7ea74c5105e707a4feb902b34ca24018.
 - Evidence receipt: specs/issue-17-well-architected-5-of-5/restore-r6-receipts/observe-2.json; SHA256 cf26a70d1f78f363aa18605305c84639b4dc55145512bf1464fea49e6f91fdc3.
 - Evidence receipt: specs/issue-17-well-architected-5-of-5/restore-r6-receipts/cleanup-result.json; SHA256 bfa2c1f4868267c697096525ba356c113a641d947ed0ace703aaa566cbdc7f6f.
-- Evidence receipt: specs/issue-17-well-architected-5-of-5/production-dr-owner-approval-2026-09-07.json; SHA256 8857fd230946a5c681a1145f546aac04a3964f5db3aae4df1435a5b333ed4492.
+- Evidence receipt: specs/issue-17-well-architected-5-of-5/production-dr-owner-approval-2026-09-07.json; SHA256 38b7e59f68dfe63196e2da758b25841e7f07ad9e5d8d8ab04720ced7af130273.
 
 
 The included PROD closure is a preserved sanitized technical receipt. Its historical local paths identify original execution evidence; they are not runtime dependencies or instructions to repeat a drill. This owner record makes no full Well-Architected acceptance or score claim.

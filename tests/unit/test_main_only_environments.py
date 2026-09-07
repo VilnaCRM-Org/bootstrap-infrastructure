@@ -127,7 +127,26 @@ def test_branch_rule_convergence_rejects_malformed_response(monkeypatch):
         configure._configure_main_branch_policy("repos/org/repo/environments/test")
 
 
-@pytest.mark.parametrize("returncode,payload", [(1, {}), (0, []), (0, {})])
+@pytest.mark.parametrize(
+    "returncode,payload",
+    [
+        (1, {}),
+        (0, []),
+        (0, {}),
+        (0, {"branch_policies": [{"name": "main", "type": "branch"}]}),
+        (
+            0,
+            {
+                "total_count": True,
+                "branch_policies": [{"name": "main", "type": "branch"}],
+            },
+        ),
+        (
+            0,
+            {"total_count": 2, "branch_policies": [{"name": "main", "type": "branch"}]},
+        ),
+    ],
+)
 def test_evidence_rejects_unreadable_branch_rules_even_with_environment_metadata(
     returncode, payload
 ):
@@ -146,3 +165,20 @@ def test_evidence_rejects_unreadable_branch_rules_even_with_environment_metadata
     assert result["status"] == "failed"
     assert result["evidence"]["mainBranchOnly"] is False
     assert any("limited to the main branch" in item for item in result["blockers"])
+
+
+def test_evidence_accepts_complete_main_only_branch_response():
+    def runner(command, **_kwargs):
+        payload = environment()
+        if command[-1].endswith("/deployment-branch-policies"):
+            payload = {
+                "total_count": 1,
+                "branch_policies": payload["deployment_branch_policies"],
+            }
+        return subprocess.CompletedProcess(command, 0, json.dumps(payload), "")
+
+    result = evidence.github_production_environment(
+        "org/repo", "prod", reviewer_login=None, runner=runner
+    )
+    assert result["status"] == "passed"
+    assert result["evidence"]["mainBranchOnly"] is True

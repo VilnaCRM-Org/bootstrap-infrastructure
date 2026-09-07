@@ -5,6 +5,7 @@ from typing import Any
 
 import _github_repository_controls as _repository_controls
 import _well_architected_github_environment as _github_environment
+from _github_environment_controls import complete_branch_policies
 from _script_support import run
 from _well_architected_evidence_common import Runner, _check, _run_json
 
@@ -167,9 +168,7 @@ def github_production_environment(
         runner=runner,
     )
     payload["deployment_branch_policies"] = (
-        branch_payload.get("branch_policies")
-        if branch_ok and isinstance(branch_payload, dict)
-        else None
+        complete_branch_policies(branch_payload) if branch_ok else None
     )
     metadata = _github_environment.production_environment_metadata(
         payload,

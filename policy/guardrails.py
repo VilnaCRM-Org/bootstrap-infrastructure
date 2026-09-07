@@ -415,7 +415,7 @@ def wildcard_iam_violations(
     props: Mapping[str, Any],
     config: PolicyConfig = CONFIG,
 ) -> list[str]:
-    """Reject wildcard IAM unless its exact policy content has been reviewed."""
+    """Reject broad IAM grants; retain reviewed and resource-local exceptions."""
     if reviewed_iam_document_matches(
         resource_type, props, config.reviewed_iam_documents
     ):
@@ -424,10 +424,11 @@ def wildcard_iam_violations(
     documents = list(_policy_documents(resource_type, props))
     violations: list[str] = []
     for field_name, statements in documents:
-        if _wildcard_iam_document_exempt(resource_type, field_name):
-            continue
+        resource_policy_service = _resource_policy_service(resource_type, field_name)
         for statement in statements:
-            if _statement_contains_wildcard_permissions(statement):
+            if _statement_contains_wildcard_permissions(
+                statement, resource_policy_service=resource_policy_service
+            ):
                 violations.append(
                     f"{field_name} must not use wildcard IAM permissions "
                     "without an explicit allowlist."
@@ -558,17 +559,21 @@ def _role_policy_documents(
     return documents
 
 
-def _wildcard_iam_document_exempt(resource_type: str, field_name: str) -> bool:
-    """Ignore known resource-policy shapes that legitimately require wildcards."""
+def _resource_policy_service(resource_type: str, field_name: str) -> str | None:
+    """Retain self-resource and same-service scope, never global/negated grants.
+
+    This compatibility rule is not principal/condition approval. Stronger exact
+    resource-policy review is tracked separately; IAM document pins stay distinct.
+    """
     if field_name not in {"policy", "policyDocument"}:
-        return False
-    return _matches_any_resource_type(
-        resource_type,
-        (
-            S3_BUCKET_POLICY_TYPE_SUFFIX,
-            KMS_KEY_TYPE_SUFFIX,
-        ),
-    )
+        return None
+    for suffix, service in (
+        (S3_BUCKET_POLICY_TYPE_SUFFIX, "s3"),
+        (KMS_KEY_TYPE_SUFFIX, "kms"),
+    ):
+        if _matches_resource_type(resource_type, suffix):
+            return service
+    return None
 
 
 _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
@@ -589,8 +594,6 @@ _UNSCOPABLE_RESOURCE_WILDCARD_ACTIONS = frozenset(
         "iam:listopenidconnectproviders",
         "kms:createkey",
         "kms:listaliases",
-        "sns:getsubscriptionattributes",
-        "sns:unsubscribe",
         "sts:getcalleridentity",
     }
 )
@@ -703,23 +706,29 @@ def _has_public_access_narrowing_condition(condition: object) -> bool:
     return False
 
 
-def _statement_contains_wildcard_permissions(statement: Mapping[str, Any]) -> bool:
-    """Reject Action=* or Resource=* patterns inside IAM policies."""
+def _statement_contains_wildcard_permissions(
+    statement: Mapping[str, Any], *, resource_policy_service: str | None = None
+) -> bool:
+    """Reject global/negated grants, with explicit resource-policy compatibility."""
     effect = _string_value(statement.get("Effect"))
     if effect != "Allow":
         return False
 
     if (
-        _contains_action_wildcard(statement.get("Action"))
+        _contains_action_wildcard(
+            statement.get("Action"), allowed_service=resource_policy_service
+        )
         or _contains_action_wildcard(statement.get("NotAction"))
         or _has_negated_policy_scope(statement.get("NotAction"))
         or _contains_resource_wildcard(statement.get("NotResource"))
         or _has_negated_policy_scope(statement.get("NotResource"))
     ):
         return True
-    return _contains_resource_wildcard(
-        statement.get("Resource")
-    ) and not _resource_wildcard_allowed_for_unscopable_actions(statement)
+    return (
+        resource_policy_service is None
+        and _contains_resource_wildcard(statement.get("Resource"))
+        and not _resource_wildcard_allowed_for_unscopable_actions(statement)
+    )
 
 
 def _resource_wildcard_allowed_for_unscopable_actions(
@@ -772,15 +781,22 @@ def _condition_has_concrete_keys(
     return required_keys <= found
 
 
-def _contains_action_wildcard(value: object) -> bool:
-    """Detect wildcard IAM actions, including service-level wildcards like s3:*."""
+def _contains_action_wildcard(
+    value: object, *, allowed_service: str | None = None
+) -> bool:
+    """Reject global/service wildcards except the attached resource service."""
     if value == "*":
         return True
     if isinstance(value, str):
-        return value.endswith(":*")
+        return value.endswith(":*") and value.lower() != f"{allowed_service}:*"
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return any(
-            item == "*" or (isinstance(item, str) and item.endswith(":*"))
+            item == "*"
+            or (
+                isinstance(item, str)
+                and item.endswith(":*")
+                and item.lower() != f"{allowed_service}:*"
+            )
             for item in value
         )
     return False

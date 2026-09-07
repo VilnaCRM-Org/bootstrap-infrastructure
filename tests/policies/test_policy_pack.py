@@ -1482,7 +1482,9 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
                                     "sns:GetSubscriptionAttributes",
                                     "sns:Unsubscribe",
                                 ],
-                                "Resource": "*",
+                                "Resource": (
+                                    "arn:aws:sns:eu-central-1:123456789012:example"
+                                ),
                             }
                         ],
                     }
@@ -1627,14 +1629,16 @@ def test_wildcard_iam_violations_support_allowlists_and_inline_policies(
     ) == ["policy must not use wildcard IAM permissions without an explicit allowlist."]
 
 
-def test_wildcard_iam_violations_ignore_targeted_resource_policy_exceptions(
+def test_wildcard_iam_violations_limit_resource_policy_exceptions(
     policy_runtime: SimpleNamespace,
 ) -> None:
-    """Skip known bootstrap resource-policy exceptions but scan other carriers."""
+    """Allow self-resource scope only, retaining checks for other policy carriers."""
     wildcard_policy = _json(
         {
             "Version": "2012-10-17",
-            "Statement": [{"Effect": "Allow", "Action": "*", "Resource": "*"}],
+            "Statement": [
+                {"Effect": "Allow", "Action": "s3:GetObject", "Resource": "*"}
+            ],
         }
     )
     config = _custom_config(policy_runtime)
@@ -2394,3 +2398,168 @@ def test_inline_s3_encryption_accepts_concrete_default(
     bucket = _stack_resource(resource_type, props=props, urn="urn:encrypted-inline")
     assert policy_runtime.storage_encryption_violations(resource_type, props) == []
     assert policy_runtime.storage_encryption_stack_violations([bucket]) == []
+
+
+@pytest.mark.parametrize(
+    "resource_type", ["aws:s3/bucketPolicy:BucketPolicy", "aws:kms/key:Key"]
+)
+@pytest.mark.parametrize("field", ["policy", "policyDocument"])
+@pytest.mark.parametrize(
+    "scope",
+    [
+        {"Action": "*", "Resource": "*"},
+        {"Action": "iam:*", "Resource": "*"},
+        {"Action": ["ec2:*"], "Resource": "arn:aws:s3:::example/*"},
+        {"NotAction": "kms:ScheduleKeyDeletion", "Resource": "*"},
+        {"NotAction": ["s3:GetObject"], "Resource": "*"},
+        {"Action": "kms:Decrypt", "NotResource": "*"},
+        {
+            "Action": "kms:Decrypt",
+            "NotResource": ["arn:aws:kms:eu-central-1:123456789012:key/example"],
+        },
+    ],
+)
+def test_resource_policy_exemption_never_skips_action_or_negated_scope(
+    policy_runtime: SimpleNamespace, resource_type: str, field: str, scope: dict
+) -> None:
+    """Resource policies cannot hide global/cross-service or negated grants."""
+    document = {"Statement": [{"Effect": "Allow", **scope}]}
+    assert policy_runtime.wildcard_iam_violations(
+        resource_type, {field: _json(document)}, _custom_config(policy_runtime)
+    ) == [
+        f"{field} must not use wildcard IAM permissions without an explicit allowlist."
+    ]
+
+
+@pytest.mark.parametrize("action", ["sns:GetSubscriptionAttributes", "sns:Unsubscribe"])
+@pytest.mark.parametrize("resource", ["*", ["*"]])
+def test_sns_topic_scopable_actions_require_resource_scope(
+    policy_runtime: SimpleNamespace, action: str, resource: object
+) -> None:
+    """SNS SAR lists topic scope for these actions; generic wildcards must fail."""
+    assert policy_runtime.wildcard_iam_violations(
+        "aws:iam/policy:Policy",
+        {
+            "policy": _json(
+                {
+                    "Statement": [
+                        {"Effect": "Allow", "Action": action, "Resource": resource}
+                    ]
+                }
+            )
+        },
+        _custom_config(policy_runtime),
+    )
+
+
+@pytest.mark.parametrize(
+    "resource_type,action",
+    [
+        ("aws:kms/key:Key", "kms:Decrypt"),
+        ("aws:s3/bucketPolicy:BucketPolicy", "s3:GetObject"),
+    ],
+)
+@pytest.mark.parametrize("field", ["policy", "policyDocument"])
+def test_resource_policy_preserves_explicit_actions_and_self_resource_scope(
+    policy_runtime: SimpleNamespace, resource_type: str, action: str, field: str
+) -> None:
+    """The existing Resource-only exception retains concrete action grants."""
+    document = {"Statement": [{"Effect": "Allow", "Action": action, "Resource": "*"}]}
+    assert (
+        policy_runtime.wildcard_iam_violations(
+            resource_type, {field: _json(document)}, _custom_config(policy_runtime)
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "resource_type,action",
+    [
+        ("aws:kms/key:Key", "kms:*"),
+        ("aws:s3/bucketPolicy:BucketPolicy", "s3:*"),
+        ("aws:kms/key:Key", ["KMS:*", "kms:GenerateDataKey*"]),
+        ("aws:s3/bucketPolicy:BucketPolicy", ["S3:*"]),
+    ],
+)
+def test_resource_policy_retains_same_service_compatibility(
+    policy_runtime: SimpleNamespace, resource_type: str, action: object
+) -> None:
+    """Keep existing same-service grants; this is not principal/condition approval."""
+    assert (
+        policy_runtime.wildcard_iam_violations(
+            resource_type,
+            {
+                "policy": _json(
+                    {
+                        "Statement": [
+                            {"Effect": "Allow", "Action": action, "Resource": "*"}
+                        ]
+                    }
+                )
+            },
+            _custom_config(policy_runtime),
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "resource_type,action",
+    [
+        ("aws:kms/key:Key", "s3:*"),
+        ("aws:s3/bucketPolicy:BucketPolicy", "kms:*"),
+        ("aws:kms/key:Key", ["kms:*", "*"]),
+        ("aws:s3/bucketPolicy:BucketPolicy", ["s3:*", "iam:*"]),
+    ],
+)
+def test_resource_policy_rejects_global_and_cross_family_mixtures(
+    policy_runtime: SimpleNamespace, resource_type: str, action: object
+) -> None:
+    """A permitted family action cannot mask an unrelated or global grant."""
+    assert policy_runtime.wildcard_iam_violations(
+        resource_type,
+        {
+            "policy": _json(
+                {"Statement": [{"Effect": "Allow", "Action": action, "Resource": "*"}]}
+            )
+        },
+        _custom_config(policy_runtime),
+    )
+
+
+def test_resource_policy_preserves_tls_deny_and_kms_account_admin_shape(
+    policy_runtime: SimpleNamespace,
+) -> None:
+    """Real source patterns retain deny semantics and explicit key administration."""
+    statements = [
+        (
+            "aws:s3/bucketPolicy:BucketPolicy",
+            {
+                "Effect": "Deny",
+                "Principal": "*",
+                "Action": "s3:*",
+                "Resource": "arn:aws:s3:::example/*",
+                "Condition": {"Bool": {"aws:SecureTransport": "false"}},
+            },
+        ),
+        (
+            "aws:kms/key:Key",
+            {
+                "Sid": "EnableAccountPermissions",
+                "Effect": "Allow",
+                "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
+                "Action": "kms:*",
+                "Resource": "*",
+            },
+        ),
+    ]
+    for resource_type, statement in statements:
+        assert (
+            policy_runtime.wildcard_iam_violations(
+                resource_type,
+                {"policy": _json({"Statement": [statement]})},
+                _custom_config(policy_runtime),
+            )
+            == []
+        )

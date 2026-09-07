@@ -500,3 +500,52 @@ def test_early_stale_head_keeps_feedback(monkeypatch, tmp_path):
     assert _feedback_values(output)["feedback_head_sha"] == request["head_sha"]
     assert len(calls) == 1
     assert "head_sha" not in _feedback_values(output)
+
+
+@pytest.mark.parametrize("malformed_field", ["environment", "policies"])
+def test_environment_envelope_shape_rejected_before_policy_validation(
+    monkeypatch, malformed_field
+):
+    """Dict-coercible API arrays are not authenticated object responses."""
+    request, _ = fixture_data(action="plan", target="test")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
+    environment = {
+        "prevent_self_review": True,
+        "reviewers": [{"type": "User", "id": 10}],
+        "can_admins_bypass": False,
+        "deployment_branch_policy": {
+            "protected_branches": False,
+            "custom_branch_policies": True,
+        },
+    }
+    policies = {
+        "total_count": 1,
+        "branch_policies": [{"name": "main", "type": "branch"}],
+    }
+    responses = {
+        "users/Kravalg": {"id": 10},
+        "repos/org/repo/environments/test-preview": list(environment.items())
+        if malformed_field == "environment"
+        else environment,
+        "repos/org/repo/environments/test-preview/deployment-branch-policies": list(
+            policies.items()
+        )
+        if malformed_field == "policies"
+        else policies,
+    }
+    monkeypatch.setattr(preflight, "gh", responses.__getitem__)
+    reached_validation = []
+    original = preflight.protected_environment_verification_blockers
+
+    def observe(*args, **kwargs):
+        reached_validation.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        preflight, "protected_environment_verification_blockers", observe
+    )
+    with pytest.raises(
+        ValueError, match="environment and branch policies must be objects"
+    ):
+        preflight.verify_environments(request, governance=False)
+    assert reached_validation == []
