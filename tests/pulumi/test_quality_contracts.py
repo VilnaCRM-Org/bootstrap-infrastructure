@@ -50,10 +50,11 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "wily>=1.25,<2",
         "xenon>=0.9,<1",
         "yamllint>=1.35,<2",
-        "tomli>=2.0,<3",
     }
 
     assert expected_tools.issubset(dev_dependencies)
+    assert "tomli>=2.0,<3" in data["project"]["dependencies"]
+    assert "tomli>=2.0,<3" not in dev_dependencies
     assert "C90" in ruff["select"]
     assert data["tool"]["ruff"]["lint"]["mccabe"]["max-complexity"] == 10
     expected_first_party = [
