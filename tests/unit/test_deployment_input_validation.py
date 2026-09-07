@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
+import runpy
+import shutil
 import subprocess
 import sys
+import tarfile
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,6 +36,10 @@ def prepared(tmp_path, monkeypatch):
         source=source,
         plan=tmp_path / "plan.json",
         output=tmp_path / "outputs",
+        metadata={
+            name: (Path(runtime.__file__).resolve().parents[1] / name).read_text()
+            for name in ("pyproject.toml", "uv.lock")
+        },
     )
 
     def authenticate(**kwargs):
@@ -45,11 +53,32 @@ def prepared(tmp_path, monkeypatch):
                 "sha256:" + "d" * 64
             )
         return subprocess.CompletedProcess(
-            command, 0, state.contract.identity.head_sha + "\n"
+            command,
+            0,
+            state.metadata[command[-1].removeprefix("HEAD:")]
+            if "show" in command
+            else state.contract.identity.head_sha + "\n",
         )
 
     monkeypatch.setattr(runtime, "load_verified_admission", authenticate)
     monkeypatch.setattr(runtime.subprocess, "run", execute)
+    # Orchestration uses fake commands; real bounded pipe tests below exercise
+    # _execute itself without GitHub, AWS, Docker or untrusted code.
+    monkeypatch.setattr(
+        runtime,
+        "_execute",
+        lambda command, environment: (
+            runtime.subprocess.run(
+                command,
+                env=environment,
+                check=True,
+                shell=False,
+                capture_output=True,
+                text=True,
+                timeout=1200,
+            ).stdout
+        ),
+    )
     monkeypatch.setattr(runtime.shutil, "which", lambda name: "/usr/bin/" + name)
     for key in runtime.CREDENTIAL_KEYS:
         monkeypatch.delenv(key, raising=False)
@@ -524,22 +553,47 @@ def test_dependency_context_is_only_committed_files(prepared, monkeypatch):
     def execute(command, **kwargs):
         if "build" in command:
             context = Path(command[-1])
-            contexts.append({path.name: path.read_text() for path in context.iterdir()})
+            contexts.append(
+                {
+                    str(path.relative_to(context)): path.read_text()
+                    for path in context.rglob("*")
+                    if path.is_file()
+                }
+            )
         return original(command, **kwargs)
 
     monkeypatch.setattr(runtime.subprocess, "run", execute)
     digest = prepare(prepared)
     runtime.run(plan_path=str(prepared.plan), plan_sha256=digest)
     assert len(contexts) == 1
-    assert set(contexts[0]) == {"Dockerfile", "pyproject.toml", "uv.lock"}
+    assert set(contexts[0]) == {
+        "Dockerfile",
+        "pyproject.toml",
+        "uv.lock",
+        "trusted/pyproject.toml",
+        "trusted/uv.lock",
+    }
     recipe = contexts[0]["Dockerfile"]
     assert "FROM runtime-base AS validation\n" in recipe
     assert "FROM runtime-base AS dev" not in recipe
     assert "@sha256:" in recipe
     assert (
         "USER dev\n" in recipe
-        and "uv sync --frozen --all-groups --no-install-project" in recipe
+        and "uv sync --frozen --all-groups --no-install-project --no-build" in recipe
     )
+    installed = Path(runtime.__file__).resolve().parents[1]
+    for name in ("pyproject.toml", "uv.lock"):
+        assert contexts[0]["trusted/" + name] == (installed / name).read_text()
+        assert contexts[0][name] == prepared.metadata[name]
+    trusted_copy = recipe.index("COPY --chown=dev:dev trusted/pyproject.toml")
+    trusted_sync = recipe.index(
+        "RUN uv sync --frozen --all-groups --no-install-project\n"
+    )
+    pr_copy = recipe.index("COPY --chown=dev:dev pyproject.toml uv.lock")
+    pr_sync = recipe.index(
+        "RUN uv sync --frozen --all-groups --no-install-project --no-build"
+    )
+    assert trusted_copy < trusted_sync < pr_copy < pr_sync
     assert [call[0][-1] for call in prepared.calls if "show" in call[0]] == [
         "HEAD:pyproject.toml",
         "HEAD:uv.lock",
@@ -634,6 +688,9 @@ def test_real_container_hides_host_files(tmp_path, monkeypatch, all_flags):
         "from pathlib import Path\nimport os\n"
         "def test_container_boundary():\n"
         "    assert os.getuid() == 1000\n"
+        "    from importlib.metadata import version\n"
+        "    assert version('mutmut') == '2.5.1'\n"
+        "    assert version('glob2') == '0.7'\n"
         "    assert 'GITHUB_OUTPUT' not in os.environ\n"
         f"    paths = [Path({str(canary)!r}), Path({str(output)!r})]\n"
         "    for path in paths:\n"
@@ -702,3 +759,238 @@ def test_real_container_hides_host_files(tmp_path, monkeypatch, all_flags):
     )
     assert canary.read_text() == "host-only-canary"
     assert output.read_text() == "original=true\n"
+
+
+def test_real_bounded_process_drains_both_streams(tmp_path):
+    program = (
+        "import os; [(os.write(1,b'a'*4096),os.write(2,b'b'*4096)) for _ in range(32)]"
+    )
+    value = runtime._execute(
+        [sys.executable, "-I", "-c", program], runtime._environment(str(tmp_path))
+    )
+    assert value == "a" * (4096 * 32)
+
+
+@pytest.mark.parametrize("stream", [1, 2])
+def test_real_process_output_bound_kills_noisy_child(tmp_path, monkeypatch, stream):
+    monkeypatch.setattr(runtime, "MAX_OUTPUT_BYTES", 8192)
+    real_popen = subprocess.Popen
+    children = []
+
+    def popen(*args, **kwargs):
+        child = real_popen(*args, **kwargs)
+        children.append(child)
+        return child
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", popen)
+    with pytest.raises(ValueError, match="output exceeds bound"):
+        runtime._execute(
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                f"import os; [os.write({stream}, b'x'*4096) for _ in range(10000)]",
+            ],
+            runtime._environment(str(tmp_path)),
+        )
+    assert len(children) == 1 and children[0].poll() is not None
+
+
+def test_shared_output_bound_counts_stdout_and_stderr(tmp_path, monkeypatch):
+    monkeypatch.setattr(runtime, "MAX_OUTPUT_BYTES", 100)
+    with pytest.raises(ValueError, match="output exceeds bound"):
+        runtime._execute(
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                "import os; os.write(1,b'a'*60); os.write(2,b'b'*60)",
+            ],
+            runtime._environment(str(tmp_path)),
+        )
+
+
+def test_failure_redacts_child_output(tmp_path):
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        runtime._execute(
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                (
+                    "import os; os.write(1,b'private-output'); "
+                    "os.write(2,b'private-error'); raise SystemExit(3)"
+                ),
+            ],
+            runtime._environment(str(tmp_path)),
+        )
+    assert caught.value.returncode == 3
+    assert caught.value.output is None and caught.value.stderr is None
+
+
+@pytest.mark.parametrize("close_streams", [False, True])
+def test_real_process_timeout_is_bounded(tmp_path, monkeypatch, close_streams):
+    monkeypatch.setattr(runtime, "PROCESS_TIMEOUT", 0.1)
+    program = "import os,time; "
+    if close_streams:
+        program += "os.close(1); os.close(2); "
+    with pytest.raises(subprocess.TimeoutExpired):
+        runtime._execute(
+            [sys.executable, "-I", "-c", program + "time.sleep(60)"],
+            runtime._environment(str(tmp_path)),
+        )
+
+
+def test_noisy_child_ignoring_term_is_killed(tmp_path, monkeypatch):
+    monkeypatch.setattr(runtime, "MAX_OUTPUT_BYTES", 1)
+    monkeypatch.setattr(runtime, "TERMINATE_TIMEOUT", 0.05)
+    program = (
+        "import os,signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); "
+        "os.write(1,b'xx'); time.sleep(60)"
+    )
+    with pytest.raises(ValueError, match="output exceeds bound"):
+        runtime._execute(
+            [sys.executable, "-I", "-c", program], runtime._environment(str(tmp_path))
+        )
+
+
+def _hook_distribution(directory):
+    marker = directory / "build-hook-ran"
+    archive = directory / "hook-probe-1.0.0.tar.gz"
+    files = {
+        "pyproject.toml": (
+            '[build-system]\nrequires=[]\nbuild-backend="backend"\nbackend-path=["."]\n'
+            '[project]\nname="hook-probe"\nversion="1.0.0"\n'
+        ),
+        "backend.py": (
+            "def build_wheel(*args, **kwargs):\n from pathlib import Path\n"
+            f' Path({str(marker)!r}).write_text("ran")\n'
+            ' raise RuntimeError("synthetic build probe")\n'
+        ),
+        "PKG-INFO": "Metadata-Version: 2.4\nName: hook-probe\nVersion: 1.0.0\n",
+    }
+    with tarfile.open(archive, "w:gz") as stream:
+        for name, text in files.items():
+            raw = text.encode()
+            info = tarfile.TarInfo("hook-probe-1.0.0/" + name)
+            info.size = len(raw)
+            stream.addfile(info, io.BytesIO(raw))
+    (directory / "pyproject.toml").write_text(
+        '[project]\nname="host-probe"\nversion="0.1.0"\nrequires-python=">=3.11"\n'
+        f'dependencies=["hook-probe @ {archive.as_uri()}"]\n'
+    )
+    return marker
+
+
+def test_real_uv_refuses_pr_build_hook_before_execution(tmp_path):
+    """Actual uv source-build negative control; no network or credentials needed."""
+    marker = _hook_distribution(tmp_path)
+    uv = shutil.which("uv")
+    assert uv is not None
+    common = [uv, "--directory", str(tmp_path), "--no-cache"]
+    environment = runtime._environment(str(tmp_path))
+    locked = PROCESS(
+        [*common, "lock", "--offline", "--no-build"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert locked.returncode == 0, locked.stderr
+    assert not marker.exists()
+    install = [*common, "sync", "--frozen", "--all-groups", "--no-install-project"]
+    blocked = PROCESS(
+        [*install, "--no-build"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert blocked.returncode != 0 and "--no-build" in blocked.stderr
+    assert not marker.exists()
+    control = PROCESS(
+        install,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert control.returncode != 0 and marker.read_text() == "ran"
+
+
+def _source_lock(*, version="1", hash_value="sha256:aaa", dependencies="[]", extra=""):
+    return (
+        'version = 1\n[[package]]\nname = "source-probe"\n'
+        f'version = "{version}"\nsource = {{ registry = "https://example.invalid" }}\n'
+        f"dependencies = {dependencies}\n"
+        'sdist = { url = "https://example.invalid/probe.tar.gz", '
+        f'hash = "{hash_value}" }}\n' + extra
+    )
+
+
+def test_source_preservation_compares_complete_record_sets():
+    trusted = _source_lock()
+    assert runtime._preserved_sources(trusted, trusted) == ("source-probe",)
+    with_wheel = trusted + (
+        '\n[[package]]\nname="new-wheel"\nversion="2"\n'
+        'source={registry="https://example.invalid"}\n'
+        'wheels=[{url="https://example.invalid/a.whl",hash="sha256:bbb"}]\n'
+    )
+    assert runtime._preserved_sources(trusted, with_wheel) == ("source-probe",)
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        _source_lock(version="2"),
+        _source_lock(hash_value="sha256:changed"),
+        _source_lock(dependencies='[{name="other"}]'),
+        _source_lock(extra="resolution-markers=[\"python_version < '3.11'\"]\n"),
+        _source_lock().replace("https://example.invalid", "https://foreign.invalid"),
+        _source_lock().replace("source-probe", "new-source"),
+    ],
+)
+def test_source_record_changes_fail_before_build(changed):
+    with pytest.raises(ValueError, match="dependency"):
+        runtime._preserved_sources(_source_lock(), changed)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "",
+        "package=[]",
+        'package=["bad"]',
+        _source_lock().replace("source-probe", "--bad-name"),
+        _source_lock().replace(
+            'source = { registry = "https://example.invalid" }', "source = {}"
+        ),
+        _source_lock() + _source_lock().split("version = 1\n", 1)[1],
+    ],
+)
+def test_bad_lock_shape_and_duplicate_record_fail(payload):
+    with pytest.raises(ValueError):
+        runtime._preserved_sources(_source_lock(), payload)
+
+
+def test_virtual_root_and_empty_source_exclusions():
+    lock = '[[package]]\nname="root"\nversion="1"\nsource={virtual="."}\n'
+    assert runtime._preserved_sources(lock, lock) == ()
+
+
+def test_ambiguous_trusted_source_versions_fail():
+    lock = _source_lock() + _source_lock(version="2").split("version = 1\n", 1)[1]
+    with pytest.raises(ValueError, match="Ambiguous"):
+        runtime._preserved_sources(lock, lock)
+
+
+def test_python310_toml_compatibility(monkeypatch):
+    monkeypatch.setattr(sys, "version_info", (3, 10, 0))
+    loaded = runpy.run_path(runtime.__file__, run_name="compatibility_probe")
+    assert loaded["tomllib"].__name__ == "tomli"
+    assert loaded["_preserved_sources"](_source_lock(), _source_lock()) == (
+        "source-probe",
+    )

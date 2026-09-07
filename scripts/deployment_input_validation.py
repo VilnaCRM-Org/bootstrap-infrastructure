@@ -13,18 +13,28 @@ import json
 import os
 import re
 import secrets
+import selectors
 import shutil
 import subprocess  # nosec B404
 import sys
 import tempfile
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO, cast
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 # Subprocess use is limited to the reviewed fixed-argv call sites below.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from deployment_worker_runtime import load_verified_admission  # noqa: E402
 
+MAX_OUTPUT_BYTES = 8 * 1024 * 1024
+PROCESS_TIMEOUT = 1200
+TERMINATE_TIMEOUT = 5
 MAX_PLAN_BYTES = 16 * 1024
 FLAGS = ("catalog_validation", "scaffold_validation", "execution_validation")
 STACKS = ("operator", "governance", "platform")
@@ -153,18 +163,57 @@ def _verify_base(source: Path, base_sha: str, environment: dict[str, str]) -> No
         ) from error
 
 
+def _read_output(process: subprocess.Popen[bytes]) -> bytes:
+    """Drain both pipes under one memory/output bound and a wall-clock deadline."""
+    output = bytearray()
+    size = 0
+    deadline = time.monotonic() + PROCESS_TIMEOUT
+    with selectors.DefaultSelector() as selector:
+        selector.register(cast(BinaryIO, process.stdout), selectors.EVENT_READ, True)
+        selector.register(cast(BinaryIO, process.stderr), selectors.EVENT_READ, False)
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(process.args, PROCESS_TIMEOUT)
+            for key, _ in selector.select(remaining):
+                chunk = os.read(key.fd, 65536)
+                if not chunk:
+                    selector.unregister(key.fileobj)
+                    continue
+                size += len(chunk)
+                _require(
+                    size <= MAX_OUTPUT_BYTES, "Validation process output exceeds bound"
+                )
+                if key.data:
+                    output.extend(chunk)
+        code = process.wait(timeout=max(0.001, deadline - time.monotonic()))
+        if code != 0:
+            # Preserve failure semantics without embedding PR stdout/stderr.
+            raise subprocess.CalledProcessError(code, process.args)
+    return bytes(output)
+
+
 def _execute(command: list[str], environment: dict[str, str]) -> str:
-    # Fixed trusted argv, absolute executable outside PR checkout, never a shell.
-    result = subprocess.run(  # nosec B603
+    """Run fixed trusted argv, bounding both output streams before buffering."""
+    with subprocess.Popen(  # nosec B603
         command,
         env=environment,
-        check=True,
         shell=False,
-        capture_output=True,
-        text=True,
-        timeout=1200,
-    )
-    return result.stdout
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ) as process:
+        try:
+            return _read_output(process).decode("utf-8")
+        finally:
+            if process.poll() is None:
+                # Docker's default signal proxy forwards TERM to the container.
+                process.terminate()
+                try:
+                    process.wait(timeout=TERMINATE_TIMEOUT)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=TERMINATE_TIMEOUT)
 
 
 def _canonical(plan: dict[str, Any]) -> bytes:
@@ -265,12 +314,70 @@ def _image_id(path: Path) -> str:
     return value
 
 
+def _lock_records(payload: str) -> dict[str, tuple[bytes, ...]]:
+    """Keep complete per-name record sets; repeated records are never accepted."""
+    records = tomllib.loads(payload).get("package")
+    _require(type(records) is list and bool(records), "Missing locked package records")
+    grouped: dict[str, list[bytes]] = {}
+    for record in cast(list[dict[str, Any]], records):
+        _require(type(record) is dict, "Invalid locked package")
+        name = record.get("name")
+        _require(
+            type(name) is str
+            and re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name) is not None,
+            "Invalid locked package name",
+        )
+        name = cast(str, name)
+        raw = _canonical(record)
+        bucket = grouped.setdefault(name, [])
+        _require(raw not in bucket, "Duplicate locked package record")
+        bucket.append(raw)
+    return {name: tuple(sorted(records)) for name, records in grouped.items()}
+
+
+def _source_names(records: dict[str, tuple[bytes, ...]]) -> set[str]:
+    """A virtual root is not installed; other records without wheels need builds."""
+    result = set()
+    for name, entries in records.items():
+        for raw in entries:
+            entry = json.loads(raw)
+            source = entry.get("source")
+            _require(type(source) is dict and bool(source), "Missing locked source")
+            if not entry.get("wheels") and set(source) != {"virtual"}:
+                result.add(name)
+    return result
+
+
+def _preserved_sources(trusted_lock: str, selected_lock: str) -> tuple[str, ...]:
+    """Reuse only exact installed trusted source records, never name/version alone."""
+    trusted = _lock_records(trusted_lock)
+    selected = _lock_records(selected_lock)
+    preserved = _source_names(trusted)
+    _require(
+        _source_names(selected) <= preserved,
+        "New source dependency requires trusted runtime enrollment",
+    )
+    for name in preserved:
+        _require(len(trusted[name]) == 1, "Ambiguous trusted source package records")
+        _require(
+            selected.get(name) == trusted[name],
+            "Source dependency record changed; trusted runtime enrollment required",
+        )
+    return tuple(sorted(preserved))
+
+
 def _build_image(source: Path, directory: Path, environment: dict[str, str]) -> str:
-    """Only the trusted Dockerfile and two committed dependency files enter builds."""
+    """Build only trusted locked sources; PR dependency changes use wheels only."""
     docker = _tool("docker", source)
     context = directory / "dependencies"
     context.mkdir()
+    trusted = context / "trusted"
+    trusted.mkdir()
+    installed = Path(__file__).resolve().parents[1]
     for name in ("pyproject.toml", "uv.lock"):
+        # The installed main checkout owns this source-build stage. No PR metadata
+        # is copied into /deps until its wheels-only stage below.
+        (trusted / name).write_bytes((installed / name).read_bytes())
         content = _execute(
             [
                 _tool("git", source),
@@ -282,6 +389,10 @@ def _build_image(source: Path, directory: Path, environment: dict[str, str]) -> 
             environment,
         )
         (context / name).write_text(content)
+    preserved = _preserved_sources(
+        (trusted / "uv.lock").read_text(), (context / "uv.lock").read_text()
+    )
+    exclusions = "".join(" --no-install-package " + name for name in preserved)
     recipe = context / "Dockerfile"
     dockerfile_text = (Path(__file__).resolve().parents[1] / "Dockerfile").read_text()
     boundary = "FROM runtime-base AS dev"
@@ -295,9 +406,13 @@ def _build_image(source: Path, directory: Path, environment: dict[str, str]) -> 
         "RUN mkdir -p /deps /home/dev/.venvs/bootstrap-infrastructure "
         "/home/dev/.cache/uv "
         "&& chown -R dev:dev /deps /home/dev/.venvs /home/dev/.cache\n"
-        "COPY --chown=dev:dev pyproject.toml uv.lock /deps/\n"
+        "COPY --chown=dev:dev trusted/pyproject.toml trusted/uv.lock /deps/\n"
         "USER dev\nWORKDIR /deps\n"
         "RUN uv sync --frozen --all-groups --no-install-project\n"
+        "COPY --chown=dev:dev pyproject.toml uv.lock /deps/\n"
+        "RUN uv sync --frozen --all-groups --no-install-project --no-build --inexact"
+        + exclusions
+        + "\n"
     )
     image_id = directory / "dependencies.iid"
     _execute(
