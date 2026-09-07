@@ -14,9 +14,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import deployment_worker_recheck as worker  # noqa: E402
 from deployment_contract_io import decode_deployment_contract  # noqa: E402
 from test_deployment_controller_runtime import (  # noqa: E402
-    github as github,
+    github as _github_fixture,
 )
 from test_deployment_controller_runtime import set_request  # noqa: E402
+
+github = _github_fixture
 
 ROOT_ENDPOINT = f"repos/{worker.REPOSITORY}/actions/runs/100"
 
