@@ -59,6 +59,8 @@ def _evidence(proof: dict[str, Any], digest: str, file_sha: str) -> dict[str, An
         "scopes": list(proof["scopes"]),
         "selection_digest": proof["selection_digest"],
         "contract_digest": proof["contract_digest"],
+        "admission": deepcopy(proof["admission"]),
+        "jobs": deepcopy(proof["jobs"]),
         "barriers": {
             account: deepcopy(proof["barriers"][account]["artifact"])
             for account in ("test", "prod")

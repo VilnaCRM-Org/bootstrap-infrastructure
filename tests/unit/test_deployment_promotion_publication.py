@@ -113,6 +113,9 @@ class TestRevalidation:
             assert evidence["scopes"] == ["platform"]
             assert evidence["proof_digest"] == digest
             assert evidence["evidence_kind"] == "receipt-and-job-provenance"
+            original = json.loads(prepared.publication_args["proof_payload"])
+            assert evidence["admission"] == original["admission"]
+            assert evidence["jobs"] == original["jobs"]
             assert set(evidence["barriers"]) == {"test", "prod"}
             assert set(evidence["receipts"]) == {"platform_test", "platform_prod"}
             assert all(

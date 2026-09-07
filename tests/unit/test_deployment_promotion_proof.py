@@ -9,9 +9,11 @@ import subprocess
 import sys
 from copy import deepcopy
 from dataclasses import asdict
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
+import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
@@ -42,8 +44,8 @@ graph = _graph_fixture
 PROCESS = subprocess.run
 
 
-def timestamp(minute):
-    return f"2026-09-07T00:{minute:02}:00Z"
+def timestamp(minute, second=0):
+    return f"2026-09-07T00:{minute:02}:{second:02}Z"
 
 
 def publish_barrier(graph, account, value, identifier):
@@ -139,9 +141,19 @@ def promotion_dependencies(graph):
 @pytest.fixture
 def promotion(graph, monkeypatch):
     dependencies = promotion_dependencies(graph)
+    # Synthetic API fixtures model distinct jobs; they are not hosted QA evidence.
+    stages = {}
+    for scope in graph.state.contract.selection.stacks:
+        for account in ("test", "prod"):
+            for index, name in enumerate(runtime._worker_names(scope, account)):
+                stages[name] = index * 8
     for item in graph.state.jobs:
         minute = 2 if "_test / " in item["name"] else 4
-        item.update(started_at=timestamp(minute), completed_at=timestamp(minute + 1))
+        second = stages[item["name"]]
+        item.update(
+            started_at=timestamp(minute, second),
+            completed_at=timestamp(minute, second + 4),
+        )
     for index, (name, minute) in enumerate(
         zip(runtime.ROOT_JOBS, (0, 1, 3, 5), strict=True)
     ):
@@ -574,3 +586,105 @@ def test_proof_omits_untrusted_metadata_bodies(promotion, monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == promotion.output_path.read_text()
     assert captured.err == ""
+
+
+@pytest.mark.parametrize("scope", ["operator", "governance", "platform"])
+def test_timing_dependencies_match_installed_reusable_jobs(scope):
+    path = (
+        Path(__file__).resolve().parents[2]
+        / ".github/workflows"
+        / f"pulumi-{scope}-account.yml"
+    )
+    jobs = yaml.safe_load(path.read_text())["jobs"]
+    assert runtime._worker_dependencies(scope) == {
+        name: tuple(job.get("needs", ())) for name, job in jobs.items()
+    }
+
+
+def worker_stage(promotion, account, stage):
+    scope = promotion.state.scope
+    name = next(
+        name
+        for name, value in runtime._worker_names(scope, account).items()
+        if value == stage
+    )
+    return next(row for row in promotion.state.jobs if row["name"] == name)
+
+
+@pytest.mark.parametrize(
+    "receipt_data",
+    [
+        (scope, "test", "up", (scope,))
+        for scope in ("operator", "governance", "platform")
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("account", ["test", "prod"])
+@pytest.mark.parametrize(
+    "predecessor,successor",
+    [
+        ("resolve", "preview"),
+        ("preview", "destructive_diff"),
+        ("preview", "iam_validation"),
+        ("destructive_diff", "apply"),
+        ("iam_validation", "apply"),
+        ("apply", "post_apply_drift"),
+        ("post_apply_drift", "receipt"),
+    ],
+)
+def test_worker_stage_cannot_precede_its_authenticated_dependency(
+    promotion, monkeypatch, account, predecessor, successor
+):
+    before = worker_stage(promotion, account, predecessor)
+    after = worker_stage(promotion, account, successor)
+    early = runtime._timestamp(before["completed_at"]) - timedelta(microseconds=1)
+    after["started_at"] = early.isoformat().replace("+00:00", "Z")
+    publish_jobs(promotion.state)
+    with pytest.raises(ValueError, match="preceded .* completion"):
+        cli(promotion, monkeypatch)
+    assert not promotion.proof_path.exists()
+    assert not promotion.output_path.exists()
+
+
+@pytest.mark.parametrize(
+    "receipt_data",
+    [(scope, "test", "up", (scope,)) for scope in ("governance", "platform")],
+    indirect=True,
+)
+@pytest.mark.parametrize("account", ["test", "prod"])
+def test_serial_iam_gate_waits_for_destructive_gate(promotion, account):
+    destructive = worker_stage(promotion, account, "destructive_diff")
+    iam = worker_stage(promotion, account, "iam_validation")
+    iam["started_at"] = destructive["started_at"]
+    publish_jobs(promotion.state)
+    with pytest.raises(ValueError, match="iam_validation preceded destructive_diff"):
+        prove(promotion)
+
+
+@pytest.mark.parametrize(
+    "receipt_data", [("operator", "test", "up", ("operator",))], indirect=True
+)
+@pytest.mark.parametrize("account", ["test", "prod"])
+@pytest.mark.parametrize("last_gate", ["iam_validation", "destructive_diff"])
+def test_operator_parallel_gates_allow_either_completion_order(
+    promotion, account, last_gate
+):
+    minute = 2 if account == "test" else 4
+    for stage in ("iam_validation", "destructive_diff"):
+        row = worker_stage(promotion, account, stage)
+        row.update(
+            started_at=timestamp(minute, 16),
+            completed_at=timestamp(minute, 25 if stage == last_gate else 20),
+        )
+    publish_jobs(promotion.state)
+    assert prove(promotion)["completion_kind"] == "apply-drift"
+
+
+@pytest.mark.parametrize("receipt_data", [PLATFORM_ONLY], indirect=True)
+@pytest.mark.parametrize("account", ["test", "prod"])
+def test_same_instant_completion_and_start_is_valid(promotion, account):
+    before = worker_stage(promotion, account, "apply")
+    after = worker_stage(promotion, account, "post_apply_drift")
+    after["started_at"] = before["completed_at"]
+    publish_jobs(promotion.state)
+    assert prove(promotion)["completion_kind"] == "apply-drift"

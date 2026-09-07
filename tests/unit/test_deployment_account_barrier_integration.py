@@ -227,10 +227,10 @@ def test_cached_test_digest_cannot_replace_fresh_artifact_and_job_checks(
     [("platform", "test", "up", ("operator", "platform"))],
     indirect=True,
 )
-def test_operator_selection_remains_blocked_until_actual_worker_exists(
+def test_operator_selection_requires_authenticated_worker_receipt(
     graph, monkeypatch
 ):
-    with pytest.raises(ValueError, match="Unsupported receipt scope"):
+    with pytest.raises(ValueError, match="Worker outputs must contain exactly"):
         run_cli(graph, monkeypatch, "test", account_needs(graph, "test"))
     assert graph.downloads == ["999"]
     assert not (graph.directory / "barrier-test.json").exists()

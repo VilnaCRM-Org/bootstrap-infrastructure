@@ -57,6 +57,24 @@ BARRIER_OUTPUTS = {
     "artifact_id",
     "artifact_sha256",
 }
+# These are installed reusable-job dependencies, not inferred execution stages.
+# Operator validates both gates within preview and publishes them concurrently.
+WORKER_DEPENDENCIES: dict[str, tuple[str, ...]] = {
+    "resolve": (),
+    "preview": ("resolve",),
+    "destructive_diff": ("resolve", "preview"),
+    "iam_validation": ("resolve", "preview", "destructive_diff"),
+    "apply": ("resolve", "preview", "destructive_diff", "iam_validation"),
+    "post_apply_drift": ("resolve", "apply"),
+    "receipt": (
+        "resolve",
+        "preview",
+        "destructive_diff",
+        "iam_validation",
+        "apply",
+        "post_apply_drift",
+    ),
+}
 
 
 def _canonical(value: Any) -> bytes:
@@ -210,6 +228,33 @@ def _verify_order(
             preflight.require(
                 end(name) <= start("whole_prod"),
                 "PROD barrier preceded PROD completion",
+            )
+        for account in ("test", "prod"):
+            _verify_worker_order(scope, account, jobs)
+
+
+def _worker_dependencies(scope: str) -> dict[str, tuple[str, ...]]:
+    """Preserve the operator's parallel gates and both other workers' serial gates."""
+    dependencies = dict(WORKER_DEPENDENCIES)
+    if scope == "operator":
+        dependencies["iam_validation"] = ("resolve", "preview")
+    return dependencies
+
+
+def _verify_worker_order(
+    scope: str, account: str, jobs: dict[str, dict[str, Any]]
+) -> None:
+    """Require authenticated completion of every installed job predecessor."""
+    stages = {
+        stage: jobs[name] for name, stage in _worker_names(scope, account).items()
+    }
+    for stage, predecessors in _worker_dependencies(scope).items():
+        started = _timestamp(stages[stage]["started_at"])
+        for predecessor in predecessors:
+            completed = _timestamp(stages[predecessor]["completed_at"])
+            preflight.require(
+                completed <= started,
+                f"{scope} {account} {stage} preceded {predecessor} completion",
             )
 
 
