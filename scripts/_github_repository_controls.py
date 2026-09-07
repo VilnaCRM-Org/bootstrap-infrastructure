@@ -9,6 +9,9 @@ from _github_environment_controls import (
 )
 
 GOVERNANCE_PROMOTION_CONTEXT = "Governance Promotion"
+INFRASTRUCTURE_PROMOTION_CONTEXT = "Infrastructure Promotion"
+CENTRAL_REPOSITORY = "VilnaCRM-Org/bootstrap-infrastructure"
+CENTRAL_PROMOTION_APP_ID = 4840884
 
 REQUIRED_STATUS_CHECKS = (
     GOVERNANCE_PROMOTION_CONTEXT,
@@ -43,8 +46,41 @@ GOVERNANCE_ENVIRONMENT = "governance"
 SERVICE_DRIFT_ENVIRONMENTS = ("test-drift", "prod-drift")
 
 
-def required_status_checks_rule(*, promotion_app_id: int) -> dict[str, Any]:
+def promotion_context_for_repository(repository: str | None) -> str:
+    """Select central aggregation only for the exact independently known repository."""
+    return (
+        INFRASTRUCTURE_PROMOTION_CONTEXT
+        if repository == CENTRAL_REPOSITORY
+        else GOVERNANCE_PROMOTION_CONTEXT
+    )
+
+
+def required_status_checks_for_repository(repository: str | None) -> tuple[str, ...]:
+    """Keep generated services on their existing promotion protocol by default."""
+    return (promotion_context_for_repository(repository), *REQUIRED_STATUS_CHECKS[1:])
+
+
+def _validate_promotion_issuer(promotion_app_id: int, repository: str | None) -> None:
+    """Reject shared issuers and central identity substitutions before any mutation."""
+    if (
+        type(promotion_app_id) is not int
+        or promotion_app_id <= 0
+        or promotion_app_id == 15368
+    ):
+        raise ValueError("A dedicated promotion GitHub App ID is required.")
+    if (
+        repository == CENTRAL_REPOSITORY
+        and promotion_app_id != CENTRAL_PROMOTION_APP_ID
+    ):
+        raise ValueError("Central promotion requires the fixed GitHub App issuer.")
+
+
+def required_status_checks_rule(
+    *, promotion_app_id: int, repository: str | None = None
+) -> dict[str, Any]:
     """Return the ruleset rule that enforces the documented PR gates."""
+    _validate_promotion_issuer(promotion_app_id, repository)
+    issued = _issued_contexts(repository)
     return {
         "type": "required_status_checks",
         "parameters": {
@@ -52,16 +88,26 @@ def required_status_checks_rule(*, promotion_app_id: int) -> dict[str, Any]:
             "required_status_checks": [
                 (
                     {"context": context, "integration_id": promotion_app_id}
-                    if context == GOVERNANCE_PROMOTION_CONTEXT
+                    if context in issued
                     else {"context": context}
                 )
-                for context in REQUIRED_STATUS_CHECKS
+                for context in required_status_checks_for_repository(repository)
             ],
         },
     }
 
 
-def _harden_status_check(item: object, *, promotion_app_id: int) -> dict[str, Any]:
+def _issued_contexts(repository: str | None) -> set[str]:
+    """Keep both central App signals bound without changing service issuers."""
+    issued = {promotion_context_for_repository(repository)}
+    if repository == CENTRAL_REPOSITORY:
+        issued.add("Test Account Evidence")
+    return issued
+
+
+def _harden_status_check(
+    item: object, *, promotion_app_id: int, repository: str | None = None
+) -> dict[str, Any]:
     """Preserve one valid required check and reconcile its promotion issuer."""
     if not isinstance(item, Mapping):
         raise ValueError("Existing required status check is malformed.")
@@ -69,8 +115,14 @@ def _harden_status_check(item: object, *, promotion_app_id: int) -> dict[str, An
     if not isinstance(context, str) or not context.strip():
         raise ValueError("Existing required status check is malformed.")
     check = dict(item)
-    if check["context"] == GOVERNANCE_PROMOTION_CONTEXT:
-        if check.get("integration_id") not in (None, promotion_app_id):
+    if repository == CENTRAL_REPOSITORY and context == GOVERNANCE_PROMOTION_CONTEXT:
+        check["context"] = INFRASTRUCTURE_PROMOTION_CONTEXT
+    issued = _issued_contexts(repository)
+    if check["context"] in issued:
+        issuer = check.get("integration_id")
+        if issuer is not None and (
+            type(issuer) is not int or issuer != promotion_app_id
+        ):
             raise ValueError(
                 "Existing promotion issuer requires explicit reconciliation."
             )
@@ -79,9 +131,13 @@ def _harden_status_check(item: object, *, promotion_app_id: int) -> dict[str, An
 
 
 def harden_required_status_checks_rule(
-    existing: Mapping[str, Any], *, promotion_app_id: int
+    existing: Mapping[str, Any],
+    *,
+    promotion_app_id: int,
+    repository: str | None = None,
 ) -> dict[str, Any]:
     """Keep existing contexts and issuers while adding missing required checks."""
+    _validate_promotion_issuer(promotion_app_id, repository)
     parameters = existing.get("parameters", {})
     if not isinstance(parameters, Mapping):
         raise ValueError("Existing status-check parameters must be an object.")
@@ -89,10 +145,16 @@ def harden_required_status_checks_rule(
     if not isinstance(original, list):
         raise ValueError("Existing required status checks must be a list.")
     checks = [
-        _harden_status_check(item, promotion_app_id=promotion_app_id)
+        _harden_status_check(
+            item, promotion_app_id=promotion_app_id, repository=repository
+        )
         for item in original
     ]
-    baseline = required_status_checks_rule(promotion_app_id=promotion_app_id)
+    if repository == CENTRAL_REPOSITORY:
+        checks = _deduplicate_central_checks(checks)
+    baseline = required_status_checks_rule(
+        promotion_app_id=promotion_app_id, repository=repository
+    )
     contexts = {check["context"] for check in checks}
     checks.extend(
         check
@@ -108,6 +170,59 @@ def harden_required_status_checks_rule(
             "required_status_checks": checks,
         },
     }
+
+
+def _deduplicate_central_checks(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reconcile old/new promotion entries without dropping distinct protections."""
+    result: dict[str, dict[str, Any]] = {}
+    for check in checks:
+        context = check["context"]
+        if context in result and result[context] != check:
+            raise ValueError("Conflicting duplicate required status checks.")
+        result[context] = check
+    return list(result.values())
+
+
+def _central_deployment_rules(
+    existing: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Retire only test/prod requirements now enforced by the strict aggregate gate."""
+    result = []
+    for rule in existing:
+        if rule.get("type") != "required_deployments":
+            result.append(dict(rule))
+            continue
+        parameters, environments = _deployment_parameters(rule)
+        remaining = [name for name in environments if name not in {"test", "prod"}]
+        if remaining:
+            result.append(
+                {
+                    **rule,
+                    "parameters": {
+                        **parameters,
+                        "required_deployment_environments": remaining,
+                    },
+                }
+            )
+        elif set(parameters) != {"required_deployment_environments"} or set(rule) != {
+            "type",
+            "parameters",
+        }:
+            raise ValueError("Unknown deployment protection cannot be retired.")
+    return result
+
+
+def _deployment_parameters(rule: Mapping[str, Any]) -> tuple[Mapping, list[str]]:
+    """Reject ambiguous deployment requirements before selective retirement."""
+    parameters = rule.get("parameters")
+    if not isinstance(parameters, Mapping):
+        raise ValueError("Malformed existing deployment requirement.")
+    environments = parameters.get("required_deployment_environments")
+    if not isinstance(environments, list) or not all(
+        isinstance(name, str) and name and name == name.strip() for name in environments
+    ):
+        raise ValueError("Malformed existing deployment environments.")
+    return parameters, environments
 
 
 def default_pull_request_rule() -> dict[str, Any]:
@@ -140,11 +255,13 @@ def harden_pull_request_rule(existing: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def ruleset_payload(
-    existing_rules: Sequence[Mapping[str, Any]] = (), *, promotion_app_id: int
+    existing_rules: Sequence[Mapping[str, Any]] = (),
+    *,
+    promotion_app_id: int,
+    repository: str | None = None,
 ) -> dict[str, Any]:
     """Build the branch ruleset payload while preserving additional rule types."""
-    if promotion_app_id <= 0 or promotion_app_id == 15368:
-        raise ValueError("A dedicated promotion GitHub App ID is required.")
+    _validate_promotion_issuer(promotion_app_id, repository)
     if sum(rule.get("type") == "required_status_checks" for rule in existing_rules) > 1:
         raise ValueError("Multiple existing status-check rules require reconciliation.")
     rules_by_type = {
@@ -159,6 +276,7 @@ def ruleset_payload(
         harden_required_status_checks_rule(
             rules_by_type.get("required_status_checks", {}),
             promotion_app_id=promotion_app_id,
+            repository=repository,
         ),
     ]
     replaced_types = {
@@ -169,7 +287,11 @@ def ruleset_payload(
     }
     rules.extend(
         dict(rule)
-        for rule in existing_rules
+        for rule in (
+            _central_deployment_rules(existing_rules)
+            if repository == CENTRAL_REPOSITORY
+            else existing_rules
+        )
         if isinstance(rule.get("type"), str) and rule["type"] not in replaced_types
     )
 
@@ -179,6 +301,7 @@ def ruleset_payload(
         "enforcement": "active",
         "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
         "rules": rules,
+        **({"bypass_actors": []} if repository == CENTRAL_REPOSITORY else {}),
     }
 
 
@@ -356,19 +479,45 @@ def ruleset_has_pull_request_reviews(ruleset: Mapping[str, Any]) -> bool:
 
 
 def _ruleset_has_promotion_issuer(
-    ruleset: Mapping[str, Any], promotion_app_id: int
+    ruleset: Mapping[str, Any],
+    promotion_app_id: int,
+    *,
+    repository: str | None = None,
 ) -> bool:
     """Require the configured issuer on a concrete promotion status check."""
-    promotion_checks = [
+    promotion_checks = _promotion_checks(
+        ruleset, promotion_context_for_repository(repository)
+    )
+    if repository == CENTRAL_REPOSITORY:
+        if (
+            promotion_app_id != CENTRAL_PROMOTION_APP_ID
+            or type(promotion_app_id) is not int
+        ):
+            return False
+        if len(
+            promotion_checks
+        ) != 1 or GOVERNANCE_PROMOTION_CONTEXT in required_status_contexts(ruleset):
+            return False
+    return any(
+        type(item.get("integration_id")) is int
+        and item.get("integration_id") == promotion_app_id
+        for item in promotion_checks
+    )
+
+
+def _promotion_checks(
+    ruleset: Mapping[str, Any], context: str
+) -> list[Mapping[str, Any]]:
+    """Read concrete context entries without inferring effective rule applicability."""
+    return [
         cast(Mapping[str, Any], item)
         for rule in ruleset.get("rules", [])
         for item in required_status_check_items(rule)
-        if isinstance(item, Mapping)
-        and status_check_context(item) == GOVERNANCE_PROMOTION_CONTEXT
+        if isinstance(item, Mapping) and status_check_context(item) == context
     ]
-    return any(
-        item.get("integration_id") == promotion_app_id for item in promotion_checks
-    )
+
+
+ruleset_has_promotion_issuer = _ruleset_has_promotion_issuer
 
 
 def _ruleset_requires_strict_checks(ruleset: Mapping[str, Any]) -> bool:
@@ -383,22 +532,30 @@ def _ruleset_requires_strict_checks(ruleset: Mapping[str, Any]) -> bool:
 
 
 def ruleset_verification_blockers(
-    ruleset: Mapping[str, Any] | None, *, promotion_app_id: int
+    ruleset: Mapping[str, Any] | None,
+    *,
+    promotion_app_id: int,
+    repository: str | None = None,
 ) -> list[str]:
     """Return blockers when the active main ruleset does not match expectations."""
     if ruleset is None:
         return ["Active main branch ruleset was not found after apply."]
     contexts = required_status_contexts(ruleset)
-    missing_contexts = sorted(set(REQUIRED_STATUS_CHECKS) - contexts)
+    missing_contexts = sorted(
+        set(required_status_checks_for_repository(repository)) - contexts
+    )
     blockers: list[str] = []
     if missing_contexts:
         blockers.append(
             "Active main branch ruleset is missing required status checks: "
             f"{', '.join(missing_contexts)}."
         )
-    if not _ruleset_has_promotion_issuer(ruleset, promotion_app_id):
+    if not _ruleset_has_promotion_issuer(
+        ruleset, promotion_app_id, repository=repository
+    ):
         blockers.append(
-            "Governance Promotion must require the dedicated GitHub App issuer."
+            f"{promotion_context_for_repository(repository)} must require "
+            "the dedicated GitHub App issuer."
         )
     if not _ruleset_requires_strict_checks(ruleset):
         blockers.append("Active main branch ruleset must require strict status checks.")
@@ -407,7 +564,50 @@ def ruleset_verification_blockers(
             "Active main branch ruleset does not require pull request reviews "
             "and thread resolution."
         )
+    if repository == CENTRAL_REPOSITORY:
+        blockers.extend(_central_ruleset_blockers(ruleset))
     return blockers
+
+
+def _central_ruleset_blockers(ruleset: Mapping[str, Any]) -> list[str]:
+    """Require completed central reconciliation, never both promotion protocols."""
+    blockers = []
+    evidence = _promotion_checks(ruleset, "Test Account Evidence")
+    if not _single_central_issuer(evidence):
+        blockers.append(
+            "Test Account Evidence must retain the fixed GitHub App issuer."
+        )
+    if ruleset.get("bypass_actors"):
+        blockers.append("Central main ruleset must not grant bypass actors.")
+    if GOVERNANCE_PROMOTION_CONTEXT in required_status_contexts(ruleset):
+        blockers.append(
+            "Central ruleset must retire the legacy Governance Promotion requirement."
+        )
+    rules = ruleset.get("rules", [])
+    if _central_deployment_rules(rules) != rules:
+        blockers.append(
+            "Central test/prod deployments must be enforced "
+            "by Infrastructure Promotion."
+        )
+    if (
+        ruleset.get("enforcement") != "active"
+        or ruleset.get("target") != "branch"
+        or ruleset.get("conditions")
+        != {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}}
+    ):
+        blockers.append(
+            "Central main ruleset must remain active on the default branch."
+        )
+    return blockers
+
+
+def _single_central_issuer(checks: Sequence[Mapping[str, Any]]) -> bool:
+    """Reject absent, duplicated or differently issued central evidence contexts."""
+    return (
+        len(checks) == 1
+        and type(checks[0].get("integration_id")) is int
+        and checks[0].get("integration_id") == CENTRAL_PROMOTION_APP_ID
+    )
 
 
 def environment_reviewer_ids(environment: Mapping[str, Any]) -> set[int]:

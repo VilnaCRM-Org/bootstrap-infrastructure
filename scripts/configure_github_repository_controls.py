@@ -305,7 +305,9 @@ def _verify_applied_controls(
     blockers = [
         *_evidence_environment_blockers(repo),
         *additional_blockers,
-        *_ruleset_verification_blockers(ruleset, promotion_app_id=promotion_app_id),
+        *_ruleset_verification_blockers(
+            ruleset, promotion_app_id=promotion_app_id, repository=repo
+        ),
         *prod_environment_blockers,
         *reconcile_environment_blockers,
         *governance_environment_blockers,
@@ -481,7 +483,7 @@ def configure(
 ) -> None:
     """Print or apply the GitHub repository controls."""
     # Validate the dedicated issuer before any read or write in every mode.
-    ruleset_payload(promotion_app_id=promotion_app_id)
+    ruleset_payload(promotion_app_id=promotion_app_id, repository=repo)
     if apply and not _repo_admin_allowed(repo):
         raise RuntimeError(
             "repository admin rights are required to update branch rulesets "
@@ -506,7 +508,9 @@ def configure(
     existing = _main_ruleset(repo)
     payloads: dict[str, Any] = {
         "ruleset": ruleset_payload(
-            _existing_rules(existing), promotion_app_id=promotion_app_id
+            _existing_rules(existing),
+            promotion_app_id=promotion_app_id,
+            repository=repo,
         )
     }
     if apply:
