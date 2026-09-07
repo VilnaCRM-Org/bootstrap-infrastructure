@@ -42,7 +42,10 @@ def authenticate_intake(request: dict, evidence: dict):
     require(run["event"] == "issue_comment", "Source must be an issue_comment run")
     require(run["path"] == INTAKE_PATH, "Source must be the trusted intake workflow")
     require(run["head_repository"]["full_name"] == repository, "Foreign intake run")
-    require(run["run_attempt"] == 1, "Re-run intake requests are not accepted")
+    require(
+        type(run["run_attempt"]) is int and run["run_attempt"] == 1,
+        "Re-run intake requests are not accepted",
+    )
     require(str(run["id"]) == request["source_run_id"], "Source run mismatch")
     require(evidence["artifact"] == request, "Dispatch differs from intake artifact")
     require(pr["head"]["repo"]["full_name"] == repository, "Fork PR rejected")
@@ -69,18 +72,18 @@ def authenticate_intake(request: dict, evidence: dict):
     return command
 
 
-def validate_request(
-    request: dict, evidence: dict, *, governance: bool, service: bool = False
-) -> dict:
-    """Require authenticated origin and all current execution authorization checks."""
+def validate_current_request_identity(request: dict, evidence: dict) -> dict:
+    """Recheck immutable origin and current rights after an admitted approval wait.
+
+    This does not admit new requests: admission must also enforce freshness via
+    ``validate_request_identity``. No payload field can disable that check.
+    """
     command = authenticate_intake(request, evidence)
     pr, comment = evidence["pr"], evidence["comment"]
     require(pr["state"] == "open" and pr["merged"] is False, "PR closed or merged")
     require(pr["head"]["sha"] == request["head_sha"], "PR head moved")
     require(pr["base"]["ref"] == "main", "PR must target main")
     require(pr["base"]["sha"] == evidence["scope_base_sha"], "PR base moved")
-    created = datetime.fromisoformat(comment["created_at"].replace("Z", "+00:00"))
-    require(0 <= (evidence["now"] - created).total_seconds() <= 900, "Expired command")
     require(
         evidence["permission"] in {"write", "maintain", "admin"},
         "Write access required",
@@ -90,16 +93,34 @@ def validate_request(
             comment["user"]["login"].lower() != "kravalg",
             "Apply requester must differ from sole approver Kravalg",
         )
-    touched = paths_touch_governance(evidence["files"])
-    require(
-        service or touched == governance,
-        "Request routed to the wrong governance scope",
-    )
     return {
         **request,
         "display_command": command.display_command,
         "base_sha": evidence["scope_base_sha"],
     }
+
+
+def validate_request_identity(request: dict, evidence: dict) -> dict:
+    """Require current identity and a fresh command for initial admission."""
+    outputs = validate_current_request_identity(request, evidence)
+    created = datetime.fromisoformat(
+        evidence["comment"]["created_at"].replace("Z", "+00:00")
+    )
+    require(0 <= (evidence["now"] - created).total_seconds() <= 900, "Expired command")
+    return outputs
+
+
+def validate_request(
+    request: dict, evidence: dict, *, governance: bool, service: bool = False
+) -> dict:
+    """Retain the legacy/service scope gate after every identity check succeeds."""
+    outputs = validate_request_identity(request, evidence)
+    touched = paths_touch_governance(evidence["files"])
+    require(
+        service or touched == governance,
+        "Request routed to the wrong governance scope",
+    )
+    return outputs
 
 
 def read_request() -> dict[str, str]:
@@ -177,24 +198,84 @@ def collect_evidence(request: dict[str, str], *, intake: dict | None = None) -> 
         before["head"]["sha"] == request["head_sha"], "PR head moved before scope scan"
     )
     base_sha = before["base"]["sha"]
-    require(re.fullmatch(r"[0-9a-f]{40}", base_sha) is not None, "Invalid base SHA")
+    require(
+        isinstance(base_sha, str)
+        and re.fullmatch(r"[0-9a-f]{40}", base_sha) is not None,
+        "Invalid base SHA",
+    )
+    count = before["changed_files"]
+    require(type(count) is int and count >= 0, "Invalid changed-file count")
+    _validate_scope_source(before, repository)
     comparison = gh(f"{base}/compare/{base_sha}...{request['head_sha']}")
     changed = comparison["files"]
     # Compare is immutable but GitHub limits this response to 300 files.
-    require(len(changed) == before["changed_files"], "Incomplete changed-file listing")
+    require(isinstance(changed, list), "Changed-file listing must be an array")
+    require(len(changed) == count, "Incomplete changed-file listing")
+    require(
+        all(isinstance(item, dict) for item in changed),
+        "Changed-file records must be objects",
+    )
+    _validate_changed_filenames(changed)
+    records = [dict(item) for item in changed]
     files = [
         name
-        for item in changed
+        for item in records
         for name in (item["filename"], item.get("previous_filename", ""))
     ]
+    after = gh(f"{base}/pulls/{pr_number}")
+    _validate_scope_source(after, repository)
+    require(
+        after["head"]["sha"] == request["head_sha"], "PR head moved during scope scan"
+    )
+    require(after["base"]["sha"] == base_sha, "PR base moved during scope scan")
+    require(
+        type(after["changed_files"]) is int and after["changed_files"] == count,
+        "PR changed-file count moved during scope scan",
+    )
     return {
         **origin,
         "now": datetime.now(timezone.utc),
-        "pr": gh(f"{base}/pulls/{pr_number}"),
+        "pr": after,
         "permission": gh(f"{base}/collaborators/{login}/permission")["permission"],
         "scope_base_sha": base_sha,
+        "scope_head_sha": request["head_sha"],
+        "changed_file_records": records,
+        "changed_file_count": count,
         "files": files,
     }
+
+
+def _validate_changed_filenames(changed: list[dict]) -> None:
+    """Reject malformed filenames before flattening authenticated compare records."""
+    require(
+        all(
+            isinstance(item.get("filename"), str) and bool(item["filename"])
+            for item in changed
+        ),
+        "Changed-file filenames must be nonempty strings",
+    )
+    require(
+        all(
+            "previous_filename" not in item
+            or (
+                isinstance(item["previous_filename"], str)
+                and bool(item["previous_filename"])
+            )
+            for item in changed
+        ),
+        "Changed-file previous filenames must be nonempty strings",
+    )
+
+
+def _validate_scope_source(pr: dict, repository: str) -> None:
+    """Keep both mutable PR observations bound to the authenticated source."""
+    require(
+        pr["head"]["repo"]["full_name"] == repository, "Foreign scope head repository"
+    )
+    require(
+        pr["base"]["repo"]["full_name"] == repository, "Foreign scope base repository"
+    )
+    require(pr["base"]["ref"] == "main", "Scope PR must target main")
 
 
 def claim_request(request: dict[str, str]) -> None:

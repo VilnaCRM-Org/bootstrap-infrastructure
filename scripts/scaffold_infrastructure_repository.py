@@ -17,7 +17,6 @@ RUNTIME_FILES = (
     "pyproject.toml",
     "uv.lock",
     ".github/actions/load-aws-ci-env/action.yml",
-    ".github/workflows/governance-promotion.yml",
     "scripts/_script_support.py",
     "scripts/_pulumi_command_support.py",
     "scripts/_pulumi_stack_config.py",
