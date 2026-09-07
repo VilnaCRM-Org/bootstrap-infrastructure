@@ -3,11 +3,12 @@
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
 from iam_statement_matcher import iam_statement_matches
-from infra import backup, config
+from infra import backup, config, platform_iam
 from infra.automation import _automation_policy, _automation_policy_documents
 from infra.utils.outputs import future_output
 from pulumi.runtime.sync_await import _sync_await
@@ -89,6 +90,28 @@ def test_only_exact_owned_vault_receives_constrained_put(
         "NumericEquals": {"backup:MinRetentionDays": "90"},
         "Null": {"backup:ChangeableForDays": "true", "backup:MaxRetentionDays": "true"},
     }
+    # These explicit context expectations complement action/resource matching;
+    # they are a bounded policy regression, not a live IAM simulation.
+    expected_tags = grant["Condition"]["StringEquals"]
+    required_absent = grant["Condition"]["Null"]
+    positive = {**expected_tags, "backup:MinRetentionDays": "90"}
+    for change, allowed in (
+        ({}, True),
+        ({"aws:ResourceTag/Environment": "foreign"}, False),
+        ({"aws:ResourceTag/Purpose": "foreign"}, False),
+        ({"backup:MinRetentionDays": "89"}, False),
+        ({"backup:MinRetentionDays": "91"}, False),
+        ({"backup:MinRetentionDays": None}, False),
+        ({"backup:ChangeableForDays": "3"}, False),
+        ({"backup:MaxRetentionDays": "90"}, False),
+    ):
+        context = {**positive, **change}
+        assert (
+            all(context.get(k) == v for k, v in expected_tags.items())
+            and context.get("backup:MinRetentionDays")
+            == grant["Condition"]["NumericEquals"]["backup:MinRetentionDays"]
+            and all(k not in context for k in required_absent)
+        ) is allowed
     assert iam_statement_matches(grant, "backup:PutBackupVaultLockConfiguration", arn)
     for foreign in (
         arn + "other",
@@ -153,3 +176,61 @@ def test_checked_operator_config_binds_the_existing_vault(environment, account, 
         f"arn:aws:backup:eu-central-1:{account}:backup-vault:s3-backup-vault-{suffix}"
     )
     assert data["secretsprovider"].startswith("awskms://")
+
+
+@pytest.mark.parametrize(
+    "environment,account", [("test", "891377212104"), ("prod", "933245420672")]
+)
+def test_actual_config_retention_preserves_boundary_bytes_and_quota(
+    environment, account, record_property
+):
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "pulumi/github-ci-bootstrap"
+        / f"Pulumi.{environment}.yaml"
+    )
+    values = {
+        k.removeprefix("github-ci-bootstrap:"): v
+        for k, v in yaml.safe_load(path.read_text())["config"].items()
+        if k.startswith("github-ci-bootstrap:")
+    }
+    settings = config.BootstrapSettings.from_pulumi_config(
+        SimpleNamespace(get=values.get, get_secret=lambda _: None)
+    )
+    original = platform_iam.platform_control_boundary(
+        account, replace(settings, platform_backup_vault_arn=None), settings.repo
+    )
+    current = platform_iam.platform_control_boundary(account, settings, settings.repo)
+    assert current == original
+    assert len(current) <= 6144
+    record_property(f"{environment}_boundary_characters", len(current))
+    document = json.loads(current)
+    action = "backup:PutBackupVaultLockConfiguration"
+    arn = settings.platform_backup_vault_arn
+    # Verify the existing unconditional ceiling actually covers the new exact action.
+    assert any(
+        s["Effect"] == "Allow"
+        and not s.get("Condition")
+        and iam_statement_matches(s, action, arn)
+        for s in document["Statement"]
+    )
+    assert not any(
+        s["Effect"] == "Deny" and iam_statement_matches(s, action, arn)
+        for s in document["Statement"]
+    )
+    identity = json.loads(_automation_policy(account, settings, settings.repo))
+    grant = next(
+        s
+        for s in identity["Statement"]
+        if s["Sid"] == "ConfigureBootstrapBackupRetentionLock"
+    )
+    assert grant["Resource"] == arn
+    assert grant["Action"] == [action]
+    assert grant["Condition"] == {
+        "StringEquals": {
+            "aws:ResourceTag/Environment": environment,
+            "aws:ResourceTag/Purpose": "s3-backup",
+        },
+        "NumericEquals": {"backup:MinRetentionDays": "90"},
+        "Null": {"backup:ChangeableForDays": "true", "backup:MaxRetentionDays": "true"},
+    }
