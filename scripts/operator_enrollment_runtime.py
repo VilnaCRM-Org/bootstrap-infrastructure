@@ -204,6 +204,18 @@ def collect_enrollment(
         and re.fullmatch(r"[A-Za-z0-9_+=,.@-]{2,64}", arn[len(prefix) :]) is not None,
         "Wrong operator caller; root and foreign roles are rejected",
     )
+    return _collect_metadata(expected, call=call)
+
+
+def _collect_metadata(
+    expected: registry.SeedRegistry, *, call: AwsRead
+) -> registry.EnrollmentObservation:
+    """Shared complete reads after an entry point authenticates its own caller.
+
+    This helper deliberately does not authenticate an operator or an installer.
+    Use collect_enrollment for active workers; the independent initial CLI has
+    its own STS/immutable RoleId gate. Neither route authorizes trust activation.
+    """
     metadata = _object(
         _read(call, "kms", "describe_key", KeyId=expected.seed_key.arn).get(
             "KeyMetadata"

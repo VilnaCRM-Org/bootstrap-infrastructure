@@ -84,6 +84,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "operator_plan_envelope",
         "operator_plan_validation",
         "operator_seed_installation",
+        "operator_seed_observation",
         "pulumi_command_preflight",
         "pulumi_ci_guardrails",
         "pulumi_pr_comment",

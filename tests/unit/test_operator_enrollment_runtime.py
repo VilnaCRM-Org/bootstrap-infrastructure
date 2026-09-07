@@ -169,6 +169,18 @@ class Reader:
         return self.role_response(operation, arguments)
 
 
+def test_shared_collector_does_not_admit_installer_through_operator_gate():
+    """Independent initial authentication must never widen active worker identity."""
+    expected = build()
+    reader = Reader(expected)
+    reader.caller["Arn"] = (
+        f"arn:aws:sts::{expected.account_id}:assumed-role/IndependentInstaller/session-1"
+    )
+    with pytest.raises(ValueError, match="Wrong operator caller"):
+        runtime.collect_enrollment(expected, purpose="preview", call=reader)
+    assert reader.calls == [("sts", "get_caller_identity", {})]
+
+
 @pytest.mark.parametrize("environment", ["test", "prod"])
 @pytest.mark.parametrize("purpose", ["preview", "apply", "drift"])
 @pytest.mark.parametrize("encoding", ["object", "json", "encoded"])
