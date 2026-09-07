@@ -142,6 +142,41 @@ def test_control_boundary_attaches_to_apply_only():
     }
 
 
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_control_boundary_allows_platform_provider_metadata_with_exact_alias(
+    environment,
+):
+    """Saved-plan preparation describes the existing platform provider key."""
+    document = platform_iam.platform_control_boundary(
+        ACCOUNT, settings(environment), REPO.name
+    )
+    grants = [
+        item
+        for item in json.loads(document)["Statement"]
+        if "kms:Decrypt" in values(item["Action"])
+    ]
+    assert grants == [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+            ],
+            "Resource": f"arn:aws:kms:*:{ACCOUNT}:key/*",
+            "Condition": {
+                "ForAnyValue:StringEquals": {
+                    "kms:ResourceAliases": (
+                        f"alias/pulumi-platform-bootstrap-{environment}"
+                    )
+                }
+            },
+        }
+    ]
+    assert len(document) <= 6144
+
+
 @pytest.mark.parametrize("adopt", [False, True])
 def test_operator_components_own_replication_config_and_immutable_policies(
     pulumi_mocks, monkeypatch, adopt

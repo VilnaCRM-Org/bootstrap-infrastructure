@@ -639,7 +639,12 @@ def platform_control_boundary(
     statements.append(
         {
             "Effect": "Allow",
-            "Action": ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey"],
+            "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:GenerateDataKey",
+                "kms:DescribeKey",
+            ],
             "Resource": f"arn:aws:kms:*:{account_id}:key/*",
             "Condition": {
                 "ForAnyValue:StringEquals": {
