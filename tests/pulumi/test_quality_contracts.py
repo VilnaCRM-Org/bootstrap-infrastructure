@@ -68,6 +68,8 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "deployment_worker_recheck",
         "deployment_worker_runtime",
         "deployment_worker_receipt",
+        "deployment_receipt_runtime",
+        "deployment_account_barrier",
         "deployment_schedule",
         "deployment_scopes",
         "governance_paths",

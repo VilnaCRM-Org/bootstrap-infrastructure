@@ -70,6 +70,8 @@ CENTRAL_EXECUTION_FILES = frozenset(
         "scripts/deployment_worker_recheck.py",
         "scripts/deployment_worker_runtime.py",
         "scripts/deployment_worker_receipt.py",
+        "scripts/deployment_receipt_runtime.py",
+        "scripts/deployment_account_barrier.py",
         "scripts/pulumi_command_preflight.py",
         "scripts/pulumi_pr_comment.py",
         "scripts/governance_promotion.py",
