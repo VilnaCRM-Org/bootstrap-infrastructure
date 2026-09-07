@@ -78,12 +78,22 @@ def _validate_backend(backend: SplitResult) -> None:
     )
 
 
+def _split_uri(value: str) -> SplitResult:
+    """Convert malformed URI syntax into the guarded configuration error."""
+    try:
+        return urlsplit(value)
+    except ValueError:
+        raise StackConfigError(
+            "Invalid stack backend or secrets provider URI."
+        ) from None
+
+
 def _coordinates(context: CommandContext, stack: str) -> dict[str, str]:
     _require(
         not re.search(r"[%\\\x00-\x20]", context.backend_url),
         "An exact S3 backend cannot contain escapes or control characters.",
     )
-    backend = urlsplit(context.backend_url)
+    backend = _split_uri(context.backend_url)
     _validate_backend(backend)
     _require(
         context.env.get("PULUMI_BACKEND_URL", context.backend_url)
@@ -212,7 +222,7 @@ def _provider_state(context: CommandContext, target: dict[str, str]) -> dict[str
 
 
 def _key_identity(context: CommandContext, account: str) -> str:
-    provider = urlsplit(context.secrets_provider)
+    provider = _split_uri(context.secrets_provider)
     region = context.env.get("AWS_REGION") or context.env.get("AWS_DEFAULT_REGION", "")
     _require(
         provider.scheme == "awskms"

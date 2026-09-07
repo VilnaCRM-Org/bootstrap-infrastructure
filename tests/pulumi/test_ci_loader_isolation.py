@@ -55,6 +55,7 @@ def test_loader_ignores_checkout_code(tmp_path: Path, step_id: str) -> None:
         "CI_CONFIG_AWS_REGION": "eu-central-1",
         "CI_CONFIG_SECRET_ID": "/example/ci/test-pr",
         "CI_CONFIG_ACCOUNT_ID": "123456789012",
+        "CI_CONFIG_EXPECTED_REGION": "eu-central-1",
         "CI_CONFIG_PURPOSE": "offline isolation regression",
         "CI_CONFIG_ACTION_PATH": str(ACTION_PATH),
         "REQUIRED_KEYS": "AWS_ACCOUNT_ID,AWS_REGION",

@@ -1,5 +1,7 @@
 # AWS Well-Architected Question Matrix
 
+The planning rows and historical May claims below are retained. The [current technical review](../../docs/well-architected-current-review-2026-09-06.md) and `question-matrix-evidence-2026-09-06.json` supersede historical all-5 scores for current enforcement, with 47 passed / 10 unresolved and actual reviewer attribution.
+
 Scope: issue #17 planning for the bootstrap infrastructure repository. This matrix uses the current AWS Well-Architected Framework question set re-checked against the AWS public documentation on 2026-05-09 and maps every question to current repository evidence, the gap to an evidence-backed 5/5, and the future evidence that must exist before any score increase is claimed.
 
 The original planning package was planning-only. The rows below remain the

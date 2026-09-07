@@ -63,13 +63,13 @@ def test_backend_preflight(backend: str, passed: bool) -> None:
     assert guarded == 6
 
 
-def test_evidence_loader_is_immutable() -> None:
-    """Changing a PR's local composite action cannot change the loader invoked."""
-    steps = workflow("well-architected-evidence.yml")["jobs"]["test_account_evidence"][
-        "steps"
-    ]
-    loader = next(step for step in steps if step.get("id") == "ci_config")
-    assert loader["uses"] == (
-        "VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env"
-        "@d1297f1f00658c351dd6b94e510b394835b13ede"
+def test_advisory_evidence_executes_without_privileged_loader() -> None:
+    """No PR-controlled local collector runs after a cloud credential request."""
+    jobs = workflow("well-architected-evidence.yml")["jobs"]
+    assert set(jobs) == {"evidence_data"}
+    job = jobs["evidence_data"]
+    assert job["permissions"] == {"contents": "read"}
+    assert not any(step.get("id") == "ci_config" for step in job["steps"])
+    assert not any(
+        "configure-aws-credentials" in step.get("uses", "") for step in job["steps"]
     )

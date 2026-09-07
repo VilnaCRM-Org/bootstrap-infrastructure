@@ -253,4 +253,6 @@ PRODUCTION_DR_OWNER_SPEC = OptionalOwnerEvidenceSpec(
     required_fields=PRODUCTION_DR_OWNER_REQUIRED_FIELDS,
     payload_blockers=_production_dr_owner_payload_blockers,
     summary=_production_dr_owner_summary,
+    # Policy validity uses its mandatory expiry; live restore health stays separate.
+    max_review_age_days=None,
 )

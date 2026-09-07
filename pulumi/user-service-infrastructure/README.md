@@ -77,3 +77,19 @@ The test account is 891377212104, production is 933245420672, in eu-central-1.
 Apply comments and Initialize Service Stack dispatches must be requested by a
 maintainer other than sole environment reviewer Kravalg. Kravalg approves the
 protected environment; the original apply commenter cannot also be the approver.
+
+Scheduled drift uses `.github/workflows/scheduled-drift.yml` with the
+`Service Scheduled Drift` OIDC workflow-name claim and dedicated main-only
+`test-drift` and `prod-drift` environments. PR commands retain
+`.github/workflows/self-deploy.yml` and `Service Self Deploy`. The schedule-only
+workflow has only main-revision TEST/PROD read-only drift jobs and never consumes
+a PR head. Unattended drift requires these environments without required human
+reviewers and narrowly bound config-reader/drift trust statements to be installed;
+source availability alone does not prove that live prerequisite. Apply trust and
+approvals remain unchanged.
+
+Preview, saved-plan apply, post-apply drift and scheduled drift share one
+repository/environment/stack concurrency group. A newer request never cancels an
+active state operation. GitHub keeps one pending job per group by default, so a
+newer pending request can replace an older pending request. This provides mutual
+exclusion, not FIFO delivery of every request.

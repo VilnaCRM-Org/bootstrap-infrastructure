@@ -12,10 +12,16 @@ SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS = (
     _recording.SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
 )
 SECURITY_ACCOUNT_ALLOWED_APPROVALS = frozenset(
-    {"approved", "approved_exception", "accepted_risk"}
+    {"approved", "approved_exception", "accepted_risk", "technical_review"}
 )
 SECURITY_ACCOUNT_ALLOWED_HUMAN_ACCESS = frozenset(
-    {"mfa_sso_verified", "approved", "approved_exception", "accepted_risk"}
+    {
+        "mfa_sso_verified",
+        "approved",
+        "approved_exception",
+        "accepted_risk",
+        "not_assessed",
+    }
 )
 SECURITY_ACCOUNT_ALLOWED_ACTIVE_KEY = frozenset(
     {"no_active_keys", "rotated", "approved_exception", "accepted_risk"}
@@ -61,6 +67,8 @@ def _blocker_lines(check: dict[str, Any]) -> str:
 
 def render_attestation(report: dict[str, Any], args: argparse.Namespace) -> str:
     check, evidence = _iam_access_check(report)
+    _validate_attestation_choices(args)
+    _validate_technical_account_evidence(args, evidence)
     action_lines = _markdown_list(args.action, "No follow-up actions recorded.")
 
     return "\n".join(
@@ -69,7 +77,9 @@ def render_attestation(report: dict[str, Any], args: argparse.Namespace) -> str:
             "",
             "This attestation record is generated from metadata-only "
             "Well-Architected collector output and completed with security-owner "
-            "review fields. Do not add IAM user names, access key IDs, secret "
+            "or explicitly scoped technical review fields. Technical review does not "
+            "approve human/SSO access or risk exceptions. Do not add IAM user names, "
+            "access key IDs, secret "
             "values, screenshots containing private identities, credentials, "
             "tokens, or raw account exports.",
             "",
@@ -173,6 +183,7 @@ def structured_attestation(
 ) -> dict[str, object]:
     """Return machine-readable, non-secret security-owner attestation evidence."""
     _check, evidence = _iam_access_check(report)
+    _validate_technical_account_evidence(args, evidence)
     if not args.action:
         raise ValueError(
             "structured security account attestation requires at least one --action"
@@ -200,6 +211,16 @@ def structured_attestation(
             for field in SECURITY_ACCOUNT_ATTESTATION_ACCOUNT_FIELDS
         },
     }
+
+
+def _validate_technical_account_evidence(
+    args: argparse.Namespace, evidence: dict[str, Any]
+) -> None:
+    """A technical no-active-keys claim requires an observed exact zero count."""
+    if args.approval_decision.strip().lower() == "technical_review":
+        count = evidence.get("activeUserAccessKeyCount")
+        if type(count) is not int or count != 0:
+            raise ValueError("Technical review requires observed zero active IAM keys.")
 
 
 def _validate_attestation_choices(args: argparse.Namespace) -> None:
@@ -233,8 +254,27 @@ def _validate_attestation_choices(args: argparse.Namespace) -> None:
             SECURITY_ACCOUNT_ALLOWED_BOUNDARY,
         )
     )
+    blockers.extend(_review_scope_blockers(args))
     if blockers:
         raise ValueError(" ".join(blockers))
+
+
+def _review_scope_blockers(args: argparse.Namespace) -> list[str]:
+    """Keep technical observations separate from human approval and exemptions."""
+    if args.approval_decision.strip().lower() == "technical_review":
+        expected = {
+            "human_access_posture": "not_assessed",
+            "active_key_decision": "no_active_keys",
+            "permissions_boundary_decision": "boundary_verified",
+        }
+        if any(
+            getattr(args, key).strip().lower() != value
+            for key, value in expected.items()
+        ):
+            return ["Technical review cannot claim human approval or risk exceptions."]
+    elif args.human_access_posture.strip().lower() == "not_assessed":
+        return ["Human-access approval cannot use a not_assessed posture."]
+    return []
 
 
 def _choice_blockers(

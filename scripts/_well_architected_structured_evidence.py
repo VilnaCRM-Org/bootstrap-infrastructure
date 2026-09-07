@@ -190,11 +190,17 @@ def _read_required_structured_evidence(
     evidence_path: Path,
     label: str,
     required_fields: Sequence[str],
+    *,
+    max_review_age_days: int | None = STRUCTURED_EVIDENCE_MAX_AGE_DAYS,
 ) -> tuple[dict[str, Any], list[str]]:
     """Read structured evidence and apply shared required-field checks."""
     payload, blockers = _read_structured_evidence_payload(evidence_path, label)
     blockers.extend(_structured_evidence_payload_blockers(payload, required_fields))
-    blockers.extend(_structured_evidence_freshness_blockers(payload, label))
+    blockers.extend(
+        _structured_evidence_freshness_blockers(
+            payload, label, max_review_age_days=max_review_age_days
+        )
+    )
     return payload, blockers
 
 
@@ -265,6 +271,7 @@ def _structured_evidence_freshness_blockers(
     label: str,
     *,
     timestamp_field: str = "reviewedAt",
+    max_review_age_days: int | None = STRUCTURED_EVIDENCE_MAX_AGE_DAYS,
 ) -> list[str]:
     """Return blockers for stale or invalid structured evidence timestamps."""
     reviewed_at = payload.get(timestamp_field)
@@ -276,9 +283,10 @@ def _structured_evidence_freshness_blockers(
     now = dt.datetime.now(dt.timezone.utc)
     if parsed_at > now + dt.timedelta(minutes=5):
         return [f"{label} {timestamp_field} is in the future."]
-    max_age = dt.timedelta(days=STRUCTURED_EVIDENCE_MAX_AGE_DAYS)
-    if now - parsed_at > max_age:
-        return [f"{label} is older than {STRUCTURED_EVIDENCE_MAX_AGE_DAYS} days."]
+    if max_review_age_days is not None and now - parsed_at > dt.timedelta(
+        days=max_review_age_days
+    ):
+        return [f"{label} is older than {max_review_age_days} days."]
     return []
 
 

@@ -230,6 +230,7 @@ def test_bootstrap_settings_from_pulumi_config_uses_defaults_and_stack_fallback(
     assert settings_obj.cost_anomaly_monitor_arn is None  # nosec B101
     assert settings_obj.manage_cost_allocation_tags is False  # nosec B101
     assert settings_obj.operations_cloudtrail_name is None  # nosec B101
+    assert settings_obj.platform_backup_vault_arn is None  # nosec B101
 
 
 def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch):
@@ -255,6 +256,9 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
                 "e5509927-1fcc-400c-9536-0fdd01314bc9"
             ),
             "operationsCloudTrailName": "existing-management-events",
+            "platformBackupVaultArn": (
+                "arn:aws:backup:eu-central-1:123456789012:backup-vault:owned-vault"
+            ),
             "manageCostAllocationTags": "true",
             "githubOidcProviderArn": "arn:aws:iam::123456789012:oidc-provider/test",
             "repositoryCatalogPath": "repositories.json",
@@ -292,6 +296,9 @@ def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch)
         "existing-management-events"
     )
     assert settings_obj.manage_cost_allocation_tags is True  # nosec B101
+    assert settings_obj.platform_backup_vault_arn == (
+        "arn:aws:backup:eu-central-1:123456789012:backup-vault:owned-vault"
+    )
 
 
 @pytest.mark.parametrize(

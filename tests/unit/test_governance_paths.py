@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import io
 import sys
 from pathlib import Path
 
@@ -164,40 +165,25 @@ def test_paths_touch_governance_ignores_blank_lines() -> None:
     )
 
 
-def test_files_stdin_cli_prints_true(capsys) -> None:
+def test_files_stdin_cli_prints_true(capsys, monkeypatch) -> None:
     files = "pulumi/governance/x\ndocs/readme.md\n"
-    import io
-
-    sys.stdin = io.StringIO(files)
-    try:
-        exit_code = governance_paths.main(["--files-stdin"])
-    finally:
-        sys.stdin = sys.__stdin__
+    monkeypatch.setattr(sys, "stdin", io.StringIO(files))
+    exit_code = governance_paths.main(["--files-stdin"])
     assert exit_code == 0
     assert capsys.readouterr().out == "governance_touched=true\n"
 
 
-def test_files_stdin_cli_prints_false(capsys) -> None:
+def test_files_stdin_cli_prints_false(capsys, monkeypatch) -> None:
     files = "docs/readme.md\ntests/x.py\n"
-    import io
-
-    sys.stdin = io.StringIO(files)
-    try:
-        exit_code = governance_paths.main(["--files-stdin"])
-    finally:
-        sys.stdin = sys.__stdin__
+    monkeypatch.setattr(sys, "stdin", io.StringIO(files))
+    exit_code = governance_paths.main(["--files-stdin"])
     assert exit_code == 0
     assert capsys.readouterr().out == "governance_touched=false\n"
 
 
-def test_files_stdin_cli_empty_prints_false(capsys) -> None:
-    import io
-
-    sys.stdin = io.StringIO("")
-    try:
-        exit_code = governance_paths.main(["--files-stdin"])
-    finally:
-        sys.stdin = sys.__stdin__
+def test_files_stdin_cli_empty_prints_false(capsys, monkeypatch) -> None:
+    monkeypatch.setattr(sys, "stdin", io.StringIO(""))
+    exit_code = governance_paths.main(["--files-stdin"])
     assert exit_code == 0
     assert capsys.readouterr().out == "governance_touched=false\n"
 

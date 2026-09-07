@@ -36,6 +36,34 @@ def trusted_context() -> tuple[str, str]:
     return environment, account
 
 
+def verify_requester() -> None:
+    """Require a fresh current-write requester distinct from the sole reviewer."""
+    require(
+        os.environ.get("GITHUB_RUN_ATTEMPT") == "1",
+        "Re-run initialization rejected; dispatch again",
+    )
+    actor = os.environ.get("GITHUB_ACTOR", "")
+    require(
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", actor) is not None,
+        "Invalid initialization requester",
+    )
+    require(
+        actor.lower() != "kravalg",
+        "Initialization requester must differ from sole approver Kravalg",
+    )
+    require(
+        os.environ.get("GITHUB_TRIGGERING_ACTOR") == actor,
+        "Initialization triggering actor differs",
+    )
+    permission = gh(
+        f"repos/{os.environ['GITHUB_REPOSITORY']}/collaborators/{actor}/permission"
+    )
+    require(
+        permission.get("permission") in {"write", "maintain", "admin"},
+        "Current write access required for initialization",
+    )
+
+
 def contract(root: Path, environment: str, account: str) -> tuple[str, str, str]:
     """Bind project, account, backend and KMS provider to committed service metadata."""
     import yaml
@@ -150,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     environment, _ = trusted_context()
     if args.command == "verify":
+        verify_requester()
         verify_environments(
             {"command": "up", "target_environment": environment}, governance=False
         )

@@ -1,0 +1,27 @@
+{
+  "status": "PASS",
+  "environment": "test",
+  "operation": "platform-logging-apply",
+  "account": "891377212104",
+  "source_sha": "ffae8ec17ef7e2c4610fd699f4a2aa2f30734654",
+  "plan_sha256": "1cec36e970deb195eb2a7b1ba9066dc4ea7d96b0c4d634b066124973397db019",
+  "helper_sha256": "7c3ef3604abdae21608bfaaede4256f9199e5f10d5cfef8bc48a833150f49fb6",
+  "checkpoint_before": {
+    "VersionId": "HdE0G5xYN4OrNkZ70l6o65RG2kaXX2uc",
+    "ETag": "\"9d86299dba76f7f17bd178dbd267b094\"",
+    "ContentLength": 959419
+  },
+  "owner_digest_before": "36421adf0fcb7274874ada4ba8adde5e31e095d894275a546a2b795698ff2156",
+  "started_at": "2026-09-06T22:23:26.737804+00:00",
+  "returncode": 0,
+  "checkpoint_after": {
+    "VersionId": "mbOG2ldfD5KRum4W1Paut1FiBEJ.Kzdy",
+    "ETag": "\"4d1f36a3791cbdab8df02cb1fecf27b8\"",
+    "ContentLength": 959397
+  },
+  "owner_digest_after": "36421adf0fcb7274874ada4ba8adde5e31e095d894275a546a2b795698ff2156",
+  "managed_aws_owner_count": 85,
+  "live_two_logging_targets_exact": true,
+  "owner_provider_continuity": true,
+  "finished_at": "2026-09-06T22:25:12.180787+00:00"
+}

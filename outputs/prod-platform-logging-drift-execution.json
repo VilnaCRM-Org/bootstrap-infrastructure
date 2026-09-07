@@ -1,0 +1,27 @@
+{
+  "status": "PASS",
+  "environment": "prod",
+  "operation": "platform-logging-drift",
+  "account": "933245420672",
+  "source_sha": "ffae8ec17ef7e2c4610fd699f4a2aa2f30734654",
+  "plan_sha256": "398fedf972eacd152adad8ec605d2890474e91549bc666474c4f7fe09e4d10ae",
+  "helper_sha256": "7c3ef3604abdae21608bfaaede4256f9199e5f10d5cfef8bc48a833150f49fb6",
+  "checkpoint_before": {
+    "VersionId": "8Z3FBuWoLnzEAxDT3PCNMxl9dF36R05x",
+    "ETag": "\"f84fbff9d9519c5e1e5b3bcc612097fc\"",
+    "ContentLength": 919695
+  },
+  "owner_digest_before": "947e535204e20016c23b35de490a28ca74a588dd1870de53605f65b445d0af85",
+  "started_at": "2026-09-06T22:38:38.905045+00:00",
+  "returncode": 0,
+  "checkpoint_after": {
+    "VersionId": "8Z3FBuWoLnzEAxDT3PCNMxl9dF36R05x",
+    "ETag": "\"f84fbff9d9519c5e1e5b3bcc612097fc\"",
+    "ContentLength": 919695
+  },
+  "owner_digest_after": "947e535204e20016c23b35de490a28ca74a588dd1870de53605f65b445d0af85",
+  "managed_aws_owner_count": 77,
+  "live_two_logging_targets_exact": true,
+  "owner_provider_continuity": true,
+  "finished_at": "2026-09-06T22:39:23.079618+00:00"
+}

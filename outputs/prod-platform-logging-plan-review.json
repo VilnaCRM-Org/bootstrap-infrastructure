@@ -1,0 +1,70 @@
+{
+  "status": "EXACT_LOGGING_SAVED_PLAN_REVIEW_PASS",
+  "environment": "prod",
+  "account": "933245420672",
+  "source_sha": "ffae8ec17ef7e2c4610fd699f4a2aa2f30734654",
+  "installed_main_sha": "5c873f86fa956f6b96a09e2887297905467b8562",
+  "plan_sha256": "398fedf972eacd152adad8ec605d2890474e91549bc666474c4f7fe09e4d10ae",
+  "preview_receipt_sha256": "2915402723a2d130e4a39c93f8551084f59fbfdccb83b999eb4719fd574db631",
+  "events_sha256": "636740252bb40f0c3fb5a201ce283ff74255d6757e40a3cef6764a1a933805fb",
+  "resource_step_counts": {
+    "same": 91,
+    "update": 2
+  },
+  "updates": [
+    {
+      "urn": "urn:pulumi:prod::bootstrap-infrastructure::bootstrap:infra:BootstrapInfrastructure$bootstrap:pulumi:PulumiStateBuckets$aws:s3/bucketLogging:BucketLogging::pulumi-state-bootstrap-infrastructure-logging",
+      "type": "aws:s3/bucketLogging:BucketLogging",
+      "id": "pulumi-bootstrap-infrastructure-prod-state",
+      "bucket": "pulumi-bootstrap-infrastructure-prod-state",
+      "region": "eu-central-1",
+      "targetBucket": "company-central-logs-eu-central-1-prod",
+      "old_targetPrefix": "server-access/pulumi-bootstrap-infrastructure-prod-state/",
+      "expected_targetPrefix": "aws-logs/pulumi-bootstrap-infrastructure-prod-state/",
+      "provider": "urn:pulumi:prod::bootstrap-infrastructure::pulumi:providers:aws::default_7_23_0::acd1fd0c-ed40-44f2-bae1-b42cb47cd521",
+      "input_diff": {
+        "adds": {
+          "__defaults": []
+        },
+        "updates": {
+          "targetPrefix": "aws-logs/pulumi-bootstrap-infrastructure-prod-state/"
+        }
+      },
+      "output_diff": {},
+      "row_sha256": "5d7f5122712ac4abe41e9d49e9f2c9bdbaec3ac09a0c42fbb1e10763c4c73074"
+    },
+    {
+      "urn": "urn:pulumi:prod::bootstrap-infrastructure::bootstrap:infra:BootstrapInfrastructure$bootstrap:pulumi:PulumiStateBuckets$aws:s3/bucketLogging:BucketLogging::pulumi-state-replica-bootstrap-infrastructure-logging",
+      "type": "aws:s3/bucketLogging:BucketLogging",
+      "id": "pulumi-bootstrap-infrastructure--e7ae39dd-eu-west-1-replication",
+      "bucket": "pulumi-bootstrap-infrastructure--e7ae39dd-eu-west-1-replication",
+      "region": "eu-west-1",
+      "targetBucket": "company-central-logs-eu-central-1-prod-eu-west-1-replication",
+      "old_targetPrefix": "server-access/pulumi-bootstrap-infrastructure--e7ae39dd-eu-west-1-replication/",
+      "expected_targetPrefix": "aws-logs/pulumi-bootstrap-infrastructure--e7ae39dd-eu-west-1-replication/",
+      "provider": "urn:pulumi:prod::bootstrap-infrastructure::bootstrap:infra:BootstrapInfrastructure$bootstrap:pulumi:PulumiStateBuckets$pulumi:providers:aws::pulumi-state-replica-provider::a47dd90b-e7e9-4208-8920-d409cdf151f6",
+      "input_diff": {
+        "adds": {
+          "__defaults": []
+        },
+        "updates": {
+          "targetPrefix": "aws-logs/pulumi-bootstrap-infrastructure--e7ae39dd-eu-west-1-replication/"
+        }
+      },
+      "output_diff": {},
+      "row_sha256": "396659ff7d6120c1884c792460608291668081a7c8ee3960f3da1ca7fca1eb0c"
+    }
+  ],
+  "other_aws_changes": 0,
+  "output_diffs": 0,
+  "checkpoint": {
+    "VersionId": "WXz2IA4DaA9TCZyNP0BmD0lW9r5n59Sl",
+    "ETag": "\"fc1706cdb7919507a9dc9a7415c963ec\"",
+    "ContentLength": 919710
+  },
+  "same_step_notes": "Unchanged steps include Pulumi/provider __defaults metadata and nested normalization. They remain same operations; no additional AWS mutation is authorized.",
+  "limits": [
+    "No apply executed by reviewing agent; root decides and executes.",
+    "Actual logging delivery follows the update and needs observation; metadata parity alone is not delivery proof."
+  ]
+}

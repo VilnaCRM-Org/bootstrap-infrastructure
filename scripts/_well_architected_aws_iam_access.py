@@ -54,6 +54,7 @@ def aws_iam_account_access(
     users, user_blockers = _iam_user_names(runner=runner)
     key_counts = _iam_access_key_counts(users, runner=runner)
     evidence = _iam_account_access_evidence(summary, users, key_counts)
+    evidence.update(_iam_console_access_counts(users, runner=runner))
     (
         attestation_summary,
         attested_controls,
@@ -82,7 +83,67 @@ def _iam_user_names(*, runner: Runner = run) -> tuple[list[str], list[str]]:
     )
     if not ok or not isinstance(payload, list):
         return [], [f"Unable to query IAM users: {error}"]
-    return [item for item in payload if isinstance(item, str) and item], []
+    if any(not isinstance(item, str) or not item for item in payload):
+        return [], ["IAM user inventory contains malformed entries."]
+    if len(set(payload)) != len(payload):
+        return [], ["IAM user inventory contains duplicate entries."]
+    return payload, []
+
+
+def _iam_console_access_counts(
+    users: Sequence[str], *, runner: Runner = run
+) -> dict[str, int]:
+    """Inspect actual console profiles and per-user MFA, without exposing identities."""
+    counts = {
+        "consoleUserCount": 0,
+        "consoleUsersWithoutMfa": 0,
+        "unreadableConsoleUserCount": 0,
+    }
+    for user in users:
+        status = _iam_console_user_status(user, runner=runner)
+        if status == "unknown":
+            counts["unreadableConsoleUserCount"] += 1
+        elif status != "no_console":
+            counts["consoleUserCount"] += 1
+            counts["consoleUsersWithoutMfa"] += int(status == "no_mfa")
+    return counts
+
+
+def _iam_console_user_status(user: str, *, runner: Runner = run) -> str:
+    """Treat only an explicit AWS NoSuchEntity response as absent console access."""
+    ok, profile, error = _run_json(
+        ["aws", "iam", "get-login-profile", "--user-name", user, "--output", "json"],
+        runner=runner,
+    )
+    if not ok:
+        return "no_console" if "(NoSuchEntity)" in error else "unknown"
+    if not isinstance(profile, dict) or not isinstance(
+        profile.get("LoginProfile"), dict
+    ):
+        return "unknown"
+    if profile["LoginProfile"].get("UserName") != user:
+        return "unknown"
+    ok, devices, _error = _run_json(
+        ["aws", "iam", "list-mfa-devices", "--user-name", user, "--output", "json"],
+        runner=runner,
+    )
+    if not ok or not isinstance(devices, dict):
+        return "unknown"
+    return _iam_mfa_status(devices, user)
+
+
+def _iam_mfa_status(devices: dict[str, Any], user: str) -> str:
+    """Require every assigned device record to identify the queried user."""
+    items = devices.get("MFADevices")
+    if not isinstance(items, list) or any(
+        not isinstance(item, dict)
+        or item.get("UserName") != user
+        or not isinstance(item.get("SerialNumber"), str)
+        or not item["SerialNumber"]
+        for item in items
+    ):
+        return "unknown"
+    return "mfa" if items else "no_mfa"
 
 
 def _iam_access_key_counts(
@@ -219,6 +280,7 @@ def _iam_account_access_evidence(
 ) -> dict[str, object]:
     """Build non-secret IAM account-access evidence."""
     return {
+        "humanAccessScope": "direct_iam_console_only",
         "summaryUserCount": _summary_int(summary, "Users"),
         "discoveredUserCount": len(users),
         "mfaDeviceCount": _summary_int(summary, "MFADevices"),
@@ -256,13 +318,14 @@ def _iam_account_access_blockers(
         blockers.append("IAM account summary does not report root/account MFA enabled.")
     if evidence["accountAccessKeysPresent"] != 0:
         blockers.append("IAM account summary reports root account access keys present.")
-    if (
-        int(evidence["mfaDevicesInUse"]) < int(evidence["summaryUserCount"])
-        and "human_access" not in attested_controls
-    ):
+    if evidence["discoveredUserCount"] != evidence["summaryUserCount"]:
+        blockers.append("IAM user inventory does not match the account summary.")
+    if evidence.get("unreadableConsoleUserCount", 1) != 0:
+        blockers.append("Unable to verify console and MFA metadata for all IAM users.")
+    if evidence.get("consoleUsersWithoutMfa", 0) != 0:
         blockers.append(
-            "IAM user count exceeds MFA devices in use; human MFA/SSO posture "
-            "requires security-owner attestation."
+            "IAM users with console access lack an assigned MFA device. "
+            "Account-wide device totals and attestations do not override this finding."
         )
     if (
         evidence["activeUserAccessKeyCount"] != 0

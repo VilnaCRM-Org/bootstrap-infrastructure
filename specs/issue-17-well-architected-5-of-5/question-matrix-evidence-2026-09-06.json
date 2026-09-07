@@ -1,0 +1,954 @@
+{
+  "workload": "bootstrap-infrastructure",
+  "owner": "platform-maintainers",
+  "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+  "questionCount": 57,
+  "unresolvedQuestionCount": 10,
+  "evidenceLocation": "specs/issue-17-well-architected-5-of-5/question-matrix.md",
+  "operatingEvidenceLocation": "docs/well-architected-current-review-2026-09-06.md",
+  "fallbackPlan": "Do not claim final 5/5 Well-Architected scores until every question row has owner-backed evidence, freshness, validation, and fallback coverage.",
+  "unresolvedQuestionIds": [
+    "OPS6",
+    "OPS7",
+    "SEC8",
+    "SEC11",
+    "REL5",
+    "REL8",
+    "REL9",
+    "REL11",
+    "REL12",
+    "REL13"
+  ],
+  "pillarUnresolvedQuestionCounts": {
+    "Operational Excellence": 2,
+    "Security": 2,
+    "Reliability": 6,
+    "Performance Efficiency": 0,
+    "Cost Optimization": 0,
+    "Sustainability": 0
+  },
+  "scoreScale": {
+    "1": "No meaningful repository or account evidence.",
+    "2": "Planning evidence exists, but implementation or operating evidence is missing.",
+    "3": "Partial repository controls exist, but owner, cadence, validation, or fallback evidence is incomplete.",
+    "4": "Strong repository or AWS metadata evidence exists, but at least one external, owner, freshness, or drill requirement blocks 5/5.",
+    "5": "All target evidence, ownership, freshness, validation, and fallback requirements are current."
+  },
+  "frameworkSourceVerification": {
+    "checkedAt": "2026-09-06T20:00:12.905370+00:00",
+    "source": "AWS official Framework TOC fetched for this technical reassessment",
+    "questionCounts": {
+      "Operational Excellence": 11,
+      "Security": 11,
+      "Reliability": 13,
+      "Performance Efficiency": 5,
+      "Cost Optimization": 11,
+      "Sustainability": 6
+    },
+    "sourceUrls": [
+      "https://docs.aws.amazon.com/wellarchitected/latest/framework/toc-contents.json"
+    ],
+    "sourceSha256": "5de48edb1e38b5c175c9ef2e6d1b70b75e5289ef7a666a952da03739b27b64db"
+  },
+  "questionScoreAverages": {
+    "Operational Excellence": 4.73,
+    "Security": 4.82,
+    "Reliability": 4.31,
+    "Performance Efficiency": 5.0,
+    "Cost Optimization": 5.0,
+    "Sustainability": 5.0
+  },
+  "questionScores": [
+    {
+      "id": "OPS1",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Retain P0 state/credential integrity, P1 observable recovery and bounded spend, P2 managed services. The current eight-target inventory and completed 21/77 ownership migration make operator-before-platform/governance/service ordering explicit. No-go: missing protected promotion, failed restore, or changed writer fence; no SLO/business commitment is renewed.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "OPS2",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Existing platform-maintainers/SRE/security/FinOps RACI remains applicable to separated programs. Root owns execution and GitHub settings, dedicated reviewer owns source review, and Codex performs delegated technical assessment. Specific protected approvals remain Kravalg's actual actions, not inferred from this RACI.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "OPS3",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Real learning loop is evidenced by PR57 input/ack corrections, PR78 backend binding/logging corrections, and actual S3 HTTP501 discovery followed by exact-version cleanup tests. These are completed actions; follow-up is source-bound recovery and final comment deployment, due before final acceptance.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "OPS4",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Fresh metadata proves four enabled Backup/KMS/IAM-OIDC/S3-risk rules target the expected encrypted SNS topic, exactly one confirmed encrypted SQS consumer, and healthy logging trail. The no-runtime inventory has no invented application alarms. End-to-end consumption remains specifically OPS8.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "OPS5",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Authoritative current ruleset readback confirms active rules, all 24 required checks and an empty bypass list; all four downstream main-only protected environments now exist. Current source gate design is unchanged; promotion outcomes stay separate.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "OPS6",
+      "pillar": "Operational Excellence",
+      "score": 4,
+      "status": "unresolved",
+      "rationale": "Deployment-risk controls have direct evidence: exact saved plans, preflight/account/source checks, bounded IAM, eight baseline apply/drift pairs and the ffae PR204 TEST governance comment plan/apply/drift. Score4 reflects implemented and exercised deployment safeguards, while final same-head protected PROD promotion remains incomplete. R6 additionally proves bounded Backup restore/content/cleanup; it is not protected promotion.",
+      "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion and downstream deployment validation remain. Existing safeguards justify4, but TEST-only comment success does not justify5.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "All eight baseline operator/platform/governance/backend-only service targets have successful local saved-plan apply and refreshed drift receipts. Subsequent PR204 TEST governance comment run 34062796631 at ffae8ec17ef7e2c4610fd699f4a2aa2f30734654 also completed plan, apply and drift; PROD and promotion proof were skipped. Exact subsequent receipts and their separate source bindings are recorded in technical-operating-review-2026-09-06.json. This does not certify downstream workload acceptance or the forthcoming corrected source.",
+          "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion, downstream service live/manual acceptance and successful recovery remain. Completed baseline PROD governance and both service targets are no longer listed as missing. No score increase is inferred from baseline or TEST-only success."
+        }
+      ],
+      "evidenceReviewedAt": "2026-09-07T00:40:05.751210+00:00",
+      "reviewScope": "Actual later technical source/receipt review; original matrix reviewedAt is historical and does not date these later additions."
+    },
+    {
+      "id": "OPS7",
+      "pillar": "Operational Excellence",
+      "score": 3,
+      "status": "unresolved",
+      "rationale": "Operational support readiness is broader than deployment safeguards: existing runbooks, eight baseline apply/drift pairs, verified alert transport and successful R6 recovery provide partial readiness. Score3 remains because downstream live/manual support acceptance and current complete operational readiness evidence are not established; successful deployment alone does not prove ongoing support readiness. No human response or personal business commitment is inferred.",
+      "primaryBlocker": "Complete current operational readiness and downstream service/manual support acceptance, plus final protected promotion. This broader support-evidence gap explains score3 versus OPS6 deployment-risk score4; no score increase is made.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "All eight baseline operator/platform/governance/backend-only service targets have successful local saved-plan apply and refreshed drift receipts. Subsequent PR204 TEST governance comment run 34062796631 at ffae8ec17ef7e2c4610fd699f4a2aa2f30734654 also completed plan, apply and drift; PROD and promotion proof were skipped. Exact subsequent receipts and their separate source bindings are recorded in technical-operating-review-2026-09-06.json. This does not certify downstream workload acceptance or the forthcoming corrected source.",
+          "primaryBlocker": "Final current same-head protected TEST/PROD PR-comment promotion, downstream service live/manual acceptance and successful recovery remain. Completed baseline PROD governance and both service targets are no longer listed as missing. No score increase is inferred from baseline or TEST-only success."
+        }
+      ],
+      "evidenceReviewedAt": "2026-09-07T00:40:05.751210+00:00",
+      "reviewScope": "Actual later technical source/receipt review; original matrix reviewedAt is historical and does not date these later additions."
+    },
+    {
+      "id": "OPS8",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current approved synthetic route traversed actual SNS/SQS/GitHub OIDC and created its durable issue before normal acknowledgement; Codex reviewed severity/fallback and closed only QAissue202. This is current technical observation/consumption, with human paging and new response commitments explicitly unclaimed.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "OPS9",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "This review now records current cost/forecast, live quotas, empty queue, successful main CI batteries/mutation, current governance executions and explicit failed restore/WA checks. Failures have named next actions, so understanding operational health does not require falsely making all KPIs green.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "OPS10",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Existing severity/runbook/escalation model is exercised technically by the real migration uncertain-delete stop, retained fence, exact-version recovery and recorded restore canary refusal. This is a current bounded operations scenario with a known safe outcome, not a new human paging drill.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "OPS11",
+      "pillar": "Operational Excellence",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Completed action register: isolate credential loaders, preserve saved-plan/account bindings, repair service logging prefix, preserve S3 failure journal, replace unsupported version+IfMatch release. Next actions are positive canary/restore, current route and final protected promotion; owner platform-maintainers, due before final acceptance.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC1",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current Codex-attributed security operating record now binds actual credential surface, current configured-boundary proof, source-bound apply/drift, monthly review and precise remediation. No personal historical approval or accepted risk is reused.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC2",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Fresh TEST root MFA enabled/root keys absent; all five IAM users have no console profile and no active direct credential. MFA summary3 versus two identifiable virtual root devices is disclosed, not treated as five missing console MFAs. Bootstrap CI uses OIDC and local setup uses temporary login. Unrelated PROD codex/MCP key is explicitly outside this bootstrap credential path and retained pending consumer migration.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC3",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Configured platform and governed-role boundaries are supported by exact current source, reviewed TEST operator saved apply and no-change drift plus six-role/two-boundary independent governance readback. Scope explicitly excludes a blanket account exemption and preserves current IAM validation.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC4",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Fresh TEST and PROD GuardDuty/SecurityHub/Config/CloudTrail posture plus current route metadata proves existing detection. Only the multi-region operations trail is asserted KMS-protected; other logging trails are not relabeled.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC5",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current bootstrap, operator, governor and generated service infrastructure remain managed control-plane resources with no VPC, load balancer, NAT or application ingress in this scope. Existing public-S3/TLS/region policy and hosted policy tests support the network applicability answer; new application paths require a new review.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC6",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Fresh managed ECR repository contains zero images and scan-on-push is enabled. No current image vulnerability or cleanup claim is needed for an empty repository. Hosted toolchain/container pinning and current security/CodeQL checks cover the actual compute-adjacent surface; this does not attest external service application images.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC7",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Delegated current technical classification now explicitly covers encrypted recovery copies, journals/seals and private plans/configurations, with sensitivity, approved storage, finite retention, accountable disposal conditions and incident holds. No deletion or personal approval was invented.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC8",
+      "pillar": "Security",
+      "score": 4,
+      "status": "unresolved",
+      "rationale": "All four observed checkpoints use cloud AWS KMS; three existing buckets enforce AES256 SSE-S3, TLS, public blocks and versioning. Recovery copies use explicit SSE-KMS. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 integrity requirement passed. Current Object Lock/Vault Lock implementation or explicit current retention-lock disposition remains; R6 does not renew the expired exemption.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "All four observed checkpoints use cloud AWS KMS; three existing buckets enforce AES256 SSE-S3, TLS, public blocks and versioning. Recovery copies use explicit SSE-KMS.",
+          "primaryBlocker": "Successful Backup integrity drill and explicit current retention-lock disposition remain; this technical data-retention decision does not renew the expired ObjectLock/VaultLock exemption."
+        }
+      ]
+    },
+    {
+      "id": "SEC9",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Existing backend metadata proves TLS denies; source pins AWS endpoints/account/region and GitHub OIDC. Temporary local AWS CLI is an additional authenticated API client, not a public service endpoint. No plaintext state/config/credential material is added to public artifacts.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC10",
+      "pillar": "Security",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Completed current seven-scenario technical tabletop with fresh metadata and actual migration/IAM/route outcomes. Detection, containment, recovery, communication handling and limits are recorded; identified logging/restore defects remain explicit reliability blockers, not hidden by this review.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SEC11",
+      "pillar": "Security",
+      "score": 4,
+      "status": "unresolved",
+      "rationale": "Current-main source contains pinned dependencies, isolated loaders, CodeQL/Bandit/secrets/dependency gates and exact source-review receipts.",
+      "primaryBlocker": "Historical default-branch GitHub metadata at source5c873f86 recorded zero Dependabot alerts and two open HIGH CodeQL alerts (#11/#12). Current bootstrap alert disposition and final changed-source CI still require fresh evidence; downstream repository checks do not close these bootstrap alerts.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "REL1",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Fresh current usage is 55/10000 S3 buckets,102/1000 IAM roles,14/100000 regional KMS keys,3/300 Backup plans and vaults,17/100000 SNS topics,13/300 default-bus rules. Three home-region trails leave two slots; preserve the last-slot review rule. Existing Config recorder must be reused. Current catalog validation passed by kind; static estimates are not added twice to deployed inventory.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "REL2",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "No-VPC managed-service topology and EU primary/replica pair are unchanged by ownership separation. Backends are separate exact prefixes/buckets; no new network or active-active path is introduced. Current S3 transfer identifies the existing Frankfurt/Ireland direction.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "REL3",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Dependency chain is explicit: operator-owned OIDC/IAM/config/backend prerequisites precede platform/governor, governor provisions exact catalog service authority/config, service owns its own bucket resources. Missing deployment or initialization is a readiness gate, not an undocumented dependency. Authoritative backend remains S3 with AWS KMS secrets.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "REL4",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Installed saved-plan runtime/controller bind source, account, project, stack, backend, plan and preview hashes and reject unsaved/stale applies. Current main unit/integration/policy/structural/mutation checks and genuine protected TEST governance runs support this implementation.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "REL5",
+      "pillar": "Reliability",
+      "score": 4,
+      "status": "unresolved",
+      "rationale": "Historical replica metadata matched version/ETag/size. Subsequent reviewed TEST and PROD platform logging saved-plan applies and refreshed drifts passed, installing aws-logs/<bucket>/ prefixes aligned with the existing central allow. This repair proof is distinct from actual delivered S3 server-access log samples.",
+      "primaryBlocker": "Post-repair delivered S3 server-access log samples for the platform and service buckets remain unverified by this review. The old server-access prefix defect is fixed; no longer list source repair or apply as pending.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:outputs/test-platform-logging-plan-review.json",
+        "file:outputs/test-platform-logging-apply-execution.json",
+        "file:outputs/test-platform-logging-drift-execution.json",
+        "file:outputs/prod-platform-logging-plan-review.json",
+        "file:outputs/prod-platform-logging-apply-execution.json",
+        "file:outputs/prod-platform-logging-drift-execution.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "Replication and failure-mode source contracts remain; migration preserved physical-owner partition and encrypted checkpoint semantics.",
+          "primaryBlocker": "Three current checkpoint replicas match version/ETag/size. Live TEST platform logging target server-access/<bucket>/ is outside actual central allow aws-logs/*; narrow source repair and post-apply delivery verification remain. Service logging prefix matches but actual delivered access-log sample is absent."
+        }
+      ],
+      "evidenceReviewedAt": "2026-09-07T00:48:50.145860+00:00"
+    },
+    {
+      "id": "REL6",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Fresh enabled event targets, encrypted route and actual main v1 run34058543444 plus empty queue after visibility interval demonstrate installed monitoring consumption after freeze restoration. Synthetic direct SNS publication does not purport to test every upstream event source.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "REL7",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current catalog demand review binds eight active stack targets and 23 retained AWS owners in two historical checkpoints, preserves original catalog dates and sets per-change quota/fanout and monthly stale-owner review triggers without reapplying legacy programs.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "REL8",
+      "pillar": "Reliability",
+      "score": 4,
+      "status": "unresolved",
+      "rationale": "Main-only protected deployments, tests, and exact saved-plan checks exist and current source reviews passed. TEST and PROD operator/platform local saved-plan apply and refreshed no-change drift now succeeded; these are not PR-comment protected promotion or downstream service/DR acceptance.",
+      "primaryBlocker": "Bypass removal and downstream protections are verified. Actual final same-head TEST/PROD protected comment deployment remains separate from local repairs.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "REL9",
+      "pillar": "Reliability",
+      "score": 3,
+      "status": "unresolved",
+      "rationale": "Versioned/encrypted S3 state and Backup source/runbooks exist; April restore is historical and recent failed restore cleanup is recorded. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 closes the current successful restore/content/cleanup requirement. The question contract also requires current backup health and Vault/Object Lock or a current exemption; retain unresolved until those distinct controls are verified or legitimately decided.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "Versioned/encrypted S3 state and Backup source/runbooks exist; April restore is historical and recent failed restore cleanup is recorded.",
+          "primaryBlocker": "R3 canary content and cleanup passed according to root; delivered Put/Get CloudTrail proof and actual successful restore/content verification remain pending. No date-only renewal."
+        }
+      ]
+    },
+    {
+      "id": "REL10",
+      "pillar": "Reliability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "PR78 current policy tests and saved-plan review distinguish central exact catalog authority from per-service TEST/PROD backend-only apply; read roles may lock but explicitly cannot mutate checkpoints. This answers repository-owned fault-isolation design/testing, without claiming missing PROD deployments already exist.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "REL11",
+      "pillar": "Reliability",
+      "score": 3,
+      "status": "unresolved",
+      "rationale": "Source has explicit state/KMS/replication/backup recovery runbooks; actual migration failure stopped before unsafe retry. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 supplies measured Backup recovery after real failed attempts. Remaining component/degraded-mode requirements, including current repaired log-delivery verification, are not established by the single-object restore.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "Source has explicit state/KMS/replication/backup recovery runbooks; actual migration failure stopped before unsafe retry.",
+          "primaryBlocker": "Current technical incident tabletop and real migration failure recovery refreshed. Successful measured Backup/degraded recovery remains unproved; migration is not a Backup restore drill."
+        }
+      ]
+    },
+    {
+      "id": "REL12",
+      "pillar": "Reliability",
+      "score": 4,
+      "status": "unresolved",
+      "rationale": "Current focused/full source validation receipts and real synthetic maintenance/migration refusal tests provide substantial test evidence. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 restore reliability scenario passed. Final service runtime and protected same-head TEST/PROD promotion scenarios remain.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "Current focused/full source validation receipts and real synthetic maintenance/migration refusal tests provide substantial test evidence.",
+          "primaryBlocker": "Real SNS/SQS/GitHub route and acknowledgement passed. Remaining restore and service runtime/promotion scenarios must succeed before full acceptance."
+        }
+      ]
+    },
+    {
+      "id": "REL13",
+      "pillar": "Reliability",
+      "score": 3,
+      "status": "unresolved",
+      "rationale": "PROD ownership migration finalized without physical resource recreation; reviewed recovery ordering and historical TEST drill exist. TEST and PROD operator/platform local saved-plan apply and refreshed no-change drift now succeeded; these are not PR-comment protected promotion or downstream service/DR acceptance. Supplemental R6 technical review: AWS Backup COMPLETED at 2026-09-07T00:08:13.770000+00:00, exact 1135467 bytes/SHA256 verified, full cleanup and original healthy CloudTrail selectors restored.",
+      "primaryBlocker": "R6 is a TEST-only single-object recovery with measured job duration; no current PROD recovery drill or production RTO/RPO/communications commitment is supplied.",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "454a067416cc09c20181cbeaabff67aa030ad6b05db7e904f79eb70718a2b5d9",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "rationale": "PROD ownership migration finalized without physical resource recreation; reviewed recovery ordering and historical TEST drill exist. TEST and PROD operator/platform local saved-plan apply and refreshed no-change drift now succeeded; these are not PR-comment protected promotion or downstream service/DR acceptance.",
+          "primaryBlocker": "No current successful PROD recovery drill or actual production RTO/RPO/communications commitment is supplied; TEST/local migration outcomes do not substitute."
+        }
+      ]
+    },
+    {
+      "id": "PERF1",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current service choice remains S3/cloud-KMS, AWS Backup, managed detection/routing and GitHub Actions; separated programs change ownership, not resource-family demand. Revalidated catalog estimates and live quota limits retain the ADR's concrete tradeoffs and expansion guard.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "PERF2",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current managed ECR is empty/scan-on-push; no always-on application compute is declared. Bounded current-main observations: Local Battery median255s, mutation544s, triage28s. These are elapsed workflow observations including orchestration, not billed CPU or guaranteed latency.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "PERF3",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current storage access/growth model includes small active checkpoints, eventual replicas, bounded recovery snapshots/journals and backend-only service state; STANDARD/lifecycle rationale and future growth triggers are explicit, without invented latency/RPO measurements.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "PERF4",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Primary eu-central-1/replica eu-west-1 remain suitable to the existing EU control-plane and recovery-only replica. Current transfer lines demonstrate the declared route; no user-latency requirement, new residency acceptance or carbon claim is invented. New endpoint/region remains a review trigger.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "PERF5",
+      "pillar": "Performance Efficiency",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current KPI review is now performed: successful source battery/mutation, short dispatcher versus longer runner durations, negative-QA failures and cancelled obsolete runs distinguished. Action is to avoid redundant review/CI runs and investigate persistent failures; no claim of month-over-month improvement or that no workflows were added.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST1",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Platform-maintainers remains accountable FinOps team. Fresh budget/forecast, active tags, cost/anomaly routes and transfer review supply the current monthly technical report. Existing thresholds are retained; this is delegated assessment, not a new spending authorization.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST2",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Unchanged100USD monthly budget,80% actual/100% forecast notifications and10USD anomaly threshold remain installed. Current usage is below cost limits; keep existing region/catalog and no-expansion controls. The1GB transfer trigger was explicitly reviewed, not silently reset.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST3",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Fresh CE Sep1\u20135, budget actual5.949/forecast29.612,10 active cost-allocation tags and confirmed immediate anomaly SNS subscriber prove current monitoring. CE estimated unblended total5.8706730031 differs from Budget timing/metric and is not equated to bootstrap-only spending.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST4",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current inventory preserves23 legacy owned resources/checkpoints and distinguishes active8 targets. Actual migration removed only exact owned temporary locks/fence, not legacy resources. Current decision is retain legacy assets pending reviewed decommission scope; no speculative cleanup or implied permission to delete.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST5",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Retain existing managed-service ADR alternatives: S3 versus hosted/local state, KMS versus passwords, native events versus polling workers, recovery-only replica versus active-active. Current costs and no application runtime support the selected model; low cost does not prove a numeric savings amount.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST6",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Exact reviewed remaining PROD governance plan projects 40 AWS records and 1.80 USD/month initial key/secret fixed-charge component plus explicit variable costs; backend-only service adds zero AWS resources. Existing deployments are not counted again and expansion/budget triggers remain.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST7",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Fresh lifecycle metadata and current official pricing support retaining current classes: 365-day state versions, logs 30-day transition/365-day expiry, explicit IA minimum-size/duration/retrieval caveats and finite recovery retention. No unsupported savings or new commitment claimed.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST8",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current transfer review retains1USD/1GB triggers and explicitly examines metered-line total1.577GB and0.01228USD. Ingress/egress can meter the same transfer twice; tagged attribution and unknown coverage are recorded below. Dominant Frankfurt-to-Ireland0.613GB is consistent with existing recovery path. Retain existing pair/no expansion; no unapproved threshold or accepted risk is introduced.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST9",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Demand/supply review distinguishes active targets, already installed AWS owners, remaining exact plan records and retained historical owners; legacy cleanup requires usage/dependency and recovery proof, with monthly growth review and existing budget triggers.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST10",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current service review finds ownership-separated programs reuse existing managed families and introduce no application compute. New service-family/region/retention changes still require cost review. Existing cost, ECR, queue and quota evidence provide present impact instead of stale May completion claims.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "COST11",
+      "pillar": "Cost Optimization",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Real operation work is recorded without unsupported numeric savings: source reviews, finite test reuse, frozen candidate hashes, exact owned cleanup and reusable isolated loaders. Bespoke migration hosting is a one-time cost, and recurring operations should return to protected source-bound workflows.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SUS1",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current region review retains EU primary/replica for required managed services, existing residency scope and recovery separation. Fresh transfer impact is small in USD and explicitly reviewed; no carbon advantage is measured or claimed. New regions/data classes require review.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SUS2",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current delegated catalog and stale-asset review records actual active/retained demand, conservative preserve decision, accountable follow-up and monthly/change-triggered review; no old personal date was rewritten.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SUS3",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current workflow demand is measured, including47 dispatcher runs and2 successful battery/mutation runs in the bounded100-run sample. Avoid redundant runs and obsolete approvals; live triage concurrency and managed events avoid an extra always-on daemon. No false no-new-jobs or measured emission-reduction claim remains.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SUS4",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Recovery copies, immutable journals and private review/config artifacts now have explicit classification, retention and safe disposal conditions; actual existing lifecycle metadata is recorded and no unreviewed deletion performed.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SUS5",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current source remains managed infrastructure with an optional empty runner-image repository and no always-on application fleet. Service infrastructure exports configuration; external application ownership is not silently included. Existing future-compute sizing/efficiency trigger remains required.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md"
+      ]
+    },
+    {
+      "id": "SUS6",
+      "pillar": "Sustainability",
+      "score": 5,
+      "status": "passed",
+      "rationale": "Current technical KPI, region, managed-service and CI efficiency review plus completed demand/retention decisions establish the operating cadence. Failures and missing outcomes remain visible; no carbon trend or owner risk waiver invented.",
+      "primaryBlocker": "",
+      "evidenceRefs": [
+        "source:5c873f86fa956f6b96a09e2887297905467b8562",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json",
+        "doc:docs/well-architected-current-review-2026-09-06.md",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json",
+        "doc:docs/well-architected-remaining-technical-review-2026-09-06.md"
+      ]
+    }
+  ],
+  "reviewer": "Codex (delegated technical review)",
+  "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+  "supplementalTechnicalReview": {
+    "reviewedAt": "2026-09-07T00:20:17.535057+00:00",
+    "reviewer": "Codex security_review (delegated technical reviewer; root executed the live drill)",
+    "scope": "R6 restore only; original reviewedAt/sourceCommit and other observations retained. No personal approval or blanket freshness renewal.",
+    "evidence": "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+  },
+  "receiptBindings": {
+    "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json": "ac448e163e3eeca0f7b71299ccd82e7211d74c98b2cc566894fabd9bc4620baa",
+    "outputs/test-platform-logging-plan-review.json": "f38e3fe6bc6560cd50fbcfbe3a56857c883216fe3d7848a4eaa68dd7514744bc",
+    "outputs/test-platform-logging-apply-execution.json": "79b663cb1035bbe00f3b4fefaa04c9edf175f0e74242455437b852108ba73269",
+    "outputs/test-platform-logging-drift-execution.json": "400ebd91e22a69a25fcf49c78573b7fe3017cbcdf69fb0197bdffb844091109e",
+    "outputs/prod-platform-logging-plan-review.json": "3dfbff3c316346e1422cfcc32019e8cce0d1de54f1e5f6c88e6cee82bd4fdce8",
+    "outputs/prod-platform-logging-apply-execution.json": "45e10d2f6eefe4470b5b4e0d3d1ed85d8dae874c6ca1321d3504c99197a204b1",
+    "outputs/prod-platform-logging-drift-execution.json": "c5c13957f7eab6a5bef4ca618d13b67b7434e44f312a157a2832a95a551c56e4"
+  },
+  "reviewCorrection": {
+    "reviewedAt": "2026-09-07T00:40:05.751210+00:00",
+    "reviewer": "Codex security_review (delegated technical reviewer)",
+    "findingIds": [
+      3945750842,
+      3945750847
+    ],
+    "scope": "Distinguish OPS6/OPS7 scores and date actual supplemental evidence review. No score/status/counter change or blanket historical freshness renewal."
+  }
+}

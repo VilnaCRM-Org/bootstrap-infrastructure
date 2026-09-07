@@ -131,6 +131,14 @@ class S3BackupPlan(pulumi.ComponentResource):
             opts=base_opts,
         )
 
+        self.vault_lock = aws.backup.VaultLockConfiguration(
+            f"{name}-vault-lock",
+            backup_vault_name=backup_vault.name,
+            min_retention_days=90,
+            # Omitting changeable_for_days keeps governance mode reversible.
+            opts=pulumi.ResourceOptions(parent=self, protect=True),
+        )
+
         backup_role = aws.iam.Role(
             f"{name}-role",
             name=platform_role_name(configured_settings, "backup"),
@@ -172,7 +180,11 @@ class S3BackupPlan(pulumi.ComponentResource):
                 aws.backup.PlanRuleArgs(
                     rule_name="daily",
                     target_vault_name=backup_vault.name,
-                    schedule="cron(0 5 * * ? *)",
+                    schedule=(
+                        "cron(0 10 * * ? *)"
+                        if configured_settings.environment == "test"
+                        else "cron(0 5 * * ? *)"
+                    ),
                     start_window=60,
                     completion_window=120,
                     lifecycle=aws.backup.PlanRuleLifecycleArgs(delete_after=90),

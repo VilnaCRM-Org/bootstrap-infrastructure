@@ -19,12 +19,23 @@ mock-renderable.
 from __future__ import annotations
 
 import json
+from fnmatch import fnmatchcase
+from pathlib import Path
 
 import pytest
-from infra import ci_config, config, governance, pulumi_secrets, pulumi_state
+from infra import (
+    ci_config,
+    config,
+    governance,
+    logging_bucket,
+    pulumi_secrets,
+    pulumi_state,
+)
+from infra.bootstrap_infrastructure import _logging_source_bucket_names
 from infra.governance import GovernanceStackArgs, RepoGovernance, _governance_payloads
 from infra.iam import github_oidc
 from infra.managed_repository import ManagedRepository
+from infra.repository_catalog import ManagedRepositoryCatalog
 from infra.utils.outputs import future_output
 from pulumi.runtime.stack import wait_for_rpcs
 from pulumi.runtime.sync_await import _sync_await
@@ -403,7 +414,7 @@ def test_repo_governance_renders_full_per_repo_surface(pulumi_mocks, monkeypatch
 def test_state_logging_prefix_matches_destination_contract(
     pulumi_mocks, monkeypatch, environment, governed
 ):
-    """Governed log delivery uses aws-logs; shared platform defaults stay intact."""
+    """Both state constructors target keys allowed by the actual destination policy."""
     _no_existing_resources(monkeypatch)
     settings = _governance_settings(environment)
     repo = _synthetic_repo("orders-infrastructure")
@@ -433,12 +444,34 @@ def test_state_logging_prefix_matches_destination_contract(
         _sync_await(future_output(resource.target_prefix))
         for resource in logging_resources
     ]
-    root = "aws-logs" if governed else "server-access"
+    root = "aws-logs"
     assert len(prefixes) == 2
     assert set(prefixes) == {
         f"{root}/pulumi-orders-infrastructure-{environment}-state/",
         f"{root}/pulumi-orders-infrastructure-{environment}-state-eu-west-1-replication/",
     }
+    for resource in logging_resources:
+        destination = _sync_await(future_output(resource.target_bucket))
+        prefix = _sync_await(future_output(resource.target_prefix))
+        policy = json.loads(
+            logging_bucket._log_bucket_policy(
+                f"arn:aws:s3:::{destination}", "123456789012", [prefix.split("/")[1]]
+            )
+        )
+        grant = next(
+            statement
+            for statement in policy["Statement"]
+            if statement.get("Sid") == "AllowLogDelivery0"
+        )
+        assert grant["Action"] == "s3:PutObject"
+        assert grant["Principal"] == {"Service": "logging.s3.amazonaws.com"}
+        assert fnmatchcase(
+            f"arn:aws:s3:::{destination}/{prefix}access-log-object", grant["Resource"]
+        )
+        assert not fnmatchcase(
+            f"arn:aws:s3:::{destination}/server-access/unapproved-object",
+            grant["Resource"],
+        )
 
 
 def test_all_governance_roles_require_bootstrap_owned_boundaries(
@@ -460,7 +493,21 @@ def test_all_governance_roles_require_bootstrap_owned_boundaries(
             if typ == "aws:iam/role:Role"
         ]
         assert len(roles) == 6  # trio, two config readers, one replication role
+        scheduled_roles = []
         for name, state in roles:
+            for statement in json.loads(state["assumeRolePolicy"])["Statement"]:
+                conditions = statement.get("Condition", {}).get("StringEquals", {})
+                if conditions.get("token.actions.githubusercontent.com:workflow") == (
+                    "Service Scheduled Drift"
+                ):
+                    scheduled_roles.append(name)
+                    assert conditions["token.actions.githubusercontent.com:ref"] == (
+                        "refs/heads/main"
+                    )
+                    assert conditions["token.actions.githubusercontent.com:sub"] == [
+                        "repo:VilnaCRM-Org/user-service-infrastructure:environment:"
+                        f"{environment}-drift"
+                    ]
             family = (
                 "GovernanceReplicationBoundary"
                 if "replication-role" in name
@@ -470,6 +517,13 @@ def test_all_governance_roles_require_bootstrap_owned_boundaries(
                 f"arn:aws:iam::123456789012:policy/{family}-"
                 f"user-service-infrastructure-{environment}"
             )
+        suffix = "test" if environment == "test" else "prod-preview"
+        assert sorted(scheduled_roles) == sorted(
+            [
+                f"gov-boundary-{environment}-drift-role",
+                f"gov-boundary-{environment}-configuration-github-ci-config-read-role-{suffix}",
+            ]
+        )
         managed_policy_names = [
             state["name"]
             for typ, _, state in _resources_created_since(pulumi_mocks, start)
@@ -894,3 +948,118 @@ def test_invalid_backend_rejected_before_direct_component_allocation(monkeypatch
             write_secret_values=True,
             protect_resources=True,
         )
+
+
+@pytest.mark.parametrize(
+    "environment,account,platform_replica,service_replica",
+    [
+        (
+            "test",
+            "891377212104",
+            "pulumi-bootstrap-infrastructure--c1194dce-eu-west-1-replication",
+            "pulumi-user-service-infrastructu-ce064677-eu-west-1-replication",
+        ),
+        (
+            "prod",
+            "933245420672",
+            "pulumi-bootstrap-infrastructure--e7ae39dd-eu-west-1-replication",
+            "pulumi-user-service-infrastructu-6b871a39-eu-west-1-replication",
+        ),
+    ],
+)
+def test_exact_logging_grants_accept_only_reviewed_source_account_and_prefix(
+    pulumi_mocks, monkeypatch, environment, account, platform_replica, service_replica
+):
+    """AWS-recommended header-free grants preserve all eight observed route bounds."""
+    settings = _governance_settings(environment)
+    catalog = ManagedRepositoryCatalog.load_from_json_file(
+        str(Path(__file__).resolve().parents[2] / "pulumi/repositories.bootstrap.json")
+    )
+    primary = _logging_source_bucket_names(settings, catalog)
+    assert primary == [
+        f"pulumi-bootstrap-infrastructure-{environment}-state",
+        f"pulumi-user-service-infrastructure-{environment}-state",
+    ]
+    replica = [
+        logging_bucket._replica_bucket_name(name, "eu-west-1") for name in primary
+    ]
+    assert replica == [platform_replica, service_replica]
+    monkeypatch.setattr(logging_bucket, "_bucket_exists", lambda *args, **kwargs: False)
+    component = logging_bucket.CentralLoggingBuckets(
+        f"logging-boundary-{environment}",
+        settings=settings,
+        source_bucket_names=primary,
+    )
+    _sync_await(future_output(component.bucket.bucket))
+    _sync_await(wait_for_rpcs())
+    emitted = [
+        json.loads(state["policy"])
+        for resource_type, name, state in pulumi_mocks.resources
+        if resource_type == "aws:s3/bucketPolicy:BucketPolicy"
+        and name
+        in {
+            f"logging-boundary-{environment}-policy",
+            f"logging-boundary-{environment}-replica-policy",
+        }
+    ]
+    assert len(emitted) == 2
+    actual_sources = {
+        row["Condition"]["ArnLike"]["aws:SourceArn"]
+        for policy in emitted
+        for row in policy["Statement"]
+        if row["Sid"].startswith("AllowLogDelivery") and row["Action"] == "s3:PutObject"
+    }
+    assert actual_sources == {f"arn:aws:s3:::{name}" for name in [*primary, *replica]}
+    for suffix, sources in [("", primary), ("-eu-west-1-replication", replica)]:
+        destination = (
+            f"arn:aws:s3:::company-central-logs-eu-central-1-{environment}{suffix}"
+        )
+        policy = json.loads(
+            logging_bucket._log_bucket_policy(destination, account, sources)
+        )
+        grants = [
+            row
+            for row in policy["Statement"]
+            if row["Principal"] == {"Service": "logging.s3.amazonaws.com"}
+            and row["Action"] == "s3:PutObject"
+        ]
+        assert len(grants) == 2
+        for grant, source in zip(grants, sources, strict=True):
+            assert grant["Condition"] == {
+                "ArnLike": {"aws:SourceArn": f"arn:aws:s3:::{source}"},
+                "StringEquals": {"aws:SourceAccount": account},
+            }
+            assert grant["Resource"] == f"{destination}/aws-logs/{source}/*"
+
+            def admitted(request_source, request_account, request_key):
+                return (
+                    fnmatchcase(
+                        request_source, grant["Condition"]["ArnLike"]["aws:SourceArn"]
+                    )
+                    and request_account
+                    == grant["Condition"]["StringEquals"]["aws:SourceAccount"]
+                    and fnmatchcase(request_key, grant["Resource"])
+                )
+
+            arn = f"arn:aws:s3:::{source}"
+            key = f"{destination}/aws-logs/{source}/access-log-object"
+            assert admitted(arn, account, key)  # No ACL header is needed.
+            assert not admitted("arn:aws:s3:::foreign", account, key)
+            assert not admitted(arn, "000000000000", key)
+            assert not admitted(arn, account, f"{destination}/aws-logs/foreign/object")
+        unchanged = {
+            row["Sid"]: row for row in policy["Statement"] if row not in grants
+        }
+        assert set(unchanged) == {
+            "RequireTLS",
+            "AllowCloudTrailAclCheck",
+            "AllowCloudTrailPutObject",
+            "AllowLogDeliveryAclCheck",
+        }
+        assert unchanged["RequireTLS"]["Condition"] == {
+            "Bool": {"aws:SecureTransport": "false"}
+        }
+        assert unchanged["AllowCloudTrailPutObject"]["Condition"]["StringEquals"] == {
+            "s3:x-amz-acl": "bucket-owner-full-control",
+            "aws:SourceAccount": account,
+        }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 
 import pulumi
 
@@ -12,6 +13,21 @@ from .ci_config import CiConfigurationArgs
 from .cost_controls import CostControlInputs
 from .managed_repository import ManagedRepository
 from .repository_catalog import ManagedRepositoryCatalog
+
+
+def _logging_source_bucket_names(
+    settings: BootstrapSettings, repositories: Sequence[ManagedRepository]
+) -> list[str]:
+    """Bind central delivery to the platform and reviewed governance catalogs."""
+    governed = ManagedRepositoryCatalog.load_from_json_file(
+        str(Path(__file__).resolve().parents[1] / "repositories.governance.json")
+    )
+    return sorted(
+        {
+            settings.state_bucket_name_for_repo(repo.name)
+            for repo in [*repositories, *governed]
+        }
+    )
 
 
 def _repository_project(
@@ -189,6 +205,7 @@ class BootstrapInfrastructure(pulumi.ComponentResource):
         self.logging = self.dependencies.logging_buckets_cls(
             "central-logging",
             settings=settings,
+            source_bucket_names=_logging_source_bucket_names(settings, repositories),
             manage_replication_role=manage_control_resources,
             opts=child_opts,
         )

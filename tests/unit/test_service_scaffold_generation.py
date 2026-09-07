@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import runpy
 import shlex
 import subprocess
 import sys
@@ -29,6 +30,64 @@ assert spec and spec.loader
 initializer = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = initializer
 spec.loader.exec_module(initializer)
+
+
+@pytest.mark.parametrize(
+    "stack,environment,account,passes",
+    [
+        ("test", "test", "891377212104", True),
+        ("prod", "prod", "933245420672", True),
+        ("test", "test", "933245420672", False),
+        ("prod", "prod", "891377212104", False),
+        ("test", "dev", "891377212104", False),
+        ("prod", "dev", "933245420672", False),
+        ("dev", "test", "891377212104", False),
+        ("dev", "dev", "", True),
+    ],
+)
+def test_generated_entrypoint_pins_selected_stack_and_live_account(
+    tmp_path, monkeypatch, stack, environment, account, passes
+):
+    destination = tmp_path / "generated"
+    scaffold.generate(ROOT, destination, "billing-infrastructure")
+    values = {
+        "repoSlug": "billing-infrastructure",
+        "environment": environment,
+        "awsAccountId": "933245420672" if stack == "prod" else "891377212104",
+        "pulumiBackendUrl": "s3://owned",
+        "pulumiSecretsProvider": "awskms://owned",
+    }
+    exports = {}
+    calls = []
+
+    class Config:
+        def require(self, name):
+            return values[name]
+
+    def caller():
+        calls.append(account)
+        return SimpleNamespace(account_id=account)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "pulumi",
+        SimpleNamespace(
+            Config=Config,
+            get_stack=lambda: stack,
+            export=lambda k, v: exports.__setitem__(k, v),
+        ),
+    )
+    monkeypatch.setitem(
+        sys.modules, "pulumi_aws", SimpleNamespace(get_caller_identity=caller)
+    )
+    if passes:
+        runpy.run_path(str(destination / "pulumi/__main__.py"))
+        assert exports["repoSlug"] == "billing-infrastructure"
+    else:
+        with pytest.raises(ValueError):
+            runpy.run_path(str(destination / "pulumi/__main__.py"))
+        assert exports == {}
+    assert bool(calls) is (stack == environment and stack in {"test", "prod"})
 
 
 def test_generation_is_complete_and_hashes_every_input(tmp_path):
@@ -58,6 +117,7 @@ def test_generation_is_complete_and_hashes_every_input(tmp_path):
         "scripts/initialize_service_stack.py",
         ".github/workflows/pulumi-pr-commands.yml",
         ".github/workflows/self-deploy.yml",
+        ".github/workflows/scheduled-drift.yml",
         ".github/workflows/initialize-stack.yml",
         ".github/workflows/governance-promotion.yml",
         "scripts/governance_promotion.py",
@@ -241,12 +301,15 @@ def initialization(monkeypatch):
         "GITHUB_SHA": "a" * 40,
         "INIT_ENVIRONMENT": "test",
         "INIT_ACCOUNT_ID": "891377212104",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_ACTOR": "dmytrocraft",
+        "GITHUB_TRIGGERING_ACTOR": "dmytrocraft",
     }
     for key, value in values.items():
         monkeypatch.setenv(key, value)
     calls = []
     responses = {
-        "version": "v3.223.0",
+        "version": "v3.223.0\n",
         "caller": '{"Account":"891377212104"}',
         "list": "[]",
         "checkpoint_verifications": [],
@@ -254,15 +317,39 @@ def initialization(monkeypatch):
 
     def execute(*args):
         calls.append(args)
-        if args[0] == "aws":
-            return responses["caller"]
-        if args[-1] == "version":
+        if args == ("pulumi", "version"):
             return responses["version"]
-        if "ls" in args:
+        if args[0] == "aws":
+            assert args == ("aws", "sts", "get-caller-identity", "--output", "json")
+            return responses["caller"]
+        assert args[:3] == ("pulumi", "-C", str(TEMPLATE / "pulumi"))
+        environment = os.environ["INIT_ENVIRONMENT"]
+        tail = args[3:]
+        backend = f"s3://pulumi-user-service-infrastructure-{environment}-state"
+        provider = f"awskms://alias/pulumi-user-service-infrastructure-{environment}-secrets?region=eu-central-1"
+        if tail == (
+            "stack",
+            "ls",
+            "--json",
+            "--project",
+            "user-service-infrastructure",
+        ):
             response = responses["list"]
             if isinstance(response, Exception):
                 raise response
             return response
+        assert tail in {
+            ("login", "--non-interactive", backend),
+            ("stack", "select", environment, "--non-interactive"),
+            (
+                "stack",
+                "init",
+                environment,
+                "--non-interactive",
+                "--secrets-provider",
+                provider,
+            ),
+        }, "Unexpected CLI operation or target"
         return ""
 
     monkeypatch.setattr(initializer, "execute", execute)
@@ -280,6 +367,13 @@ def initialization(monkeypatch):
         ([], True),
         ([{"name": "test"}], False),
         ([{"name": "organization/user-service-infrastructure/test"}], False),
+        (
+            [
+                {"name": "test"},
+                {"name": "organization/user-service-infrastructure/test"},
+            ],
+            False,
+        ),
     ],
 )
 def test_initialization_only_creates_after_successful_exact_project_listing(
@@ -332,13 +426,18 @@ def test_checkpoint_verification_uses_exact_shared_provider_guard(
         yield context
 
     monkeypatch.setattr(_pulumi_stack_config, "prepared_stack_configuration", verified)
+    monkeypatch.setenv("AWS_REGION", "eu-central-1")
     initializer._verify_checkpoint(
         tmp_path, "test", "891377212104", "s3://owned-state", "awskms://alias/owned"
     )
     context, stack = seen[0]
     assert stack == "test"
     assert context.pulumi_dir == tmp_path / "pulumi"
+    assert context.policy_pack_dir == tmp_path / "policy"
+    assert context.plan_dir == tmp_path / ".artifacts/pulumi-plan"
+    assert context.preview_artifact_dir == tmp_path / ".artifacts/pulumi-preview"
     assert context.env["AWS_ACCOUNT_ID"] == "891377212104"
+    assert context.env["AWS_REGION"] == "eu-central-1"
     assert (
         context.backend_url == context.env["PULUMI_BACKEND_URL"] == "s3://owned-state"
     )
@@ -565,12 +664,30 @@ def test_verification_cli_checks_protection_and_default_branch(
     monkeypatch.setattr(
         initializer,
         "verify_environments",
-        lambda request, **kwargs: calls.append(request),
+        lambda request, **kwargs: calls.append((request, kwargs)),
     )
-    monkeypatch.setattr(initializer, "gh", lambda _path: {"default_branch": "main"})
+    monkeypatch.setattr(
+        initializer,
+        "gh",
+        lambda path: (
+            {"permission": "write"}
+            if path.endswith("/collaborators/dmytrocraft/permission")
+            else {
+                "repos/VilnaCRM-Org/user-service-infrastructure": {
+                    "default_branch": "main"
+                }
+            }[path]
+        ),
+    )
     assert initializer.main(["verify"]) == 0
-    assert calls == [{"command": "up", "target_environment": "test"}]
-    monkeypatch.setattr(initializer, "gh", lambda _path: {"default_branch": "develop"})
+    assert calls == [
+        ({"command": "up", "target_environment": "test"}, {"governance": False})
+    ]
+    monkeypatch.setattr(
+        initializer,
+        "gh",
+        lambda _path: {"default_branch": "develop", "permission": "write"},
+    )
     with pytest.raises(ValueError, match="Default branch"):
         initializer.main(["verify"])
 
@@ -584,7 +701,325 @@ def test_initialization_cli_writes_metadata_receipt(
     receipt = {"resourceUpdateExecuted": False, "headSha": "a" * 40}
     monkeypatch.setattr(initializer, "initialize", lambda root: receipt)
     assert initializer.main(["initialize"]) == 0
+    assert initializer.main(["initialize"]) == 0
     assert (
         json.loads((tmp_path / ".artifacts/stack-initialization.json").read_text())
         == receipt
     )
+
+
+@pytest.mark.parametrize("permission", ["write", "maintain", "admin"])
+def test_initializer_requires_current_requester_permission(
+    initialization, monkeypatch, permission
+):
+    requested = []
+    monkeypatch.setattr(
+        initializer,
+        "gh",
+        lambda path: requested.append(path) or {"permission": permission},
+    )
+    initializer.verify_requester()
+    assert requested == [
+        "repos/VilnaCRM-Org/user-service-infrastructure/collaborators/dmytrocraft/permission"
+    ]
+
+
+@pytest.mark.parametrize("permission", ["read", "triage", "none", "", None])
+def test_initializer_rejects_insufficient_permission_before_environment_checks(
+    initialization, monkeypatch, permission
+):
+    calls, _ = initialization
+    monkeypatch.setattr(initializer, "gh", lambda _path: {"permission": permission})
+    monkeypatch.setattr(
+        initializer,
+        "verify_environments",
+        lambda *args, **kwargs: pytest.fail(
+            "Unapproved requester reached environment verification"
+        ),
+    )
+    with pytest.raises(ValueError, match="Current write access"):
+        initializer.main(["verify"])
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("GITHUB_ACTOR", "Kravalg"),
+        ("GITHUB_ACTOR", "kravalg"),
+        ("GITHUB_ACTOR", ""),
+        ("GITHUB_ACTOR", "../other"),
+        ("GITHUB_TRIGGERING_ACTOR", "other"),
+        ("GITHUB_RUN_ATTEMPT", "2"),
+        ("GITHUB_RUN_ATTEMPT", ""),
+    ],
+)
+def test_initializer_rejects_self_review_forged_actor_and_rerun_before_api(
+    initialization, monkeypatch, key, value
+):
+    calls, _ = initialization
+    monkeypatch.setenv(key, value)
+    if key == "GITHUB_ACTOR":
+        monkeypatch.setenv("GITHUB_TRIGGERING_ACTOR", value)
+    monkeypatch.setattr(
+        initializer,
+        "gh",
+        lambda _path: pytest.fail("Invalid requester reached GitHub API"),
+    )
+    with pytest.raises(ValueError):
+        initializer.main(["verify"])
+    assert calls == []
+
+
+def test_initializer_permission_read_failure_never_continues(
+    initialization, monkeypatch
+):
+    calls, _ = initialization
+
+    def denied(_path):
+        raise subprocess.CalledProcessError(1, ["gh", "api"])
+
+    monkeypatch.setattr(initializer, "gh", denied)
+    monkeypatch.setattr(
+        initializer,
+        "verify_environments",
+        lambda *args, **kwargs: pytest.fail(
+            "Denied permission read reached environment verification"
+        ),
+    )
+    with pytest.raises(subprocess.CalledProcessError):
+        initializer.main(["verify"])
+    assert calls == []
+
+
+def test_prod_initialization_emits_exact_public_receipt(initialization, monkeypatch):
+    """The PROD metadata receipt binds the same selected account and backend."""
+    calls, responses = initialization
+    monkeypatch.setenv("INIT_ENVIRONMENT", "prod")
+    monkeypatch.setenv("INIT_ACCOUNT_ID", "933245420672")
+    responses["caller"] = '{"Account":"933245420672"}'
+    assert initializer.initialize(TEMPLATE) == {
+        "schemaVersion": 1,
+        "project": "user-service-infrastructure",
+        "stack": "prod",
+        "accountId": "933245420672",
+        "backend": "s3://pulumi-user-service-infrastructure-prod-state",
+        "secretsProvider": "awskms://alias/pulumi-user-service-infrastructure-prod-secrets?region=eu-central-1",
+        "headSha": "a" * 40,
+        "created": True,
+        "resourceUpdateExecuted": False,
+    }
+    assert calls[-1][-5:] == (
+        "init",
+        "prod",
+        "--non-interactive",
+        "--secrets-provider",
+        "awskms://alias/pulumi-user-service-infrastructure-prod-secrets?region=eu-central-1",
+    )
+    assert all("up" not in call and "preview" not in call for call in calls)
+
+
+@pytest.mark.parametrize("job_name", ["preflight", "initialize"])
+@pytest.mark.parametrize(
+    "attempt,actor,triggering,permission,passes",
+    [
+        ("1", "dmytrocraft", "dmytrocraft", "write", True),
+        ("1", "dmytrocraft", "dmytrocraft", "admin", True),
+        ("2", "dmytrocraft", "dmytrocraft", "write", False),
+        ("", "dmytrocraft", "dmytrocraft", "write", False),
+        ("1", "Kravalg", "Kravalg", "admin", False),
+        ("1", "dmytrocraft", "other", "write", False),
+        ("1", "dmytrocraft", "dmytrocraft", "read", False),
+        ("1", "dmytrocraft", "dmytrocraft", None, False),
+    ],
+)
+def test_each_initialization_job_verifies_before_credentials(
+    initialization,
+    monkeypatch,
+    job_name,
+    attempt,
+    actor,
+    triggering,
+    permission,
+    passes,
+):
+    """A job-only rerun must hit the actual workflow command before either OIDC step."""
+    workflow = yaml.safe_load(
+        (TEMPLATE / ".github/workflows/initialize-stack.yml").read_text()
+    )
+    job = workflow["jobs"][job_name]
+    steps = job["steps"]
+    verification = [
+        (index, step)
+        for index, step in enumerate(steps)
+        if step.get("run") == "python3 scripts/initialize_service_stack.py verify"
+    ]
+    assert len(verification) == 1
+    index, step = verification[0]
+    assert "if" not in step and "continue-on-error" not in step
+    assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
+    assert job["permissions"]["actions"] == "read"
+    credential_steps = [
+        offset
+        for offset, candidate in enumerate(steps)
+        if "load-aws-ci-env" in candidate.get("uses", "")
+        or "configure-aws-credentials" in candidate.get("uses", "")
+    ]
+    if job_name == "initialize":
+        assert len(credential_steps) == 2
+        assert all(index < offset for offset in credential_steps)
+        assert job["env"]["INIT_ACCOUNT_ID"] == (
+            "${{ needs.preflight.outputs.account_id }}"
+        )
+    else:
+        assert credential_steps == []
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", attempt)
+    monkeypatch.setenv("GITHUB_ACTOR", actor)
+    monkeypatch.setenv("GITHUB_TRIGGERING_ACTOR", triggering)
+    monkeypatch.setattr(
+        initializer,
+        "gh",
+        lambda path: (
+            {"permission": permission}
+            if "/collaborators/" in path
+            else {"default_branch": "main"}
+        ),
+    )
+    protected = []
+    monkeypatch.setattr(
+        initializer, "verify_environments", lambda *a, **k: protected.append(True)
+    )
+    arguments = shlex.split(step["run"])[2:]
+    if passes:
+        assert initializer.main(arguments) == 0
+        assert protected == [True]
+    else:
+        with pytest.raises(ValueError):
+            initializer.main(arguments)
+        assert protected == []
+    assert initialization[0] == []
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("phase", ["preview", "apply"])
+@pytest.mark.parametrize("override", [False, True])
+def test_generated_make_consumes_workflow_event_for_destructive_gate(
+    tmp_path, environment, phase, override
+):
+    """Execute generated workflow staging, its real Makefile, and the real parser."""
+    destination = tmp_path / "generated"
+    scaffold.generate(ROOT, destination, "billing-infrastructure")
+    subprocess.run(["git", "init", "-q", str(destination)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--allow-empty",
+            "-qm",
+            "fixture",
+        ],
+        cwd=destination,
+        check=True,
+    )
+    head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=destination, text=True
+    ).strip()
+    preview = destination / ".artifacts/pulumi-preview"
+    preview.mkdir(parents=True)
+    original = json.dumps(
+        {
+            "steps": [
+                {
+                    "op": "delete",
+                    "urn": "urn:fixture",
+                    "newState": {"type": "aws:kms/key:Key"},
+                }
+            ]
+        }
+    )
+    (preview / "original.json").write_text(original)
+    stale = preview / "pull-request-event.json"
+    stale.write_text(
+        json.dumps(
+            {"pull_request": {"labels": [{"name": "allow-destructive-infra-change"}]}}
+        )
+    )
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    gh = binaries / "gh"
+    gh.write_text(
+        f"#!{sys.executable}\n"
+        "import json, os, sys\n"
+        "if sys.argv[2].endswith('/pulls/39'):\n"
+        "    print(json.dumps({'state':'open','merged':False,\n"
+        "        'head':{'sha':os.environ['EXPECTED_SHA']},\n"
+        "        'base':{'ref':'main','sha':os.environ['EXPECTED_BASE_SHA']}}))\n"
+        "else:\n"
+        "    assert sys.argv[2].endswith('/issues/39/labels')\n"
+        "    assert '--paginate' in sys.argv and '--slurp' in sys.argv\n"
+        "    print(json.dumps([json.loads(os.environ['LABELS'])]))\n"
+    )
+    compose = binaries / "compose"
+    compose.write_text(
+        f"#!{sys.executable}\n"
+        "import subprocess, sys\n"
+        "args = sys.argv[1:]\n"
+        "assert args[:7] == ['run','--rm','pulumi','uv','run','--frozen','python']\n"
+        "assert args[7:9] == ['scripts/pulumi_ci_guardrails.py','destructive-gate']\n"
+        "sys.exit(subprocess.run([sys.executable, *args[7:]], "
+        "check=False).returncode)\n"
+    )
+    gh.chmod(0o755)
+    compose.chmod(0o755)
+    workflow = yaml.safe_load(
+        (destination / ".github/workflows/self-deploy.yml").read_text()
+    )
+    if phase == "preview":
+        steps = workflow["jobs"][f"{environment}_destructive_diff"]["steps"]
+        stage = next(
+            step for step in steps if step.get("name", "").startswith("Stage pull")
+        )
+        shell = (
+            stage["run"].replace(
+                "${{ needs.preflight.outputs.pull_request_number }}", "39"
+            )
+            + "\nmake test-destructive-diff\n"
+        )
+    else:
+        steps = workflow["jobs"][f"{environment}_apply"]["steps"]
+        apply = next(
+            step for step in steps if step.get("name", "").startswith("Apply saved")
+        )
+        assert apply["run"].rstrip().endswith("make pulumi-up-plan")
+        shell = apply["run"].rsplit("make pulumi-up-plan", 1)[0]
+    result = subprocess.run(
+        ["/bin/bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", shell],
+        cwd=destination,
+        env={
+            "PATH": f"{binaries}:/usr/bin:/bin",
+            "COMPOSE": str(compose),
+            "GITHUB_REPOSITORY": "fixture/repository",
+            "PR_NUMBER": "39",
+            "EXPECTED_SHA": head,
+            "EXPECTED_BASE_SHA": "b" * 40,
+            "LABELS": json.dumps(
+                [{"name": "allow-destructive-infra-change"}] if override else []
+            ),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) is override, result.stderr
+    assert "No such file" not in result.stderr
+    if not override:
+        assert "destructive change blocked" in result.stderr
+    if phase == "apply":
+        assert not stale.exists()
+    assert (preview / "original.json").read_text() == original

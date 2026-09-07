@@ -104,12 +104,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Configure AWS preview credentials via OIDC
@@ -136,6 +139,16 @@ jobs:
             governance-${{ needs.preflight.outputs.pull_request_number }}-${{
             needs.preflight.outputs.head_sha }}-test-plan
           path: .artifacts/pulumi-plan
+          retention-days: 7
+
+      - name: Upload governance test preview artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-preview
+          path: .artifacts/pulumi-preview
+          if-no-files-found: error
           retention-days: 7
 
   governance_test_apply:
@@ -196,12 +209,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Configure AWS governance apply credentials via OIDC
@@ -225,11 +241,47 @@ jobs:
             needs.preflight.outputs.head_sha }}-test-plan
           path: .artifacts/pulumi-plan
 
+      - name: Download governance test preview for apply revalidation
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-test-preview
+          path: .artifacts/pulumi-preview
+
       - name: Apply saved governance test plan
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
           GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: make pulumi-up-plan
+        run: |
+          # The immutable same-run preview is the diff for this saved plan.
+          shopt -s nullglob
+          previews=(.artifacts/pulumi-preview/*.json)
+          found_preview=false
+          for preview in "${previews[@]}"; do
+            if [[ "${preview}" != */pull-request-event.json ]]; then
+              test -s "${preview}"
+              found_preview=true
+            fi
+          done
+          test "${found_preview}" = true
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+          # Remove only obsolete event metadata; preserve the original diff files.
+          rm -f .artifacts/pulumi-preview/pull-request-event.json
+          make test-destructive-diff
+          make pulumi-up-plan
 
   governance_test_post_apply_drift:
     name: Governance Test Post-Apply Drift
@@ -273,12 +325,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Configure AWS drift credentials via OIDC
@@ -346,12 +401,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Configure AWS preview credentials via OIDC
@@ -378,6 +436,16 @@ jobs:
             governance-${{ needs.preflight.outputs.pull_request_number }}-${{
             needs.preflight.outputs.head_sha }}-prod-plan
           path: .artifacts/pulumi-plan
+          retention-days: 7
+
+      - name: Upload governance prod preview artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-preview
+          path: .artifacts/pulumi-preview
+          if-no-files-found: error
           retention-days: 7
 
   governance_prod_apply:
@@ -441,12 +509,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Configure AWS governance apply credentials via OIDC
@@ -470,11 +541,47 @@ jobs:
             needs.preflight.outputs.head_sha }}-prod-plan
           path: .artifacts/pulumi-plan
 
+      - name: Download governance prod preview for apply revalidation
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
+        with:
+          name: >-
+            governance-${{ needs.preflight.outputs.pull_request_number }}-${{
+            needs.preflight.outputs.head_sha }}-prod-preview
+          path: .artifacts/pulumi-preview
+
       - name: Apply saved governance prod plan
         env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
           GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: make pulumi-up-plan
+        run: |
+          # The immutable same-run preview is the diff for this saved plan.
+          shopt -s nullglob
+          previews=(.artifacts/pulumi-preview/*.json)
+          found_preview=false
+          for preview in "${previews[@]}"; do
+            if [[ "${preview}" != */pull-request-event.json ]]; then
+              test -s "${preview}"
+              found_preview=true
+            fi
+          done
+          test "${found_preview}" = true
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+          # Remove only obsolete event metadata; preserve the original diff files.
+          rm -f .artifacts/pulumi-preview/pull-request-event.json
+          make test-destructive-diff
+          make pulumi-up-plan
 
   governance_prod_post_apply_drift:
     name: Governance Prod Post-Apply Drift
@@ -519,12 +626,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
           PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
         run: |
           pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
           test "$(jq -r '.state' <<< "${pr_json}")" = open
           test "$(jq -r '.merged' <<< "${pr_json}")" = false
           test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
 
       - name: Configure AWS drift credentials via OIDC

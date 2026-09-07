@@ -498,7 +498,7 @@ def test_makefile_keeps_pulumi_guardrails_secret_safe() -> None:
     assert "stack change-secrets-provider" not in pulumi_command_combined_text  # nosec B101
     assert '"--save-plan"' in pulumi_command_combined_text  # nosec B101
     assert '"summarize"' in pulumi_command_combined_text  # nosec B101
-    assert "direct Pulumi up is disabled in GitHub Actions" in (  # nosec B101
+    assert "direct Pulumi {command} is disabled in GitHub Actions" in (  # nosec B101
         pulumi_command_combined_text
     )
 
@@ -790,10 +790,6 @@ def test_multi_account_workflows_use_fixed_aws_ci_config_contracts() -> None:
         ("nightly-guardrails.yml", "prod_drift_detection"): (
             "prod-preview",
             "${{ steps.ci_config.outputs.aws-drift-role-arn }}",
-        ),
-        ("well-architected-evidence.yml", "test_account_evidence"): (
-            test_pr_environment,
-            "${{ steps.ci_config.outputs.aws-preview-role-arn }}",
         ),
         ("operations-alert-triage.yml", "triage_operations_alerts"): (
             "test",

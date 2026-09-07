@@ -72,7 +72,11 @@ def _governance_environment(reviewer_id: int = REVIEWER_ID) -> dict[str, object]
                 "reviewers": [
                     {
                         "type": "User",
-                        "reviewer": {"id": reviewer_id, "login": "Kravalg"},
+                        "reviewer": {
+                            "type": "User",
+                            "id": reviewer_id,
+                            "login": "Kravalg",
+                        },
                     }
                 ],
             }
@@ -246,7 +250,7 @@ def test_configure_emits_and_applies_governance_environment(
 
     def _record_gh_api(args, *, input_payload=None):
         calls.append((tuple(args), input_payload))
-        return {"branch_policies": []} if len(args) == 1 else {}
+        return {"total_count": 0, "branch_policies": []} if len(args) == 1 else {}
 
     monkeypatch.setattr(module, "_repo_admin_allowed", lambda _repo: True)
     monkeypatch.setattr(module, "_github_user_id", lambda _reviewer: REVIEWER_ID)
@@ -298,7 +302,7 @@ def test_verify_applied_controls_reports_governance_environment(
         module,
         "_run_gh_api",
         lambda _args, **_kwargs: (
-            {"branch_policies": [{"name": "main", "type": "branch"}]}
+            {"total_count": 1, "branch_policies": [{"name": "main", "type": "branch"}]}
             if _args[0].endswith("/deployment-branch-policies")
             else _governance_environment()
         ),

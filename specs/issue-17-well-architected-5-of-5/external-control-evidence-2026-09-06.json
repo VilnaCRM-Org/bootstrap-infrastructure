@@ -1,0 +1,103 @@
+{
+  "workload": "bootstrap-infrastructure",
+  "owner": "platform-maintainers",
+  "reviewer": "Codex (delegated technical review)",
+  "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+  "sourceCommit": "5c873f86fa956f6b96a09e2887297905467b8562",
+  "controlCount": 8,
+  "unresolvedControlCount": 1,
+  "unresolvedControlIds": [
+    "production_approval"
+  ],
+  "evidenceLocation": "docs/well-architected-current-review-2026-09-06.md",
+  "fallbackPlan": "Retain affected questions/controls unresolved and final proxy score caps until actual restore, settings, downstream protection and promotion requirements are met. No gate mutation or historical approval renewal.",
+  "controls": [
+    {
+      "id": "branch_protection",
+      "status": "passed",
+      "evidence": [
+        "Authoritative current ruleset readback confirms active rules, all 24 required checks and an empty bypass list; all four downstream main-only protected environments now exist. Current source gate design is unchanged; promotion outcomes stay separate.",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json"
+      ]
+    },
+    {
+      "id": "alert_route",
+      "status": "passed",
+      "evidence": [
+        "Installed unchanged main v1 Operations Alert Issue Triage consumes encrypted SNS/SQS metadata through dedicated GitHub OIDC and creates a sanitized repository issue before acknowledgement. Exact run34058543444/issue202 contains only approved SNS501a417e-1261-5286-bec4-2269c342b26c; normal acknowledgement and two empty-queue observations verified, then only synthetic issue202 closed.",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json"
+      ]
+    },
+    {
+      "id": "backup_restore",
+      "status": "passed",
+      "evidence": [
+        "file:specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json",
+        "Actual TEST R6 job 4d9f551a-92cd-42df-9ef1-a3dd38cafc11 COMPLETED; exact content, positive pre-start canary CloudTrail delivery and full cleanup verified."
+      ],
+      "priorReviewHistory": [
+        {
+          "sourceRecordSha256": "ae7c30953314343b297bf6d7f639104cdc929e49e22476768d630ca70f5ec48e",
+          "reviewedAt": "2026-09-06T21:28:37.505289+00:00",
+          "id": "backup_restore",
+          "status": "unresolved",
+          "evidence": [
+            "R3 canary content and cleanup passed according to root; delivered Put/Get CloudTrail proof and actual successful restore/content verification remain pending. No date-only renewal.",
+            "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json"
+          ],
+          "unresolvedReason": "R3 canary content and cleanup passed according to root; delivered Put/Get CloudTrail proof and actual successful restore/content verification remain pending. No date-only renewal."
+        }
+      ]
+    },
+    {
+      "id": "finops",
+      "status": "passed",
+      "evidence": [
+        "Fresh100USD budget/5.949actual/29.612forecast,80/100%notifications,10USD immediate anomaly,10active allocation tags, and substantive tagged transfer review. Retain1GB/1USD review triggers;0.01226USD attributed bootstrap transfer examined, no expansion or new spending approval.",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json"
+      ]
+    },
+    {
+      "id": "quota_headroom",
+      "status": "passed",
+      "evidence": [
+        "Fresh55/10000S3,102/1000IAM,14/100000regionalKMS,3/300Backup plans/vaults,17/100000SNS,13/300rules;3trails preserve last-slot review, Config1mustbe reused. Per-kind static catalog validated without double counting live resources.",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json"
+      ]
+    },
+    {
+      "id": "security_account_controls",
+      "status": "passed",
+      "evidence": [
+        "Current technical credential/boundary record names Codex and binds exact18live IAM aggregates, source-bound apply/drift and six governed-role boundary checks; no globalSSO or personalapproval claim.",
+        "file:specs/issue-17-well-architected-5-of-5/runtime-closure-evidence-2026-09-06.json"
+      ]
+    },
+    {
+      "id": "sustainability_governance",
+      "status": "passed",
+      "evidence": [
+        "Current technical KPI, region, managed-service and CI efficiency review plus completed demand/retention decisions establish the operating cadence. Failures and missing outcomes remain visible; no carbon trend or owner risk waiver invented.",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json"
+      ]
+    },
+    {
+      "id": "production_approval",
+      "status": "unresolved",
+      "evidence": [
+        "Actual current same-head platform TEST/PROD protected PR-comment deployments and PROD approval remain; five local apply/drift pairs are not promotion substitution. Downstream protected environments are installed; service outcomes remain pending.",
+        "file:specs/issue-17-well-architected-5-of-5/technical-operating-review-2026-09-06.json"
+      ],
+      "unresolvedReason": "Actual current same-head platform TEST/PROD protected PR-comment deployments and PROD approval remain; five local apply/drift pairs are not promotion substitution. Downstream protected environments are installed; service outcomes remain pending."
+    }
+  ],
+  "supplementalTechnicalReview": {
+    "reviewedAt": "2026-09-07T00:20:17.535057+00:00",
+    "reviewer": "Codex security_review (delegated technical reviewer; root executed the live drill)",
+    "scope": "R6 restore only; original reviewedAt/sourceCommit and other observations retained. No personal approval or blanket freshness renewal.",
+    "evidence": "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json"
+  },
+  "receiptBindings": {
+    "specs/issue-17-well-architected-5-of-5/restore-drill-evidence-2026-09-07.json": "ac448e163e3eeca0f7b71299ccd82e7211d74c98b2cc566894fabd9bc4620baa"
+  }
+}

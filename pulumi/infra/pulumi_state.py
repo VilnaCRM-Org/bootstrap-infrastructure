@@ -301,7 +301,7 @@ class PulumiStateBuckets(pulumi.ComponentResource):
         *,
         repositories: Sequence[ManagedRepository] | None = None,
         log_delivery_dependencies: Sequence[pulumi.Resource] | None = None,
-        access_log_prefix: str = "server-access/",
+        access_log_prefix: str = "aws-logs/",
         settings: BootstrapSettings | None = None,
         replication_region: str | None = None,
         replication_permissions_boundary: str | None = None,
