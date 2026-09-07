@@ -22,15 +22,10 @@ class DeploymentStep:
     predecessor: str | None
 
 
-def deployment_schedule(
+def _validate_schedule_request(
     scopes: tuple[str, ...], *, command: str, target_environment: str
-) -> tuple[DeploymentStep, ...]:
-    """Serialize selected stacks and finish the full TEST graph before PROD.
-
-    A plan request contains no apply or drift stages. A docs-only selection has
-    no cloud stages; it is not a successful deployment. Reject noncanonical
-    scope inputs rather than silently dropping unknown or duplicate entries.
-    """
+) -> None:
+    """Reject unsupported commands/accounts and noncanonical scope selections."""
     if command not in {"plan", "up"}:
         raise ValueError("Unsupported deployment command")
     if target_environment not in {"test", "prod"}:
@@ -40,6 +35,20 @@ def deployment_schedule(
     canonical = tuple(scope for scope in STACK_ORDER if scope in scopes)
     if scopes != canonical:
         raise ValueError("Deployment scopes must be unique and in dependency order")
+
+
+def deployment_schedule(
+    scopes: tuple[str, ...], *, command: str, target_environment: str
+) -> tuple[DeploymentStep, ...]:
+    """Serialize selected stacks and finish the full TEST graph before PROD.
+
+    A plan request contains no apply or drift stages. A docs-only selection has
+    no cloud stages; it is not a successful deployment. Reject noncanonical
+    scope inputs rather than silently dropping unknown or duplicate entries.
+    """
+    _validate_schedule_request(
+        scopes, command=command, target_environment=target_environment
+    )
     environments = ("test", "prod") if target_environment == "prod" else ("test",)
     operations = ("plan", "apply", "drift") if command == "up" else ("plan",)
     steps: list[DeploymentStep] = []

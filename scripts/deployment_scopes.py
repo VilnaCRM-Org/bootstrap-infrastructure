@@ -155,6 +155,15 @@ def _record_paths(record: Mapping[str, object]) -> tuple[str, ...]:
     return (path,)
 
 
+def _validate_snapshot_revisions(base_sha: str, head_sha: str) -> None:
+    """Require distinct immutable revisions before evaluating snapshot contents."""
+    for revision in (base_sha, head_sha):
+        if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise ValueError("Both revisions must be full lowercase Git commit SHAs")
+    if base_sha == head_sha:
+        raise ValueError("A changed-file snapshot must compare distinct revisions")
+
+
 def _snapshot_paths(
     records: Sequence[Mapping[str, object]],
     base_sha: str,
@@ -163,11 +172,7 @@ def _snapshot_paths(
     complete: bool,
 ) -> tuple[str, ...]:
     """Validate the caller's complete snapshot contract before selecting anything."""
-    for revision in (base_sha, head_sha):
-        if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
-            raise ValueError("Both revisions must be full lowercase Git commit SHAs")
-    if base_sha == head_sha:
-        raise ValueError("A changed-file snapshot must compare distinct revisions")
+    _validate_snapshot_revisions(base_sha, head_sha)
     if (
         complete is not True
         or type(expected_file_count) is not int
@@ -218,13 +223,24 @@ def _central_impact(path: str) -> PathImpact | None:
         return PathImpact(
             path, catalog_validation=True, reason="Catalog validator input"
         )
-    if path == "pulumi/__main__.py" or (
+    if _is_platform_project_input(path):
+        return PathImpact(path, ("platform",), reason="Platform project runtime/input")
+    return None
+
+
+def _is_platform_project_input(path: str) -> bool:
+    """Identify only the root platform entrypoint and project manifests/config."""
+    return path == "pulumi/__main__.py" or (
         path.count("/") == 1
         and path.startswith("pulumi/Pulumi")
         and (path == "pulumi/Pulumi.yaml" or fnmatchcase(path, "pulumi/Pulumi.*.yaml"))
-    ):
-        return PathImpact(path, ("platform",), reason="Platform project runtime/input")
-    return None
+    )
+
+
+def _is_central_execution_input(path: str) -> bool:
+    """Match reviewed runner inputs, root Compose files, and shared policy."""
+    compose = "/" not in path and fnmatchcase(path, "docker-compose*.yml")
+    return path in CENTRAL_EXECUTION_FILES or compose or path.startswith("policy/")
 
 
 def _path_impact(path: str) -> PathImpact:
@@ -238,8 +254,7 @@ def _path_impact(path: str) -> PathImpact:
     scaffold = path in SCAFFOLD_RUNTIME_FILES or path.startswith("policy/")
     if _is_documentation_or_test(path):
         return PathImpact(path, scaffold_validation=scaffold)
-    compose = "/" not in path and fnmatchcase(path, "docker-compose*.yml")
-    if path in CENTRAL_EXECUTION_FILES or compose or path.startswith("policy/"):
+    if _is_central_execution_input(path):
         return PathImpact(
             path,
             STACK_ORDER,
