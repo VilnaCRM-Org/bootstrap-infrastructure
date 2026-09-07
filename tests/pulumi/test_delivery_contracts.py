@@ -1156,11 +1156,13 @@ def test_pr_command_runner_privileged_jobs_checkout_preflight_sha() -> None:
     )["jobs"]
     for name in ("preview", "iam_validation", "apply", "post_apply_drift"):
         checkouts = [
-            step for step in worker[name]["steps"]
+            step
+            for step in worker[name]["steps"]
             if step.get("uses", "").startswith("actions/checkout@")
         ]
         assert {step["with"]["ref"] for step in checkouts} == {
-            "${{ github.sha }}", "${{ needs.resolve.outputs.head_sha }}"
+            "${{ github.sha }}",
+            "${{ needs.resolve.outputs.head_sha }}",
         }
         assert all(step["with"]["persist-credentials"] is False for step in checkouts)
         lines = "\n".join(_run_lines(worker[name]["steps"]))
@@ -1176,12 +1178,17 @@ def test_pr_command_runner_dispatch_inputs_stay_narrow() -> None:
         "repository_dispatch": {"types": ["pulumi-pr-command"]}
     }
     admission = next(
-        step for step in runner["jobs"]["preflight"]["steps"]
+        step
+        for step in runner["jobs"]["preflight"]["steps"]
         if step.get("id") == "accept"
     )
     assert {key for key in admission["env"] if key.startswith("REQUEST_")} == {
-        "REQUEST_PULL_REQUEST_NUMBER", "REQUEST_HEAD_SHA", "REQUEST_COMMAND",
-        "REQUEST_TARGET_ENVIRONMENT", "REQUEST_COMMENT_ID", "REQUEST_SOURCE_RUN_ID",
+        "REQUEST_PULL_REQUEST_NUMBER",
+        "REQUEST_HEAD_SHA",
+        "REQUEST_COMMAND",
+        "REQUEST_TARGET_ENVIRONMENT",
+        "REQUEST_COMMENT_ID",
+        "REQUEST_SOURCE_RUN_ID",
     }
     assert "python3 -I" in admission["run"]
     assert "deployment_controller_runtime" in admission["run"]
