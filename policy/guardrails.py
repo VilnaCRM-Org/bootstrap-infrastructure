@@ -218,7 +218,7 @@ def logging_violations(resource_type: str, props: Mapping[str, Any]) -> list[str
         if _bucket_logging_exempt(props):
             return violations
         logging_config = props.get("logging")
-        if not isinstance(logging_config, Mapping) or not _string_value(
+        if not isinstance(logging_config, Mapping) or not _s3_concrete_bucket_name(
             logging_config.get("targetBucket")
         ):
             violations.append("S3 buckets must send access logs to a target bucket.")
@@ -300,6 +300,12 @@ def _has_default_s3_encryption_rule(props: Mapping[str, Any]) -> bool:
     return False
 
 
+def _s3_concrete_bucket_name(value: object) -> str | None:
+    """Do not treat the shared Pulumi unknown sentinel as an S3 identity."""
+    name = _string_value(value)
+    return None if name == "04da6b54-80e4-46f7-96ec-b56ff0331ba9" else name
+
+
 def _s3_encryption_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]]:
     """Collect bucket names and URNs protected by standalone S3 encryption resources."""
     encrypted_bucket_names: set[str] = set()
@@ -317,7 +323,7 @@ def _s3_encryption_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]
         if not _has_default_s3_encryption_rule(props):
             continue
 
-        bucket_name = _string_value(props.get("bucket"))
+        bucket_name = _s3_concrete_bucket_name(props.get("bucket"))
         if bucket_name:
             encrypted_bucket_names.add(bucket_name)
 
@@ -345,7 +351,7 @@ def _s3_bucket_is_covered(
     if isinstance(encryption, Mapping) and _has_default_s3_encryption_rule(encryption):
         return True
 
-    bucket_name = _string_value(props.get("bucket"))
+    bucket_name = _s3_concrete_bucket_name(props.get("bucket"))
     if urn in encrypted_bucket_urns:
         return True
     return bool(bucket_name and bucket_name in encrypted_bucket_names)
@@ -365,10 +371,10 @@ def _s3_logging_targets(resources: Sequence[Any]) -> tuple[set[str], set[str]]:
             continue
 
         props = cast(Mapping[str, Any], getattr(resource, "props", {}))
-        if not _string_value(props.get("targetBucket")):
+        if not _s3_concrete_bucket_name(props.get("targetBucket")):
             continue
 
-        bucket_name = _string_value(props.get("bucket"))
+        bucket_name = _s3_concrete_bucket_name(props.get("bucket"))
         if bucket_name:
             logged_bucket_names.add(bucket_name)
 
@@ -396,12 +402,12 @@ def _s3_bucket_logging_is_covered(
         return True
 
     logging_config = props.get("logging")
-    if isinstance(logging_config, Mapping) and _string_value(
+    if isinstance(logging_config, Mapping) and _s3_concrete_bucket_name(
         logging_config.get("targetBucket")
     ):
         return True
 
-    bucket_name = _string_value(props.get("bucket"))
+    bucket_name = _s3_concrete_bucket_name(props.get("bucket"))
     if urn in logged_bucket_urns:
         return True
     return bool(bucket_name and bucket_name in logged_bucket_names)

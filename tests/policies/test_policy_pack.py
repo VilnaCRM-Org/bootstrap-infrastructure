@@ -2632,3 +2632,73 @@ def test_resource_policy_preserves_tls_deny_and_kms_account_admin_shape(
             )
             == []
         )
+
+
+@pytest.mark.parametrize("kind", ["encryption", "logging"])
+@pytest.mark.parametrize("property_scoped", [False, True])
+def test_unknown_s3_names_never_match_unrelated_buckets(
+    policy_runtime: SimpleNamespace, kind: str, property_scoped: bool
+) -> None:
+    """An unknown name proves no identity; a bucket-specific URN still does."""
+    unknown = "04da6b54-80e4-46f7-96ec-b56ff0331ba9"
+    source = _stack_resource(
+        "aws:s3/bucket:Bucket", props={"bucket": unknown}, urn="urn:source"
+    )
+    unrelated = _stack_resource(
+        "aws:s3/bucket:Bucket", props={"bucket": unknown}, urn="urn:unrelated"
+    )
+    if kind == "encryption":
+        resource_type = (
+            "aws:s3/bucketServerSideEncryptionConfigurationV2:"
+            "BucketServerSideEncryptionConfigurationV2"
+        )
+        props = {
+            "bucket": unknown,
+            "rule": {"applyServerSideEncryptionByDefault": {"sseAlgorithm": "AES256"}},
+        }
+        validate = policy_runtime.storage_encryption_stack_violations
+    else:
+        resource_type = "aws:s3/bucketLogging:BucketLogging"
+        props = {"bucket": unknown, "targetBucket": "audit-logs"}
+        validate = policy_runtime.logging_stack_violations
+    protection = _stack_resource(
+        resource_type,
+        props=props,
+        urn="urn:protection",
+        property_dependencies={"bucket": [source]} if property_scoped else {},
+    )
+    expected = [unrelated.urn] if property_scoped else [source.urn, unrelated.urn]
+    assert [urn for urn, _ in validate([source, unrelated, protection])] == expected
+
+
+@pytest.mark.parametrize("mode", ["inline", "split"])
+@pytest.mark.parametrize(
+    "target", ["04da6b54-80e4-46f7-96ec-b56ff0331ba9", "audit-logs"]
+)
+def test_s3_logging_requires_a_concrete_destination(
+    policy_runtime: SimpleNamespace, mode: str, target: str
+) -> None:
+    """Even an exact source dependency cannot prove an unknown log destination."""
+    bucket = _stack_resource(
+        "aws:s3/bucket:Bucket", props={"bucket": "source"}, urn="urn:source"
+    )
+    resources = [bucket]
+    if mode == "inline":
+        bucket.props["logging"] = {"targetBucket": target}
+    else:
+        resources.append(
+            _stack_resource(
+                "aws:s3/bucketLogging:BucketLogging",
+                props={"bucket": "source", "targetBucket": target},
+                urn="urn:logging",
+                property_dependencies={"bucket": [bucket]},
+            )
+        )
+    expected = [] if target == "audit-logs" else [bucket.urn]
+    assert [
+        urn for urn, _ in policy_runtime.logging_stack_violations(resources)
+    ] == expected
+    if mode == "inline":
+        assert bool(
+            policy_runtime.logging_violations(bucket.resource_type, bucket.props)
+        ) == bool(expected)

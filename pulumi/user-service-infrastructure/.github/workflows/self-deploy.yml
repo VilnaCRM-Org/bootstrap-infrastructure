@@ -159,9 +159,7 @@ jobs:
           echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
           echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: preview"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
 
@@ -303,9 +301,7 @@ jobs:
           echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
           echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: apply"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
 
@@ -539,9 +535,7 @@ jobs:
           echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
           echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: preview"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
 
@@ -698,9 +692,7 @@ jobs:
           echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
           echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
           echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Role purpose: apply"
           echo "PR command: ${{ needs.preflight.outputs.display_command }}"
 
