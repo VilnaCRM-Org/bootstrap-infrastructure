@@ -326,6 +326,62 @@ def test_native_aws_fixed_json_and_private_dispatch(installed, monkeypatch, outp
         assert command[-1] == output
 
 
+@pytest.mark.parametrize("operation", ["get-object", "head-object"])
+def test_s3_streaming_selectors_preserve_version_owner_and_private_output(
+    installed, monkeypatch, operation
+):
+    calls = []
+    monkeypatch.setattr(
+        transport, "run", lambda cmd, **kw: calls.append((cmd, kw)) or b'{"ok":true}'
+    )
+    arguments = {
+        "Bucket": installed.bucket,
+        "Key": installed.object_key,
+        "VersionId": "immutable-version",
+        "ExpectedBucketOwner": installed.account,
+    }
+    original = dict(arguments)
+    output = installed.area / "private-checkpoint"
+    assert installed.aws("s3api", operation, arguments, output) == {"ok": True}
+    command, options = calls[0]
+    assert arguments == original
+    if operation == "get-object":
+        assert command[:7] == [
+            transport.AWS,
+            "s3api",
+            "get-object",
+            "--bucket",
+            installed.bucket,
+            "--key",
+            installed.object_key,
+        ]
+        assert "--cli-input-json" not in command
+        assert command[command.index("--version-id") + 1] == "immutable-version"
+        assert (
+            command[command.index("--expected-bucket-owner") + 1] == installed.account
+        )
+    else:
+        assert "--bucket" not in command and "--key" not in command
+        assert json.loads(command[command.index("--cli-input-json") + 1]) == original
+    assert command[-1] == str(output)
+    assert options == {"env": installed.aws_env, "cwd": installed.area, "timeout": 90}
+
+
+@pytest.mark.parametrize(
+    "arguments", [{}, {"Bucket": "synthetic", "Extra": "unexpected"}]
+)
+def test_streaming_request_rejects_unsupported_fields_before_dispatch(
+    installed, monkeypatch, arguments
+):
+    monkeypatch.setattr(
+        transport, "run", lambda *_args, **_kwargs: pytest.fail("must not dispatch")
+    )
+    with pytest.raises(ValueError, match="checkpoint-request-fields"):
+        installed.aws(
+            "s3api", "get-object", arguments, installed.area / "private-checkpoint"
+        )
+
+
 def test_process_scan_uses_uid_and_excludes_zombies(tmp_path, monkeypatch):
     paths = []
     for pid, uid, state in ((2, 2000, "R"), (3, 0, "R"), (4, 2000, "Z")):

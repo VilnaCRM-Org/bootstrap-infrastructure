@@ -114,6 +114,7 @@ def select_records(records: list[Mapping[str, object]]) -> DeploymentScopes:
         ("scripts/run_pulumi_command.py", ALL, True, True, False),
         ("scripts/_pulumi_stack_config.py", ALL, True, True, False),
         ("scripts/prepare_docker_context.py", ALL, False, True, False),
+        ("scripts/operator_seed_installation.py", ALL, False, True, False),
         ("scripts/run_pulumi_preview.py", ALL, False, True, False),
         ("scripts/run_pulumi_drift_check.py", ALL, False, True, False),
         ("scripts/pulumi_pr_comment.py", ALL, True, True, False),
@@ -476,3 +477,34 @@ def test_seed_moves_reject_unknown_path(status, unknown_is_source, unknown):
         select_records(
             [{"filename": destination, "previous_filename": source, "status": status}]
         )
+
+
+@pytest.mark.parametrize("status", ["added", "modified", "removed"])
+def test_seed_installer_execution_scope(status):
+    result = select_records(
+        [{"filename": "scripts/operator_seed_installation.py", "status": status}]
+    )
+    assert result.stacks == ALL
+    assert result.execution_validation
+    assert not result.scaffold_validation
+
+
+def test_disabled_seed_trust_change_scope():
+    # PR226's full original seven-file inventory must not fail halfway through
+    # selection or suppress shared stack validation for the installer helper.
+    paths = (
+        "pulumi/seed/README.md",
+        "pulumi/seed/policy_registry.py",
+        "scripts/operator_seed_installation.py",
+        "tests/unit/test_operator_enrollment_runtime.py",
+        "tests/unit/test_operator_seed_installation.py",
+        "tests/unit/test_operator_seed_observation.py",
+        "tests/unit/test_seed_policy_registry.py",
+    )
+    result = select(*paths)
+    assert result.stacks == ALL
+    assert result.execution_validation
+    assert not result.scaffold_validation
+    assert not result.catalog_validation
+    assert {reason.path for reason in result.reasons} == set(paths)
+    assert len(result.reasons) == 7

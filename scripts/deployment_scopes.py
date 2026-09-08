@@ -78,6 +78,7 @@ CENTRAL_EXECUTION_FILES = frozenset(
         "scripts/deployment_promotion_scope.py",
         "scripts/deployment_promotion_publication.py",
         "scripts/operator_enrollment_runtime.py",
+        "scripts/operator_seed_installation.py",
         "scripts/operator_execution_runtime.py",
         "scripts/operator_execution_transport.py",
         "scripts/operator_aws_read.py",
