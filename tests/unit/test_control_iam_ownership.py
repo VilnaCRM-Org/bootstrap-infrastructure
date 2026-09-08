@@ -215,6 +215,7 @@ def test_operator_composition_uses_existing_kms_and_separates_test_triage(
             "state-replication": "state-boundary",
             "log-replication": "log-boundary",
         },
+        automation_retained_policy_arns=["catalog-guard-policy"],
     )
     _sync_await(wait_for_rpcs())
     assert set(component.state_guards) == {("automation", ""), ("deploy", repo.name)}
@@ -233,6 +234,7 @@ def test_operator_composition_uses_existing_kms_and_separates_test_triage(
     assert calls["automation"][0] == "github-automation"
     assert calls["automation"][1]["manage_repository"] is False
     assert calls["automation"][1]["manage_triage"] is (environment == "prod")
+    assert calls["automation"][1]["retained_policy_arns"] == ["catalog-guard-policy"]
     assert calls["config"][1]["adopt_existing"] is True
     assert calls["replication"][1]["adopt_existing"] is True
 

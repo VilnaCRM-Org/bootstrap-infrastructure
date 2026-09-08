@@ -26,7 +26,7 @@ from operator_plan_envelope import (
     ProviderBinding,
     _validate_execution,
 )
-from operator_plan_validation import validate_operator_configuration
+from operator_plan_validation import harden_operator_configuration
 
 MAX_BYTES = 48 * 1024 * 1024
 AWS = "/usr/local/bin/aws"
@@ -461,7 +461,7 @@ class OperatorTransport:
             config.keys() <= {"config", "secretsprovider", "encryptedkey"},
             "operator-config-source",
         )
-        validate_operator_configuration(
+        config["config"] = harden_operator_configuration(
             config.get("config", {}), account_id=self.account, region="eu-central-1"
         )
         config_path = self.inputs / (stage + "-config.yaml")

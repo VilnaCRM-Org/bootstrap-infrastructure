@@ -31,6 +31,7 @@ ROLE = "aws:iam/role:Role"
 POLICY = "aws:iam/policy:Policy"
 INLINE = "aws:iam/rolePolicy:RolePolicy"
 ATTACHMENT = "aws:iam/rolePolicyAttachment:RolePolicyAttachment"
+EXCLUSIVE = "aws:iam/rolePolicyAttachmentsExclusive:RolePolicyAttachmentsExclusive"
 # Public Pulumi resource type, not credential material.
 SECRET = "aws:secretsmanager/secret:Secret"  # nosec B105
 VERSION = "aws:secretsmanager/secretVersion:SecretVersion"
@@ -184,7 +185,11 @@ def _urn(value: Any, catalog: Mapping[str, Any]) -> str:
 
 
 def _state(
-    value: Any, catalog: Mapping[str, Any], *, redacted_preview: bool = False
+    value: Any,
+    catalog: Mapping[str, Any],
+    *,
+    redacted_preview: bool = False,
+    require_tags_all_output: bool = True,
 ) -> dict[str, Any]:
     row = _object(value, {"urn", "type", "custom"}, _STATE_FIELDS)
     urn = _urn(row["urn"], catalog)
@@ -229,6 +234,7 @@ def _state(
         _strings(row.get(key, []))
     _project(row.get("inputs", {}))
     _input_shape(row, redacted_preview=redacted_preview)
+    _computed_tags_all(row, require_output=require_tags_all_output)
     return row
 
 
@@ -236,20 +242,21 @@ _INPUT_FIELDS = {
     ROLE: set(
         "assumeRolePolicy description forceDetachPolicies inlinePolicies "
         "managedPolicyArns maxSessionDuration name namePrefix path "
-        "permissionsBoundary tags".split()
+        "permissionsBoundary tags tagsAll".split()
     ),
     POLICY: set(
         "delayAfterPolicyCreationInMs description name namePrefix path "
-        "policy tags".split()
+        "policy tags tagsAll".split()
     ),
     INLINE: {"name", "namePrefix", "role", "policy"},
     ATTACHMENT: {"role", "policyArn"},
+    EXCLUSIVE: {"roleName", "policyArns"},
     SECRET: set(
         "description forceOverwriteReplicaSecret kmsKeyId name namePrefix "
-        "policy recoveryWindowInDays region replicas tags".split()
+        "policy recoveryWindowInDays region replicas tags tagsAll".split()
     ),
     VERSION: {"region", "secretBinary", "secretId", "secretString", "versionStages"},
-    OIDC: {"url", "clientIdLists", "thumbprintLists", "tags"},
+    OIDC: {"url", "clientIdLists", "thumbprintLists", "tags", "tagsAll"},
 }
 
 
@@ -299,6 +306,7 @@ def _input_shape(row: dict[str, Any], *, redacted_preview: bool = False) -> None
         POLICY: {"name", "path", "namePrefix", "description", "policy"},
         INLINE: {"name", "namePrefix", "role", "policy"},
         ATTACHMENT: {"role", "policyArn"},
+        EXCLUSIVE: {"roleName"},
         SECRET: {"name", "namePrefix", "description", "region", "kmsKeyId", "policy"},
         VERSION: {"secretId", "region"},
         OIDC: {"url"},
@@ -313,15 +321,44 @@ def _input_shape(row: dict[str, Any], *, redacted_preview: bool = False) -> None
             and all(isinstance(value, str) for value in inputs[key].values()),
             "tags-shape",
         )
+    _tags_all_shape(inputs)
     for key in {
         "versionStages",
         "managedPolicyArns",
+        "policyArns",
         "__defaults",
         "clientIdLists",
         "thumbprintLists",
     } & inputs.keys():
         _strings(inputs[key])
     _secret_inputs(inputs, redacted_preview=redacted_preview)
+
+
+def _tags_all_shape(inputs: dict[str, Any]) -> None:
+    if "tagsAll" not in inputs:
+        return
+    tags_all = inputs["tagsAll"]
+    _require(
+        isinstance(tags_all, dict)
+        and all(
+            isinstance(key, str)
+            and isinstance(value, str)
+            and value not in {UNKNOWN, "[secret]"}
+            for key, value in tags_all.items()
+        ),
+        "tags-all-shape",
+    )
+    _require(inputs.get("tags") == tags_all, "tags-all-inputs")
+
+
+def _computed_tags_all(row: dict[str, Any], *, require_output: bool) -> None:
+    """Bind checkpoint aliases to outputs without trusting preview output freshness."""
+    inputs = row.get("inputs", {})
+    if "tagsAll" not in inputs:
+        return
+    tags_all = inputs["tagsAll"]
+    if require_output:
+        _require(row.get("outputs", {}).get("tagsAll") == tags_all, "tags-all-output")
 
 
 def _secret_inputs(inputs: dict[str, Any], *, redacted_preview: bool) -> None:
@@ -406,7 +443,12 @@ def _iam_target(row: dict[str, Any], catalog: Mapping[str, Any]) -> str:
 def _secret_target(row: dict[str, Any], catalog: Mapping[str, Any]) -> str:
     kind, inputs = row["type"], row.get("inputs", {})
     bindings = catalog["operator_bindings"]
-    arn = _text(row.get("id") if kind == SECRET else inputs.get("secretId"))
+    identifier = _text(row.get("id") if kind == SECRET else inputs.get("secretId"))
+    arn = (
+        identifier
+        if kind == SECRET
+        else _secret_version_target(identifier, bindings["secrets"])
+    )
     _require(
         isinstance(arn, str) and arn in bindings["secrets"], "foreign-secret-target"
     )
@@ -416,10 +458,68 @@ def _secret_target(row: dict[str, Any], catalog: Mapping[str, Any]) -> str:
     )
     if kind == SECRET and not row.get("external", False):
         _require(
-            inputs.get("name") == arn.split(":secret:", 1)[1].rsplit("-", 1)[0],
+            inputs.get("name") == _secret_name(arn),
             "secret-name-identity",
         )
     return arn
+
+
+def _exclusive_target(row: dict[str, Any], catalog: Mapping[str, Any]) -> str:
+    """Accept only the recorded non-guard or full guard-retaining inventory."""
+    inputs = row.get("inputs", {})
+    role_name = _text(inputs.get("roleName"))
+    policy_arns = _strings(inputs.get("policyArns"))
+    role_arn = f"arn:aws:iam::{catalog['account_id']}:role/{role_name}"
+    principals = [
+        principal for principal in catalog["principals"] if principal["arn"] == role_arn
+    ]
+    _require(
+        role_name
+        == f"PulumiAutomation-bootstrap-infrastructure-{catalog['environment']}"
+        and role_arn in catalog["operator_bindings"]["role_write"]
+        and len(principals) == 1,
+        "foreign-exclusive-role",
+    )
+    principal = principals[0]
+    expected = set(principal["attachment_arns"]) - set(principal["guard_arns"])
+    full_inventory = set(principal["attachment_arns"])
+    _require(
+        frozenset(policy_arns) in {frozenset(expected), frozenset(full_inventory)}
+        and (set(policy_arns) - set(principal["guard_arns"]))
+        <= set(catalog["operator_bindings"]["policy_write"]),
+        "exclusive-policy-inventory",
+    )
+    _require(
+        row["urn"].split("::")[-1]
+        == "github-automation-managed-policy-attachments-exclusive",
+        "exclusive-resource-name",
+    )
+    _require(
+        row["custom"] is True
+        and row.get("protect") is True
+        and row.get("external", False) is False,
+        "exclusive-ownership",
+    )
+    return role_arn
+
+
+def _secret_version_target(identifier: str, secrets: list[str]) -> str:
+    if identifier in secrets:
+        return identifier
+    matches = [arn for arn in secrets if _secret_name(arn) == identifier]
+    _require(len(matches) == 1, "foreign-secret-target")
+    return matches[0]
+
+
+def _secret_name(arn: str) -> str:
+    name, separator, suffix = arn.partition(":secret:")[2].rpartition("-")
+    _require(
+        bool(name)
+        and separator == "-"
+        and re.fullmatch(r"[A-Za-z0-9]{6}", suffix) is not None,
+        "foreign-secret-target",
+    )
+    return name
 
 
 def _target(row: dict[str, Any], catalog: Mapping[str, Any]) -> tuple[str, ...]:
@@ -436,6 +536,8 @@ def _target(row: dict[str, Any], catalog: Mapping[str, Any]) -> tuple[str, ...]:
         if kind == ATTACHMENT:
             _require(other in bindings["policy_read"], "foreign-policy-target")
         return role, other
+    if kind == EXCLUSIVE:
+        return (_exclusive_target(row, catalog),)
     if kind in {SECRET, VERSION}:
         return (_secret_target(row, catalog),)
     if kind == OIDC:
@@ -447,7 +549,7 @@ def _target(row: dict[str, Any], catalog: Mapping[str, Any]) -> tuple[str, ...]:
 
 def _physical_id(row: dict[str, Any], target: tuple[str, ...]) -> None:
     kind, identifier = row["type"], _text(row.get("id"))
-    if kind in {ROLE, POLICY, SECRET, OIDC}:
+    if kind in {ROLE, POLICY, SECRET, VERSION, OIDC}:
         _require(row.get("outputs", {}).get("arn") == target[0], "checkpoint-arn")
     if kind == ROLE:
         _require(identifier == target[0].rsplit("/", 1)[1], "role-id")
@@ -458,11 +560,32 @@ def _physical_id(row: dict[str, Any], target: tuple[str, ...]) -> None:
             identifier == f"{target[0].rsplit('/', 1)[1]}:{target[1]}", "inline-id"
         )
     elif kind == VERSION:
+        selector = _text(row.get("inputs", {}).get("secretId"))
         _require(
-            identifier.startswith(target[0] + "|")
-            and bool(identifier[len(target[0]) + 1 :]),
+            identifier.count("|") == 1
+            and identifier.split("|", 1)[0] == selector
+            and bool(identifier.rsplit("|", 1)[1]),
             "version-id",
         )
+        _require(
+            row.get("outputs", {}).get("secretId") == selector,
+            "version-secret-id",
+        )
+    elif kind == EXCLUSIVE:
+        _require(identifier == row["inputs"].get("roleName"), "exclusive-id")
+        _require(
+            row.get("outputs", {}).get("roleName") == row["inputs"].get("roleName")
+            and set(_strings(row.get("outputs", {}).get("policyArns")))
+            == set(row["inputs"]["policyArns"]),
+            "exclusive-output-binding",
+        )
+
+
+_PROVIDER_VALIDATION_FLAGS = (
+    "skipCredentialsValidation",
+    "skipRegionValidation",
+    "skipRequestingAccountId",
+)
 
 
 def _provider_inputs(inputs: dict[str, Any], catalog: Mapping[str, Any]) -> None:
@@ -482,14 +605,9 @@ def _provider_inputs(inputs: dict[str, Any], catalog: Mapping[str, Any]) -> None
         },
         "provider-credential-or-endpoint-option",
     )
-    for key in (
-        "skipCredentialsValidation",
-        "skipRegionValidation",
-        "skipRequestingAccountId",
-    ):
-        _require(
-            inputs.get(key, "false") in (False, "false"), "provider-validation-disabled"
-        )
+    for key in _PROVIDER_VALIDATION_FLAGS:
+        value = inputs.get(key)
+        _require(value is False or value == "false", "provider-validation-disabled")
     _require(
         inputs.get("version") == "7.23.0" and inputs.get("region") == catalog["region"],
         "aws-provider-version-region",
@@ -498,6 +616,64 @@ def _provider_inputs(inputs: dict[str, Any], catalog: Mapping[str, Any]) -> None
         inputs.get("allowedAccountIds")
         in ([catalog["account_id"]], json.dumps([catalog["account_id"]])),
         "aws-provider-account",
+    )
+
+
+def _legacy_provider_inputs(inputs: dict[str, Any], catalog: Mapping[str, Any]) -> bool:
+    """Recognize only the complete recorded provider shape before hardening."""
+    return inputs == {
+        "__internal": {},
+        "region": catalog["region"],
+        "skipCredentialsValidation": "false",
+        "skipRegionValidation": "true",
+        "version": "7.23.0",
+    }
+
+
+def _provider_state_inputs(
+    row: dict[str, Any], catalog: Mapping[str, Any], *, allow_legacy: bool = False
+) -> None:
+    inputs = row.get("inputs", {})
+    if allow_legacy and _legacy_provider_inputs(inputs, catalog):
+        _require(row["urn"].split("::")[-1] == "default_7_23_0", "legacy-provider-name")
+        return
+    if "__internal" in inputs:
+        _require(inputs["__internal"] == {}, "provider-internal-metadata")
+    _provider_inputs(
+        {key: value for key, value in inputs.items() if key != "__internal"}, catalog
+    )
+
+
+def _provider_hardening(
+    prior: dict[str, Any] | None,
+    desired: dict[str, Any] | None,
+    ops: tuple[str, ...],
+    catalog: Mapping[str, Any],
+) -> None:
+    if prior is None or desired is None:
+        raise ValueError("provider-hardening-inventory")
+    _require(
+        ops == ("update",)
+        and prior["urn"] == desired["urn"]
+        and prior["urn"].split("::")[-1] == "default_7_23_0"
+        and prior.get("id") == desired.get("id"),
+        "provider-hardening-identity",
+    )
+    _require(
+        _legacy_provider_inputs(prior.get("inputs", {}), catalog),
+        "provider-hardening-origin",
+    )
+    _provider_state_inputs(desired, catalog)
+    _require(
+        desired["inputs"].keys()
+        <= {
+            "version",
+            "region",
+            "__internal",
+            "allowedAccountIds",
+            *_PROVIDER_VALIDATION_FLAGS,
+        },
+        "provider-hardening-inputs",
     )
 
 
@@ -516,6 +692,7 @@ def validate_operator_configuration(
         "version": "7.23.0",
         "region": region,
         "allowedAccountIds": [account_id],
+        **dict.fromkeys(_PROVIDER_VALIDATION_FLAGS, False),
     }
     seen = set()
     for key, item in value.items():
@@ -533,6 +710,25 @@ def validate_operator_configuration(
             _require(name not in {"version", "__defaults"}, "operator-config-key")
             inputs[name] = item
     _provider_inputs(inputs, {"account_id": account_id, "region": region})
+
+
+def harden_operator_configuration(
+    value: Any, *, account_id: str, region: str
+) -> dict[str, Any]:
+    """Validate requested settings, then materialize actual provider safety pins."""
+    validate_operator_configuration(value, account_id=account_id, region=region)
+    pinned = {
+        "region": region,
+        "allowedAccountIds": [account_id],
+        **dict.fromkeys(_PROVIDER_VALIDATION_FLAGS, False),
+    }
+    result = {
+        key: item
+        for key, item in value.items()
+        if not (key.startswith("aws:") and key.rsplit(":", 1)[-1] in pinned)
+    }
+    result.update({"aws:" + key: item for key, item in pinned.items()})
+    return result
 
 
 def _parent(
@@ -553,7 +749,11 @@ def _parent(
 
 
 def _references(
-    row: dict[str, Any], resources: dict[str, Any], catalog: Mapping[str, Any]
+    row: dict[str, Any],
+    resources: dict[str, Any],
+    catalog: Mapping[str, Any],
+    *,
+    allow_legacy_provider: bool = False,
 ) -> None:
     _parent(row, resources, catalog)
     if row["custom"] and row["type"] != PROVIDER:
@@ -569,19 +769,33 @@ def _references(
         dependencies += _strings(values)
     _require(all(value in resources for value in dependencies), "foreign-dependency")
     if row["type"] == PROVIDER:
-        _provider_inputs(row.get("inputs", {}), catalog)
+        _provider_state_inputs(row, catalog, allow_legacy=allow_legacy_provider)
 
 
 def _physical_owner(
-    row: dict[str, Any], identities: dict[tuple[str, str], bool]
+    row: dict[str, Any],
+    target: tuple[str, ...],
+    identities: dict[tuple[Any, ...], tuple[bool, tuple[str, ...]]],
+    catalog: Mapping[str, Any],
 ) -> None:
-    identity = (row["type"], row["id"])
+    identity: tuple[Any, ...] = (row["type"], row["id"])
+    if row["type"] == VERSION:
+        identity = (row["type"], target[0], row["id"].rsplit("|", 1)[1])
     external = row.get("external", False)
+    only_references, previous_target = identities.get(identity, (True, target))
+    existing_role_reference = (
+        row["type"] == ROLE
+        and target[0] in catalog["operator_bindings"]["role_write"]
+        and (external or only_references)
+    )
+    _require(previous_target == target, "physical-alias-target")
     _require(
-        identity not in identities or (external and identities[identity]),
+        identity not in identities
+        or (external and only_references)
+        or existing_role_reference,
         "duplicate-physical-owner",
     )
-    identities[identity] = external
+    identities[identity] = (external and only_references, target)
 
 
 def _checkpoint(
@@ -629,7 +843,7 @@ def _checkpoint(
         "checkpoint-resources",
     )
     resources: dict[str, dict[str, Any]] = {}
-    identities: dict[tuple[str, str], bool] = {}
+    identities: dict[tuple[Any, ...], tuple[bool, tuple[str, ...]]] = {}
     for value in deployment["resources"]:
         row = _state(value, catalog)
         urn = row["urn"]
@@ -637,13 +851,13 @@ def _checkpoint(
         target = _target(row, catalog)
         if row["custom"]:
             _physical_id(row, target)
-            _physical_owner(row, identities)
+            _physical_owner(row, target, identities, catalog)
         resources[urn] = row
     _require(
         sum(row["type"] == STACK for row in resources.values()) == 1, "stack-owner"
     )
     for row in resources.values():
-        _references(row, resources, catalog)
+        _references(row, resources, catalog, allow_legacy_provider=True)
     return resources
 
 
@@ -749,6 +963,8 @@ def _changed_inputs(prior: dict[str, Any], desired: dict[str, Any]) -> None:
     }[desired["type"]]
     old, new = prior.get("inputs", {}), desired.get("inputs", {})
     changed = {key for key in old.keys() | new.keys() if old.get(key) != new.get(key)}
+    if "tagsAll" in changed:
+        changed.remove("tagsAll")
     _require(changed <= allowed, "unsupported-input-change")
     if desired["type"] == ROLE and "managedPolicyArns" in old:
         _require("managedPolicyArns" in new, "role-guard-management-removal")
@@ -809,8 +1025,66 @@ def _control_invariants(desired: dict[str, Any], catalog: Mapping[str, Any]) -> 
         _frozen_config(desired, catalog)
     if kind == ROLE:
         _role_guards(desired, catalog)
+    if kind == EXCLUSIVE:
+        role_arn = _exclusive_target(desired, catalog)
+        principal = next(
+            item for item in catalog["principals"] if item["arn"] == role_arn
+        )
+        _require(
+            set(desired["inputs"]["policyArns"]) == set(principal["attachment_arns"]),
+            "exclusive-guard-retention",
+        )
     if kind in {ROLE, POLICY, SECRET}:
         _require(desired.get("protect") is True, "unprotected-control-resource")
+
+
+def _changed_operation(
+    row: dict[str, Any],
+    prior: dict[str, Any] | None,
+    desired: dict[str, Any] | None,
+    ops: tuple[str, ...],
+    catalog: Mapping[str, Any],
+) -> None:
+    kind, target = row["type"], _target(row, catalog)
+    if kind == PROVIDER:
+        _provider_hardening(prior, desired, ops, catalog)
+        return
+    if kind == EXCLUSIVE:
+        _exclusive_guard_transition(prior, desired, ops, catalog)
+        return
+    _require(_mutable(kind, target, catalog), "frozen-resource-change")
+    if prior is not None:
+        _require(
+            _mutable(kind, _target(prior, catalog), catalog), "frozen-prior-change"
+        )
+    _lifecycle(kind, prior, desired, ops)
+    if prior is not None and desired is not None:
+        _changed_inputs(prior, desired)
+
+
+def _exclusive_guard_transition(
+    prior: dict[str, Any] | None,
+    desired: dict[str, Any] | None,
+    ops: tuple[str, ...],
+    catalog: Mapping[str, Any],
+) -> None:
+    """Permit only migration from the recorded non-guard set to full inventory."""
+    if prior is None or desired is None or ops != ("update",):
+        raise ValueError("exclusive-transition")
+    role_arn = _exclusive_target(prior, catalog)
+    _require(_exclusive_target(desired, catalog) == role_arn, "exclusive-transition")
+    principal = next(item for item in catalog["principals"] if item["arn"] == role_arn)
+    _require(
+        set(prior["inputs"]["policyArns"])
+        == set(principal["attachment_arns"]) - set(principal["guard_arns"]),
+        "exclusive-transition",
+    )
+    changed = {
+        key
+        for key in prior["inputs"].keys() | desired["inputs"].keys()
+        if prior["inputs"].get(key) != desired["inputs"].get(key)
+    }
+    _require(changed == {"policyArns"}, "exclusive-transition")
 
 
 def _operation(
@@ -834,14 +1108,7 @@ def _operation(
             "same-input-change",
         )
     else:
-        _require(_mutable(kind, target, catalog), "frozen-resource-change")
-        if prior is not None:
-            _require(
-                _mutable(kind, _target(prior, catalog), catalog), "frozen-prior-change"
-            )
-        _lifecycle(kind, prior, desired, ops)
-        if prior is not None and desired is not None:
-            _changed_inputs(prior, desired)
+        _changed_operation(row, prior, desired, ops, catalog)
     if desired is not None:
         _control_invariants(desired, catalog)
 
@@ -898,7 +1165,7 @@ def _goal(
     desired.update(urn=urn, inputs=inputs)
     if prior is not None:
         desired["id"] = prior.get("id", "")
-    _state(desired, catalog)
+    _state(desired, catalog, require_tags_all_output=False)
     # Validate references once every desired resource is present; a dependency
     # may be created by this same plan and therefore absent from the checkpoint.
     _seed(row.get("seed", ""))
@@ -1031,7 +1298,12 @@ def _preview_steps(
 def _preview_state(
     value: Any, expected: dict[str, Any], *, new: bool, catalog: Mapping[str, Any]
 ) -> None:
-    row = _state(value, catalog, redacted_preview=True)
+    row = _state(
+        value,
+        catalog,
+        redacted_preview=True,
+        require_tags_all_output=False,
+    )
     _require(
         row["urn"] == expected["urn"] and _ownership(row) == _ownership(expected),
         "preview-ownership",
@@ -1105,6 +1377,25 @@ def _preview_states(
     )
 
 
+def _retained_role_owner(
+    urn: str,
+    target: tuple[str, ...],
+    resources: dict[str, Any],
+    catalog: Mapping[str, Any],
+) -> bool:
+    prior = resources.get(urn)
+    return (
+        target[0] == ROLE
+        and prior is not None
+        and prior["type"] == ROLE
+        and prior["urn"] == urn
+        and prior["custom"] is True
+        and prior.get("external", False) is False
+        and (ROLE, *_target(prior, catalog)) == target
+        and target[1] in catalog["operator_bindings"]["role_write"]
+    )
+
+
 def _target_ownership(
     resources: dict[str, Any],
     desired: dict[str, dict[str, Any] | None],
@@ -1121,7 +1412,15 @@ def _target_ownership(
         for row in resources.values()
         if row.get("external")
     }
-    _require(set(targets).isdisjoint(external_targets), "external-target-ownership")
+    for urn, row in desired.items():
+        if row is None or not row["custom"]:
+            continue
+        target = (row["type"], *_target(row, catalog))
+        if target in external_targets:
+            _require(
+                _retained_role_owner(urn, target, resources, catalog),
+                "external-target-ownership",
+            )
 
 
 def _desired_inventory(

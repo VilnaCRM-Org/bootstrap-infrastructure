@@ -40,6 +40,25 @@ REPO = ManagedRepository(
 )
 
 
+def seed_catalog(settings: BootstrapSettings) -> dict[str, object]:
+    """Return the minimal retained-attachment inventory required by the entrypoint."""
+    role_name = settings.automation_role_name(settings.repo)
+    guard_arn = f"arn:aws:iam::{ACCOUNT}:policy/{role_name}-guard"
+    return {
+        "account_id": ACCOUNT,
+        "region": "eu-central-1",
+        "principals": [
+            {
+                "arn": f"arn:aws:iam::{ACCOUNT}:role/{role_name}",
+                "owner_project": "github-ci-bootstrap",
+                "boundary_arn": None,
+                "guard_arns": [guard_arn],
+                "attachment_arns": [guard_arn],
+            }
+        ],
+    }
+
+
 @pytest.mark.parametrize(
     "expected", [None, "", "123", "1234567890123", "１２３４５６７８９０１２"]
 )
@@ -119,11 +138,7 @@ def test_entrypoint_asserts_account_before_first_resource(
         "infra.platform_iam": SimpleNamespace(PlatformIamBoundaries=allocate),
         "infra.platform_control_iam": SimpleNamespace(),
         "seed.policy_registry": SimpleNamespace(
-            load_catalog=lambda environment: {
-                "account_id": ACCOUNT,
-                "region": "eu-central-1",
-                "principals": [],
-            }
+            load_catalog=lambda environment: seed_catalog(inputs().settings)
         ),
     }
     monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
@@ -279,11 +294,7 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
             PlatformControlIam=lambda name, **kw: allocations.setdefault(name, kw),
         ),
         "seed.policy_registry": SimpleNamespace(
-            load_catalog=lambda environment: {
-                "account_id": ACCOUNT,
-                "region": "eu-central-1",
-                "principals": [],
-            }
+            load_catalog=lambda environment: seed_catalog(settings)
         ),
     }
     root = Path(__file__).resolve().parents[2] / "pulumi"

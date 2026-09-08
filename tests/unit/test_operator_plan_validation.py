@@ -77,6 +77,9 @@ def fixture(environment="test"):
             "version": "7.23.0",
             "region": catalog["region"],
             "allowedAccountIds": json.dumps([catalog["account_id"]]),
+            "skipCredentialsValidation": "false",
+            "skipRegionValidation": "false",
+            "skipRequestingAccountId": "false",
         },
     )
     arn = binding["role_write"][0]
@@ -134,7 +137,7 @@ def fixture(environment="test"):
             "description": "Synthetic configuration container",
         },
     )
-    add(
+    version = add(
         validation.VERSION,
         "version",
         binding["secrets"][0] + "|synthetic-version",
@@ -148,6 +151,8 @@ def fixture(environment="test"):
         },
         protect=False,
     )
+    version["outputs"]["arn"] = binding["secrets"][0]
+    version["outputs"]["secretId"] = binding["secrets"][0]
     add(
         validation.OIDC,
         "oidc",
@@ -246,6 +251,46 @@ def resource(data, kind):
     )
 
 
+def exclusive(data, *, full_inventory=False):
+    catalog = data["catalog"]
+    bindings = catalog["operator_bindings"]
+    candidates = [
+        principal
+        for principal in catalog["principals"]
+        if principal["arn"] in bindings["role_write"]
+        and len(principal["attachment_arns"]) == 6
+        and len(principal["guard_arns"]) == 1
+        and len(set(principal["attachment_arns"]) - set(principal["guard_arns"])) == 5
+    ]
+    assert len(candidates) == 1
+    principal = candidates[0]
+    role_name = principal["arn"].rsplit("/", 1)[1]
+    policy_arns = sorted(
+        principal["attachment_arns"]
+        if full_inventory
+        else set(principal["attachment_arns"]) - set(principal["guard_arns"])
+    )
+    root = resource(data, validation.STACK)
+    provider = resource(data, validation.PROVIDER)
+    row = {
+        "urn": "::".join(root["urn"].split("::")[:2])
+        + "::"
+        + validation.EXCLUSIVE
+        + "::github-automation-managed-policy-attachments-exclusive",
+        "type": validation.EXCLUSIVE,
+        "custom": True,
+        "id": role_name,
+        "inputs": {"roleName": role_name, "policyArns": policy_arns},
+        "outputs": {"roleName": role_name, "policyArns": policy_arns},
+        "parent": root["urn"],
+        "provider": provider["urn"] + "::" + provider["id"],
+        "protect": True,
+    }
+    data["checkpoint"]["deployment"]["resources"].append(row)
+    reset_noop(data)
+    return row, principal
+
+
 def change(data, kind, updates, ops=("update",)):
     old = resource(data, kind)
     new = copy.deepcopy(old)
@@ -275,6 +320,21 @@ def validate(data):
     )
 
 
+def computed_tags(data):
+    tags = {"Project": "bootstrap", "Environment": "test"}
+    for kind in (
+        validation.ROLE,
+        validation.POLICY,
+        validation.SECRET,
+        validation.OIDC,
+    ):
+        row = resource(data, kind)
+        row["inputs"].update(tags=tags, tagsAll=tags)
+        row["outputs"]["tagsAll"] = tags
+    reset_noop(data)
+    return tags
+
+
 @pytest.mark.parametrize("environment", ["test", "prod"])
 def test_complete_noop(environment):
     data = fixture(environment)
@@ -283,6 +343,383 @@ def test_complete_noop(environment):
     assert result.changed_urns == ()
     assert result.plan_sha256 == hashlib.sha256(encoded(data["plan"])).hexdigest()
     assert data == before
+
+
+def test_checkpoint_computed_tags_all_are_accepted_for_supported_resources():
+    data = fixture()
+    computed_tags(data)
+
+    assert validate(data).changed_urns == ()
+
+
+def test_computed_tags_all_requires_matching_explicit_tags():
+    data = fixture()
+    computed_tags(data)
+    resource(data, validation.ROLE)["inputs"]["tagsAll"] = {"Project": "other"}
+    reset_noop(data)
+
+    with pytest.raises(ValueError, match="tags-all-inputs"):
+        validate(data)
+
+
+def test_checkpoint_computed_tags_all_requires_matching_output():
+    data = fixture()
+    computed_tags(data)
+    resource(data, validation.ROLE)["outputs"]["tagsAll"] = {"Project": "other"}
+    reset_noop(data)
+
+    with pytest.raises(ValueError, match="tags-all-output"):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    "kind", [validation.ROLE, validation.POLICY, validation.SECRET]
+)
+def test_computed_tags_all_tracks_allowed_explicit_tag_changes(kind):
+    data = fixture()
+    tags = computed_tags(data)
+    changed_tags = {**tags, "CostCenter": "reviewed"}
+    change(data, kind, {"tags": changed_tags, "tagsAll": changed_tags})
+
+    assert validate(data).changed_urns == (resource(data, kind)["urn"],)
+
+
+def test_computed_tags_all_does_not_unfreeze_oidc():
+    data = fixture()
+    tags = computed_tags(data)
+    changed_tags = {**tags, "CostCenter": "reviewed"}
+    change(data, validation.OIDC, {"tags": changed_tags, "tagsAll": changed_tags})
+
+    with pytest.raises(ValueError, match="frozen-resource-change"):
+        validate(data)
+
+
+def test_computed_tags_all_deletion_without_explicit_tags_is_accepted():
+    data = fixture()
+    computed_tags(data)
+    old = resource(data, validation.ROLE)
+    new = copy.deepcopy(old)
+    del new["inputs"]["tagsAll"]
+    goal = data["plan"]["resourcePlans"][old["urn"]]
+    goal["steps"] = ["update"]
+    goal["goal"]["inputDiff"] = {"adds": {}, "updates": {}, "deletes": ["tagsAll"]}
+    data["preview"]["steps"] = [
+        step for step in data["preview"]["steps"] if step["urn"] != old["urn"]
+    ]
+    append_preview(data["preview"], old, new, "update")
+
+    assert validate(data).changed_urns == (old["urn"],)
+
+
+def test_computed_tags_all_addition_without_explicit_tags_is_accepted():
+    data = fixture()
+    old = resource(data, validation.ROLE)
+    tags = {"Project": "bootstrap", "Environment": "test"}
+    old["inputs"]["tags"] = tags
+    reset_noop(data)
+    change(data, validation.ROLE, {"tagsAll": tags})
+
+    assert validate(data).changed_urns == (old["urn"],)
+
+
+def test_preview_new_state_keeps_input_alias_binding_but_allows_stale_output():
+    data = fixture()
+    tags = computed_tags(data)
+    changed_tags = {**tags, "CostCenter": "reviewed"}
+    role = resource(data, validation.ROLE)
+    change(data, validation.ROLE, {"tags": changed_tags, "tagsAll": changed_tags})
+    step = next(item for item in data["preview"]["steps"] if item["urn"] == role["urn"])
+    step["newState"]["outputs"]["tagsAll"] = validation.UNKNOWN
+
+    assert validate(data).changed_urns == (role["urn"],)
+
+
+def test_preview_new_state_cannot_substitute_computed_tags_all_input():
+    data = fixture()
+    tags = computed_tags(data)
+    changed_tags = {**tags, "CostCenter": "reviewed"}
+    role = resource(data, validation.ROLE)
+    change(data, validation.ROLE, {"tags": changed_tags, "tagsAll": changed_tags})
+    step = next(item for item in data["preview"]["steps"] if item["urn"] == role["urn"])
+    del step["newState"]["inputs"]["tagsAll"]
+
+    with pytest.raises(ValueError, match="preview-inputs"):
+        validate(data)
+
+
+def test_computed_tags_all_is_limited_to_provider_tagged_resources():
+    data = fixture()
+    change(data, validation.INLINE, {"tags": {}, "tagsAll": {}})
+
+    with pytest.raises(ValueError, match="unsupported-provider-input"):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    ("tags", "tags_all", "message"),
+    [
+        ({"Project": "ok"}, {"Project": validation.UNKNOWN}, "unknown-input"),
+        ({"Project": "ok"}, {"Project": []}, "tags-all-shape"),
+        (
+            {"Project": "ok"},
+            {
+                "Project": {
+                    validation.SIGNATURE: validation.WIRE_VALUE_TAG,
+                    "ciphertext": "synthetic-test-only",
+                }
+            },
+            "tags-all-shape",
+        ),
+    ],
+)
+def test_computed_tags_all_requires_concrete_string_map(tags, tags_all, message):
+    data = fixture()
+    change(data, validation.ROLE, {"tags": tags, "tagsAll": tags_all})
+
+    with pytest.raises(ValueError, match=message):
+        validate(data)
+
+
+@pytest.mark.parametrize("use_friendly_name", [False, True])
+def test_secret_version_accepts_exact_owned_arn_or_friendly_name(use_friendly_name):
+    data = fixture()
+    secret = resource(data, validation.SECRET)
+    version = resource(data, validation.VERSION)
+    if use_friendly_name:
+        name = validation._secret_name(secret["id"])
+        version["inputs"]["secretId"] = name
+        version["outputs"]["secretId"] = name
+        version["id"] = name + "|synthetic-version"
+        reset_noop(data)
+
+    assert validate(data).changed_urns == ()
+
+
+def test_secret_version_friendly_name_is_unique_and_exact():
+    data = fixture()
+    secret = resource(data, validation.SECRET)["id"]
+    name = validation._secret_name(secret)
+    secrets = data["catalog"]["operator_bindings"]["secrets"]
+    suffix = "abcdef" if not secret.endswith("-abcdef") else "ghijkl"
+    secrets.append(secret.rsplit("-", 1)[0] + "-" + suffix)
+
+    with pytest.raises(ValueError, match="foreign-secret-target"):
+        validation._secret_version_target(name, secrets)
+
+    with pytest.raises(ValueError, match="foreign-secret-target"):
+        validation._secret_version_target(secret[:-1], secrets)
+
+
+def test_secret_version_friendly_name_keeps_region_and_output_binding():
+    data = fixture()
+    secret = resource(data, validation.SECRET)
+    version = resource(data, validation.VERSION)
+    name = validation._secret_name(secret["id"])
+    version["inputs"].update(secretId=name, region="us-east-1")
+    version["outputs"]["secretId"] = name
+    version["id"] = name + "|synthetic-version"
+    reset_noop(data)
+
+    with pytest.raises(ValueError, match="secret-region"):
+        validate(data)
+
+    version["inputs"].pop("region")
+    version["outputs"]["arn"] = "foreign-secret-target"
+    reset_noop(data)
+    with pytest.raises(ValueError, match="checkpoint-arn"):
+        validate(data)
+
+
+def test_secret_version_output_secret_id_binds_to_its_input_selector():
+    data = fixture()
+    secret = resource(data, validation.SECRET)
+    version = resource(data, validation.VERSION)
+    name = validation._secret_name(secret["id"])
+    version["inputs"]["secretId"] = name
+    version["outputs"]["secretId"] = secret["id"]
+    version["id"] = name + "|synthetic-version"
+    reset_noop(data)
+
+    with pytest.raises(ValueError, match="version-secret-id"):
+        validate(data)
+
+
+def test_secret_version_physical_owner_normalizes_exact_friendly_name_alias():
+    data = fixture()
+    secret = resource(data, validation.SECRET)
+    version = resource(data, validation.VERSION)
+    alias = copy.deepcopy(version)
+    name = validation._secret_name(secret["id"])
+    alias["urn"] += "-friendly"
+    alias["inputs"]["secretId"] = name
+    alias["outputs"]["secretId"] = name
+    alias["id"] = name + "|synthetic-version"
+    data["checkpoint"]["deployment"]["resources"].append(alias)
+    reset_noop(data)
+
+    with pytest.raises(ValueError, match="duplicate-physical-owner"):
+        validate(data)
+
+
+def test_secret_version_selector_change_is_not_normalized_in_input_diff():
+    data = fixture()
+    name = validation._secret_name(resource(data, validation.SECRET)["id"])
+    change(data, validation.VERSION, {"secretId": name})
+
+    with pytest.raises(ValueError, match="unsupported-input-change"):
+        validate(data)
+
+
+def test_exclusive_attachments_accept_full_catalog_inventory_without_mutation():
+    data = fixture()
+    _, principal = exclusive(data, full_inventory=True)
+    assert not set(principal["guard_arns"]) & set(
+        data["catalog"]["operator_bindings"]["policy_write"]
+    )
+
+    assert validate(data).changed_urns == ()
+
+
+def test_exclusive_attachments_reject_legacy_same_or_partial_inventory():
+    data = fixture()
+    row, _ = exclusive(data)
+
+    with pytest.raises(ValueError, match="exclusive-guard-retention"):
+        validate(data)
+
+    row["inputs"]["policyArns"] = row["inputs"]["policyArns"][:-1]
+    row["outputs"]["policyArns"] = row["inputs"]["policyArns"]
+    reset_noop(data)
+
+    with pytest.raises(ValueError, match="exclusive-policy-inventory"):
+        validate(data)
+
+
+def test_exclusive_attachments_bind_fixed_identity_and_outputs():
+    data = fixture()
+    row, _ = exclusive(data, full_inventory=True)
+    row["id"] = "other-role"
+    reset_noop(data)
+
+    with pytest.raises(ValueError, match="exclusive-id"):
+        validate(data)
+
+    row["id"] = row["inputs"]["roleName"]
+    row["outputs"]["policyArns"] = []
+    reset_noop(data)
+
+    with pytest.raises(ValueError, match="exclusive-output-binding"):
+        validate(data)
+
+
+def test_exclusive_checkpoint_output_order_does_not_change_policy_set():
+    data = fixture()
+    row, _ = exclusive(data, full_inventory=True)
+    row["outputs"]["policyArns"] = list(reversed(row["inputs"]["policyArns"]))
+    reset_noop(data)
+
+    assert validate(data).changed_urns == ()
+
+
+@pytest.mark.parametrize("invalid", [None, [False], ["duplicate", "duplicate"]])
+def test_exclusive_checkpoint_outputs_require_unique_concrete_policy_arns(invalid):
+    data = fixture()
+    row, _ = exclusive(data, full_inventory=True)
+    row["outputs"]["policyArns"] = invalid
+    reset_noop(data)
+
+    with pytest.raises(ValueError):
+        validate(data)
+
+
+def test_exclusive_attachments_only_transition_from_legacy_to_full_inventory():
+    data = fixture()
+    _, principal = exclusive(data)
+    change(data, validation.EXCLUSIVE, {"policyArns": principal["attachment_arns"]})
+
+    assert validate(data).changed_urns
+
+
+def test_exclusive_attachments_reject_general_full_inventory_updates():
+    data = fixture()
+    row, _ = exclusive(data, full_inventory=True)
+    change(
+        data,
+        validation.EXCLUSIVE,
+        {"policyArns": list(reversed(row["inputs"]["policyArns"]))},
+    )
+
+    with pytest.raises(ValueError, match="exclusive-transition"):
+        validate(data)
+
+
+def test_exclusive_attachments_reject_full_inventory_rollback():
+    data = fixture()
+    _, principal = exclusive(data, full_inventory=True)
+    non_guard = sorted(set(principal["attachment_arns"]) - set(principal["guard_arns"]))
+    change(data, validation.EXCLUSIVE, {"policyArns": non_guard})
+
+    with pytest.raises(ValueError, match="exclusive-transition"):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    ("prior", "desired", "ops"),
+    [
+        (False, True, ("update",)),
+        (True, False, ("update",)),
+        (True, True, ("create",)),
+        (True, True, ("delete",)),
+        (True, True, ("create-replacement", "replace", "delete-replaced")),
+    ],
+)
+def test_exclusive_attachments_reject_missing_or_non_update_transitions(
+    prior, desired, ops
+):
+    data = fixture()
+    row, _ = exclusive(data)
+
+    with pytest.raises(ValueError, match="exclusive-transition"):
+        validation._exclusive_guard_transition(
+            row if prior else None,
+            row if desired else None,
+            ops,
+            data["catalog"],
+        )
+
+
+def test_exclusive_attachments_reject_foreign_principal():
+    data = fixture()
+    exclusive(data, full_inventory=True)
+    change(data, validation.EXCLUSIVE, {"roleName": "foreign-automation-role"})
+
+    with pytest.raises(ValueError, match="foreign-exclusive-role"):
+        validate(data)
+
+
+def test_computed_tags_all_cannot_bypass_secret_kms_policy_or_role_boundary():
+    data = fixture()
+    tags = computed_tags(data)
+    change(
+        data,
+        validation.SECRET,
+        {
+            "kmsKeyId": "foreign-key",
+            "policy": '{"Statement":[]}',
+            "tagsAll": tags,
+        },
+    )
+    change(
+        data,
+        validation.ROLE,
+        {
+            "permissionsBoundary": "arn:aws:iam::891377212104:policy/other",
+            "tagsAll": tags,
+        },
+    )
+
+    with pytest.raises(ValueError):
+        validate(data)
 
 
 @pytest.mark.parametrize(
@@ -817,6 +1254,146 @@ def test_existing_oidc_alias_cannot_change_read_identity(field, value):
     step["newState"][field] = value
     with pytest.raises(ValueError):
         validate(data)
+
+
+def role_read_aliases(data, external_flags):
+    owner = resource(data, validation.ROLE)
+    rows = data["checkpoint"]["deployment"]["resources"]
+    position = rows.index(owner)
+    rows.remove(owner)
+    aliases = []
+    managed_count = 0
+    for index, external in enumerate(external_flags):
+        row = copy.deepcopy(owner)
+        if external:
+            row.update(
+                urn=owner["urn"] + f"-read-{index}",
+                inputs={},
+                external=True,
+                protect=False,
+            )
+        else:
+            if managed_count:
+                row["urn"] += f"-second-owner-{index}"
+            managed_count += 1
+        aliases.append(row)
+    rows[position:position] = aliases
+    reset_noop(data)
+    return aliases
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("flags", [(False, True), (True, False), (True, False, True)])
+def test_existing_role_owner_and_read_aliases_are_order_independent(environment, flags):
+    data = fixture(environment)
+    role_read_aliases(data, flags)
+    before = copy.deepcopy(data)
+
+    assert validate(data).changed_urns == ()
+    assert data == before
+
+
+@pytest.mark.parametrize(
+    "flags", [(False, False), (False, True, False), (True, False, True, False)]
+)
+def test_role_reads_cannot_hide_a_second_managed_owner(flags):
+    data = fixture()
+    role_read_aliases(data, flags)
+    with pytest.raises(ValueError, match="duplicate-physical-owner"):
+        validate(data)
+
+
+@pytest.mark.parametrize("field,value", [("id", "foreign-role"), ("external", False)])
+def test_role_read_alias_preview_cannot_retarget_or_become_managed(field, value):
+    data = fixture()
+    _, alias = role_read_aliases(data, (False, True))
+    preview = next(
+        row for row in data["preview"]["steps"] if row["urn"] == alias["urn"]
+    )
+    preview["newState"][field] = value
+    with pytest.raises(ValueError):
+        validate(data)
+
+
+def test_existing_role_read_alias_cannot_gain_a_saved_plan_goal():
+    data = fixture()
+    owner, alias = role_read_aliases(data, (False, True))
+    data["plan"]["resourcePlans"][alias["urn"]] = copy.deepcopy(
+        data["plan"]["resourcePlans"][owner["urn"]]
+    )
+    with pytest.raises(ValueError, match="external-plan-goal"):
+        validate(data)
+
+
+def test_existing_managed_role_cannot_reclassify_itself_as_read_only():
+    data = fixture()
+    owner, _ = role_read_aliases(data, (False, True))
+    data["plan"]["resourcePlans"][owner["urn"]]["goal"]["external"] = True
+    with pytest.raises(ValueError):
+        validate(data)
+
+
+@pytest.mark.parametrize("retain_old_owner", [False, True])
+def test_role_reference_cannot_be_claimed_by_a_new_managed_urn(retain_old_owner):
+    data = fixture()
+    owner, alias = role_read_aliases(data, (False, True))
+    resources = {alias["urn"]: alias}
+    if retain_old_owner:
+        resources[owner["urn"]] = owner
+    new = copy.deepcopy(owner)
+    new["urn"] += "-new-owner"
+    with pytest.raises(ValueError, match="external-target-ownership"):
+        validation._target_ownership(resources, {new["urn"]: new}, data["catalog"])
+
+
+def test_existing_role_reference_is_not_itself_a_prior_managed_owner():
+    data = fixture()
+    owner, alias = role_read_aliases(data, (False, True))
+    new = copy.deepcopy(owner)
+    new["urn"] = alias["urn"]
+    with pytest.raises(ValueError, match="external-target-ownership"):
+        validation._target_ownership(
+            {alias["urn"]: alias}, {alias["urn"]: new}, data["catalog"]
+        )
+
+
+def test_role_physical_alias_must_keep_canonical_target():
+    data = fixture()
+    owner, alias = role_read_aliases(data, (False, True))
+    identities = {}
+    target = validation._target(owner, data["catalog"])
+    validation._physical_owner(owner, target, identities, data["catalog"])
+    with pytest.raises(ValueError, match="physical-alias-target"):
+        validation._physical_owner(
+            alias, (target[0] + "-other",), identities, data["catalog"]
+        )
+
+
+def test_role_alias_compatibility_does_not_include_read_only_catalog_principals():
+    data = fixture()
+    owner, alias = role_read_aliases(data, (False, True))
+    read_only = next(
+        arn
+        for arn in data["catalog"]["operator_bindings"]["role_read"]
+        if arn not in data["catalog"]["operator_bindings"]["role_write"]
+    )
+    identities = {}
+    validation._physical_owner(owner, (read_only,), identities, data["catalog"])
+    with pytest.raises(ValueError, match="duplicate-physical-owner"):
+        validation._physical_owner(alias, (read_only,), identities, data["catalog"])
+
+
+def test_existing_role_owner_target_cannot_change_under_read_alias():
+    data = fixture()
+    owner, alias = role_read_aliases(data, (False, True))
+    other = next(
+        arn
+        for arn in data["catalog"]["operator_bindings"]["role_write"]
+        if arn != validation._target(owner, data["catalog"])[0]
+    )
+    assert not validation._retained_role_owner(
+        owner["urn"], (validation.ROLE, other), {owner["urn"]: owner}, data["catalog"]
+    )
 
 
 def test_new_owned_policy_cannot_capture_existing_external_target():
