@@ -94,6 +94,7 @@ jobs:
           RUN apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
           RUN PULUMI_HOME=/opt/operator-plugins /opt/pulumi/pulumi plugin install resource aws 7.23.0
           RUN echo 'ad2008620e4504705db055f27c2cbd76f34c6e29fb465278464c286c30d63196  /opt/operator-plugins/plugins/resource-aws-v7.23.0/pulumi-resource-aws' | sha256sum -c -
+          RUN chmod 0755 /opt/operator-plugins /opt/operator-plugins/plugins /opt/operator-plugins/plugins/resource-aws-v7.23.0
           DOCKER
       - name: Resolve required independent seed binding
         id: resolve
@@ -182,6 +183,7 @@ jobs:
           RUN apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
           RUN PULUMI_HOME=/opt/operator-plugins /opt/pulumi/pulumi plugin install resource aws 7.23.0
           RUN echo 'ad2008620e4504705db055f27c2cbd76f34c6e29fb465278464c286c30d63196  /opt/operator-plugins/plugins/resource-aws-v7.23.0/pulumi-resource-aws' | sha256sum -c -
+          RUN chmod 0755 /opt/operator-plugins /opt/operator-plugins/plugins /opt/operator-plugins/plugins/resource-aws-v7.23.0
           DOCKER
       - name: Configure exact operator role through OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
@@ -286,6 +288,7 @@ jobs:
           RUN apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
           RUN PULUMI_HOME=/opt/operator-plugins /opt/pulumi/pulumi plugin install resource aws 7.23.0
           RUN echo 'ad2008620e4504705db055f27c2cbd76f34c6e29fb465278464c286c30d63196  /opt/operator-plugins/plugins/resource-aws-v7.23.0/pulumi-resource-aws' | sha256sum -c -
+          RUN chmod 0755 /opt/operator-plugins /opt/operator-plugins/plugins /opt/operator-plugins/plugins/resource-aws-v7.23.0
           DOCKER
       - name: Configure exact operator role through OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
@@ -378,6 +381,7 @@ jobs:
           RUN apt-get update && apt-get install -y --no-install-recommends gh && rm -rf /var/lib/apt/lists/*
           RUN PULUMI_HOME=/opt/operator-plugins /opt/pulumi/pulumi plugin install resource aws 7.23.0
           RUN echo 'ad2008620e4504705db055f27c2cbd76f34c6e29fb465278464c286c30d63196  /opt/operator-plugins/plugins/resource-aws-v7.23.0/pulumi-resource-aws' | sha256sum -c -
+          RUN chmod 0755 /opt/operator-plugins /opt/operator-plugins/plugins /opt/operator-plugins/plugins/resource-aws-v7.23.0
           DOCKER
       - name: Configure exact operator role through OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
