@@ -16,12 +16,14 @@ import time
 RECOVERY_HASH = "f6d514f93b7f8ccbe116e257cd78251ca444daa9f357e26e27c288955035600d"
 TEMPLATE_HASH = "068ee1b7735b51125f3f5b6daef5d4a8f595ef717ce487cd00458a56ee13503a"
 
+CHANGE = "arn:aws:cloudformation:eu-central-1:891377212104:changeSet/pr225-retained11-fef3b57f3d5a4a4cbde1d5b4b3b3a57f/7614fa43-a3d1-4ac5-9f09-0787c40d0738"
+
 
 def validate_resources(template, rows, imports):
     expected = template["Resources"]
     assert len(expected) == 55 and len(rows) == 55
     imported = {x["LogicalResourceId"] for x in imports}
-    assert len(imported) == 11
+    assert len(imported) == 11 and imported <= set(expected)
     seen = set()
     for row in rows:
         logical = row["LogicalResourceId"]
@@ -41,9 +43,35 @@ def validate_resources(template, rows, imports):
             "CREATE_COMPLETE",
             "UPDATE_COMPLETE",
         }
-        if logical in imported:
-            assert row["ResourceStatus"] == "IMPORT_COMPLETE"
     return seen
+
+
+def executed_changes(call, save, stack):
+    changes, marker, seen = [], None, set()
+    for index in range(100):
+        args = ["--stack-name", stack, "--change-set-name", CHANGE]
+        if marker:
+            args += ["--next-token", marker]
+        page = call("cloudformation", "describe-change-set", *args)
+        save(f"executed-change-{index:03d}.json", page)
+        assert page["StackId"] == stack and page["ChangeSetId"] == CHANGE
+        assert (
+            page["ChangeSetName"] == "pr225-retained11-fef3b57f3d5a4a4cbde1d5b4b3b3a57f"
+        )
+        assert (
+            page["Status"] == "CREATE_COMPLETE"
+            and page["ExecutionStatus"] == "EXECUTE_COMPLETE"
+        )
+        assert not page.get("RoleARN") and not page.get("ParentChangeSetId")
+        assert not page.get("RootChangeSetId") and not page.get("IncludeNestedStacks")
+        assert isinstance(page["Changes"], list) and len(page["Changes"]) <= 1000
+        changes.extend(page["Changes"])
+        marker = page.get("NextToken")
+        if marker is None:
+            return changes
+        assert isinstance(marker, str) and marker and marker not in seen
+        seen.add(marker)
+    raise ValueError("Executed change-set pagination bound")
 
 
 def drift_coverage(rows, identities):
@@ -139,6 +167,7 @@ def main():
             and operation
             in {
                 "describe-stacks",
+                "describe-change-set",
                 "get-template",
                 "list-stack-resources",
                 "get-stack-policy",
@@ -213,6 +242,20 @@ def main():
         save(label + "-guard.json", guard)
         return identities
 
+    changes = executed_changes(call, save, recovery.STACK)
+    recovery.validate_import(changes, imports)
+    executed_template = call(
+        "cloudformation",
+        "get-template",
+        "--stack-name",
+        recovery.STACK,
+        "--change-set-name",
+        CHANGE,
+        "--template-stage",
+        "Original",
+    )
+    assert prior.document(executed_template["TemplateBody"]) == template
+    save("executed-template.json", executed_template)
     identities = check_stack("before")
     imported_six = set(json.loads(packet.import_template)["Resources"])
     assert len(imported_six) == 6
