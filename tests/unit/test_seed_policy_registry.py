@@ -40,10 +40,9 @@ def catalog_before_policy_names(environment):
     """Invert only the recorded ARN rename and recompute content-addressed rows."""
     catalog = registry.load_catalog(environment)
     amendment = catalog["provenance"].pop("policy_name_correction")
-    encoded = json.dumps(catalog)
-    for old, new in amendment["renamed_arns"].items():
-        encoded = encoded.replace(json.dumps(new), json.dumps(old))
-    catalog = json.loads(encoded)
+    catalog = _rename_arns(
+        catalog, {new: old for old, new in amendment["renamed_arns"].items()}
+    )
     ids = {
         key: registry.document_hash(value)
         for key, value in catalog["statements"].items()
@@ -88,17 +87,41 @@ def test_policy_name_correction_preserves_the_complete_prior_contract(environmen
                 catalog["statements"][s] == baseline["statements"][s]
                 for s in policy["statement_ids"]
             )
-    assert catalog["principals"] == json.loads(
-        _rename_json(json.dumps(baseline["principals"]), renames)
-    )
+    assert catalog["principals"] == _rename_arns(baseline["principals"], renames)
     names = [arn.rsplit("/", 1)[-1].casefold() for arn in catalog["policies"]]
     assert len(set(names)) == len(names) == 55
 
 
-def _rename_json(encoded, renames):
-    for old, new in renames.items():
-        encoded = encoded.replace(json.dumps(old), json.dumps(new))
-    return encoded
+def _rename_arns(value, renames):
+    """Map exact original JSON keys and string values once, without text rewrites."""
+    if isinstance(value, dict):
+        return {
+            renames.get(key, key): _rename_arns(item, renames)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_rename_arns(item, renames) for item in value]
+    if isinstance(value, str):
+        return renames.get(value, value)
+    return value
+
+
+def test_arn_mapping_is_exact_and_simultaneous():
+    first = "arn:aws:iam::123456789012:policy/first"
+    second = "arn:aws:iam::123456789012:policy/second"
+    third = "arn:aws:iam::123456789012:policy/third"
+    original = {
+        first: [first, second, {"Resource": first, "text": f"reference {first}"}],
+        second: [None, True, 1, f"{first}-suffix"],
+    }
+    expected = {
+        second: [second, third, {"Resource": second, "text": f"reference {first}"}],
+        third: [None, True, 1, f"{first}-suffix"],
+    }
+    snapshot = copy.deepcopy(original)
+    for renames in ({first: second, second: third}, {second: third, first: second}):
+        assert _rename_arns(original, renames) == expected
+    assert original == snapshot
 
 
 @pytest.mark.parametrize("case_variant", [False, True])

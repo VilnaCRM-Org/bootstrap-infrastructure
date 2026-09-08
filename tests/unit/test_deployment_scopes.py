@@ -61,6 +61,15 @@ def select_records(records: list[Mapping[str, object]]) -> DeploymentScopes:
         ("pulumi/infra/new_helper.py", ALL, False, False, False),
         ("pulumi/infra/new_runtime_data.json", ALL, False, False, False),
         ("pulumi/infra/new_runtime_data.md", ALL, False, False, False),
+        ("pulumi/seed/catalogs/test.json", ALL, False, False, False),
+        ("pulumi/seed/catalogs/prod.json", ALL, False, False, False),
+        ("pulumi/seed/policy_registry.py", ALL, False, False, False),
+        ("pulumi/seed/operator_trust.py", ALL, False, False, False),
+        ("pulumi/seed/__init__.py", ALL, False, False, False),
+        ("pulumi/seed/new_runtime_data.md", ALL, False, False, False),
+        ("pulumi/seed/readme.md", ALL, False, False, False),
+        ("pulumi/seed/catalogs/README.md", ALL, False, False, False),
+        ("pulumi/seed/README.md", (), False, False, False),
         ("pulumi/repositories.governance.json", ALL, False, False, True),
         (
             "pulumi/repositories.bootstrap.json",
@@ -146,6 +155,10 @@ def test_dependency_inventory(path, stacks, scaffold, execution, catalog) -> Non
     [
         ("pulumi/infra/logging_bucket.py", "docs/archived.py", ALL),
         ("docs/design.md", "pulumi/infra/new_helper.py", ALL),
+        ("pulumi/seed/policy_registry.py", "pulumi/seed/README.md", ALL),
+        ("pulumi/seed/README.md", "pulumi/seed/policy_registry.py", ALL),
+        ("pulumi/seed/catalogs/test.json", "docs/old-catalog.json", ALL),
+        ("docs/old-catalog.json", "pulumi/seed/catalogs/test.json", ALL),
         (
             "pulumi/governance/Pulumi.test.yaml",
             "pulumi/Pulumi.test.yaml",
@@ -176,7 +189,12 @@ def test_moved_files_union_both_paths(status, source, destination, stacks) -> No
 @pytest.mark.parametrize("status", ["added", "modified", "removed", "changed"])
 @pytest.mark.parametrize(
     "path",
-    ["scripts/_pulumi_stack_config.py", "pulumi/repositories.governance.json"],
+    [
+        "scripts/_pulumi_stack_config.py",
+        "pulumi/repositories.governance.json",
+        "pulumi/seed/policy_registry.py",
+        "pulumi/seed/catalogs/test.json",
+    ],
 )
 def test_absent_inputs_remain_dependencies(monkeypatch, status, path) -> None:
     def forbidden(*args, **kwargs):
@@ -231,6 +249,11 @@ def test_shared_rename_source_is_deduplicated_without_losing_destination() -> No
         "pulumi/app-extra/main.py",
         "pulumi/user-service-infrastructure-extra/main.py",
         "pulumi/new_shared.py",
+        "pulumi/seed-extra/policy_registry.py",
+        "pulumi/seed-extra/README.md",
+        "pulumi/Seed/policy_registry.py",
+        "Pulumi/seed/policy_registry.py",
+        "pulumi/Seed/README.md",
         "pulumi/PulumiBad.yaml",
         "pulumi/other/Pulumi.prod.yaml",
         "docker-compose.extra/nested.yml",
@@ -439,3 +462,17 @@ def test_catalog_validator_keeps_runtime_checks(status):
     assert selected.stacks == ALL
     assert selected.catalog_validation and selected.execution_validation
     assert not selected.scaffold_validation
+
+
+@pytest.mark.parametrize("status", ["renamed", "copied"])
+@pytest.mark.parametrize("unknown_is_source", [False, True])
+@pytest.mark.parametrize(
+    "unknown", ["pulumi/Seed/README.md", "pulumi/seed-extra/input.py"]
+)
+def test_seed_moves_reject_unknown_path(status, unknown_is_source, unknown):
+    known = "pulumi/seed/README.md"
+    source, destination = (unknown, known) if unknown_is_source else (known, unknown)
+    with pytest.raises(ValueError, match="Unclassified"):
+        select_records(
+            [{"filename": destination, "previous_filename": source, "status": status}]
+        )

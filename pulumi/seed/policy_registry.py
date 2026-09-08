@@ -330,9 +330,7 @@ def _validate_policy_inventory(policies: tuple) -> None:
         )
 
 
-def _validate_closure(policies: tuple, principals: tuple) -> None:
-    policy_map = {p.arn: p for p in policies}
-    _require(len(policy_map) == len(policies) == 55, "Expected 55 seed policies")
+def _validate_policy_names(policies: tuple) -> None:
     names = [policy.arn.rsplit("/", 1)[-1] for policy in policies]
     _require(
         all(re.fullmatch(r"[A-Za-z0-9_+=,.@-]{1,128}", name) for name in names),
@@ -342,6 +340,12 @@ def _validate_closure(policies: tuple, principals: tuple) -> None:
         len({name.casefold() for name in names}) == len(names),
         "Managed policy names must be unique across paths and case",
     )
+
+
+def _validate_closure(policies: tuple, principals: tuple) -> None:
+    policy_map = {p.arn: p for p in policies}
+    _require(len(policy_map) == len(policies) == 55, "Expected 55 seed policies")
+    _validate_policy_names(policies)
     _require(
         len({p.arn for p in principals}) == len(principals) == 24,
         "Expected 24 principals",

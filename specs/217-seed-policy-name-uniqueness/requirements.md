@@ -12,6 +12,7 @@ a prerequisite of the approved user-service PoC plan.
 | FR3: Preserve all six imported boundary identities, documents and logical IDs. | Catalog comparison and import-template regressions. |
 | FR4: Preserve the other 38 proposed policy identities retained in TEST. | Mapping intersection, native retained-resource audit and import-only recovery. |
 | FR5: Update every principal boundary/attachment reference and catalog integrity pin. | Full catalog equality after inverse mapping and registry closure tests. |
+| FR6: Classify seed runtime changes as requiring operator, governance and platform validation; only the exact seed README is documentation-only. | Complete changed-file selection tests, including deletions and both rename/copy paths; unknown namespaces remain rejected. |
 | NFR1: Do not widen policy permissions or assumption trust. | All 55 policy documents and the statement pool remain unchanged; role identities and trust are unchanged. |
 | NFR2: Stay within IAM name, policy-size and attachment limits. | Invalid-name regressions, maximum minified policy sizes and attachment counts. |
 | NFR3: Preserve independent ownership and fail closed on incomplete installation. | Writer/workflow holds remain until complete enrollment; no automatic retry, deletion or adoption. |
@@ -22,4 +23,4 @@ Local source validation does not establish live acceptance. TEST rollback retain
 CloudFormation import before a corrected update. The old PROD proposal must not
 be executed. Refresh catalog-bound installation packets and the eight-boundary
 checkpoint inventory before continuing. No workload permission expansion, new
-controller behavior or destructive-override change belongs in this correction.
+controller authority or destructive-override change belongs in this correction.

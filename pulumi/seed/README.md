@@ -4,10 +4,12 @@ This package renders and verifies the closed IAM enrollment input for the TEST
 and PROD accounts. It performs no AWS calls or Pulumi resource registration.
 There is deliberately no `Pulumi.yaml`, deployment CLI, or `__main__.py`:
 ordinary PR workers receive no administrative mutation path from this package.
-The current deployment selector rejects these seed paths. Keep that failure
-explicit: a guard-registry change requires independent enrollment and actual
-hash verification before the routine graph can claim all changes were applied.
-Do not classify seed changes as an ordinary operator apply.
+The deployment selector requires operator, governance and platform validation
+for seed runtime changes; only this exact README is documentation-only.
+Selection does not authorize seed mutation: a guard-registry change still
+requires independent enrollment and actual hash verification before the routine
+graph can claim all changes were applied. Routine operator apply cannot perform
+that enrollment.
 
 Each public metadata catalog represents 24 principals and 55 managed policies:
 
