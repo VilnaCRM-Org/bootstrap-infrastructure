@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import json
 import sys
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,6 +74,7 @@ def test_authentic_commands(governance, action, target):
         evidence["comment"]["user"]["login"] = "dmytrocraft"
     result = preflight.validate_request(request, evidence, governance=governance)
     assert result["display_command"] == f"/pulumi {target} {action}"
+    assert preflight.validate_request_identity(request, evidence) == result
 
 
 def test_service_scope_preserves_authentication_for_control_file_changes():
@@ -89,6 +91,47 @@ def test_service_scope_preserves_authentication_for_control_file_changes():
         preflight.validate_request(request, evidence, governance=False, service=True)
 
 
+def test_current_identity_allows_approval_wait_but_every_admission_keeps_expiry():
+    request, evidence = fixture_data()
+    evidence["now"] = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
+    assert (
+        preflight.validate_current_request_identity(request, evidence)["head_sha"]
+        == request["head_sha"]
+    )
+    with pytest.raises(ValueError, match="Expired command"):
+        preflight.validate_request_identity(request, evidence)
+    for service in (False, True):
+        with pytest.raises(ValueError, match="Expired command"):
+            preflight.validate_request(
+                request, evidence, governance=True, service=service
+            )
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        (("comment", "updated_at"), "2026-09-05T12:00:01Z"),
+        (("run", "created_at"), "2026-09-05T12:06:00Z"),
+        (("run", "actor", "id"), 99),
+        (("pr", "state"), "closed"),
+        (("pr", "head", "sha"), "d" * 40),
+        (("pr", "base", "sha"), "d" * 40),
+        (("permission",), "read"),
+        (("comment", "user", "login"), "Kravalg"),
+    ],
+)
+def test_approval_wait_never_relaxes_current_identity(path, value):
+    request, evidence = fixture_data()
+    evidence["now"] = datetime(2026, 9, 8, 12, 0, tzinfo=UTC)
+    current = evidence
+    for key in path[:-1]:
+        current = current[key]
+    current[path[-1]] = value
+    with pytest.raises(ValueError):
+        preflight.validate_current_request_identity(request, evidence)
+
+
+@pytest.mark.parametrize("validator", ["legacy", "identity"])
 @pytest.mark.parametrize(
     "path,value",
     [
@@ -96,6 +139,7 @@ def test_service_scope_preserves_authentication_for_control_file_changes():
         (("run", "path"), ".github/workflows/attacker.yml"),
         (("run", "head_repository", "full_name"), "fork/repo"),
         (("run", "run_attempt"), 2),
+        (("run", "run_attempt"), True),
         (("run", "id"), 13),
         (("artifact", "command"), "plan"),
         (("pr", "state"), "closed"),
@@ -118,17 +162,21 @@ def test_service_scope_preserves_authentication_for_control_file_changes():
         (("comment", "body"), "/pulumi prod up"),
         (("permission",), "read"),
         (("comment", "user", "login"), "Kravalg"),
-        (("files",), ["README.md"]),
     ],
 )
-def test_rejects_forged_stale_cross_pr_and_unauthorized_requests(path, value):
+def test_rejects_forged_stale_cross_pr_and_unauthorized_requests(
+    path, value, validator
+):
     request, evidence = fixture_data()
     node = evidence
     for key in path[:-1]:
         node = node[key]
     node[path[-1]] = value
     with pytest.raises(ValueError):
-        preflight.validate_request(request, evidence, governance=True)
+        if validator == "identity":
+            preflight.validate_request_identity(request, evidence)
+        else:
+            preflight.validate_request(request, evidence, governance=True)
 
 
 def test_generic_runner_rejects_governance_bypass():
@@ -174,7 +222,9 @@ def test_gh_uses_argument_array_and_parses_json(monkeypatch):
     assert calls[0][1]["check"] is True
 
 
-def test_collect_evidence_paginates_and_protects_renamed_paths(monkeypatch):
+def test_collect_evidence_binds_complete_compare_and_preserves_renamed_paths(
+    monkeypatch,
+):
     request, evidence = fixture_data()
     monkeypatch.setenv("GITHUB_REPOSITORY", "org/repo")
 
@@ -188,8 +238,13 @@ def test_collect_evidence_paginates_and_protects_renamed_paths(monkeypatch):
             assert args == ()
             return {
                 "files": [
-                    {"filename": "README.md", "previous_filename": "Makefile"},
-                    {"filename": "docs/example.md"},
+                    {
+                        "filename": "README.md",
+                        "previous_filename": "Makefile",
+                        "status": "renamed",
+                        "additions": 5,
+                    },
+                    {"filename": "docs/example.md", "status": "removed"},
                 ]
             }
         if "/collaborators/" in path:
@@ -205,6 +260,18 @@ def test_collect_evidence_paginates_and_protects_renamed_paths(monkeypatch):
     assert result["artifact"] == request
     assert result["files"] == ["README.md", "Makefile", "docs/example.md", ""]
     assert result["pr"] == evidence["pr"]
+    assert result["scope_base_sha"] == "b" * 40
+    assert result["scope_head_sha"] == request["head_sha"]
+    assert result["changed_file_count"] == 2
+    assert result["changed_file_records"] == [
+        {
+            "filename": "README.md",
+            "previous_filename": "Makefile",
+            "status": "renamed",
+            "additions": 5,
+        },
+        {"filename": "docs/example.md", "status": "removed"},
+    ]
 
 
 def test_collect_rejects_untrusted_source_before_download(monkeypatch):
@@ -549,3 +616,251 @@ def test_environment_envelope_shape_rejected_before_policy_validation(
     ):
         preflight.verify_environments(request, governance=False)
     assert reached_validation == []
+
+
+@pytest.mark.parametrize("permission", ["write", "maintain", "admin"])
+def test_identity_accepts_current_writers_without_consulting_scope(permission):
+    request, evidence = fixture_data()
+    evidence["permission"] = permission
+    del evidence["files"]
+    assert preflight.validate_request_identity(request, evidence) == {
+        **request,
+        "display_command": "/pulumi test up",
+        "base_sha": evidence["scope_base_sha"],
+    }
+
+
+@pytest.mark.parametrize("governance", [False, True])
+def test_legacy_scope_check_still_runs_after_identity(governance):
+    request, evidence = fixture_data(governance=not governance)
+    assert (
+        preflight.validate_request_identity(request, evidence)["head_sha"]
+        == (request["head_sha"])
+    )
+    with pytest.raises(ValueError, match="wrong governance scope"):
+        preflight.validate_request(request, evidence, governance=governance)
+
+
+def _scope_scan_runtime(monkeypatch, evidence, before, after, changed):
+    """Return current metadata in scan order without touching GitHub or artifacts."""
+    observations = iter((before, after))
+    calls = []
+
+    def api(path, *args):
+        calls.append(path)
+        if "/pulls/" in path:
+            return next(observations)
+        if "/compare/" in path:
+            assert path.endswith(f"{'b' * 40}...{'a' * 40}")
+            return {"files": changed}
+        assert "/collaborators/" in path
+        return {"permission": "write"}
+
+    monkeypatch.setattr(preflight, "gh", api)
+    return calls
+
+
+@pytest.mark.parametrize("observation", ["before", "after"])
+@pytest.mark.parametrize(
+    "path,value,match",
+    [
+        (("head", "sha"), "c" * 40, "PR head moved"),
+        (("head", "repo", "full_name"), "foreign/repo", "Foreign scope head"),
+        (("base", "repo", "full_name"), "foreign/repo", "Foreign scope base"),
+        (("base", "ref"), "release", "must target main"),
+        (("changed_files",), True, "count"),
+        (("changed_files",), "2", "count"),
+        (("changed_files",), None, "count"),
+        (("changed_files",), -1, "count"),
+    ],
+)
+def test_scope_scan_rejects_source_and_count_races(
+    monkeypatch, observation, path, value, match
+):
+    request, evidence = fixture_data()
+    before, after = deepcopy(evidence["pr"]), deepcopy(evidence["pr"])
+    altered = before if observation == "before" else after
+    for key in path[:-1]:
+        altered = altered[key]
+    altered[path[-1]] = value
+    changed = [
+        {"filename": "README.md", "status": "modified"},
+        {"filename": "Makefile", "status": "removed"},
+    ]
+    calls = _scope_scan_runtime(monkeypatch, evidence, before, after, changed)
+    with pytest.raises(ValueError, match=match):
+        preflight.collect_evidence(request, intake=evidence)
+    assert not any("/collaborators/" in path for path in calls)
+    assert any("/compare/" in path for path in calls) is (observation == "after")
+
+
+@pytest.mark.parametrize("base_sha", [None, "", "b" * 39, "B" * 40])
+def test_scope_scan_rejects_unpinned_base_before_compare(monkeypatch, base_sha):
+    request, evidence = fixture_data()
+    before = deepcopy(evidence["pr"])
+    before["base"]["sha"] = base_sha
+    calls = _scope_scan_runtime(monkeypatch, evidence, before, evidence["pr"], [])
+    with pytest.raises(ValueError, match="Invalid base SHA"):
+        preflight.collect_evidence(request, intake=evidence)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "path,value,match",
+    [
+        (("base", "sha"), "c" * 40, "PR base moved"),
+        (("changed_files",), 3, "count moved"),
+        (("changed_files",), 1, "count moved"),
+    ],
+)
+def test_complete_compare_cannot_survive_post_scan_revision_or_count_change(
+    monkeypatch, path, value, match
+):
+    request, evidence = fixture_data()
+    after = deepcopy(evidence["pr"])
+    altered = after
+    for key in path[:-1]:
+        altered = altered[key]
+    altered[path[-1]] = value
+    changed = [
+        {"filename": "README.md", "status": "modified"},
+        {"filename": "Makefile", "status": "removed"},
+    ]
+    _scope_scan_runtime(monkeypatch, evidence, evidence["pr"], after, changed)
+    with pytest.raises(ValueError, match=match):
+        preflight.collect_evidence(request, intake=evidence)
+
+
+@pytest.mark.parametrize(
+    "changed,match",
+    [
+        ([], "Incomplete changed-file listing"),
+        ([{"filename": "README.md"}], "Incomplete changed-file listing"),
+        ({"filename": "README.md"}, "must be an array"),
+        (None, "must be an array"),
+        ([None, {"filename": "README.md"}], "must be objects"),
+        ([{}, {"filename": "README.md"}], "filenames must be nonempty strings"),
+        (
+            [{"filename": None}, {"filename": "README.md"}],
+            "filenames must be nonempty strings",
+        ),
+        (
+            [{"filename": ""}, {"filename": "README.md"}],
+            "filenames must be nonempty strings",
+        ),
+        (
+            [{"filename": 42}, {"filename": "README.md"}],
+            "filenames must be nonempty strings",
+        ),
+    ],
+)
+def test_scope_scan_rejects_incomplete_or_malformed_file_envelope(
+    monkeypatch, changed, match
+):
+    request, evidence = fixture_data()
+    calls = _scope_scan_runtime(
+        monkeypatch, evidence, evidence["pr"], evidence["pr"], changed
+    )
+    with pytest.raises(ValueError, match=match):
+        preflight.collect_evidence(request, intake=evidence)
+    assert len(calls) == 2
+
+
+def test_scope_scan_rejects_github_compare_cap_against_independent_pr_total(
+    monkeypatch,
+):
+    request, evidence = fixture_data()
+    before = deepcopy(evidence["pr"])
+    before["changed_files"] = 301
+    changed = [
+        {"filename": f"docs/file-{index}.md", "status": "added"} for index in range(300)
+    ]
+    _scope_scan_runtime(monkeypatch, evidence, before, before, changed)
+    with pytest.raises(ValueError, match="Incomplete changed-file listing"):
+        preflight.collect_evidence(request, intake=evidence)
+
+
+def test_scope_records_are_copied_and_preserve_deletions_and_rename_sources(
+    monkeypatch,
+):
+    request, evidence = fixture_data()
+    changed = [
+        {"filename": "README.md", "previous_filename": "Makefile", "status": "renamed"},
+        {"filename": "pulumi/infra/deleted.py", "status": "removed"},
+    ]
+    _scope_scan_runtime(monkeypatch, evidence, evidence["pr"], evidence["pr"], changed)
+    result = preflight.collect_evidence(request, intake=evidence)
+    assert result["changed_file_records"] == changed
+    assert result["changed_file_count"] == evidence["pr"]["changed_files"] == 2
+    assert result["files"] == ["README.md", "Makefile", "pulumi/infra/deleted.py", ""]
+    changed[0]["previous_filename"] = "docs/unrelated.md"
+    assert result["changed_file_records"][0]["previous_filename"] == "Makefile"
+    assert result["changed_file_records"] is not changed
+
+
+@pytest.mark.parametrize("arguments", [[], ["--governance"], ["--service"]])
+@pytest.mark.parametrize("previous", [None, 42, True, [], {}, ""])
+def test_all_preflight_routes_reject_malformed_rename_sources_before_scope(
+    monkeypatch, tmp_path, arguments, previous
+):
+    request, evidence = fixture_data(action="plan")
+    set_request_env(monkeypatch, request)
+    for name, value in {
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_EVENT_NAME": "repository_dispatch",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_OUTPUT": str(tmp_path / "output"),
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(preflight, "collect_intake_evidence", lambda request: evidence)
+
+    class AdmissionTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return evidence["now"]
+
+    monkeypatch.setattr(preflight, "datetime", AdmissionTime)
+    changed = [
+        {
+            "filename": "docs/moved.md",
+            "status": "renamed",
+            "previous_filename": previous,
+        },
+        {"filename": "README.md", "status": "modified"},
+    ]
+    calls = _scope_scan_runtime(
+        monkeypatch, evidence, evidence["pr"], evidence["pr"], changed
+    )
+    with pytest.raises(ValueError, match="previous filenames must be nonempty strings"):
+        preflight.main(arguments)
+    assert len(calls) == 2  # Stop at compare, before rights/protections or claim I/O.
+    outputs = (tmp_path / "output").read_text().splitlines()
+    assert outputs and all(line.startswith("feedback_") for line in outputs)
+
+
+@pytest.mark.parametrize("governance,service", [(True, False), (False, True)])
+def test_valid_rename_source_remains_visible_to_legacy_and_service_routing(
+    monkeypatch, governance, service
+):
+    request, evidence = fixture_data(action="plan")
+    changed = [
+        {
+            "filename": "docs/moved.md",
+            "status": "renamed",
+            "previous_filename": "Makefile",
+        },
+        {"filename": "README.md", "status": "modified"},
+    ]
+    _scope_scan_runtime(monkeypatch, evidence, evidence["pr"], evidence["pr"], changed)
+    collected = preflight.collect_evidence(request, intake=evidence)
+    collected["now"] = evidence["now"]
+    assert collected["files"] == ["docs/moved.md", "Makefile", "README.md", ""]
+    assert collected["changed_file_records"] == changed
+    assert (
+        preflight.validate_request(
+            request, collected, governance=governance, service=service
+        )["head_sha"]
+        == request["head_sha"]
+    )
+    with pytest.raises(ValueError, match="wrong governance scope"):
+        preflight.validate_request(request, collected, governance=False)

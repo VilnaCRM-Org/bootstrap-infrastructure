@@ -147,23 +147,49 @@ def test_current_loader_workflow_names_are_in_the_fixed_suffix_lists():
     checked = 0
     for path in (root / ".github/workflows").glob("*.yml"):
         workflow = yaml.safe_load(path.read_text())
-        for job in workflow.get("jobs", {}).values():
-            for step in job.get("steps", []):
-                if "load-aws-ci-env" not in step.get("uses", ""):
-                    continue
-                suffix = step["with"]["environment"]
-                suffixes = (
-                    ["test-pr", "test"]
-                    if suffix == "${{ steps.ci_config_target.outputs.environment }}"
-                    else [suffix]
+        loader_steps = [
+            step
+            for job in workflow.get("jobs", {}).values()
+            for step in job.get("steps", [])
+            if "load-aws-ci-env" in step.get("uses", "")
+        ]
+        if not loader_steps:
+            continue
+        workflow_name = workflow["name"]
+        suffix_options = {
+            "${{ steps.ci_config_target.outputs.environment }}": ["test-pr", "test"]
+        }
+        if "workflow_call" in workflow.get("on", {}):
+            # Standard OIDC claims identify the caller; job_workflow_ref identifies
+            # the reusable worker. Its runtime authenticates this sole coordinator.
+            assert path.name == "pulumi-platform-account.yml"
+            assert set(workflow["on"]) == {"workflow_call"}
+            controller_path = root / ".github/workflows/pulumi-pr-command-runner.yml"
+            workflow_name = yaml.safe_load(controller_path.read_text())["name"]
+            suffix_options = {
+                "${{ needs.resolve.outputs.preview_config_suffix }}": [
+                    "test",
+                    "prod-preview",
+                ],
+                "${{ inputs.account }}": ["test", "prod"],
+            }
+        for step in loader_steps:
+            suffix = step["with"]["environment"]
+            for selected in suffix_options.get(suffix, [suffix]):
+                assert selected in WORKFLOWS
+                assert (
+                    workflow_name
+                    in conditions(_settings(), selected)[PREFIX + "workflow"]
                 )
-                for selected in suffixes:
-                    assert (
-                        workflow["name"]
-                        in conditions(_settings(), selected)[PREFIX + "workflow"]
-                    )
-                checked += 1
+            checked += 1
     assert checked > 0
+
+
+@pytest.mark.parametrize("suffix", ["test", "prod-preview", "prod"])
+def test_reusable_worker_uses_existing_caller_trust_without_new_workflow_grants(suffix):
+    condition = conditions(_settings(), suffix)
+    assert "Pulumi PR Command Runner" in condition[PREFIX + "workflow"]
+    assert "Pulumi Platform Account" not in condition[PREFIX + "workflow"]
 
 
 @pytest.mark.parametrize(

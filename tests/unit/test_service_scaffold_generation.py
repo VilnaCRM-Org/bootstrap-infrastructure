@@ -8,6 +8,7 @@ import json
 import os
 import runpy
 import shlex
+import shutil
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -167,6 +168,63 @@ def test_generation_is_complete_and_hashes_every_input(tmp_path):
     assert scope["jobs"]["scope"]["steps"][0]["with"]["ref"] == (
         "${{ github.event.repository.default_branch }}"
     )
+
+
+@pytest.mark.parametrize("central_present", [True, False])
+def test_service_scope_template_survives_central_changes(tmp_path, central_present):
+    """Generate real service artifacts despite replaced or absent central routing."""
+    root = tmp_path / "bootstrap"
+    template = root / "pulumi/user-service-infrastructure"
+    shutil.copytree(TEMPLATE, template, ignore=shutil.ignore_patterns("__pycache__"))
+    for relative in scaffold.RUNTIME_FILES:
+        target = root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / relative, target)
+    shutil.copytree(
+        ROOT / "policy",
+        root / "policy",
+        ignore=shutil.ignore_patterns(".venv", "__pycache__", "*.pyc"),
+    )
+    relative = ".github/workflows/governance-promotion.yml"
+    central = root / relative
+    central.parent.mkdir(parents=True, exist_ok=True)
+    if central_present:
+        central.write_text(
+            "name: Future Central Controller\non: repository_dispatch\njobs: {}\n"
+        )
+    elif central.exists():
+        central.unlink()
+    expected = (template / relative).read_bytes()
+    destination = tmp_path / "service"
+    manifest = scaffold.generate(root, destination, "billing-infrastructure")
+    assert (destination / relative).read_bytes() == expected
+    assert manifest["files"][relative] == hashlib.sha256(expected).hexdigest()
+    assert relative not in scaffold.RUNTIME_FILES
+    workflow = yaml.safe_load((destination / relative).read_text())
+    assert workflow[True] == {
+        "pull_request_target": {
+            "branches": ["main"],
+            "types": ["opened", "synchronize", "reopened", "edited"],
+        }
+    }
+    assert workflow["permissions"] == {
+        "contents": "read",
+        "pull-requests": "read",
+    }
+    job = workflow["jobs"]["scope"]
+    assert job["environment"] == "governance-evidence"
+    checkout, verify, token, report = job["steps"]
+    assert checkout["with"] == {
+        "ref": "${{ github.event.repository.default_branch }}",
+        "persist-credentials": False,
+    }
+    assert verify["run"] == "python3 scripts/governance_promotion.py verify-environment"
+    assert token["with"]["permission-statuses"] == "write"
+    assert token["with"]["permission-deployments"] == "write"
+    assert report["env"]["GH_TOKEN"] == "${{ steps.promotion_app.outputs.token }}"
+    assert report["run"] == "python3 scripts/governance_promotion.py scope"
+    helper = runpy.run_path(str(destination / "scripts/governance_promotion.py"))
+    assert helper["scope_promotion_kind"](False) == "service"
 
 
 @pytest.mark.parametrize("existing", ["directory", "file", "symlink"])

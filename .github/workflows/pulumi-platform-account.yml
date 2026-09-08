@@ -1,0 +1,693 @@
+# Reusable worker only; the root controller has not been switched to this path.
+# This workflow owns the account state lock; callers must not acquire it again.
+name: Pulumi Platform Account
+'on':
+  workflow_call:
+    inputs:
+      account:
+        description: 'One fixed platform account: test or prod.'
+        required: true
+        type: string
+      artifact_id:
+        description: Authenticated root admission artifact ID.
+        required: true
+        type: string
+      artifact_sha256:
+        description: Root admission ZIP SHA256 from upload-artifact.
+        required: true
+        type: string
+      contract_sha256:
+        description: Root admission contract.json byte SHA256.
+        required: true
+        type: string
+    outputs:
+      receipt_artifact_id:
+        description: receipt artifact id
+        value: ${{ jobs.receipt.outputs.receipt_artifact_id }}
+      receipt_artifact_sha256:
+        description: receipt artifact sha256
+        value: ${{ jobs.receipt.outputs.receipt_artifact_sha256 }}
+      result:
+        description: result
+        value: ${{ jobs.receipt.outputs.result }}
+      receipt_digest:
+        description: receipt digest
+        value: ${{ jobs.receipt.outputs.receipt_digest }}
+      receipt_file_sha256:
+        description: receipt file sha256
+        value: ${{ jobs.receipt.outputs.receipt_file_sha256 }}
+      selection_digest:
+        description: selection digest
+        value: ${{ jobs.receipt.outputs.selection_digest }}
+      contract_digest:
+        description: contract digest
+        value: ${{ jobs.receipt.outputs.contract_digest }}
+      completion_kind:
+        description: completion kind
+        value: ${{ jobs.receipt.outputs.completion_kind }}
+      scope:
+        description: scope
+        value: ${{ jobs.receipt.outputs.scope }}
+      environment:
+        description: environment
+        value: ${{ jobs.receipt.outputs.environment }}
+      command:
+        description: command
+        value: ${{ jobs.receipt.outputs.command }}
+      head_sha:
+        description: head sha
+        value: ${{ jobs.receipt.outputs.head_sha }}
+      base_sha:
+        description: base sha
+        value: ${{ jobs.receipt.outputs.base_sha }}
+concurrency:
+  group: bootstrap-infrastructure-${{ inputs.account }}-state
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+permissions:
+  contents: read
+env:
+  DEPLOYMENT_COORDINATOR_MODE: ${{ vars.DEPLOYMENT_COORDINATOR_MODE }}
+jobs:
+  resolve:
+    name: Validate fixed account and authenticated admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    outputs:
+      command: ${{ steps.resolve.outputs.command }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+      pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
+      selection_digest: ${{ steps.resolve.outputs.selection_digest }}
+      contract_digest: ${{ steps.resolve.outputs.contract_digest }}
+      aws_account_id: ${{ steps.account.outputs.aws_account_id }}
+      aws_region: ${{ steps.account.outputs.aws_region }}
+      preview_config_role: ${{ steps.account.outputs.preview_config_role }}
+      apply_config_role: ${{ steps.account.outputs.apply_config_role }}
+      preview_config_suffix: ${{ steps.account.outputs.preview_config_suffix }}
+    steps:
+      - name: Check out trusted worker runtime and credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate root artifact and selected platform account
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --scope platform --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Resolve closed account configuration
+        id: account
+        env:
+          ACCOUNT: ${{ inputs.account }}
+          TEST_ACCOUNT_ID: ${{ vars.AWS_TEST_ACCOUNT_ID }}
+          TEST_REGION: ${{ vars.AWS_TEST_REGION }}
+          TEST_CONFIG_ROLE: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
+          PROD_ACCOUNT_ID: ${{ vars.AWS_PROD_ACCOUNT_ID }}
+          PROD_REGION: ${{ vars.AWS_PROD_REGION }}
+          PROD_PREVIEW_CONFIG_ROLE: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
+          PROD_CONFIG_ROLE: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
+          COMMAND: ${{ steps.resolve.outputs.command }}
+        run: |
+          case "${ACCOUNT}" in
+            test)
+              account_id="${TEST_ACCOUNT_ID}"
+              region="${TEST_REGION}"
+              preview_role="${TEST_CONFIG_ROLE}"
+              apply_role="${TEST_CONFIG_ROLE}"
+              preview_suffix='test'
+              ;;
+            prod)
+              account_id="${PROD_ACCOUNT_ID}"
+              region="${PROD_REGION}"
+              preview_role="${PROD_PREVIEW_CONFIG_ROLE}"
+              apply_role="${PROD_CONFIG_ROLE}"
+              preview_suffix='prod-preview'
+              ;;
+            *) echo "Unsupported platform account" >&2; exit 1 ;;
+          esac
+          [[ "${account_id}" =~ ^[0-9]{12}$ ]]
+          [[ "${region}" =~ ^[a-z]{2}-[a-z]+-[0-9]+$ ]]
+          roles=("${preview_role}")
+          case "${COMMAND}" in
+            plan) apply_role='' ;;
+            up) roles+=("${apply_role}") ;;
+            *) echo "Unsupported admitted command" >&2; exit 1 ;;
+          esac
+          for role in "${roles[@]}"; do
+            [[ "${role}" =~ ^arn:aws:iam::${account_id}:role/[A-Za-z0-9+=,.@_/-]+$ ]]
+          done
+          {
+            printf 'aws_account_id=%s\n' "${account_id}"
+            printf 'aws_region=%s\n' "${region}"
+            printf 'preview_config_role=%s\n' "${preview_role}"
+            printf 'apply_config_role=%s\n' "${apply_role}"
+            printf 'preview_config_suffix=%s\n' "${preview_suffix}"
+          } >> "${GITHUB_OUTPUT}"
+  preview:
+    name: Platform account plan
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    environment: ${{ format('{0}-preview', inputs.account) }}
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: 'true'
+    steps:
+      - name: Check out trusted worker runtime and credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate admission artifact and recheck before credentials
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --scope platform --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Check out admitted platform source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify exact admitted checkout
+        working-directory: source
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.head_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - name: Load account AWS CI configuration for preview
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: ${{ needs.resolve.outputs.preview_config_suffix }}
+          config-role-arn: ${{ needs.resolve.outputs.preview_config_role }}
+          expected-account-id: ${{ needs.resolve.outputs.aws_account_id }}
+          aws-region: ${{ needs.resolve.outputs.aws_region }}
+          purpose: Platform account preview
+          required-keys: AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+      - name: Require fixed platform project and requested account stack
+        env:
+          ACCOUNT: ${{ inputs.account }}
+          STACK_VARIABLE: PULUMI_PREVIEW_STACKS
+        run: |
+          test "${PULUMI_DIR:-pulumi}" = pulumi
+          test "${!STACK_VARIABLE}" = "${ACCOUNT}"
+          printf 'PULUMI_DIR=pulumi\n' >> "${GITHUB_ENV}"
+      - name: Configure AWS preview credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
+          role-session-name: gha-platform-${{ inputs.account }}-preview-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ needs.resolve.outputs.aws_account_id }}
+      - name: Start platform development environment
+        working-directory: source
+        run: make start
+      - name: Save exact-head update plan and preview
+        working-directory: source
+        run: make pulumi-plan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PULUMI_COMMIT_SHA: ${{ needs.resolve.outputs.head_sha }}
+      - name: Upload platform preview
+        id: preview
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deployment-${{ github.run_id }}-${{ github.run_attempt }}-platform-${{ inputs.account }}-${{ needs.resolve.outputs.head_sha
+            }}-preview
+          path: source/.artifacts/pulumi-preview
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload platform plan
+        id: plan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deployment-${{ github.run_id }}-${{ github.run_attempt }}-platform-${{ inputs.account }}-${{ needs.resolve.outputs.head_sha
+            }}-plan
+          path: source/.artifacts/pulumi-plan
+          if-no-files-found: error
+          retention-days: 7
+    outputs:
+      preview_artifact_id: ${{ steps.preview.outputs.artifact-id }}
+      plan_artifact_id: ${{ steps.plan.outputs.artifact-id }}
+  destructive_diff:
+    name: Platform destructive diff gate
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - preview
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    steps:
+      - name: Check out admitted platform source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: source
+          persist-credentials: false
+      - name: Start platform development environment
+        working-directory: source
+        run: make start
+      - name: Download exact same-run preview artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.preview.outputs.preview_artifact_id }}
+          merge-multiple: true
+          path: source/.artifacts/pulumi-preview
+      - name: Fetch current destructive-change labels
+        working-directory: source
+        run: |
+          mkdir -p .artifacts
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.resolve.outputs.pull_request_number }}
+      - name: Enforce destructive diff gate
+        working-directory: source
+        run: make test-destructive-diff
+  iam_validation:
+    name: Platform IAM validation
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - preview
+      - destructive_diff
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    environment: ${{ format('{0}-preview', inputs.account) }}
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: 'true'
+    steps:
+      - name: Check out trusted worker runtime and credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate admission artifact and recheck before credentials
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --scope platform --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Check out admitted platform source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify exact admitted checkout
+        working-directory: source
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.head_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - name: Load account AWS CI configuration for iam
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: ${{ needs.resolve.outputs.preview_config_suffix }}
+          config-role-arn: ${{ needs.resolve.outputs.preview_config_role }}
+          expected-account-id: ${{ needs.resolve.outputs.aws_account_id }}
+          aws-region: ${{ needs.resolve.outputs.aws_region }}
+          purpose: Platform account iam
+          required-keys: AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+      - name: Require fixed platform project and requested account stack
+        env:
+          ACCOUNT: ${{ inputs.account }}
+          STACK_VARIABLE: PULUMI_PREVIEW_STACKS
+        run: |
+          test "${PULUMI_DIR:-pulumi}" = pulumi
+          test "${!STACK_VARIABLE}" = "${ACCOUNT}"
+          printf 'PULUMI_DIR=pulumi\n' >> "${GITHUB_ENV}"
+      - name: Configure AWS preview credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
+          role-session-name: gha-platform-${{ inputs.account }}-iam-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ needs.resolve.outputs.aws_account_id }}
+      - name: Start platform development environment
+        working-directory: source
+        run: make start
+      - name: Download exact same-run preview artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.preview.outputs.preview_artifact_id }}
+          merge-multiple: true
+          path: source/.artifacts/pulumi-preview
+      - name: Validate IAM policies
+        working-directory: source
+        run: make test-iam-validation
+  apply:
+    name: Apply saved platform plan
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - preview
+      - destructive_diff
+      - iam_validation
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    environment: ${{ inputs.account }}
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: 'true'
+    steps:
+      - name: Check out trusted worker runtime and credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate admission artifact and recheck before credentials
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --scope platform --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Check out admitted platform source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify exact admitted checkout
+        working-directory: source
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.head_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - name: Load account AWS CI configuration for apply
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: ${{ inputs.account }}
+          config-role-arn: ${{ needs.resolve.outputs.apply_config_role }}
+          expected-account-id: ${{ needs.resolve.outputs.aws_account_id }}
+          aws-region: ${{ needs.resolve.outputs.aws_region }}
+          purpose: Platform account apply
+          required-keys: AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
+      - name: Require fixed platform project and requested account stack
+        env:
+          ACCOUNT: ${{ inputs.account }}
+          STACK_VARIABLE: PULUMI_PREVIEW_STACKS
+        run: |
+          test "${PULUMI_DIR:-pulumi}" = pulumi
+          test "${!STACK_VARIABLE}" = "${ACCOUNT}"
+          printf 'PULUMI_DIR=pulumi\n' >> "${GITHUB_ENV}"
+      - name: Configure AWS apply credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
+          role-session-name: gha-platform-${{ inputs.account }}-apply-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ needs.resolve.outputs.aws_account_id }}
+      - name: Start platform development environment
+        working-directory: source
+        run: make start
+      - name: Download exact same-run plan artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.preview.outputs.plan_artifact_id }}
+          merge-multiple: true
+          path: source/.artifacts/pulumi-plan
+      - name: Download exact same-run preview artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.preview.outputs.preview_artifact_id }}
+          merge-multiple: true
+          path: source/.artifacts/pulumi-preview
+      - name: Recheck authenticated admission immediately before apply
+        id: apply_recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --scope platform --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Revalidate current labels and apply the exact saved plan
+        working-directory: source
+        run: |
+          shopt -s nullglob
+          previews=(.artifacts/pulumi-preview/*.json)
+          found_preview=false
+          for preview in "${previews[@]}"; do
+            if [[ "${preview}" != */pull-request-event.json ]]; then
+              test -s "${preview}"
+              found_preview=true
+            fi
+          done
+          test "${found_preview}" = true
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          test "$(jq -r '.state' <<< "${pr_json}")" = open
+          test "$(jq -r '.merged' <<< "${pr_json}")" = false
+          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
+          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
+          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
+          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
+          rm -f .artifacts/pulumi-preview/pull-request-event.json
+          make test-destructive-diff
+          make pulumi-up-plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.resolve.outputs.pull_request_number }}
+          EXPECTED_SHA: ${{ needs.resolve.outputs.head_sha }}
+          EXPECTED_BASE_SHA: ${{ needs.resolve.outputs.base_sha }}
+          PULUMI_EXPECTED_SHA: ${{ needs.resolve.outputs.head_sha }}
+    if: ${{ needs.resolve.outputs.command == 'up' }}
+  post_apply_drift:
+    name: Platform post-apply drift
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - apply
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    environment: ${{ format('{0}-preview', inputs.account) }}
+    env:
+      PULUMI_SKIP_UPDATE_CHECK: 'true'
+    steps:
+      - name: Check out trusted worker runtime and credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate admission artifact and recheck before credentials
+        id: recheck
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --scope platform --environment "${ACCOUNT}" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Check out admitted platform source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: source
+          persist-credentials: false
+      - name: Verify exact admitted checkout
+        working-directory: source
+        env:
+          EXPECTED_SHA: ${{ needs.resolve.outputs.head_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+      - name: Load account AWS CI configuration for drift
+        id: ci_config
+        uses: ./.trusted/.github/actions/load-aws-ci-env
+        with:
+          environment: ${{ needs.resolve.outputs.preview_config_suffix }}
+          config-role-arn: ${{ needs.resolve.outputs.preview_config_role }}
+          expected-account-id: ${{ needs.resolve.outputs.aws_account_id }}
+          aws-region: ${{ needs.resolve.outputs.aws_region }}
+          purpose: Platform account drift
+          required-keys: AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
+      - name: Require fixed platform project and requested account stack
+        env:
+          ACCOUNT: ${{ inputs.account }}
+          STACK_VARIABLE: PULUMI_DRIFT_STACKS
+        run: |
+          test "${PULUMI_DIR:-pulumi}" = pulumi
+          test "${!STACK_VARIABLE}" = "${ACCOUNT}"
+          printf 'PULUMI_DIR=pulumi\n' >> "${GITHUB_ENV}"
+      - name: Configure AWS drift credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
+        with:
+          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
+          role-session-name: gha-platform-${{ inputs.account }}-drift-${{ github.run_id }}
+          aws-region: ${{ steps.ci_config.outputs.aws-region }}
+          allowed-account-ids: ${{ needs.resolve.outputs.aws_account_id }}
+      - name: Start platform development environment
+        working-directory: source
+        run: make start
+      - name: Require clean post-apply drift
+        working-directory: source
+        run: make test-drift
+    if: ${{ needs.resolve.outputs.command == 'up' }}
+  receipt:
+    name: Verify complete platform account receipt
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - preview
+      - destructive_diff
+      - iam_validation
+      - apply
+      - post_apply_drift
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    if: ${{ always() }}
+    steps:
+      - name: Check out trusted worker runtime and credential helper
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate original contract and require every requested stage
+        id: receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACCOUNT: ${{ inputs.account }}
+          CONTRACT_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ inputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ inputs.contract_sha256 }}
+          PLAN_RESULT: ${{ needs.preview.result }}
+          DESTRUCTIVE_RESULT: ${{ needs.destructive_diff.result }}
+          IAM_RESULT: ${{ needs.iam_validation.result }}
+          APPLY_RESULT: ${{ needs.apply.result }}
+          DRIFT_RESULT: ${{ needs.post_apply_drift.result }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_receipt.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --scope platform --environment "${ACCOUNT}" \
+            --plan-result "${PLAN_RESULT}" --destructive-result "${DESTRUCTIVE_RESULT}" \
+            --iam-result "${IAM_RESULT}" --apply-result "${APPLY_RESULT}" \
+            --drift-result "${DRIFT_RESULT}" \
+            --receipt-path .artifacts/deployment-receipt/receipt.json \
+            --output "${GITHUB_OUTPUT}"
+      - name: Upload verified platform account receipt
+        id: upload
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deployment-receipt-${{ github.run_id }}-${{ github.run_attempt }}-platform-${{ inputs.account }}-${{
+            needs.resolve.outputs.head_sha }}
+          path: .artifacts/deployment-receipt/receipt.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Expose terminal worker success after verified receipt upload
+        id: terminal
+        run: |
+          printf 'result=success\n' >> "${GITHUB_OUTPUT}"
+    outputs:
+      receipt_artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      receipt_artifact_sha256: ${{ steps.upload.outputs.artifact-digest }}
+      result: ${{ steps.terminal.outputs.result }}
+      receipt_digest: ${{ steps.receipt.outputs.receipt_digest }}
+      receipt_file_sha256: ${{ steps.receipt.outputs.receipt_file_sha256 }}
+      selection_digest: ${{ steps.receipt.outputs.selection_digest }}
+      contract_digest: ${{ steps.receipt.outputs.contract_digest }}
+      completion_kind: ${{ steps.receipt.outputs.completion_kind }}
+      scope: ${{ steps.receipt.outputs.scope }}
+      environment: ${{ steps.receipt.outputs.environment }}
+      command: ${{ steps.receipt.outputs.command }}
+      head_sha: ${{ steps.receipt.outputs.head_sha }}
+      base_sha: ${{ steps.receipt.outputs.base_sha }}

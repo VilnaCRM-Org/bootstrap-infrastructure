@@ -50,10 +50,11 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "wily>=1.25,<2",
         "xenon>=0.9,<1",
         "yamllint>=1.35,<2",
-        "tomli>=2.0,<3",
     }
 
     assert expected_tools.issubset(dev_dependencies)
+    assert "tomli>=2.0,<3" in data["project"]["dependencies"]
+    assert "tomli>=2.0,<3" not in dev_dependencies
     assert "C90" in ruff["select"]
     assert data["tool"]["ruff"]["lint"]["mccabe"]["max-complexity"] == 10
     expected_first_party = [
@@ -62,8 +63,32 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "_github_repository_controls",
         "_pulumi_command_support",
         "_pulumi_stack_config",
+        "deployment_account_barrier",
+        "deployment_contract_io",
+        "deployment_controller",
+        "deployment_controller_runtime",
+        "deployment_input_validation",
+        "deployment_promotion_proof",
+        "deployment_promotion_emitter",
+        "deployment_promotion_publication",
+        "deployment_promotion_scope",
+        "deployment_receipt_runtime",
+        "deployment_schedule",
+        "deployment_scopes",
+        "deployment_worker_receipt",
+        "deployment_worker_recheck",
+        "deployment_worker_runtime",
         "governance_paths",
+        "operator_aws_read",
+        "operator_enrollment_runtime",
+        "operator_execution_runtime",
+        "operator_execution_transport",
+        "operator_plan_envelope",
+        "operator_plan_validation",
+        "operator_seed_installation",
+        "operator_seed_observation",
         "pulumi_command_preflight",
+        "pulumi_ci_guardrails",
         "pulumi_pr_comment",
         "_script_support",
         "_well_architected_alert_route_observation",
@@ -96,6 +121,8 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "infra",
         "policy",
         "reviewed_iam",
+        "seed",
+        "validate_ci_environment",
         "validate_repository_catalogs",
     ]
     assert deptry["known_first_party"] == expected_first_party  # nosec B101
