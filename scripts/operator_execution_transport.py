@@ -301,12 +301,26 @@ class OperatorTransport:
 
     def aws(self, service, operation, arguments, output=None):
         """Issue internal fixed-coordinate AWS calls with private output."""
+        selectors = ["--cli-input-json", json.dumps(arguments)]
+        if service == "s3api" and operation == "get-object":
+            # The streaming CLI parser does not accept --cli-input-json.
+            fields = {
+                "Bucket": "--bucket",
+                "Key": "--key",
+                "VersionId": "--version-id",
+                "ExpectedBucketOwner": "--expected-bucket-owner",
+            }
+            require(set(arguments) == set(fields), "checkpoint-request-fields")
+            selectors = [
+                value
+                for field, flag in fields.items()
+                for value in (flag, arguments[field])
+            ]
         command = [
             AWS,
             service,
             operation,
-            "--cli-input-json",
-            json.dumps(arguments),
+            *selectors,
             "--region",
             "eu-central-1",
             "--output",
