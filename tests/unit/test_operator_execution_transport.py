@@ -532,6 +532,27 @@ with tempfile.TemporaryDirectory() as directory:
         .decode()
     )
     port.tools(head)
+    # Root tool checks alone cannot prove the PR UID can traverse the image cache.
+    assert t.run([str(t.PLUGIN), "--version"], env=port.child_env,
+                 cwd=port.work, child=True).strip() == b"7.23.0"
+    t.run([t.PYTHON, "-I", "-c", "\n".join([
+        "import os,stat",
+        "from pathlib import Path",
+        "assert os.getuid() == 2000",
+        "paths = [Path('/opt/operator-plugins'), "
+        "Path('/opt/operator-plugins/plugins'), "
+        "Path('/opt/operator-plugins/plugins/resource-aws-v7.23.0')]",
+        "for path in paths:",
+        "    assert path.stat().st_uid == 0 "
+        "and stat.S_IMODE(path.stat().st_mode) == 0o755",
+        "    assert not os.access(path, os.W_OK)",
+        "plugin = paths[-1] / 'pulumi-resource-aws'",
+        "assert plugin.stat().st_uid == 0 and not (plugin.stat().st_mode & 0o022)",
+        "assert not os.access(plugin, os.W_OK)",
+        "try: plugin.open('r+b')",
+        "except PermissionError: pass",
+        "else: raise AssertionError('provider binary writable by PR UID')",
+    ])], env=port.child_env, cwd=port.work, child=True)
     t.run([t.AWS, "--version"], env=port.aws_env, cwd=directory)
     t.run(["/usr/bin/gh", "--version"], env={"PATH": os.defpath}, cwd=directory)
     t.run(
