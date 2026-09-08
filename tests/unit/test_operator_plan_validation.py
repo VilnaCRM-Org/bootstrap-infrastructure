@@ -369,6 +369,72 @@ def test_create_known_target_lifecycle(kind):
     assert validate(data).changed_urns
 
 
+def new_policy_and_attachment():
+    data = fixture()
+    rows = [resource(data, kind) for kind in (validation.POLICY, validation.ATTACHMENT)]
+    for row in rows:
+        data["checkpoint"]["deployment"]["resources"].remove(row)
+        goal = data["plan"]["resourcePlans"][row["urn"]]
+        goal["steps"] = ["create"]
+        goal["goal"]["inputDiff"] = {"adds": row["inputs"]}
+        data["preview"]["steps"] = [
+            step for step in data["preview"]["steps"] if step["urn"] != row["urn"]
+        ]
+        row.pop("id", None)
+    policy, attachment = rows
+    attachment["dependencies"] = [policy["urn"]]
+    attachment["propertyDependencies"] = {"policyArn": [policy["urn"]]}
+    data["plan"]["resourcePlans"][attachment["urn"]]["goal"].update(
+        dependencies=attachment["dependencies"],
+        propertyDependencies=attachment["propertyDependencies"],
+    )
+    for row in rows:
+        append_preview(data["preview"], None, row, "create")
+    return data, policy, attachment
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_new_resources_can_depend_on_each_other(reverse):
+    data, policy, attachment = new_policy_and_attachment()
+    if reverse:
+        data["plan"]["resourcePlans"] = dict(
+            reversed(list(data["plan"]["resourcePlans"].items()))
+        )
+    assert validate(data).changed_urns == tuple(
+        sorted([policy["urn"], attachment["urn"]])
+    )
+
+
+def test_new_goal_dependency_must_exist():
+    data, _, attachment = new_policy_and_attachment()
+    goal = data["plan"]["resourcePlans"][attachment["urn"]]["goal"]
+    foreign = attachment["urn"] + "-absent"
+    goal["dependencies"][:] = [foreign]
+    for step in data["preview"]["steps"]:
+        if step["urn"] == attachment["urn"]:
+            step["newState"]["dependencies"] = [foreign]
+    with pytest.raises(ValueError, match="foreign-dependency"):
+        validate(data)
+
+
+def test_deleted_dependency_is_unavailable():
+    data = fixture()
+    policy = resource(data, validation.INLINE)
+    attachment = resource(data, validation.ATTACHMENT)
+    attachment["dependencies"] = [policy["urn"]]
+    reset_noop(data)
+    data["plan"]["resourcePlans"][attachment["urn"]]["goal"]["dependencies"] = [
+        policy["urn"]
+    ]
+    data["plan"]["resourcePlans"][policy["urn"]] = {"steps": ["delete"], "state": None}
+    data["preview"]["steps"] = [
+        step for step in data["preview"]["steps"] if step["urn"] != policy["urn"]
+    ]
+    append_preview(data["preview"], policy, None, "delete")
+    with pytest.raises(ValueError, match="foreign-dependency"):
+        validate(data)
+
+
 @pytest.mark.parametrize(
     ("kind", "updates", "error"),
     [
