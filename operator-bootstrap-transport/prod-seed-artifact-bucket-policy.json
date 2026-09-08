@@ -1,0 +1,60 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyNonTLS",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::issue215-independent-seed-933245420672-prod",
+        "arn:aws:s3:::issue215-independent-seed-933245420672-prod/*"
+      ],
+      "Condition": {
+        "Bool": {
+          "aws:SecureTransport": "false"
+        }
+      }
+    },
+    {
+      "Sid": "DenyAllRoutinePrincipals",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::issue215-independent-seed-933245420672-prod",
+        "arn:aws:s3:::issue215-independent-seed-933245420672-prod/*"
+      ],
+      "Condition": {
+        "ArnEquals": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::933245420672:role/GitHubCiApply-bootstrap-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/GitHubCiApply-user-service-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/GitHubCiConfigRead-bootstrap-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/GitHubCiConfigRead-bootstrap-infrastructure-prod-preview",
+            "arn:aws:iam::933245420672:role/GitHubCiConfigRead-user-service-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/GitHubCiConfigRead-user-service-infrastructure-prod-preview",
+            "arn:aws:iam::933245420672:role/GitHubCiDrift-bootstrap-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/GitHubCiDrift-user-service-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/GitHubCiPreview-bootstrap-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/GitHubCiPreview-user-service-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/GitHubGovernanceApply-prod",
+            "arn:aws:iam::933245420672:role/GitHubGovernanceDrift-prod",
+            "arn:aws:iam::933245420672:role/GitHubGovernancePreview-prod",
+            "arn:aws:iam::933245420672:role/GitHubOperatorApply-prod",
+            "arn:aws:iam::933245420672:role/GitHubOperatorDrift-prod",
+            "arn:aws:iam::933245420672:role/GitHubOperatorPreview-prod",
+            "arn:aws:iam::933245420672:role/OperationsAlertTriage-bootstrap-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/PulumiAutomation-bootstrap-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/PulumiDeploy-bootstrap-infrastructure",
+            "arn:aws:iam::933245420672:role/PulumiStateRepl-bootstrap-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/PulumiStateRepl-user-service-infrastructure-prod",
+            "arn:aws:iam::933245420672:role/aws-config-recorder-role-prod",
+            "arn:aws:iam::933245420672:role/central-logging-replication-role-2ff5487",
+            "arn:aws:iam::933245420672:role/s3-backup-role-827eba6"
+          ]
+        }
+      }
+    }
+  ]
+}

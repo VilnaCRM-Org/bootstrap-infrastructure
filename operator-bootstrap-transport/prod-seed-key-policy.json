@@ -1,0 +1,37 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AccountRootAdministration",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::933245420672:root"
+      },
+      "Action": "kms:*",
+      "Resource": "*",
+      "Condition": {
+        "ArnEquals": {
+          "aws:PrincipalArn": "arn:aws:iam::933245420672:root"
+        }
+      }
+    },
+    {
+      "Sid": "EnrolledOperatorMetadataOnly",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": "kms:DescribeKey",
+      "Resource": "*",
+      "Condition": {
+        "ArnEquals": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::933245420672:role/GitHubOperatorPreview-prod",
+            "arn:aws:iam::933245420672:role/GitHubOperatorApply-prod",
+            "arn:aws:iam::933245420672:role/GitHubOperatorDrift-prod"
+          ]
+        }
+      }
+    }
+  ]
+}

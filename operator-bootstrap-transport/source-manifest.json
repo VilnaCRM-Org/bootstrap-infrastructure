@@ -1,0 +1,13 @@
+{
+  "source_sha": "fb7e6745d2482ebc5b8b6e2263016604599770b1",
+  "files": {
+    "scripts/operator_aws_read.py": "1964b7dd292882048333dbb8455db73487aa9753c87effdc8b262cdaf4021a95",
+    "scripts/operator_enrollment_runtime.py": "facb830e6d08b27da6a4d2e0a4cfacfb5f62fb473b3d0d8c44ab4078108e2bb6",
+    "scripts/operator_seed_installation.py": "e40182f2e0fdd84b9471d2b2989dd38d56a1dba5cfde10fdb2569a8f2c9c32b5",
+    "pulumi/seed/__init__.py": "a1803964acf8aa97a65e80c35f094c2b2b0ef53467377757402c8d8f829b166f",
+    "pulumi/seed/operator_trust.py": "555a5e98d93704934958f1a1e37dddb37ea3a68a1d7fc169a7f93b47a5e2f3ea",
+    "pulumi/seed/policy_registry.py": "53f9fb7c2970ec181aa0a84294ecdb819af7a64ff16b613e2bf7d7148cd6211e",
+    "pulumi/seed/catalogs/test.json": "355828db7794fda3969f7e4261d96265a7442516865ce79dbf361b2afe9ea58a",
+    "pulumi/seed/catalogs/prod.json": "53df5a070522a2932ec4a0004c42d256d27c64225c9ab2855b36c84cd6a507cd"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyNonTLS",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::issue215-independent-seed-891377212104-test",
+        "arn:aws:s3:::issue215-independent-seed-891377212104-test/*"
+      ],
+      "Condition": {
+        "Bool": {
+          "aws:SecureTransport": "false"
+        }
+      }
+    },
+    {
+      "Sid": "DenyAllRoutinePrincipals",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:aws:s3:::issue215-independent-seed-891377212104-test",
+        "arn:aws:s3:::issue215-independent-seed-891377212104-test/*"
+      ],
+      "Condition": {
+        "ArnEquals": {
+          "aws:PrincipalArn": [
+            "arn:aws:iam::891377212104:role/GitHubCiApply-bootstrap-infrastructure-test",
+            "arn:aws:iam::891377212104:role/GitHubCiApply-user-service-infrastructure-test",
+            "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test",
+            "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+            "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test",
+            "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+            "arn:aws:iam::891377212104:role/GitHubCiDrift-bootstrap-infrastructure-test",
+            "arn:aws:iam::891377212104:role/GitHubCiDrift-user-service-infrastructure-test",
+            "arn:aws:iam::891377212104:role/GitHubCiPreview-bootstrap-infrastructure-test",
+            "arn:aws:iam::891377212104:role/GitHubCiPreview-user-service-infrastructure-test",
+            "arn:aws:iam::891377212104:role/GitHubGovernanceApply-test",
+            "arn:aws:iam::891377212104:role/GitHubGovernanceDrift-test",
+            "arn:aws:iam::891377212104:role/GitHubGovernancePreview-test",
+            "arn:aws:iam::891377212104:role/GitHubOperatorApply-test",
+            "arn:aws:iam::891377212104:role/GitHubOperatorDrift-test",
+            "arn:aws:iam::891377212104:role/GitHubOperatorPreview-test",
+            "arn:aws:iam::891377212104:role/OperationsAlertTriage-bootstrap-infrastructure-test",
+            "arn:aws:iam::891377212104:role/PulumiAutomation-bootstrap-infrastructure-test",
+            "arn:aws:iam::891377212104:role/PulumiDeploy-bootstrap-infrastructure",
+            "arn:aws:iam::891377212104:role/PulumiStateRepl-bootstrap-infrastructure-test",
+            "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test",
+            "arn:aws:iam::891377212104:role/aws-config-recorder-role-test",
+            "arn:aws:iam::891377212104:role/central-logging-replication-role-705bb42",
+            "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
+          ]
+        }
+      }
+    }
+  ]
+}
