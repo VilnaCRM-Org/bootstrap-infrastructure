@@ -1,0 +1,73 @@
+{
+  "accounts": {
+    "prod": {
+      "account_id": "933245420672",
+      "backend_key": "arn:aws:kms:eu-central-1:933245420672:key/fdba4c44-71b0-4979-b163-4705a91aa29b",
+      "boundary_arns": [
+        "arn:aws:iam::933245420672:policy/GovernanceBoundary-user-service-infrastructure-prod",
+        "arn:aws:iam::933245420672:policy/GovernanceReplicationBoundary-user-service-infrastructure-prod",
+        "arn:aws:iam::933245420672:policy/PlatformBoundary-backup-prod",
+        "arn:aws:iam::933245420672:policy/PlatformBoundary-control-prod",
+        "arn:aws:iam::933245420672:policy/PlatformBoundary-log-replication-prod",
+        "arn:aws:iam::933245420672:policy/PlatformBoundary-state-replication-prod"
+      ],
+      "bucket": "pulumi-bootstrap-infrastructure-prod-state",
+      "catalog_canonical_sha256": "7b706c646fddbb8e001c6b040be58f3797d67bd3a04e967b20d52d398832483d",
+      "catalog_sha256": "06db09faeef44d39ecf1e588d053d19b81502ce042192ddbbc13d855f7c31beb",
+      "oidc_arn": "arn:aws:iam::933245420672:oidc-provider/token.actions.githubusercontent.com",
+      "operator_key": ".pulumi/stacks/github-ci-bootstrap/prod.json",
+      "region": "eu-central-1",
+      "role_boundaries": {
+        "arn:aws:iam::933245420672:role/GitHubCiConfigRead-bootstrap-infrastructure-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/C-GitHubCiConfigRead-bootstrap-infrastructure",
+        "arn:aws:iam::933245420672:role/GitHubCiConfigRead-bootstrap-infrastructure-prod-preview": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-prod-preview",
+        "arn:aws:iam::933245420672:role/GitHubCiDrift-bootstrap-infrastructure-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubCiDrift-bootstrap-infrastructure",
+        "arn:aws:iam::933245420672:role/GitHubCiPreview-bootstrap-infrastructure-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/C-GitHubCiPreview-bootstrap-infrastructure",
+        "arn:aws:iam::933245420672:role/GitHubGovernanceApply-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubGovernanceApply",
+        "arn:aws:iam::933245420672:role/GitHubGovernanceDrift-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/C-GitHubGovernanceDrift",
+        "arn:aws:iam::933245420672:role/GitHubGovernancePreview-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/C-GitHubGovernancePreview",
+        "arn:aws:iam::933245420672:role/OperationsAlertTriage-bootstrap-infrastructure-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/OperationsAlertTriage-bootstrap-infrastructure"
+      },
+      "secrets_provider": "awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1"
+    },
+    "test": {
+      "account_id": "891377212104",
+      "backend_key": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be",
+      "boundary_arns": [
+        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test"
+      ],
+      "bucket": "pulumi-bootstrap-infrastructure-test-state",
+      "catalog_canonical_sha256": "a976261fcfa55a69740d0c66ca558ef95a9803165cd061f5f403385f13323dfe",
+      "catalog_sha256": "2402fb3bfa90bf490d2e67752f3b6ac56bd843c471a8ec5fa7570117937f16c0",
+      "oidc_arn": "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com",
+      "operator_key": ".pulumi/stacks/github-ci-bootstrap/test.json",
+      "region": "eu-central-1",
+      "role_boundaries": {
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiConfigRead-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:role/GitHubCiDrift-bootstrap-infrastructure-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:role/GitHubCiPreview-bootstrap-infrastructure-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiPreview-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:role/GitHubGovernanceApply-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceApply",
+        "arn:aws:iam::891377212104:role/GitHubGovernanceDrift-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernanceDrift",
+        "arn:aws:iam::891377212104:role/GitHubGovernancePreview-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernancePreview",
+        "arn:aws:iam::891377212104:role/OperationsAlertTriage-bootstrap-infrastructure-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure"
+      },
+      "secrets_provider": "awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1"
+    }
+  },
+  "installed_main_commit": "babee96dc70cdf51d06f017169c36d3c09d82d6f",
+  "provenance": {
+    "checkpoint_write_executed": false,
+    "live_binding_verified": false,
+    "previous_installed_main_commit": "cfb95db5cc80858dd3c134c1be38784050d0bb42",
+    "previous_inventory_sha256": "b457f7e50b7b282d0ac46cd216908e313bf9df6a74ec91db56ad73518228fa87",
+    "previous_source_commit": "74138e5e37dc06dc93630317410bba40665fca85",
+    "source_verified_locally": true
+  },
+  "schema_version": 1,
+  "source_commit": "c252f6c8c6edcea68f7fc99c147f28bfec93a013"
+}
