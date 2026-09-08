@@ -33,6 +33,27 @@ def test_only_root_artifact_inputs_and_account_are_exposed():
     )
 
 
+@pytest.mark.parametrize("name", ["resolve", "preview", "apply", "post_apply_drift"])
+def test_every_image_build_preserves_root_owned_child_readable_plugin(name):
+    build = next(
+        step["run"]
+        for step in JOBS[name]["steps"]
+        if "docker build" in step.get("run", "")
+    )
+    permission = (
+        "RUN chmod 0755 /opt/operator-plugins /opt/operator-plugins/plugins "
+        "/opt/operator-plugins/plugins/resource-aws-v7.23.0"
+    )
+    assert build.count(permission) == 1
+    assert (
+        build.index("USER root")
+        < build.index("plugin install resource aws 7.23.0")
+        < build.index("sha256sum -c -")
+        < build.index(permission)
+    )
+    assert "chmod 0777" not in build and "chown" not in build
+
+
 @pytest.mark.parametrize(
     "name,suffix",
     [("preview", "-preview"), ("apply", ""), ("post_apply_drift", "-drift")],
