@@ -1,198 +1,208 @@
-"""Structural tests for governance-aware routing in the PR-command intake.
-
-These checks mirror `.github/workflows/pulumi-pr-commands.yml` closely. Update
-them alongside the workflow when step ids, env, or dispatch logic change.
-
-The intake (E3.S2) computes `governance_touched` from the PR's changed paths via
-`scripts/governance_paths.py` and passes the comment author login plus the
-governance flag into the parse/authorize step. When governance is touched it
-dispatches the dedicated event type `pulumi-governance-command` (routed to
-`pulumi-governance.yml`); otherwise it keeps `pulumi-pr-command` for the existing
-runner (architecture §7.2, §7.4). `client_payload.comment_id` is always present
-so the governance runner re-resolves the author server-side. Because
-actionlint/yamllint run only in CI (docker), this module asserts the
-security-critical structure from the parsed YAML directly.
-"""
+"""Exercise the single central intake protocol without network or credentials."""
 
 from __future__ import annotations
 
+import json
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-WORKFLOWS_DIR = PROJECT_ROOT / ".github" / "workflows"
-INTAKE_WORKFLOW = "pulumi-pr-commands.yml"
-GOVERNANCE_DISPATCH_TYPE = "pulumi-governance-command"
-NON_GOVERNANCE_DISPATCH_TYPE = "pulumi-pr-command"
-GOVERNANCE_SCOPE_STEP_ID = "scope"
+ROOT = Path(__file__).resolve().parents[2]
+WORKFLOW = yaml.safe_load(
+    (ROOT / ".github/workflows/pulumi-pr-commands.yml").read_text()
+)
+STEPS = WORKFLOW["jobs"]["dispatch"]["steps"]
+FIELDS = {
+    "pull_request_number",
+    "head_sha",
+    "comment_id",
+    "source_run_id",
+    "command",
+    "target_environment",
+}
 
 
-def _workflow(name: str) -> dict:
-    """Load a workflow YAML file from disk."""
-    return yaml.safe_load((WORKFLOWS_DIR / name).read_text(encoding="utf-8"))
+def step(name):
+    return next(row for row in STEPS if row.get("name") == name)
 
 
-def _dispatch_job() -> dict:
-    """Return the intake `dispatch` job."""
-    return _workflow(INTAKE_WORKFLOW)["jobs"]["dispatch"]
-
-
-def _steps() -> list[dict]:
-    """Return the dispatch job's step list."""
-    return _dispatch_job().get("steps", [])
-
-
-def _step_by_id(step_id: str) -> dict:
-    """Return the first step with the given id."""
-    for step in _steps():
-        if step.get("id") == step_id:
-            return step
-    raise AssertionError(f"step id `{step_id}` not found in intake dispatch job")
-
-
-def _step_index(predicate) -> int:
-    """Return the index of the first step matching predicate."""
-    for index, step in enumerate(_steps()):
-        if predicate(step):
-            return index
-    raise AssertionError("no step matched the predicate")
-
-
-def _all_run_text() -> str:
-    """Concatenate every `run` script body in the dispatch job."""
-    return "\n".join(step.get("run", "") for step in _steps())
-
-
-def test_intake_keeps_pull_requests_read_permission() -> None:
-    """The intake reads PR files, so it must keep pull-requests: read (FR14)."""
-    workflow = _workflow(INTAKE_WORKFLOW)
-
-    assert workflow["permissions"]["pull-requests"] == "read"  # nosec B101
-
-
-def test_detect_governance_step_lists_changed_paths_via_script() -> None:
-    """A scope step lists PR files and pipes them into governance_paths.py."""
-    scope = _step_by_id(GOVERNANCE_SCOPE_STEP_ID)
-    run_text = scope.get("run", "")
-
-    # Paginated changed-file listing for the PR.
-    assert "pulls/" in run_text  # nosec B101
-    assert "/files" in run_text  # nosec B101
-    assert "--paginate" in run_text  # nosec B101
-    assert ".filename, (.previous_filename // empty)" in run_text  # nosec B101
-    # Single source of truth for the governance path predicate.
-    assert "scripts/governance_paths.py" in run_text  # nosec B101
-    assert "--files-stdin" in run_text  # nosec B101
-    # The script prints governance_touched=true|false; capture it as an output.
-    assert "governance_touched" in run_text  # nosec B101
-    assert "GITHUB_OUTPUT" in run_text  # nosec B101
-
-
-def test_detect_governance_step_runs_before_parse_step() -> None:
-    """Scope detection precedes the parse/authorize step so it can feed it."""
-    scope_index = _step_index(lambda step: step.get("id") == GOVERNANCE_SCOPE_STEP_ID)
-    parse_index = _step_index(lambda step: step.get("id") == "parse")
-
-    assert scope_index < parse_index  # nosec B101
-
-
-def test_parse_step_receives_author_login_and_governance_touched() -> None:
-    """Parse step is fed the comment author login + recomputed governance flag."""
-    parse = _step_by_id("parse")
-    run_text = parse.get("run", "")
-
-    assert "scripts/pulumi_pr_comment.py" in run_text  # nosec B101
-    assert "--author-login" in run_text  # nosec B101
-    assert "github.event.comment.user.login" in yaml.safe_dump(parse)  # nosec B101
-    assert "--governance-touched" in run_text  # nosec B101
-    assert (  # nosec B101
-        f"steps.{GOVERNANCE_SCOPE_STEP_ID}.outputs.governance_touched"
-        in yaml.safe_dump(parse)
+def run_step(name, *, cwd, environment):
+    return subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", step(name)["run"]],
+        cwd=cwd,
+        env={
+            "PATH": str(Path(sys.executable).parent) + os.pathsep + os.defpath,
+            **environment,
+        },
+        capture_output=True,
+        text=True,
+        check=True,
     )
 
 
-def _dispatch_steps() -> list[dict]:
-    """Return every step that POSTs a repository_dispatch event."""
-    return [
-        step
-        for step in _steps()
-        if "repos/${GITHUB_REPOSITORY}/dispatches" in step.get("run", "")
-    ]
-
-
-def test_governance_changes_dispatch_dedicated_event_type() -> None:
-    """A governance-touching PR dispatches pulumi-governance-command."""
-    governance_dispatches = [
-        step
-        for step in _dispatch_steps()
-        if f"event_type='{GOVERNANCE_DISPATCH_TYPE}'" in step.get("run", "")
-    ]
-
-    assert len(governance_dispatches) == 1  # nosec B101
-    governance_dispatch = governance_dispatches[0]
-    condition = governance_dispatch.get("if", "")
-    # Routed only when scope detection flagged governance.
-    assert "steps.scope.outputs.governance_touched == 'true'" in condition  # nosec B101
-
-
-def test_non_governance_changes_keep_existing_event_type() -> None:
-    """A non-governance PR keeps the existing pulumi-pr-command runner."""
-    non_governance_dispatches = [
-        step
-        for step in _dispatch_steps()
-        if f"event_type='{NON_GOVERNANCE_DISPATCH_TYPE}'" in step.get("run", "")
-    ]
-
-    assert len(non_governance_dispatches) == 1  # nosec B101
-    non_governance_dispatch = non_governance_dispatches[0]
-    condition = non_governance_dispatch.get("if", "")
-    assert "steps.scope.outputs.governance_touched != 'true'" in condition  # nosec B101
-
-
-def test_both_dispatches_include_comment_id_and_pr_metadata() -> None:
-    """Each dispatch carries comment_id (server re-auth) + pr number + head sha."""
-    dispatch_steps = _dispatch_steps()
-
-    assert len(dispatch_steps) == 2  # nosec B101
-    for step in dispatch_steps:
-        run_text = step.get("run", "")
-        assert "client_payload[comment_id]" in run_text  # nosec B101
-        assert "client_payload[pull_request_number]" in run_text  # nosec B101
-        assert "client_payload[head_sha]" in run_text  # nosec B101
-
-
-def test_both_dispatches_thread_command_and_target() -> None:
-    """Each dispatch threads the parsed command + target_environment (F1).
-
-    The governance runner re-validates and re-derives these server-side, but the
-    intake must pass them through so the runner knows whether to plan-only or
-    apply, and which stack to target. Without them the runner would default to a
-    full apply for every request.
-    """
-    dispatch_steps = _dispatch_steps()
-
-    assert len(dispatch_steps) == 2  # nosec B101
-    for step in dispatch_steps:
-        run_text = step.get("run", "")
-        assert "client_payload[command]" in run_text  # nosec B101
-        assert "client_payload[target_environment]" in run_text  # nosec B101
-        # The values are bound via the step env from the parse step's outputs.
-        step_env = step.get("env", {})
-        assert (  # nosec B101
-            step_env["PULUMI_COMMAND"] == "${{ steps.parse.outputs.command }}"
-        )
-        assert (  # nosec B101
-            step_env["TARGET_ENVIRONMENT"]
-            == "${{ steps.parse.outputs.target_environment }}"
-        )
-
-
-def test_dispatch_event_types_are_mutually_exclusive() -> None:
-    """Exactly one of the two routing dispatches fires per command."""
-    run_text = _all_run_text()
-
-    assert run_text.count(f"event_type='{GOVERNANCE_DISPATCH_TYPE}'") == 1  # nosec B101
-    assert (  # nosec B101
-        run_text.count(f"event_type='{NON_GOVERNANCE_DISPATCH_TYPE}'") == 1
+def test_created_pr_comments_use_trusted_intake_without_scope_routing():
+    assert WORKFLOW.get("on", WORKFLOW.get(True)) == {
+        "issue_comment": {"types": ["created"]}
+    }
+    job = WORKFLOW["jobs"]["dispatch"]
+    assert "github.event.issue.pull_request != null" in job["if"]
+    assert "github.event.issue.state == 'open'" in job["if"]
+    checkout = next(
+        row for row in STEPS if row.get("uses", "").startswith("actions/checkout@")
     )
+    assert checkout["with"] == {
+        "ref": "${{ github.sha }}",
+        "persist-credentials": False,
+    }
+    text = yaml.safe_dump(WORKFLOW)
+    for forbidden in (
+        "governance_touched",
+        "governance_paths.py",
+        "pulumi-governance-command",
+        "id-token",
+        "configure-aws-credentials",
+    ):
+        assert forbidden not in text
+
+
+def test_every_eligible_command_has_one_six_field_root_dispatch():
+    dispatches = [row for row in STEPS if "/dispatches" in row.get("run", "")]
+    assert dispatches == [step("Dispatch trusted runner")]
+    dispatch = dispatches[0]
+    assert "event_type='pulumi-pr-command'" in dispatch["run"]
+    assert set(re.findall(r"client_payload\[([a-z_]+)\]", dispatch["run"])) == FIELDS
+    assert set(part.strip() for part in dispatch["if"].split("&&")) == {
+        "steps.parse.outputs.skip != 'true'",
+        "steps.parse.outputs.authorized == 'true'",
+        "steps.pr.outputs.state == 'open'",
+        "steps.pr.outputs.merged == 'false'",
+        "steps.pr.outputs.head_repo == github.repository",
+    }
+
+
+def test_request_artifact_precedes_dispatch_with_identical_eligibility():
+    record, upload, dispatch = (
+        step(name)
+        for name in (
+            "Record immutable command request",
+            "Upload immutable command request",
+            "Dispatch trusted runner",
+        )
+    )
+    assert STEPS.index(record) < STEPS.index(upload) < STEPS.index(dispatch)
+    assert record["if"] == upload["if"] == dispatch["if"]
+    assert upload["with"] == {
+        "name": "pulumi-command-request",
+        "path": ".artifacts/pulumi-command-request/request.json",
+        "if-no-files-found": "error",
+        "retention-days": 1,
+    }
+    assert record["env"]["HEAD_SHA"] == "${{ steps.pr.outputs.head_sha }}"
+
+
+@pytest.mark.parametrize("target", ["test", "prod"])
+@pytest.mark.parametrize("command", ["plan", "up"])
+def test_real_shell_records_and_dispatches_same_immutable_request(
+    tmp_path, target, command
+):
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps({"issue": {"number": 217}, "comment": {"id": 9}}))
+    expected = {
+        "pull_request_number": "217",
+        "head_sha": "a" * 40,
+        "comment_id": "9",
+        "source_run_id": "100",
+        "command": command,
+        "target_environment": target,
+    }
+    environment = {
+        "GITHUB_EVENT_PATH": str(event),
+        "GITHUB_REPOSITORY": "VilnaCRM-Org/bootstrap-infrastructure",
+        "GITHUB_RUN_ID": "100",
+        "PR_NUMBER": "217",
+        "COMMENT_ID": "9",
+        "HEAD_SHA": expected["head_sha"],
+        "PULUMI_COMMAND": command,
+        "TARGET_ENVIRONMENT": target,
+    }
+    run_step("Record immutable command request", cwd=tmp_path, environment=environment)
+    artifact = tmp_path / ".artifacts/pulumi-command-request/request.json"
+    assert json.loads(artifact.read_text()) == expected
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    capture = tmp_path / "arguments.json"
+    shim = fake_bin / "gh"
+    shim.write_text(
+        f"#!{sys.executable}\nimport json,os,sys\n"
+        "with open(os.environ['CAPTURE'], 'w') as handle: "
+        "json.dump(sys.argv[1:], handle)\n"
+    )
+    shim.chmod(0o755)
+    run_step(
+        "Dispatch trusted runner",
+        cwd=tmp_path,
+        environment={
+            **environment,
+            "PATH": str(fake_bin) + os.pathsep + os.defpath,
+            "CAPTURE": str(capture),
+        },
+    )
+    arguments = json.loads(capture.read_text())
+    assert "event_type=pulumi-pr-command" in arguments
+    assert arguments.count("--method") == 1 and "POST" in arguments
+    actual = dict(
+        (argument.split("[", 1)[1].split("]", 1)[0], argument.split("=", 1)[1])
+        for argument in arguments
+        if argument.startswith("client_payload[")
+    )
+    assert actual == expected
+
+
+@pytest.mark.parametrize("target", ["test", "prod"])
+@pytest.mark.parametrize(
+    "login,association,command,authorized",
+    [
+        ("Writer", "MEMBER", "up", "true"),
+        ("Kravalg", "OWNER", "up", "false"),
+        ("kRaVaLg", "OWNER", "up", "false"),
+        ("Kravalg", "OWNER", "plan", "true"),
+        ("Outsider", "NONE", "up", "false"),
+    ],
+)
+def test_actual_parser_preserves_apply_approver_separation(
+    tmp_path, target, login, association, command, authorized
+):
+    result = run_step(
+        "Parse Pulumi command",
+        cwd=ROOT,
+        environment={
+            "COMMENT_BODY": f"/pulumi {target} {command}",
+            "COMMENT_ASSOCIATION": association,
+            "COMMENT_LOGIN": login,
+            "GITHUB_OUTPUT": str(tmp_path / "outputs"),
+        },
+    )
+    outputs = dict(line.split("=", 1) for line in result.stdout.splitlines())
+    assert outputs["authorized"] == authorized
+    assert outputs["target_environment"] == target and outputs["command"] == command
+    assert "python3 -I" in step("Parse Pulumi command")["run"]
+
+
+def test_hostile_comment_remains_parser_data_and_cannot_execute(tmp_path):
+    marker = tmp_path / "injected"
+    result = run_step(
+        "Parse Pulumi command",
+        cwd=ROOT,
+        environment={
+            "COMMENT_BODY": f"/pulumi test up; touch {marker}",
+            "COMMENT_ASSOCIATION": "OWNER",
+            "COMMENT_LOGIN": "Writer",
+        },
+    )
+    assert "skip=true" in result.stdout
+    assert not marker.exists()

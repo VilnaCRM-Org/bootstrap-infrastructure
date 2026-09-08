@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import importlib
 import json
 import sys
@@ -16,8 +17,8 @@ GOVERNANCE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pulumi-governanc
 GOVERNANCE_STATUS_CONTEXT = "Governance Apply"
 # The complete global required-status-check set enforced by the live `main`
 # ruleset. "Governance Apply" is intentionally NOT here: it is an informational
-# commit status posted by the governance runner, and the governance merge gate
-# is CODEOWNERS + the protected `governance` environment, not a global check.
+# legacy informational status; central promotion now belongs to the protected
+# aggregate publisher. Retiring the old runner must not weaken repository controls.
 LEGACY_REQUIRED_STATUS_CHECKS = (
     "Ruff",
     "Ty",
@@ -218,7 +219,7 @@ def test_configure_emits_governance_environment_in_dry_run(
         module.main(
             [
                 "--promotion-app-id",
-                "12345",
+                "4840884",
                 "--repo",
                 "VilnaCRM-Org/bootstrap-infrastructure",
                 "--dry-run",
@@ -333,13 +334,6 @@ def test_verify_applied_controls_blocks_on_weak_governance(
         )  # noqa: SLF001
 
 
-def _governance_status_run_text() -> str:
-    """Concatenate every `run` body in the governance-status job for assertions."""
-    workflow = yaml.safe_load(GOVERNANCE_WORKFLOW.read_text(encoding="utf-8"))
-    status_job = workflow["jobs"]["governance_status"]
-    return "\n".join(step.get("run", "") for step in status_job.get("steps", []))
-
-
 def test_required_status_checks_keep_existing_contexts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -354,21 +348,25 @@ def test_required_status_checks_keep_existing_contexts(
     )
 
 
-def test_governance_runner_posts_governance_apply_status_context(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The runner posts the `Governance Apply` commit status to the head SHA.
-
-    This is an INFORMATIONAL status (it surfaces the gated apply result), not a
-    global required check: the governance runner fires on `repository_dispatch`
-    and posts that exact context to the verified head SHA (architecture §7.5).
-    """
-    run_text = _governance_status_run_text()
-
-    # The runner posts a commit status to the verified head SHA.
-    assert "statuses/${HEAD_SHA}" in run_text  # nosec B101
-    # The runner still posts the informational `Governance Apply` context.
-    assert f'context="{GOVERNANCE_STATUS_CONTEXT}"' in run_text  # nosec B101
+def test_retired_governance_has_no_status_authority() -> None:
+    """Old informational status cannot overwrite aggregate promotion evidence."""
+    legacy = yaml.safe_load(GOVERNANCE_WORKFLOW.read_text())
+    assert legacy["permissions"] == {}
+    assert set(legacy["jobs"]) == {"retired"}
+    retired = legacy["jobs"]["retired"]
+    assert retired["permissions"] == {}
+    assert "exit 1" in retired["steps"][0]["run"]
+    assert "statuses/" not in json.dumps(legacy)
+    root = yaml.safe_load(
+        (GOVERNANCE_WORKFLOW.parent / "pulumi-pr-command-runner.yml").read_text()
+    )
+    comment = root["jobs"]["comment_result"]
+    assert "feedback_pull_request_number" in comment["if"]
+    assert "statuses/" not in json.dumps(comment)
+    publisher = root["jobs"]["publish_promotion"]
+    assert publisher["environment"] == "governance-evidence"
+    assert "deployment_promotion_emitter.py" in json.dumps(publisher)
+    assert "prepare_promotion" in publisher["needs"]
 
 
 def test_existing_weak_review_rules_are_hardened(monkeypatch):
@@ -417,6 +415,18 @@ def test_dry_run_provisions_disjoint_protected_command_environments(
         "test-preview",
         "prod-preview",
         "governance-preview",
+        "test-operator-preview",
+        "test-operator",
+        "test-operator-drift",
+        "prod-operator-preview",
+        "prod-operator",
+        "prod-operator-drift",
+        "test-governance-preview",
+        "test-governance",
+        "test-governance-drift",
+        "prod-governance-preview",
+        "prod-governance",
+        "prod-governance-drift",
     }
     for payload in environments.values():
         assert payload["prevent_self_review"] is True
@@ -447,3 +457,493 @@ def test_required_promotion_issuer_and_deployment_rules_are_preserved(monkeypatc
     assert "issuer" in " ".join(
         controls.ruleset_verification_blockers(ruleset, promotion_app_id=12345)
     )
+
+
+def _live_central_rules():
+    """Public rule snapshot from main ruleset13906584, read 2026-09-08."""
+    return [
+        {"type": "deletion"},
+        {"type": "non_fast_forward"},
+        {
+            "type": "pull_request",
+            "parameters": {
+                "allowed_merge_methods": ["squash"],
+                "dismiss_stale_reviews_on_push": True,
+                "dismissal_restriction": {"allowed_actors": [], "enabled": False},
+                "require_code_owner_review": True,
+                "require_extra_approval_for_unattributed_changes": True,
+                "require_last_push_approval": True,
+                "required_approving_review_count": 2,
+                "required_review_thread_resolution": True,
+                "required_reviewers": [],
+            },
+        },
+        {"type": "code_quality", "parameters": {"severity": "errors"}},
+        {
+            "type": "code_scanning",
+            "parameters": {
+                "code_scanning_tools": [
+                    {
+                        "alerts_threshold": "errors",
+                        "security_alerts_threshold": "high_or_higher",
+                        "tool": "CodeQL",
+                    }
+                ]
+            },
+        },
+        {
+            "type": "required_status_checks",
+            "parameters": {
+                "do_not_enforce_on_create": False,
+                "strict_required_status_checks_policy": True,
+                "required_status_checks": [
+                    {
+                        "context": context,
+                        **(
+                            {"integration_id": 4840884}
+                            if context == "Test Account Evidence"
+                            else {}
+                        ),
+                    }
+                    for context in LEGACY_REQUIRED_STATUS_CHECKS
+                ]
+                + [{"context": "Governance Promotion", "integration_id": 4840884}],
+            },
+        },
+        {
+            "type": "required_deployments",
+            "parameters": {"required_deployment_environments": ["test", "prod"]},
+        },
+    ]
+
+
+def _central_checks(payload):
+    """Return the one concrete rule's entries for issuer assertions."""
+    return next(
+        rule["parameters"]["required_status_checks"]
+        for rule in payload["rules"]
+        if rule["type"] == "required_status_checks"
+    )
+
+
+def test_central_migration_preserves_actual_main_protections(monkeypatch):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    original = _live_central_rules()
+    untouched = copy.deepcopy(original)
+    result = controls.ruleset_payload(
+        original, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+    assert original == untouched
+    contexts = {c["context"]: c for c in _central_checks(result)}
+    assert set(contexts) == set(LEGACY_REQUIRED_STATUS_CHECKS) | {
+        "Infrastructure Promotion"
+    }
+    for name in ("Infrastructure Promotion", "Test Account Evidence"):
+        assert contexts[name] == {"context": name, "integration_id": 4840884}
+    preserved = [
+        r
+        for r in original
+        if r["type"] not in {"required_deployments", "required_status_checks"}
+    ]
+    assert all(rule in result["rules"] for rule in preserved)
+    assert not any(rule["type"] == "required_deployments" for rule in result["rules"])
+    assert result["name"] == "main" and result["enforcement"] == "active"
+    assert result["conditions"] == {
+        "ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}
+    }
+    assert not result.get("bypass_actors")
+    assert (
+        controls.ruleset_verification_blockers(
+            result, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+        )
+        == []
+    )
+    assert (
+        controls.ruleset_payload(
+            result["rules"],
+            promotion_app_id=4840884,
+            repository=controls.CENTRAL_REPOSITORY,
+        )
+        == result
+    )
+
+
+@pytest.mark.parametrize(
+    "repository",
+    [
+        None,
+        "VilnaCRM-Org/user-service-infrastructure",
+        "Other/bootstrap-infrastructure",
+        "vilnacrm-org/bootstrap-infrastructure",
+        "VilnaCRM-Org/bootstrap-infrastructure-extra",
+    ],
+)
+def test_services_keep_legacy_protocol_and_required_deployments(
+    monkeypatch, repository
+):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    original = _live_central_rules()
+    result = controls.ruleset_payload(
+        original, promotion_app_id=4840884, repository=repository
+    )
+    assert (
+        controls.promotion_context_for_repository(repository) == "Governance Promotion"
+    )
+    assert (
+        controls.required_status_checks_for_repository(repository)
+        == controls.REQUIRED_STATUS_CHECKS
+    )
+    assert {c["context"] for c in _central_checks(result)} == set(
+        controls.REQUIRED_STATUS_CHECKS
+    )
+    assert original[-1] in result["rules"]
+
+
+@pytest.mark.parametrize("app_id", [12345, 15368, True, None, "4840884", -1, 0])
+def test_central_rejects_unapproved_issuer_before_any_configuration_read(
+    monkeypatch, app_id
+):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+
+    def no_read(*args, **kwargs):
+        """No read or write is reachable for an invalid issuer."""
+        pytest.fail("Invalid issuer reached repository metadata")
+
+    monkeypatch.setattr(module, "_github_user_id", no_read)
+    monkeypatch.setattr(module, "_repo_admin_allowed", no_read)
+    with pytest.raises(ValueError):
+        module.configure(
+            "VilnaCRM-Org/bootstrap-infrastructure",
+            "Kravalg",
+            apply=True,
+            promotion_app_id=app_id,
+        )
+
+
+@pytest.mark.parametrize(
+    "context",
+    ["Governance Promotion", "Infrastructure Promotion", "Test Account Evidence"],
+)
+@pytest.mark.parametrize("issuer", [12345, True, "4840884"])
+def test_central_existing_foreign_issuer_cannot_be_removed_or_overwritten(
+    monkeypatch, context, issuer
+):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    existing = [
+        {
+            "type": "required_status_checks",
+            "parameters": {
+                "required_status_checks": [
+                    {"context": context, "integration_id": issuer}
+                ]
+            },
+        }
+    ]
+    with pytest.raises(ValueError, match="issuer"):
+        controls.ruleset_payload(
+            existing, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+        )
+
+
+def test_central_reconciles_both_protocol_entries_and_preserves_other_checks(
+    monkeypatch,
+):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    rules = _live_central_rules()
+    checks = next(
+        r["parameters"]["required_status_checks"]
+        for r in rules
+        if r["type"] == "required_status_checks"
+    )
+    checks.extend(
+        [
+            {"context": "Infrastructure Promotion", "integration_id": 4840884},
+            {"context": "Independent security approval", "integration_id": 9999},
+        ]
+    )
+    result = controls.ruleset_payload(
+        rules, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+    selected = [
+        c for c in _central_checks(result) if c["context"] == "Infrastructure Promotion"
+    ]
+    assert selected == [
+        {"context": "Infrastructure Promotion", "integration_id": 4840884}
+    ]
+    assert checks[-1] in _central_checks(result)
+    checks.append({"context": "Independent security approval", "integration_id": 8888})
+    with pytest.raises(ValueError, match="Conflicting duplicate"):
+        controls.ruleset_payload(
+            rules, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+        )
+
+
+def test_central_retires_only_test_prod_deployment_conditions(monkeypatch):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    original = {
+        "type": "required_deployments",
+        "parameters": {
+            "required_deployment_environments": ["test", "security-review", "prod"],
+            "future_protection": True,
+        },
+    }
+    result = controls.ruleset_payload(
+        [original], promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+    assert {
+        "type": "required_deployments",
+        "parameters": {
+            "required_deployment_environments": ["security-review"],
+            "future_protection": True,
+        },
+    } in result["rules"]
+    assert (
+        controls.ruleset_verification_blockers(
+            result, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "parameters",
+    [
+        None,
+        {},
+        {"required_deployment_environments": "prod"},
+        {"required_deployment_environments": [False]},
+        {"required_deployment_environments": [""]},
+        {"required_deployment_environments": [" prod"]},
+    ],
+)
+def test_central_malformed_deployment_rules_fail_closed(monkeypatch, parameters):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    with pytest.raises(ValueError, match="Malformed existing deployment"):
+        controls.ruleset_payload(
+            [{"type": "required_deployments", "parameters": parameters}],
+            promotion_app_id=4840884,
+            repository=controls.CENTRAL_REPOSITORY,
+        )
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "legacy",
+        "deployment",
+        "inactive",
+        "branch",
+        "duplicate",
+        "foreign",
+        "evidence",
+        "bypass",
+    ],
+)
+def test_central_readback_rejects_partial_or_weakened_cutover(monkeypatch, kind):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    result = controls.ruleset_payload(
+        promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+    if kind == "legacy":
+        _central_checks(result).append(
+            {"context": "Governance Promotion", "integration_id": 4840884}
+        )
+    elif kind == "deployment":
+        result["rules"].append(_live_central_rules()[-1])
+    elif kind == "inactive":
+        result["enforcement"] = "evaluate"
+    elif kind == "branch":
+        result["conditions"]["ref_name"]["exclude"] = ["refs/heads/main"]
+    elif kind == "duplicate":
+        _central_checks(result).append(
+            {"context": "Infrastructure Promotion", "integration_id": 4840884}
+        )
+    elif kind == "bypass":
+        result["bypass_actors"] = [
+            {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "always"}
+        ]
+    elif kind == "evidence":
+        next(
+            c
+            for c in _central_checks(result)
+            if c["context"] == "Test Account Evidence"
+        )["integration_id"] = 12345
+    else:
+        next(
+            c
+            for c in _central_checks(result)
+            if c["context"] == "Infrastructure Promotion"
+        )["integration_id"] = 12345
+    assert controls.ruleset_verification_blockers(
+        result, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+
+
+def test_central_public_issuer_predicate_rejects_wrong_requested_app(monkeypatch):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    ruleset = controls.ruleset_payload(
+        promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+    assert not controls.ruleset_has_promotion_issuer(
+        ruleset, 12345, repository=controls.CENTRAL_REPOSITORY
+    )
+
+
+def test_central_does_not_discard_unknown_deployment_protections(monkeypatch):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    rule = {
+        "type": "required_deployments",
+        "parameters": {
+            "required_deployment_environments": ["test", "prod"],
+            "unknown_protection": True,
+        },
+    }
+    with pytest.raises(ValueError, match="Unknown deployment protection"):
+        controls.ruleset_payload(
+            [rule], promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+        )
+
+
+def test_central_verify_only_requires_completed_migration(monkeypatch):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    monkeypatch.setattr(
+        module, "_environment_verification_blockers", lambda *args, **kwargs: []
+    )
+    monkeypatch.setattr(module, "_evidence_environment_blockers", lambda repo: [])
+    classic = _classic_response(None)
+    monkeypatch.setattr(module, "_run_gh_api", lambda args: classic)
+    legacy = {"id": 13906584, "rules": _live_central_rules()}
+    monkeypatch.setattr(module, "_main_ruleset", lambda repo: legacy)
+    with pytest.raises(RuntimeError, match="Infrastructure Promotion"):
+        module._verify_applied_controls(
+            "VilnaCRM-Org/bootstrap-infrastructure",
+            REVIEWER_ID,
+            promotion_app_id=4840884,
+        )
+    current = module.ruleset_payload(
+        legacy["rules"],
+        promotion_app_id=4840884,
+        repository="VilnaCRM-Org/bootstrap-infrastructure",
+    )
+    monkeypatch.setattr(module, "_main_ruleset", lambda repo: current)
+    result = module._verify_applied_controls(
+        "VilnaCRM-Org/bootstrap-infrastructure", REVIEWER_ID, promotion_app_id=4840884
+    )
+    assert "Infrastructure Promotion" in result["requiredStatusChecks"]
+    assert "Governance Promotion" not in result["requiredStatusChecks"]
+    classic["data"]["repository"]["ref"]["branchProtectionRule"] = {
+        "requiredStatusCheckContexts": ["Governance Promotion"]
+    }
+    with pytest.raises(RuntimeError, match="classic protection still requires"):
+        module._verify_applied_controls(
+            "VilnaCRM-Org/bootstrap-infrastructure",
+            REVIEWER_ID,
+            promotion_app_id=4840884,
+        )
+
+
+@pytest.mark.parametrize(
+    "repo",
+    ["VilnaCRM-Org/bootstrap-infrastructure", "vilnacrm-org/BOOTSTRAP-INFRASTRUCTURE"],
+)
+def test_central_configuration_preview_uses_repository_specific_migration(
+    monkeypatch, capsys, repo
+):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    monkeypatch.setattr(
+        module,
+        "_main_ruleset",
+        lambda repo: {"id": 13906584, "rules": _live_central_rules()},
+    )
+    monkeypatch.setattr(module, "_github_user_id", lambda reviewer: REVIEWER_ID)
+    module.configure(
+        repo,
+        "Kravalg",
+        apply=False,
+        promotion_app_id=4840884,
+    )
+    result = json.loads(capsys.readouterr().out)
+    checks = _central_checks(result["ruleset"])
+    assert "Infrastructure Promotion" in {c["context"] for c in checks}
+    assert "Governance Promotion" not in {c["context"] for c in checks}
+    assert result["prodEnvironment"]["prevent_self_review"] is True
+    assert result["prodEnvironment"]["can_admins_bypass"] is False
+    assert result["protectedEnvironmentBranchPolicies"]["prod"] == [
+        {"name": "main", "type": "branch"}
+    ]
+
+
+def _classic_response(rule):
+    return {
+        "data": {
+            "repository": {
+                "nameWithOwner": "VilnaCRM-Org/bootstrap-infrastructure",
+                "ref": {"name": "main", "branchProtectionRule": rule},
+            }
+        }
+    }
+
+
+@pytest.mark.parametrize("actors", [None, 0, False, "", {}])
+def test_central_bypass_requires_readback(monkeypatch, actors):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    result = controls.ruleset_payload(
+        promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+    result["bypass_actors"] = actors
+    assert controls.ruleset_verification_blockers(
+        result, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+    del result["bypass_actors"]
+    assert controls.ruleset_verification_blockers(
+        result, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+
+
+@pytest.mark.parametrize("rule", [None, {"requiredStatusCheckContexts": ["Unit"]}])
+def test_classic_absence_requires_readback(monkeypatch, rule):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    calls = []
+
+    def api(args):
+        calls.append(args)
+        return _classic_response(rule)
+
+    monkeypatch.setattr(module, "_run_gh_api", api)
+    assert (
+        module._central_classic_blockers("VilnaCRM-Org/bootstrap-infrastructure") == []
+    )
+    assert calls[0][0] == "graphql"
+    assert 'qualifiedName:"refs/heads/main"' in calls[0][2]
+    assert "requiredStatusCheckContexts" in calls[0][2]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {},
+        {"errors": [{"message": "denied"}]},
+        {"data": {"repository": None}},
+        _classic_response({}),
+        _classic_response({"requiredStatusCheckContexts": None}),
+        _classic_response({"requiredStatusCheckContexts": [None]}),
+        {"data": {"repository": {"nameWithOwner": "other/repo", "ref": {}}}},
+    ],
+)
+def test_unknown_classic_policy_fails(monkeypatch, payload):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    monkeypatch.setattr(module, "_run_gh_api", lambda args: payload)
+    with pytest.raises(RuntimeError, match="metadata is not verified"):
+        module._central_classic_blockers("VilnaCRM-Org/bootstrap-infrastructure")
+
+
+def test_case_alias_cannot_change_issuer(monkeypatch):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    with pytest.raises(ValueError, match="fixed GitHub App"):
+        module.configure(
+            "vilnacrm-org/BOOTSTRAP-INFRASTRUCTURE",
+            "Kravalg",
+            apply=False,
+            promotion_app_id=12345,
+        )

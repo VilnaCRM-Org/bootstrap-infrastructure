@@ -885,7 +885,6 @@ def _goal(
     urn: str,
     row: dict[str, Any],
     prior: dict[str, Any] | None,
-    resources: dict[str, Any],
     catalog: Mapping[str, Any],
 ) -> dict[str, Any] | None:
     ops = tuple(_strings(row.get("steps")))
@@ -900,7 +899,8 @@ def _goal(
     if prior is not None:
         desired["id"] = prior.get("id", "")
     _state(desired, catalog)
-    _references(desired, resources, catalog)
+    # Validate references once every desired resource is present; a dependency
+    # may be created by this same plan and therefore absent from the checkpoint.
     _seed(row.get("seed", ""))
     return desired
 
@@ -1153,7 +1153,7 @@ def _validate_resources(
         _require(
             prior is None or not prior.get("external", False), "external-plan-goal"
         )
-        desired[urn] = _goal(urn, row, prior, resources, catalog)
+        desired[urn] = _goal(urn, row, prior, catalog)
         ops = tuple(row["steps"])
         _operation(prior, desired[urn], ops, catalog)
         if not _default_provider(urn):

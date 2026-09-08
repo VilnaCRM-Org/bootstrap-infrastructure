@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import operator_execution_runtime as runtime  # noqa: E402
 from operator_execution_transport import Snapshot, encode  # noqa: E402
-from operator_plan_validation import INLINE  # noqa: E402
+from operator_plan_validation import INLINE, ROLE  # noqa: E402
 from test_deployment_controller import build as contract_for  # noqa: E402
 from test_operator_plan_envelope import FakeKms, execution  # noqa: E402
 from test_operator_plan_validation import change, fixture, validate  # noqa: E402
@@ -409,6 +409,42 @@ def test_analyzer_uses_validated_replacement_diff_base(scenario, monkeypatch):
     runtime._iam(encode(data["plan"]), encode(data["checkpoint"]), scenario.transport)
     assert (document, "policy") in documents
     assert documents.count((document, "policy")) == 1
+
+
+@pytest.mark.parametrize("stage", ["preview", "apply"])
+def test_embedded_policy_finding_blocks(scenario, monkeypatch, stage):
+    document = '{"Statement":{"Effect":"Allow","Action":"*","Resource":"*"}}'
+    change(
+        scenario.data,
+        ROLE,
+        {"inlinePolicies": [{"name": "inline", "policy": document}]},
+    )
+    assert validate(scenario.data).changed_urns
+    if stage == "apply":
+        runtime.execute(scenario.args, scenario.transport)
+        encrypted = (
+            scenario.args.public_dir / "saved-plan.encrypted.json"
+        ).read_bytes()
+        monkeypatch.setattr(runtime, "_encrypted_artifact", lambda *_: encrypted)
+        scenario.args.stage = "apply"
+    scenario.events.clear()
+    analyzed = []
+
+    def aws(service, action, arguments):
+        assert (service, action) == ("accessanalyzer", "validate-policy")
+        analyzed.append(arguments)
+        if arguments["policyDocument"] == document:
+            return {"findings": [{"findingType": "SECURITY_WARNING"}]}
+        return {"findings": []}
+
+    monkeypatch.setattr(scenario.transport, "aws", aws)
+    with pytest.raises(ValueError, match="iam-analysis-failed"):
+        runtime.execute(scenario.args, scenario.transport)
+    assert {"policyDocument": document, "policyType": "IDENTITY_POLICY"} in analyzed
+    assert "apply" not in scenario.events
+    assert "generate-data-key" not in scenario.events
+    if stage == "preview":
+        assert not (scenario.args.public_dir / "saved-plan.encrypted.json").exists()
 
 
 @pytest.mark.parametrize(

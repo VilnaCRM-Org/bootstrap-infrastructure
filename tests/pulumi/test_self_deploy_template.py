@@ -25,6 +25,7 @@ until the operator applies governance, FEASIBILITY-6). They cover:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -446,11 +447,7 @@ def test_state_operations_share_cross_workflow_stack_mutex():
 
 _PR_CREDENTIAL_JOB_CASES = [
     (path, job_id)
-    for path in (
-        WORKFLOW_PATH,
-        ROOT / ".github/workflows/pulumi-governance.yml",
-        ROOT / ".github/workflows/pulumi-pr-command-runner.yml",
-    )
+    for path in (WORKFLOW_PATH,)
     for job_id, job in yaml.safe_load(path.read_text())["jobs"].items()
     if any(
         step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
@@ -477,7 +474,11 @@ def test_credential_jobs_recheck_authenticated_pr_base(
     tmp_path, workflow_path, job_id, change, accepted
 ):
     """Execute each credential guard; moved PR metadata cannot reach credentials."""
-    assert len(_PR_CREDENTIAL_JOB_CASES) == 20
+    assert {name for _, name in _PR_CREDENTIAL_JOB_CASES} == {
+        f"{account}_{stage}"
+        for account in ("test", "prod")
+        for stage in ("preview", "apply", "post_apply_drift")
+    }
     workflow = yaml.safe_load(workflow_path.read_text())
     assert (
         workflow["jobs"]["preflight"]["outputs"]["base_sha"]
@@ -559,3 +560,164 @@ def test_credential_jobs_recheck_authenticated_pr_base(
     )
     assert (result.returncode == 0) is accepted, result.stderr
     assert marker.exists() is accepted
+
+
+# Reuse the fake GitHub collector while executing the real central admission and
+# worker validators. Service jobs above retain their separate shell protocol.
+sys.path.insert(0, str(ROOT / "tests/unit"))
+import deployment_worker_runtime as central_runtime  # noqa: E402
+from deployment_controller_runtime import accept as central_accept  # noqa: E402
+from test_deployment_controller_runtime import (  # noqa: E402
+    github as _central_github_fixture,
+)
+from test_deployment_controller_runtime import (  # noqa: E402
+    set_request,
+)
+from test_deployment_worker_recheck import root_run  # noqa: E402
+from test_deployment_worker_runtime import make_zip  # noqa: E402
+
+central_github = _central_github_fixture
+
+CENTRAL_CREDENTIAL_JOBS = [
+    (scope, name, job)
+    for scope in ("operator", "governance", "platform")
+    for name, job in yaml.safe_load(
+        (ROOT / f".github/workflows/pulumi-{scope}-account.yml").read_text()
+    )["jobs"].items()
+    if any(
+        step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+        for step in job.get("steps", [])
+    )
+]
+
+
+@pytest.fixture
+def central_artifact(central_github, monkeypatch):
+    set_request(
+        central_github, monkeypatch, scopes=("operator", "governance", "platform")
+    )
+    contract = central_accept()
+    payload = central_github.contract.read_bytes()
+    raw = make_zip([("contract.json", payload)])
+    base = f"repos/{central_runtime.REPOSITORY}"
+    central_github.overrides[f"{base}/actions/runs/100"] = root_run(contract)
+    central_github.overrides[f"{base}/actions/artifacts/123"] = {
+        "id": 123,
+        "name": "deployment-selection-100-1",
+        "expired": False,
+        "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "size_in_bytes": len(raw),
+        "workflow_run": {
+            "id": 100,
+            "repository_id": central_runtime.REPOSITORY_ID,
+            "head_repository_id": central_runtime.REPOSITORY_ID,
+            "head_branch": "main",
+            "head_sha": contract.identity.controller.sha,
+        },
+    }
+    monkeypatch.setattr(central_runtime, "_download_zip", lambda identifier: raw)
+    central_github.writes.clear()
+    return {
+        "artifact_id": "123",
+        "artifact_sha256": hashlib.sha256(raw).hexdigest(),
+        "contract_sha256": hashlib.sha256(payload).hexdigest(),
+        "environment": "test",
+    }
+
+
+@pytest.mark.parametrize("scope,name,job", CENTRAL_CREDENTIAL_JOBS)
+@pytest.mark.parametrize(
+    "change",
+    (
+        "none",
+        "retarget",
+        "base_moved",
+        "base_missing",
+        "head_moved",
+        "closed",
+        "merged",
+    ),
+)
+def test_central_precredential_recheck(
+    central_artifact, central_github, scope, name, job, change
+):
+    """Actual account worker rechecks reject moved metadata before credentials."""
+    assert len(CENTRAL_CREDENTIAL_JOBS) == 11
+    steps = job["steps"]
+    recheck = next(step for step in steps if step.get("id") == "recheck")
+    credential_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+    )
+    assert steps.index(recheck) < credential_index
+    assert (
+        'python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_worker_runtime.py"'
+        in recheck["run"]
+    )
+    assert f"--scope {scope}" in recheck["run"]
+    assert '--environment "${ACCOUNT}"' in recheck["run"]
+    assert recheck["env"]["ACCOUNT"] == "${{ inputs.account }}"
+    for variable, output in (
+        ("CONTRACT_ARTIFACT_ID", "artifact_id"),
+        ("CONTRACT_ARTIFACT_SHA256", "artifact_sha256"),
+        ("CONTRACT_SHA256", "contract_sha256"),
+    ):
+        assert recheck["env"][variable] == "${{ inputs." + output + " }}"
+    facts = central_github.evidence
+    if change == "retarget":
+        facts["pr"]["base"]["ref"] = "unprotected"
+    elif change == "base_moved":
+        facts["pr"]["base"]["sha"] = "c" * 40
+        endpoint = f"repos/{central_runtime.REPOSITORY}/compare/{'c' * 40}...{'a' * 40}"
+        central_github.overrides[endpoint] = {"files": facts["changed_file_records"]}
+    elif change == "base_missing":
+        del facts["pr"]["base"]
+    elif change == "head_moved":
+        facts["pr"]["head"]["sha"] = "c" * 40
+    elif change == "closed":
+        facts["pr"]["state"] = "closed"
+    elif change == "merged":
+        facts["pr"]["merged"] = True
+    if change == "none":
+        result = central_runtime.load_verified_contract(**central_artifact, scope=scope)
+        assert scope in result.selection.stacks
+    else:
+        with pytest.raises((ValueError, KeyError)):
+            central_runtime.load_verified_contract(**central_artifact, scope=scope)
+    assert not central_github.writes
+
+
+@pytest.mark.parametrize(
+    "scope,name,job",
+    [case for case in CENTRAL_CREDENTIAL_JOBS if case[0] != "operator"],
+)
+@pytest.mark.parametrize("moved", (False, True))
+def test_central_exact_checkout_before_oidc(tmp_path, scope, name, job, moved):
+    steps = job["steps"]
+    guard = next(
+        step for step in steps if step.get("name") == "Verify exact admitted checkout"
+    )
+    credential_index = next(
+        index
+        for index, step in enumerate(steps)
+        if step.get("uses", "").startswith("aws-actions/configure-aws-credentials@")
+    )
+    assert steps.index(guard) < credential_index
+    assert guard["env"]["EXPECTED_SHA"] == "${{ needs.resolve.outputs.head_sha }}"
+    git = tmp_path / "git"
+    git.write_text('#!/bin/sh\nprintf "%s\\n" "$CHECKOUT_SHA"\n')
+    git.chmod(0o755)
+    process = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", guard["run"]],
+        cwd=tmp_path,
+        env={
+            "PATH": str(tmp_path) + ":" + os.environ["PATH"],
+            "EXPECTED_SHA": "a" * 40,
+            "CHECKOUT_SHA": ("b" if moved else "a") * 40,
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (process.returncode == 0) is not moved

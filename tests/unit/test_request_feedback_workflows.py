@@ -15,82 +15,75 @@ def workflow(name):
     return yaml.safe_load((ROOT / ".github/workflows" / name).read_text())
 
 
-@pytest.mark.parametrize(
-    "name", ["pulumi-governance.yml", "pulumi-pr-command-runner.yml"]
-)
-def test_feedback_cannot_authorize_aws(name):
-    """AWS jobs depend on successful preflight and never consume feedback fields."""
-    jobs = workflow(name)["jobs"]
+def test_feedback_cannot_authorize_aws():
+    """Only admitted selected root calls can schedule credentialed workers."""
+    jobs = workflow("pulumi-pr-command-runner.yml")["jobs"]
     preflight = jobs["preflight"]
     for field in ("head_sha", "pull_request_number", "command", "target_environment"):
+        assert preflight["outputs"][field] == f"${{{{ steps.accept.outputs.{field} }}}}"
+    for field in ("head_sha", "pull_request_number", "display_command"):
         assert (
-            preflight["outputs"][field] == f"${{{{ steps.resolve.outputs.{field} }}}}"
-        )
-        assert preflight["outputs"][f"feedback_{field}"] == (
-            f"${{{{ steps.resolve.outputs.feedback_{field} }}}}"
+            preflight["outputs"][f"feedback_{field}"]
+            == f"${{{{ steps.accept.outputs.feedback_{field} }}}}"
         )
     assert "continue-on-error" not in json.dumps(preflight)
-    for job in jobs.values():
-        if job.get("permissions", {}).get("id-token") == "write":
-            assert "preflight" in job["needs"]
-            assert "feedback_" not in json.dumps(job)
-            guard = job.get("if", "")
-            if "always()" in guard:
-                assert guard.startswith(
-                    "always() && needs.preflight.result == 'success' &&"
-                )
+    credential_jobs = {
+        name: job
+        for name, job in jobs.items()
+        if job.get("permissions", {}).get("id-token") == "write"
+    }
+    assert set(credential_jobs) == {
+        f"{scope}_{account}"
+        for scope in ("operator", "governance", "platform")
+        for account in ("test", "prod")
+    }
+    for name, job in credential_jobs.items():
+        assert "preflight" in job["needs"]
+        assert "feedback_" not in json.dumps(job)
+        assert "needs.preflight.result == 'success'" in job["if"]
+        assert "needs.preflight.outputs.execution_ready == 'true'" in job["if"]
+        scope = name.split("_")[0]
+        assert f"needs.preflight.outputs.{scope}_selected == 'true'" in job["if"]
+        assert job["uses"] == f"./.github/workflows/pulumi-{scope}-account.yml"
 
 
 def test_results_require_bound_feedback():
     """No raw dispatch PR/head can become a status or comment target."""
-    governance = workflow("pulumi-governance.yml")["jobs"]["governance_status"]
-    assert governance["if"] == "always()"
-    assert governance["steps"][0]["if"] == (
-        "needs.preflight.outputs.feedback_head_sha != ''"
+    comment = workflow("pulumi-pr-command-runner.yml")["jobs"]["comment_result"]
+    assert "always()" in comment["if"]
+    assert "needs.preflight.outputs.feedback_pull_request_number != ''" in comment["if"]
+    step = comment["steps"][0]
+    assert (
+        step["env"]["PR_NUMBER"]
+        == "${{ needs.preflight.outputs.feedback_pull_request_number }}"
     )
-    assert governance["steps"][1]["if"] == (
-        "always() && needs.preflight.outputs.feedback_pull_request_number != ''"
-    )
-    for key, field in (("HEAD_SHA", "head_sha"), ("PR_NUMBER", "pull_request_number")):
-        assert governance["env"][key] == (
-            f"${{{{ needs.preflight.outputs.{field} || "
-            f"needs.preflight.outputs.feedback_{field} }}}}"
-        )
-    platform = workflow("pulumi-pr-command-runner.yml")["jobs"]["comment_result"]
-    assert platform["if"] == "always()"
-    assert "outputs.feedback_pull_request_number" in json.dumps(platform)
-    assert "outputs.feedback_head_sha" in json.dumps(platform)
-    assert "client_payload" not in json.dumps((governance, platform))
+    assert step["env"]["HEAD_SHA"] == "${{ needs.preflight.outputs.feedback_head_sha }}"
+    assert "client_payload" not in json.dumps(comment)
+    assert 'outputs.published == "true"' in step["run"]
+    assert "/statuses/" not in step["run"]
 
 
-def test_rejected_status_is_terminal(tmp_path):
-    """Execute the real status shell body with a function double for every gh call."""
-    job = workflow("pulumi-governance.yml")["jobs"]["governance_status"]
-    script = 'gh() { printf "%s\\n" "$@"; };\n' + job["steps"][0]["run"]
+def test_retired_route_cannot_post_success(tmp_path):
+    """Old dispatch fails without posting status, feedback or credentials."""
+    document = workflow("pulumi-governance.yml")
+    assert document["permissions"] == {}
+    assert set(document["jobs"]) == {"retired"}
+    job = document["jobs"]["retired"]
+    assert job["permissions"] == {}
+    assert len(job["steps"]) == 1
+    script = "gh() { echo forbidden-gh-call; };\n" + job["steps"][0]["run"]
     result = subprocess.run(
         ["bash", "-euo", "pipefail", "-c", script],
-        env={
-            "PATH": "/usr/bin:/bin",
-            "GITHUB_REPOSITORY": "org/repo",
-            "HEAD_SHA": "a" * 40,
-            "REQUEST_COMMAND": "up",
-            "REQUEST_TARGET_ENVIRONMENT": "test",
-            "TEST_PLAN_RESULT": "skipped",
-            "TEST_APPLY_RESULT": "skipped",
-            "PROD_PLAN_RESULT": "skipped",
-            "PROD_APPLY_RESULT": "skipped",
-            "RUN_URL": "https://github.com/org/repo/actions/runs/100",
-        },
+        env={"PATH": "/usr/bin:/bin"},
         cwd=tmp_path,
-        check=True,
         capture_output=True,
         text=True,
+        check=False,
     )
-    assert f"repos/org/repo/statuses/{'a' * 40}" in result.stdout
-    assert "state=failure" in result.stdout
-    assert "context=Governance Apply" in result.stdout
+    assert result.returncode != 0
+    assert "forbidden-gh-call" not in result.stdout
     assert "state=success" not in result.stdout
-    assert "state=pending" not in result.stdout
+    assert "uses" not in job["steps"][0]
 
 
 @pytest.mark.parametrize(

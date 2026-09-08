@@ -17,7 +17,12 @@ from .automation import (
     _validate_automation_managed_policy_documents,
 )
 from .bootstrap_settings import BootstrapSettings
-from .ci_config import CiConfiguration, CiConfigurationArgs, _ci_config_project
+from .ci_config import (
+    CiConfiguration,
+    CiConfigurationArgs,
+    _ci_config_project,
+    _role_permissions_boundary,
+)
 from .config import settings as default_settings
 from .github_identity import (
     expand_subjects,
@@ -213,6 +218,7 @@ class _BootstrapBuildContext:
     project: str | None = None
     state_guards: dict[str, aws.iam.RolePolicy] = field(default_factory=dict)
     enable_state_guards: bool = False
+    external_role_boundaries: Mapping[str, str] | None = None
 
     def __post_init__(self) -> None:
         """Derive ``repo``/``project`` from settings when not supplied."""
@@ -248,7 +254,12 @@ class _BootstrapOutputInputs:
 
 @dataclass(frozen=True)
 class GitHubCiBootstrapArgs:
-    """Configuration for the one-time GitHub CI AWS bootstrap component."""
+    """Configuration for the one-time GitHub CI AWS bootstrap component.
+
+    ``external_role_boundaries`` retains independently owned boundaries on all
+    deployment, config-reader and optional triage roles. It must cover each
+    created role and agree with any explicit control boundary.
+    """
 
     settings: BootstrapSettings | None = None
     pulumi_backend_url: str | None = None
@@ -258,6 +269,7 @@ class GitHubCiBootstrapArgs:
     protect_resources: bool = True
     control_permissions_boundary: pulumi.Input[str] | None = None
     manage_oidc_provider: bool | None = None
+    external_role_boundaries: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -756,7 +768,13 @@ def _create_role(
     role = aws.iam.Role(
         f"{context.name}-{spec.purpose}-role",
         name=spec.role_name,
-        permissions_boundary=spec.permissions_boundary,
+        permissions_boundary=_role_permissions_boundary(
+            spec.role_name,
+            account_id=context.account_id,
+            partition=context.partition,
+            external_role_boundaries=context.external_role_boundaries,
+            existing_boundary=spec.permissions_boundary,
+        ),
         assume_role_policy=apply_output(
             pulumi.Output.from_input(context.provider_arn),
             lambda arn: _deployment_assume_role_policy(
@@ -892,6 +910,12 @@ def _create_operations_alert_triage(
     role = aws.iam.Role(
         f"{context.name}-operations-alert-triage-role",
         name=triage_role_name,
+        permissions_boundary=_role_permissions_boundary(
+            triage_role_name,
+            account_id=context.account_id,
+            partition=context.partition,
+            external_role_boundaries=context.external_role_boundaries,
+        ),
         assume_role_policy=apply_output(
             pulumi.Output.from_input(context.provider_arn),
             lambda arn: _deployment_assume_role_policy(
@@ -1145,6 +1169,7 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
                 settings=configured_settings,
                 oidc_provider_arn=oidc.provider.arn,
                 protect_resources=config.protect_resources,
+                external_role_boundaries=config.external_role_boundaries,
             ),
             opts=pulumi.ResourceOptions(parent=self),
         )
@@ -1159,6 +1184,7 @@ class GitHubCiBootstrap(pulumi.ComponentResource):
             pulumi_dir=config.pulumi_dir,
             protect_resources=config.protect_resources,
             enable_state_guards=True,
+            external_role_boundaries=config.external_role_boundaries,
         )
 
         self.roles = _create_roles(

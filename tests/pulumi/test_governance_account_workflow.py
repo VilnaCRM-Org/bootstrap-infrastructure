@@ -71,32 +71,22 @@ def test_only_fixed_account_and_trusted_artifact_inputs_are_callable():
         assert forbidden not in PATH.read_text()
 
 
-def test_worker_lock_and_dormant_route():
+def test_worker_lock_and_retired_route():
     assert WORKFLOW["concurrency"] == {
         "group": "bootstrap-infrastructure-governance-${{ inputs.account }}-state",
         "cancel-in-progress": False,
     }
     assert all("concurrency" not in job for job in JOBS.values())
-    # Installation preserves the authenticated legacy route until activation.
-    assert set(WORKFLOW["on"]) == {"workflow_call"}
+    # Retired dispatch cannot bypass the account worker or claim a PR.
     legacy = yaml.safe_load(
         (ROOT / ".github/workflows/pulumi-governance.yml").read_text()
     )
-    assert legacy.get("on", legacy.get(True))["repository_dispatch"]["types"] == [
-        "pulumi-governance-command"
-    ]
-    assert {
-        "preflight",
-        "governance_test_apply",
-        "governance_test_post_apply_drift",
-        "governance_prod_apply",
-        "governance_prod_post_apply_drift",
-        "governance_promotion",
-    } <= set(legacy["jobs"])
-    for name in ("pulumi-pr-commands.yml", "pulumi-pr-command-runner.yml"):
-        current = (ROOT / ".github/workflows" / name).read_text()
-        for scope in ("operator", "governance", "platform"):
-            assert f"pulumi-{scope}-account.yml" not in current
+    assert legacy["permissions"] == {}
+    assert set(legacy["jobs"]) == {"retired"}
+    retired = legacy["jobs"]["retired"]
+    assert retired["permissions"] == {}
+    assert "exit 1" in retired["steps"][0]["run"]
+    assert all("uses" not in step for step in retired["steps"])
     assert "Disable the legacy governance route before activation" in PATH.read_text()
 
 

@@ -92,7 +92,6 @@ _github_pr_check_blockers_with_files = (
     _github_pr_checks_evidence._github_pr_check_blockers_with_files
 )
 _github_pr_check_evidence = _github_pr_checks_evidence._github_pr_check_evidence
-github_pr_checks = _github_pr_checks_evidence.github_pr_checks
 DEFAULT_PRODUCTION_ENVIRONMENT = (
     _github_repository_evidence.DEFAULT_PRODUCTION_ENVIRONMENT
 )
@@ -467,6 +466,16 @@ well_architected_scores = _scoring.well_architected_scores
 score_blockers = _scoring.score_blockers
 
 
+def github_pr_checks(
+    repo: str, pr_number: int | None, *, runner: Runner = run
+) -> dict[str, object]:
+    """Preserve every PR gate and verify the central promotion independently."""
+    result = _github_pr_checks_evidence.github_pr_checks(repo, pr_number, runner=runner)
+    if repo == _repository_controls.CENTRAL_REPOSITORY and pr_number is not None:
+        return _github_repository_evidence.with_current_promotion(result, pr_number)
+    return result
+
+
 def collect_evidence(
     args: argparse.Namespace, *, runner: Runner = run
 ) -> dict[str, Any]:
@@ -477,7 +486,8 @@ def collect_evidence(
             args.repo,
             args.branch,
             expected_required_status_checks=(
-                args.required_status_check or DEFAULT_REQUIRED_STATUS_CHECKS
+                args.required_status_check
+                or _repository_controls.required_status_checks_for_repository(args.repo)
             ),
             runner=runner,
         ),

@@ -15,8 +15,8 @@ WORKFLOWS = [
     path
     for path in (
         ROOT / ".github/workflows/self-deploy.yml",
-        ROOT / ".github/workflows/pulumi-pr-command-runner.yml",
-        ROOT / ".github/workflows/pulumi-governance.yml",
+        ROOT / ".github/workflows/pulumi-platform-account.yml",
+        ROOT / ".github/workflows/pulumi-governance-account.yml",
         ROOT / "pulumi/user-service-infrastructure/.github/workflows/self-deploy.yml",
     )
     if path.exists()
@@ -25,11 +25,9 @@ WORKFLOWS = [
 
 def _apply_steps(path: Path, environment: str) -> tuple[list[dict], dict]:
     workflow = yaml.safe_load(path.read_text())
-    prefix = "governance_" if path.name == "pulumi-governance.yml" else ""
-    steps = workflow["jobs"][f"{prefix}{environment}_apply"]["steps"]
-    apply = next(
-        step for step in steps if step.get("name", "").startswith("Apply saved")
-    )
+    reusable = path.name.endswith("-account.yml")
+    steps = workflow["jobs"]["apply" if reusable else f"{environment}_apply"]["steps"]
+    apply = next(step for step in steps if "make pulumi-up-plan" in step.get("run", ""))
     return steps, apply
 
 
@@ -47,18 +45,38 @@ def test_apply_reuses_matching_same_run_preview(path: Path, environment: str) ->
     preview = next(
         step
         for step in downloads
-        if step["with"]["path"] == ".artifacts/pulumi-preview"
+        if step["with"]["path"].endswith(".artifacts/pulumi-preview")
     )
     plan = next(
-        step for step in downloads if step["with"]["path"] == ".artifacts/pulumi-plan"
+        step
+        for step in downloads
+        if step["with"]["path"].endswith(".artifacts/pulumi-plan")
     )
-    assert (
-        preview["with"]["name"] == plan["with"]["name"].removesuffix("plan") + "preview"
-    )
-    assert preview["with"]["name"].endswith(f"-{environment}-preview")
-    assert "head_sha" in preview["with"]["name"]
-    assert "pull_request_number" in preview["with"]["name"]
-    assert set(preview["with"]) == {"name", "path"}  # Default transport is this run.
+    reusable = path.name.endswith("-account.yml")
+    if reusable:
+        for download, output in (
+            (preview, "preview_artifact_id"),
+            (plan, "plan_artifact_id"),
+        ):
+            assert download["with"] == {
+                "artifact-ids": "${{ needs.preview.outputs." + output + " }}",
+                "path": "source/.artifacts/pulumi-"
+                + ("preview" if download is preview else "plan"),
+                "merge-multiple": True,
+            }
+            assert (
+                download["uses"]
+                == "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+            )
+    else:
+        assert (
+            preview["with"]["name"]
+            == plan["with"]["name"].removesuffix("plan") + "preview"
+        )
+        assert preview["with"]["name"].endswith(f"-{environment}-preview")
+        assert "head_sha" in preview["with"]["name"]
+        assert "pull_request_number" in preview["with"]["name"]
+        assert set(preview["with"]) == {"name", "path"}
     assert steps.index(preview) < steps.index(apply)
     assert (
         apply["run"]
@@ -72,10 +90,27 @@ def test_apply_reuses_matching_same_run_preview(path: Path, environment: str) ->
         for step in job["steps"]
         if step.get("uses", "").startswith("actions/upload-artifact@")
     ]
-    producer = next(
-        step for step in uploads if step["with"].get("name") == preview["with"]["name"]
-    )
-    assert producer["with"]["path"] == ".artifacts/pulumi-preview"
+    if reusable:
+        producer_job = workflow["jobs"]["preview"]
+        for kind in ("preview", "plan"):
+            output = producer_job["outputs"][kind + "_artifact_id"]
+            producer_id = output.split(".")[1]
+            producer = next(step for step in uploads if step.get("id") == producer_id)
+            assert producer["with"]["path"] == "source/.artifacts/pulumi-" + kind
+            for binding in (
+                "github.run_id",
+                "github.run_attempt",
+                "inputs.account",
+                "head_sha",
+            ):
+                assert binding in producer["with"]["name"]
+    else:
+        producer = next(
+            step
+            for step in uploads
+            if step["with"].get("name") == preview["with"]["name"]
+        )
+        assert producer["with"]["path"] == ".artifacts/pulumi-preview"
 
 
 @pytest.mark.parametrize(

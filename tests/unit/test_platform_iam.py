@@ -238,8 +238,9 @@ def test_ci_secret_resource_compaction_preserves_uncovered_patterns():
 
 
 @pytest.mark.parametrize("adopt", [False, True])
+@pytest.mark.parametrize("manage", [False, True])
 def test_operator_components_own_replication_config_and_immutable_policies(
-    pulumi_mocks, monkeypatch, adopt
+    pulumi_mocks, monkeypatch, adopt, manage
 ):
     monkeypatch.setattr(automation, "_iam_role_exists", lambda name: True)
     monkeypatch.setattr(
@@ -254,10 +255,11 @@ def test_operator_components_own_replication_config_and_immutable_policies(
         account_id=ACCOUNT,
         region="eu-central-1",
         repositories=[REPO],
+        manage_policies=manage,
     )
     platform_iam.PlatformReplicationIam(
         "replica",
-        boundary_arns={key: policy.arn for key, policy in boundaries.policies.items()},
+        boundary_arns=boundaries.boundary_arns,
         settings=cfg,
         account_id=ACCOUNT,
         region="eu-central-1",
@@ -275,7 +277,7 @@ def test_operator_components_own_replication_config_and_immutable_policies(
     _sync_await(wait_for_rpcs())
     resources = pulumi_mocks.resources[start:]
     policies = [state for typ, _, state in resources if typ == "aws:iam/policy:Policy"]
-    assert len(policies) == 4
+    assert len(policies) == (4 if manage else 0)
     assert all(len(policy["policy"]) <= 6144 for policy in policies)
     roles = {
         state["name"]: state

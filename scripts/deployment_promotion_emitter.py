@@ -17,11 +17,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import argparse  # noqa: E402
 import hashlib  # noqa: E402
 import json  # noqa: E402
+import lzma  # noqa: E402
 import os  # noqa: E402
 import selectors  # noqa: E402
+import struct  # noqa: E402
 import subprocess  # noqa: E402  # nosec B404
 import tempfile  # noqa: E402
 import time  # noqa: E402
+import zipfile  # noqa: E402
+import zlib  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 from typing import Any  # noqa: E402
 
@@ -131,8 +135,10 @@ def _issuer(value: dict[str, Any], *, app: bool = False) -> None:
         and creator.get("type") == "Bot",
         "Foreign publication creator",
     )
-    if app:
-        integration = _object(value.get("performed_via_github_app"), "Publication App")
+    # GitHub returns null here for actual installation-token deployments. The
+    # immutable bot ID remains mandatory; authority separately binds App slug/ID.
+    if app and value.get("performed_via_github_app") is not None:
+        integration = _object(value["performed_via_github_app"], "Publication App")
         preflight.require(
             type(integration.get("id")) is int
             and integration["id"] == APP_ID
@@ -143,6 +149,10 @@ def _issuer(value: dict[str, Any], *, app: bool = False) -> None:
 
 def _verify_authority() -> None:
     """Verify App token, repository authority and live environment protections."""
+    _equal_fields(
+        _object(_read(f"apps/{APP_SLUG}"), "Configured publication App"),
+        {"id": APP_ID, "slug": APP_SLUG},
+    )
     viewer = _object(
         _api("graphql", {"query": "query { viewer { login databaseId } }"}),
         "Viewer response",
@@ -442,7 +452,18 @@ def main(argv: list[str] | None = None) -> int:
     output = args.pop("output")
     try:
         result = publish(**args, needs_payload=os.environ.get("PROMOTION_NEEDS", ""))
-    except (ValueError, OSError, GitHubError, subprocess.SubprocessError):
+    except (
+        ValueError,
+        OSError,
+        GitHubError,
+        subprocess.SubprocessError,
+        zipfile.BadZipFile,
+        struct.error,
+        EOFError,
+        NotImplementedError,
+        zlib.error,
+        lzma.LZMAError,
+    ):
         print(
             "Promotion publication failed; no verified aggregate result.",
             file=sys.stderr,

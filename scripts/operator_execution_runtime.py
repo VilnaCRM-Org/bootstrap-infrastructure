@@ -198,6 +198,8 @@ def _iam(plan, checkpoint, transport):
                 document = inputs.get(key)
                 if document is not None:
                     _analyze(document, key, transport)
+            for policy in inputs.get("inlinePolicies", []):
+                _analyze(policy["policy"], "policy", transport)
 
 
 def _analyze(document, key, transport):

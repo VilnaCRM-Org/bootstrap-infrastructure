@@ -1,26 +1,23 @@
+# Activate only after independent seed enrollment, ownership reconciliation and
+# retirement of legacy credentialed writers have been verified.
 name: Pulumi PR Command Runner
-
-on:
+'on':
   repository_dispatch:
     types:
       - pulumi-pr-command
-
 concurrency:
   group: pulumi-command-${{ github.event.client_payload.pull_request_number }}
   cancel-in-progress: false
-
 defaults:
   run:
     shell: bash
-
 permissions:
   contents: read
-  issues: read
-  pull-requests: read
-
+env:
+  DEPLOYMENT_COORDINATOR_MODE: ${{ vars.DEPLOYMENT_COORDINATOR_MODE }}
 jobs:
   preflight:
-    name: Preflight
+    name: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -30,1091 +27,571 @@ jobs:
       pull-requests: read
       statuses: write
     outputs:
-      command: ${{ steps.resolve.outputs.command }}
-      display_command: ${{ steps.resolve.outputs.display_command }}
-      head_sha: ${{ steps.resolve.outputs.head_sha }}
-      feedback_head_sha: ${{ steps.resolve.outputs.feedback_head_sha }}
-      feedback_pull_request_number: ${{ steps.resolve.outputs.feedback_pull_request_number }}
-      feedback_command: ${{ steps.resolve.outputs.feedback_command }}
-      feedback_target_environment: ${{ steps.resolve.outputs.feedback_target_environment }}
-      feedback_display_command: ${{ steps.resolve.outputs.feedback_display_command }}
-      base_sha: ${{ steps.resolve.outputs.base_sha }}
-      source_run_id: ${{ steps.resolve.outputs.source_run_id }}
-      comment_id: ${{ steps.resolve.outputs.comment_id }}
-      pull_request_number: ${{ steps.resolve.outputs.pull_request_number }}
-      target_environment: ${{ steps.resolve.outputs.target_environment }}
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REQUEST_COMMAND: ${{ github.event.client_payload.command }}
-      REQUEST_HEAD_SHA: ${{ github.event.client_payload.head_sha }}
-      REQUEST_PULL_REQUEST_NUMBER: ${{ github.event.client_payload.pull_request_number }}
-      REQUEST_COMMENT_ID: ${{ github.event.client_payload.comment_id }}
-      REQUEST_SOURCE_RUN_ID: ${{ github.event.client_payload.source_run_id }}
-      REQUEST_TARGET_ENVIRONMENT: ${{ github.event.client_payload.target_environment }}
+      execution_ready: ${{ steps.accept.outputs.execution_ready }}
+      has_deployment_scopes: ${{ steps.accept.outputs.has_deployment_scopes }}
+      command: ${{ steps.accept.outputs.command }}
+      head_sha: ${{ steps.accept.outputs.head_sha }}
+      base_sha: ${{ steps.accept.outputs.base_sha }}
+      pull_request_number: ${{ steps.accept.outputs.pull_request_number }}
+      target_environment: ${{ steps.accept.outputs.target_environment }}
+      contract_file_sha256: ${{ steps.accept.outputs.contract_file_sha256 }}
+      selection_digest: ${{ steps.accept.outputs.selection_digest }}
+      contract_digest: ${{ steps.accept.outputs.contract_digest }}
+      operator_selected: ${{ steps.accept.outputs.operator_selected }}
+      governance_selected: ${{ steps.accept.outputs.governance_selected }}
+      platform_selected: ${{ steps.accept.outputs.platform_selected }}
+      scaffold_validation: ${{ steps.accept.outputs.scaffold_validation }}
+      execution_validation: ${{ steps.accept.outputs.execution_validation }}
+      catalog_validation: ${{ steps.accept.outputs.catalog_validation }}
+      feedback_pull_request_number: ${{ steps.accept.outputs.feedback_pull_request_number }}
+      feedback_head_sha: ${{ steps.accept.outputs.feedback_head_sha }}
+      feedback_display_command: ${{ steps.accept.outputs.feedback_display_command }}
+      artifact_id: ${{ steps.contract.outputs.artifact-id }}
+      artifact_sha256: ${{ steps.contract.outputs.artifact-digest }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-
-      - name: Authenticate immutable intake request and consume comment
-        id: resolve
-        run: python3 scripts/pulumi_command_preflight.py
-
-  test_preview:
-    name: Test Preview
-    environment: test-preview
-    runs-on: ubuntu-latest
-    needs:
-      - preflight
-    timeout-minutes: 25
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: read
-    env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Check out trusted credential helper
+      - name: Check out immutable trusted controller
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}
           path: .trusted
           persist-credentials: false
-
-      - name: Recheck current PR head before credentials
+      - name: Authenticate, select and claim the original request once
+        id: accept
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+          REQUEST_PULL_REQUEST_NUMBER: ${{ github.event.client_payload.pull_request_number }}
+          REQUEST_HEAD_SHA: ${{ github.event.client_payload.head_sha }}
+          REQUEST_COMMENT_ID: ${{ github.event.client_payload.comment_id }}
+          REQUEST_SOURCE_RUN_ID: ${{ github.event.client_payload.source_run_id }}
+          REQUEST_COMMAND: ${{ github.event.client_payload.command }}
+          REQUEST_TARGET_ENVIRONMENT: ${{ github.event.client_payload.target_environment }}
         run: |
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-
-      - name: Load test AWS CI configuration
-        id: ci_config
-        uses: ./.trusted/.github/actions/load-aws-ci-env
-        with:
-          environment: test
-          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
-          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
-          aws-region: ${{ vars.AWS_TEST_REGION }}
-          purpose: PR test preview
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
-
-      - name: Validate test preview prerequisites
-        run: |
-          missing=()
-          for name in \
-            AWS_ACCOUNT_ID \
-            AWS_PREVIEW_ROLE_ARN \
-            PULUMI_BACKEND_URL \
-            PULUMI_SECRETS_PROVIDER \
-            PULUMI_PREVIEW_STACKS; do
-            if [[ -z "${!name}" ]]; then
-              missing+=("${name}")
-            fi
-          done
-          if [[ "${#missing[@]}" -gt 0 ]]; then
-            printf 'error: PR test preview is missing %s\n' "${missing[*]}" >&2
-            exit 1
-          fi
-          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
-            echo "error: AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
-            exit 1
-          fi
-          if [[ "${PULUMI_BACKEND_URL}" != s3://* ]]; then
-            echo "error: PULUMI_BACKEND_URL must use an s3:// backend." >&2
-            exit 1
-          fi
-          if [[ "${PULUMI_SECRETS_PROVIDER}" != awskms://* ]]; then
-            echo "error: PULUMI_SECRETS_PROVIDER must use an awskms:// URI." >&2
-            exit 1
-          fi
-
-      - name: Configure AWS preview credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
-        with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
-          role-session-name: gha-pr-test-preview-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ vars.AWS_TEST_ACCOUNT_ID }}
-
-      - name: Emit test preview evidence
-        run: |
-          account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
-          echo "Backend type: s3"
-          echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
-          echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
-          echo "Role purpose: preview"
-          echo "PR command: ${{ needs.preflight.outputs.display_command }}"
-
-      - name: Start development environment
-        run: make start
-
-      - name: Save test update plan and preview artifact
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PULUMI_COMMIT_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: make pulumi-plan
-
-      - name: Upload test preview artifact
+          python3 -I -c \
+            'import runpy, sys; sys.path.insert(0, sys.argv.pop(1)); runpy.run_module("deployment_controller_runtime", run_name="__main__")' \
+            "${GITHUB_WORKSPACE}/.trusted/scripts" accept
+      - name: Upload the admitted canonical contract
+        id: contract
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-test-preview
-          path: .artifacts/pulumi-preview
+          name: deployment-selection-${{ github.run_id }}-1
+          path: .trusted/.artifacts/deployment-selection/contract.json
+          if-no-files-found: error
           retention-days: 7
-
-      - name: Upload test plan artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-test-plan
-          path: .artifacts/pulumi-plan
-          retention-days: 7
-
-  test_destructive_diff:
-    name: Test Destructive Diff Gate
+  validate_inputs:
+    name: validate_inputs
     runs-on: ubuntu-latest
-    needs:
-      - preflight
-      - test_preview
-    timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Start development environment
-        run: make start
-
-      - name: Download test preview artifact
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-test-preview
-          path: .artifacts/pulumi-preview
-
-      - name: Stage pull request labels for destructive diff override
-        run: |
-          mkdir -p .artifacts
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
-
-      - name: Enforce destructive diff gate
-        run: make test-destructive-diff
-
-  test_iam_validation:
-    name: Test IAM Validation
-    environment: test-preview
-    runs-on: ubuntu-latest
-    needs:
-      - preflight
-      - test_preview
-      - test_destructive_diff
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: read
-    env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Check out trusted credential helper
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.sha }}
-          path: .trusted
-          persist-credentials: false
-
-      - name: Recheck current PR head before credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
-        run: |
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-
-      - name: Load test AWS CI configuration
-        id: ci_config
-        uses: ./.trusted/.github/actions/load-aws-ci-env
-        with:
-          environment: test
-          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
-          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
-          aws-region: ${{ vars.AWS_TEST_REGION }}
-          purpose: PR test IAM validation
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
-
-      - name: Configure AWS preview credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
-        with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
-          role-session-name: gha-pr-test-iam-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ vars.AWS_TEST_ACCOUNT_ID }}
-
-      - name: Start development environment
-        run: make start
-
-      - name: Download test preview artifact
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-test-preview
-          path: .artifacts/pulumi-preview
-
-      - name: Validate IAM policies
-        run: make test-iam-validation
-
-  test_apply:
-    name: Test Apply
-    if: >-
-      needs.preflight.outputs.command == 'up'
-    environment: test
-    runs-on: ubuntu-latest
-    needs:
-      - preflight
-      - test_preview
-      - test_destructive_diff
-      - test_iam_validation
     timeout-minutes: 30
+    needs:
+      - preflight
+    if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready == 'true' }}
     permissions:
       contents: read
-      id-token: write
+      actions: read
+      issues: read
       pull-requests: read
-    env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Check out trusted credential helper
+      - name: Check out immutable trusted controller
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}
           path: .trusted
           persist-credentials: false
-
-      - name: Recheck current PR head before credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
-        run: |
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-
-      - name: Load test AWS CI configuration
-        id: ci_config
-        uses: ./.trusted/.github/actions/load-aws-ci-env
-        with:
-          environment: test
-          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
-          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
-          aws-region: ${{ vars.AWS_TEST_REGION }}
-          purpose: PR test apply
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
-
-      - name: Configure AWS apply credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
-        with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
-          role-session-name: gha-pr-test-apply-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ vars.AWS_TEST_ACCOUNT_ID }}
-
-      - name: Emit test apply evidence
-        run: |
-          account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
-          echo "Backend type: s3"
-          echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
-          echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
-          echo "Role purpose: apply"
-          echo "PR command: ${{ needs.preflight.outputs.display_command }}"
-
-      - name: Start development environment
-        run: make start
-
-      - name: Download test plan artifact
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-test-plan
-          path: .artifacts/pulumi-plan
-
-      - name: Download test preview for apply revalidation
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-test-preview
-          path: .artifacts/pulumi-preview
-
-      - name: Apply saved test plan
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
-          GITHUB_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: |
-          # The immutable same-run preview is the diff for this saved plan.
-          shopt -s nullglob
-          previews=(.artifacts/pulumi-preview/*.json)
-          found_preview=false
-          for preview in "${previews[@]}"; do
-            if [[ "${preview}" != */pull-request-event.json ]]; then
-              test -s "${preview}"
-              found_preview=true
-            fi
-          done
-          test "${found_preview}" = true
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
-          # Remove only obsolete event metadata; preserve the original diff files.
-          rm -f .artifacts/pulumi-preview/pull-request-event.json
-          make test-destructive-diff
-          make pulumi-up-plan
-
-  test_post_apply_drift:
-    name: Test Post-Apply Drift
-    if: >-
-      needs.preflight.outputs.command == 'up'
-    environment: test-preview
-    runs-on: ubuntu-latest
-    needs:
-      - preflight
-      - test_apply
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: read
-    env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Check out trusted credential helper
+      - name: Check out admitted input revision and exact base history
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ github.sha }}
-          path: .trusted
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          path: source
+          fetch-depth: 0
           persist-credentials: false
-
-      - name: Recheck current PR head before credentials
+      - name: Install supported Python for trusted input preparation
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+      - name: Authenticate and prepare fixed input checks
+        id: prepare_inputs
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
+          CONTRACT_ARTIFACT_ID: ${{ needs.preflight.outputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ needs.preflight.outputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ needs.preflight.outputs.contract_file_sha256 }}
         run: |
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-
-      - name: Load test AWS CI configuration
-        id: ci_config
-        uses: ./.trusted/.github/actions/load-aws-ci-env
-        with:
-          environment: test
-          config-role-arn: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
-          expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
-          aws-region: ${{ vars.AWS_TEST_REGION }}
-          purpose: PR test drift
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
-
-      - name: Configure AWS drift credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
-        with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
-          role-session-name: gha-pr-test-drift-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ vars.AWS_TEST_ACCOUNT_ID }}
-
-      - name: Start development environment
-        run: make start
-
-      - name: Run test post-apply drift detection
-        run: make test-drift
-
-  prod_preview:
-    name: Prod Preview
-    if: >-
-      always() && needs.preflight.result == 'success' &&
-      needs.preflight.outputs.target_environment == 'prod' &&
-      needs.test_preview.result == 'success' &&
-      (needs.preflight.outputs.command == 'plan' ||
-      needs.test_post_apply_drift.result == 'success')
-    environment: prod-preview
-    runs-on: ubuntu-latest
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_input_validation.py" prepare \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --source "${GITHUB_WORKSPACE}/source" \
+            --plan-path "${RUNNER_TEMP}/deployment-input-plan.json" \
+            --output "${GITHUB_OUTPUT}"
+      - name: Execute authenticated checks in an isolated offline container
+        env:
+          VALIDATION_PLAN_SHA256: ${{ steps.prepare_inputs.outputs.plan_sha256 }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_input_validation.py" run \
+            --plan-path "${RUNNER_TEMP}/deployment-input-plan.json" \
+            --plan-sha256 "${VALIDATION_PLAN_SHA256}"
+  operator_test:
+    name: operator_test
     needs:
       - preflight
-      - test_preview
-      - test_post_apply_drift
-    timeout-minutes: 25
+      - validate_inputs
+    if: |-
+      ${{ always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready == 'true' && needs.validate_inputs.result == 'success' &&
+      needs.preflight.outputs.operator_selected == 'true' }}
     permissions:
       contents: read
-      id-token: write
+      actions: read
+      issues: read
       pull-requests: read
-    env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Check out trusted credential helper
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.sha }}
-          path: .trusted
-          persist-credentials: false
-
-      - name: Recheck current PR head before credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
-        run: |
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-
-      - name: Load prod preview AWS CI configuration
-        id: ci_config
-        uses: ./.trusted/.github/actions/load-aws-ci-env
-        with:
-          environment: prod-preview
-          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
-          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
-          aws-region: ${{ vars.AWS_PROD_REGION }}
-          purpose: PR prod preview
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,AWS_DRIFT_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,
-            PULUMI_PREVIEW_STACKS,PULUMI_DRIFT_STACKS
-
-      - name: Validate production preview prerequisites
-        run: |
-          missing=()
-          for name in \
-            AWS_ACCOUNT_ID \
-            AWS_PREVIEW_ROLE_ARN \
-            AWS_DRIFT_ROLE_ARN \
-            PULUMI_BACKEND_URL \
-            PULUMI_SECRETS_PROVIDER \
-            PULUMI_PREVIEW_STACKS \
-            PULUMI_DRIFT_STACKS; do
-            if [[ -z "${!name}" ]]; then
-              missing+=("${name}")
-            fi
-          done
-          if [[ "${#missing[@]}" -gt 0 ]]; then
-            printf 'error: PR production preview is missing %s\n' "${missing[*]}" >&2
-            exit 1
-          fi
-          if [[ ! "${AWS_ACCOUNT_ID}" =~ ^[0-9]{12}$ ]]; then
-            echo "error: AWS_ACCOUNT_ID must be a 12-digit AWS account ID." >&2
-            exit 1
-          fi
-          if [[ "${PULUMI_BACKEND_URL}" != s3://* ]]; then
-            echo "error: PULUMI_BACKEND_URL must use an s3:// backend." >&2
-            exit 1
-          fi
-          if [[ "${PULUMI_SECRETS_PROVIDER}" != awskms://* ]]; then
-            echo "error: PULUMI_SECRETS_PROVIDER must use an awskms:// URI." >&2
-            exit 1
-          fi
-
-      - name: Configure AWS preview credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
-        with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
-          role-session-name: gha-pr-prod-preview-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ vars.AWS_PROD_ACCOUNT_ID }}
-
-      - name: Emit production preview evidence
-        run: |
-          account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
-          echo "Backend type: s3"
-          echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
-          echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
-          echo "Role purpose: preview"
-          echo "PR command: ${{ needs.preflight.outputs.display_command }}"
-
-      - name: Start development environment
-        run: make start
-
-      - name: Save production update plan and preview artifact
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PULUMI_COMMIT_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: make pulumi-plan
-
-      - name: Upload production preview artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-prod-preview
-          path: .artifacts/pulumi-preview
-          retention-days: 7
-
-      - name: Upload production plan artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-prod-plan
-          path: .artifacts/pulumi-plan
-          retention-days: 7
-
-  prod_destructive_diff:
-    name: Prod Destructive Diff Gate
-    if: needs.preflight.outputs.target_environment == 'prod'
-    runs-on: ubuntu-latest
+      id-token: write
+    uses: ./.github/workflows/pulumi-operator-account.yml
+    with:
+      account: test
+      artifact_id: ${{ needs.preflight.outputs.artifact_id }}
+      artifact_sha256: ${{ needs.preflight.outputs.artifact_sha256 }}
+      contract_sha256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+  governance_test:
+    name: governance_test
     needs:
       - preflight
-      - prod_preview
-    timeout-minutes: 10
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Start development environment
-        run: make start
-
-      - name: Download production preview artifact
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-prod-preview
-          path: .artifacts/pulumi-preview
-
-      - name: Stage pull request labels for destructive diff override
-        run: |
-          mkdir -p .artifacts
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
-
-      - name: Enforce destructive diff gate
-        run: make test-destructive-diff
-
-  prod_iam_validation:
-    name: Prod IAM Validation
-    if: needs.preflight.outputs.target_environment == 'prod'
-    environment: prod-preview
-    runs-on: ubuntu-latest
-    needs:
-      - preflight
-      - prod_preview
-      - prod_destructive_diff
-    timeout-minutes: 15
+      - validate_inputs
+      - operator_test
+    if: |-
+      ${{ always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready == 'true' && needs.validate_inputs.result == 'success' &&
+      needs.preflight.outputs.governance_selected == 'true' &&
+      ((needs.preflight.outputs.operator_selected == 'false' && needs.operator_test.result == 'skipped') || (needs.preflight.outputs.operator_selected == 'true' && needs.operator_test.result == 'success')) }}
     permissions:
       contents: read
-      id-token: write
+      actions: read
+      issues: read
       pull-requests: read
-    env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Check out trusted credential helper
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.sha }}
-          path: .trusted
-          persist-credentials: false
-
-      - name: Recheck current PR head before credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
-        run: |
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-
-      - name: Load prod preview AWS CI configuration
-        id: ci_config
-        uses: ./.trusted/.github/actions/load-aws-ci-env
-        with:
-          environment: prod-preview
-          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
-          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
-          aws-region: ${{ vars.AWS_PROD_REGION }}
-          purpose: PR prod IAM validation
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
-
-      - name: Configure AWS preview credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
-        with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}
-          role-session-name: gha-pr-prod-iam-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ vars.AWS_PROD_ACCOUNT_ID }}
-
-      - name: Start development environment
-        run: make start
-
-      - name: Download production preview artifact
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-prod-preview
-          path: .artifacts/pulumi-preview
-
-      - name: Validate IAM policies
-        run: make test-iam-validation
-
-  prod_apply:
-    name: Prod Apply
-    if: >-
-      needs.preflight.outputs.target_environment == 'prod' &&
-      needs.preflight.outputs.command == 'up'
-    runs-on: ubuntu-latest
+      id-token: write
+    uses: ./.github/workflows/pulumi-governance-account.yml
+    with:
+      account: test
+      artifact_id: ${{ needs.preflight.outputs.artifact_id }}
+      artifact_sha256: ${{ needs.preflight.outputs.artifact_sha256 }}
+      contract_sha256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+  platform_test:
+    name: platform_test
     needs:
       - preflight
-      - test_apply
-      - test_post_apply_drift
-      - prod_preview
-      - prod_destructive_diff
-      - prod_iam_validation
-    timeout-minutes: 30
-    environment: prod
+      - validate_inputs
+      - operator_test
+      - governance_test
+    if: |-
+      ${{ always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready == 'true' && needs.validate_inputs.result == 'success' &&
+      needs.preflight.outputs.platform_selected == 'true' &&
+      ((needs.preflight.outputs.operator_selected == 'false' && needs.operator_test.result == 'skipped') || (needs.preflight.outputs.operator_selected == 'true' && needs.operator_test.result == 'success')) &&
+      ((needs.preflight.outputs.governance_selected == 'false' && needs.governance_test.result == 'skipped') || (needs.preflight.outputs.governance_selected == 'true' && needs.governance_test.result == 'success')) }}
     permissions:
       contents: read
-      id-token: write
+      actions: read
+      issues: read
       pull-requests: read
-    env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Verify approved commit SHA
-        run: |
-          checked_out_sha="$(git rev-parse HEAD)"
-          if [[ "${checked_out_sha}" != "${{ needs.preflight.outputs.head_sha }}" ]]; then
-            echo "error: approved workflow SHA does not match checked-out production SHA" >&2
-            exit 1
-          fi
-          echo "Approved production SHA: ${checked_out_sha}"
-
-      - name: Check out trusted credential helper
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.sha }}
-          path: .trusted
-          persist-credentials: false
-
-      - name: Recheck current PR head before credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
-        run: |
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-
-      - name: Load prod AWS CI configuration
-        id: ci_config
-        uses: ./.trusted/.github/actions/load-aws-ci-env
-        with:
-          environment: prod
-          config-role-arn: ${{ vars.AWS_PROD_CI_CONFIG_ROLE_ARN }}
-          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
-          aws-region: ${{ vars.AWS_PROD_REGION }}
-          purpose: PR prod apply
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_APPLY_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
-
-      - name: Configure AWS apply credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
-        with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-apply-role-arn }}
-          role-session-name: gha-pr-prod-apply-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ vars.AWS_PROD_ACCOUNT_ID }}
-
-      - name: Emit production apply evidence
-        run: |
-          account_id="$(aws sts get-caller-identity --query Account --output text)"
-          echo "GitHub environment: prod"
-          echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
-          echo "Backend type: s3"
-          echo "Commit SHA: ${{ needs.preflight.outputs.head_sha }}"
-          echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
-          echo "Current AWS account ID: ${account_id}"
-          echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
-          echo "Role purpose: apply"
-          echo "PR command: ${{ needs.preflight.outputs.display_command }}"
-
-      - name: Start development environment
-        run: make start
-
-      - name: Download production plan artifact
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-prod-plan
-          path: .artifacts/pulumi-plan
-
-      - name: Download production preview for apply revalidation
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{
-            needs.preflight.outputs.head_sha }}-prod-preview
-          path: .artifacts/pulumi-preview
-
-      - name: Apply saved production plan
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
-          GITHUB_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PULUMI_EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-        run: |
-          # The immutable same-run preview is the diff for this saved plan.
-          shopt -s nullglob
-          previews=(.artifacts/pulumi-preview/*.json)
-          found_preview=false
-          for preview in "${previews[@]}"; do
-            if [[ "${preview}" != */pull-request-event.json ]]; then
-              test -s "${preview}"
-              found_preview=true
-            fi
-          done
-          test "${found_preview}" = true
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
-          # Remove only obsolete event metadata; preserve the original diff files.
-          rm -f .artifacts/pulumi-preview/pull-request-event.json
-          make test-destructive-diff
-          make pulumi-up-plan
-
-  prod_post_apply_drift:
-    name: Prod Post-Apply Drift
-    if: >-
-      needs.preflight.outputs.target_environment == 'prod' &&
-      needs.preflight.outputs.command == 'up'
-    environment: prod-preview
-    runs-on: ubuntu-latest
-    needs:
-      - preflight
-      - prod_apply
-    timeout-minutes: 20
-    permissions:
-      contents: read
       id-token: write
-      pull-requests: read
-    env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ needs.preflight.outputs.head_sha }}
-          persist-credentials: false
-
-      - name: Check out trusted credential helper
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: ${{ github.sha }}
-          path: .trusted
-          persist-credentials: false
-
-      - name: Recheck current PR head before credentials
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
-          EXPECTED_BASE_SHA: ${{ needs.preflight.outputs.base_sha }}
-          PR_NUMBER: ${{ needs.preflight.outputs.pull_request_number }}
-        run: |
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          test "$(jq -r '.state' <<< "${pr_json}")" = open
-          test "$(jq -r '.merged' <<< "${pr_json}")" = false
-          test "$(jq -r '.head.sha' <<< "${pr_json}")" = "${EXPECTED_SHA}"
-          test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
-          test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
-          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-
-      - name: Load prod preview AWS CI configuration
-        id: ci_config
-        uses: ./.trusted/.github/actions/load-aws-ci-env
-        with:
-          environment: prod-preview
-          config-role-arn: ${{ vars.AWS_PROD_PREVIEW_CI_CONFIG_ROLE_ARN }}
-          expected-account-id: ${{ vars.AWS_PROD_ACCOUNT_ID }}
-          aws-region: ${{ vars.AWS_PROD_REGION }}
-          purpose: PR prod drift
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_DRIFT_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_DRIFT_STACKS
-
-      - name: Configure AWS drift credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
-        with:
-          role-to-assume: ${{ steps.ci_config.outputs.aws-drift-role-arn }}
-          role-session-name: gha-pr-prod-drift-${{ github.run_id }}
-          aws-region: ${{ steps.ci_config.outputs.aws-region }}
-          allowed-account-ids: ${{ vars.AWS_PROD_ACCOUNT_ID }}
-
-      - name: Start development environment
-        run: make start
-
-      - name: Run production post-apply drift detection
-        run: make test-drift
-
-  platform_promotion:
-    concurrency:
-      group: promotion-status-${{ needs.preflight.outputs.pull_request_number }}
-      cancel-in-progress: false
-    name: Publish Platform Promotion Proof
-    needs:
-      - preflight
-      - test_apply
-      - test_post_apply_drift
-      - prod_apply
-      - prod_post_apply_drift
-    if: >-
-      needs.preflight.outputs.command == 'up' &&
-      needs.preflight.outputs.target_environment == 'prod'
-    environment: governance-evidence
+    uses: ./.github/workflows/pulumi-platform-account.yml
+    with:
+      account: test
+      artifact_id: ${{ needs.preflight.outputs.artifact_id }}
+      artifact_sha256: ${{ needs.preflight.outputs.artifact_sha256 }}
+      contract_sha256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+  whole_test:
+    name: whole_test
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs:
+      - preflight
+      - validate_inputs
+      - operator_test
+      - governance_test
+      - platform_test
+    if: ${{ always() && needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready
+      == 'true' && needs.validate_inputs.result == 'success' }}
     permissions:
       contents: read
+      actions: read
+      issues: read
       pull-requests: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      PROMOTION_KIND: platform
-      PROMOTION_NEEDS: ${{ toJSON(needs) }}
+    outputs:
+      barrier_digest: ${{ steps.barrier.outputs.barrier_digest }}
+      barrier_file_sha256: ${{ steps.barrier.outputs.barrier_file_sha256 }}
+      completion_kind: ${{ steps.barrier.outputs.completion_kind }}
+      artifact_id: ${{ steps.proof.outputs.artifact-id }}
+      artifact_sha256: ${{ steps.proof.outputs.artifact-digest }}
+      environment: ${{ steps.barrier.outputs.environment }}
+      selection_digest: ${{ steps.barrier.outputs.selection_digest }}
+      contract_digest: ${{ steps.barrier.outputs.contract_digest }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Check out immutable trusted controller
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           ref: ${{ github.sha }}
+          path: .trusted
           persist-credentials: false
-      - name: Download same-run test saved-plan proof
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{ needs.preflight.outputs.head_sha }}-test-plan
-          path: .artifacts/promotion-inputs/test
-      - name: Download same-run prod saved-plan proof
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: >-
-            pr-command-${{ needs.preflight.outputs.pull_request_number }}-${{ needs.preflight.outputs.head_sha }}-prod-plan
-          path: .artifacts/promotion-inputs/prod
-      - name: Prepare verified promotion proof
-        run: python3 scripts/governance_promotion.py prepare
-      - name: Upload immutable promotion proof
+      - name: Authenticate actual account jobs and complete receipt evidence
+        id: barrier
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTRACT_ARTIFACT_ID: ${{ needs.preflight.outputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ needs.preflight.outputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+          BARRIER_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_account_barrier.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --environment test \
+            --barrier-path .artifacts/deployment-barrier/test.json \
+            --output "${GITHUB_OUTPUT}"
+      - name: Upload verified account barrier evidence
         id: proof
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: governance-promotion
-          path: .artifacts/governance-promotion/proof.json
+          name: deployment-barrier-${{ github.run_id }}-1-test
+          path: .artifacts/deployment-barrier/test.json
           if-no-files-found: error
-          retention-days: 90
-      - name: Verify main-only App key boundary
+          retention-days: 7
+  operator_prod:
+    name: operator_prod
+    needs:
+      - preflight
+      - validate_inputs
+      - whole_test
+    if: |-
+      ${{ always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready == 'true' && needs.validate_inputs.result == 'success' &&
+      needs.preflight.outputs.target_environment == 'prod' &&
+      needs.whole_test.result == 'success' &&
+      needs.whole_test.outputs.artifact_id != '' &&
+      needs.whole_test.outputs.artifact_sha256 != '' &&
+      needs.preflight.outputs.operator_selected == 'true' }}
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    uses: ./.github/workflows/pulumi-operator-account.yml
+    with:
+      account: prod
+      artifact_id: ${{ needs.preflight.outputs.artifact_id }}
+      artifact_sha256: ${{ needs.preflight.outputs.artifact_sha256 }}
+      contract_sha256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+  governance_prod:
+    name: governance_prod
+    needs:
+      - preflight
+      - validate_inputs
+      - whole_test
+      - operator_prod
+    if: |-
+      ${{ always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready == 'true' && needs.validate_inputs.result == 'success' &&
+      needs.preflight.outputs.target_environment == 'prod' &&
+      needs.whole_test.result == 'success' &&
+      needs.whole_test.outputs.artifact_id != '' &&
+      needs.whole_test.outputs.artifact_sha256 != '' &&
+      needs.preflight.outputs.governance_selected == 'true' &&
+      ((needs.preflight.outputs.operator_selected == 'false' && needs.operator_prod.result == 'skipped') || (needs.preflight.outputs.operator_selected == 'true' && needs.operator_prod.result == 'success')) }}
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    uses: ./.github/workflows/pulumi-governance-account.yml
+    with:
+      account: prod
+      artifact_id: ${{ needs.preflight.outputs.artifact_id }}
+      artifact_sha256: ${{ needs.preflight.outputs.artifact_sha256 }}
+      contract_sha256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+  platform_prod:
+    name: platform_prod
+    needs:
+      - preflight
+      - validate_inputs
+      - whole_test
+      - operator_prod
+      - governance_prod
+    if: |-
+      ${{ always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready == 'true' && needs.validate_inputs.result == 'success' &&
+      needs.preflight.outputs.target_environment == 'prod' &&
+      needs.whole_test.result == 'success' &&
+      needs.whole_test.outputs.artifact_id != '' &&
+      needs.whole_test.outputs.artifact_sha256 != '' &&
+      needs.preflight.outputs.platform_selected == 'true' &&
+      ((needs.preflight.outputs.operator_selected == 'false' && needs.operator_prod.result == 'skipped') || (needs.preflight.outputs.operator_selected == 'true' && needs.operator_prod.result == 'success')) &&
+      ((needs.preflight.outputs.governance_selected == 'false' && needs.governance_prod.result == 'skipped') || (needs.preflight.outputs.governance_selected == 'true' && needs.governance_prod.result == 'success')) }}
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+      id-token: write
+    uses: ./.github/workflows/pulumi-platform-account.yml
+    with:
+      account: prod
+      artifact_id: ${{ needs.preflight.outputs.artifact_id }}
+      artifact_sha256: ${{ needs.preflight.outputs.artifact_sha256 }}
+      contract_sha256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+  whole_prod:
+    name: whole_prod
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs:
+      - preflight
+      - validate_inputs
+      - operator_test
+      - governance_test
+      - platform_test
+      - whole_test
+      - operator_prod
+      - governance_prod
+      - platform_prod
+    if: ${{ always() && needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready
+      == 'true' && needs.validate_inputs.result == 'success' && needs.preflight.outputs.target_environment
+      == 'prod' && needs.whole_test.result == 'success' }}
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    outputs:
+      barrier_digest: ${{ steps.barrier.outputs.barrier_digest }}
+      barrier_file_sha256: ${{ steps.barrier.outputs.barrier_file_sha256 }}
+      completion_kind: ${{ steps.barrier.outputs.completion_kind }}
+      artifact_id: ${{ steps.proof.outputs.artifact-id }}
+      artifact_sha256: ${{ steps.proof.outputs.artifact-digest }}
+      environment: ${{ steps.barrier.outputs.environment }}
+      selection_digest: ${{ steps.barrier.outputs.selection_digest }}
+      contract_digest: ${{ steps.barrier.outputs.contract_digest }}
+    steps:
+      - name: Check out immutable trusted controller
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Authenticate actual account jobs and complete receipt evidence
+        id: barrier
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/governance_promotion.py verify-environment
-      - name: Create dedicated promotion App token
+          CONTRACT_ARTIFACT_ID: ${{ needs.preflight.outputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ needs.preflight.outputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+          BARRIER_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_account_barrier.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --environment prod \
+            --barrier-path .artifacts/deployment-barrier/prod.json \
+            --output "${GITHUB_OUTPUT}"
+      - name: Upload verified account barrier evidence
+        id: proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deployment-barrier-${{ github.run_id }}-1-prod
+          path: .artifacts/deployment-barrier/prod.json
+          if-no-files-found: error
+          retention-days: 7
+  prepare_promotion:
+    name: prepare_promotion
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs:
+      - preflight
+      - validate_inputs
+      - operator_test
+      - governance_test
+      - platform_test
+      - whole_test
+      - operator_prod
+      - governance_prod
+      - platform_prod
+      - whole_prod
+    if: |-
+      ${{ always() && !cancelled() &&
+      needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready == 'true' &&
+      needs.preflight.outputs.command == 'up' && needs.preflight.outputs.target_environment == 'prod' &&
+      needs.preflight.outputs.has_deployment_scopes == 'true' &&
+      needs.validate_inputs.result == 'success' &&
+      needs.whole_test.result == 'success' && needs.whole_test.outputs.completion_kind == 'apply-drift' &&
+      needs.whole_prod.result == 'success' && needs.whole_prod.outputs.completion_kind == 'apply-drift' }}
+    permissions:
+      contents: read
+      actions: read
+      issues: read
+      pull-requests: read
+    outputs:
+      proof_digest: ${{ steps.prepare.outputs.proof_digest }}
+      proof_file_sha256: ${{ steps.prepare.outputs.proof_file_sha256 }}
+      head_sha: ${{ steps.prepare.outputs.head_sha }}
+      base_sha: ${{ steps.prepare.outputs.base_sha }}
+      selection_digest: ${{ steps.prepare.outputs.selection_digest }}
+      contract_digest: ${{ steps.prepare.outputs.contract_digest }}
+      artifact_id: ${{ steps.proof.outputs.artifact-id }}
+      artifact_sha256: ${{ steps.proof.outputs.artifact-digest }}
+    steps:
+      - name: Check out immutable trusted controller
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Reauthenticate original receipt and job evidence for both accounts
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTRACT_ARTIFACT_ID: ${{ needs.preflight.outputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ needs.preflight.outputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+          PROMOTION_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_promotion_proof.py" prepare \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --proof-path .artifacts/deployment-promotion/proof.json \
+            --output "${GITHUB_OUTPUT}"
+      - name: Upload prepared aggregate evidence without publishing success
+        id: proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: deployment-promotion-${{ github.run_id }}-1
+          path: .artifacts/deployment-promotion/proof.json
+          if-no-files-found: error
+          retention-days: 7
+  publish_promotion:
+    name: publish_promotion
+    concurrency:
+      group: promotion-status-${{ needs.preflight.outputs.pull_request_number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: governance-evidence
+    needs:
+      - preflight
+      - validate_inputs
+      - operator_test
+      - governance_test
+      - platform_test
+      - whole_test
+      - operator_prod
+      - governance_prod
+      - platform_prod
+      - whole_prod
+      - prepare_promotion
+    if: |-
+      ${{ always() && !cancelled() &&
+      github.repository == 'VilnaCRM-Org/bootstrap-infrastructure' &&
+      github.ref == 'refs/heads/main' && github.event_name == 'repository_dispatch' &&
+      needs.preflight.result == 'success' && needs.preflight.outputs.execution_ready == 'true' &&
+      needs.preflight.outputs.command == 'up' && needs.preflight.outputs.target_environment == 'prod' &&
+      needs.preflight.outputs.has_deployment_scopes == 'true' &&
+      needs.validate_inputs.result == 'success' &&
+      needs.whole_test.result == 'success' && needs.whole_test.outputs.completion_kind == 'apply-drift' &&
+      needs.whole_prod.result == 'success' && needs.whole_prod.outputs.completion_kind == 'apply-drift' &&
+      needs.prepare_promotion.result == 'success' &&
+      needs.prepare_promotion.outputs.artifact_id != '' &&
+      needs.prepare_promotion.outputs.artifact_sha256 != '' &&
+      needs.prepare_promotion.outputs.proof_file_sha256 != '' }}
+    permissions:
+      contents: read
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+      head_sha: ${{ steps.publish.outputs.head_sha }}
+      proof_digest: ${{ steps.publish.outputs.proof_digest }}
+      status_id: ${{ steps.publish.outputs.status_id }}
+    steps:
+      - name: Check out immutable trusted publisher
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Create repository-scoped dedicated promotion App token
         id: promotion_app
         uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
         with:
           app-id: ${{ vars.GOVERNANCE_PROMOTION_APP_ID }}
           private-key: ${{ secrets.GOVERNANCE_PROMOTION_APP_PRIVATE_KEY }}
+          owner: VilnaCRM-Org
+          repositories: bootstrap-infrastructure
           permission-statuses: write
           permission-deployments: write
           permission-actions: read
           permission-contents: read
           permission-pull-requests: read
-      - name: Publish verified promotion and account deployment records
+      - name: Revalidate and publish aggregate proof with verified readback
+        id: publish
         env:
           GH_TOKEN: ${{ steps.promotion_app.outputs.token }}
-          PROMOTION_ARTIFACT_ID: ${{ steps.proof.outputs.artifact-id }}
-        run: python3 scripts/governance_promotion.py publish
-
+          CONTRACT_ARTIFACT_ID: ${{ needs.preflight.outputs.artifact_id }}
+          CONTRACT_ARTIFACT_SHA256: ${{ needs.preflight.outputs.artifact_sha256 }}
+          CONTRACT_SHA256: ${{ needs.preflight.outputs.contract_file_sha256 }}
+          PROOF_ARTIFACT_ID: ${{ needs.prepare_promotion.outputs.artifact_id }}
+          PROOF_ARTIFACT_SHA256: ${{ needs.prepare_promotion.outputs.artifact_sha256 }}
+          PROOF_FILE_SHA256: ${{ needs.prepare_promotion.outputs.proof_file_sha256 }}
+          ALL_PROMOTION_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          PROMOTION_NEEDS="$(jq -ce \
+            '{preflight, validate_inputs, operator_test, governance_test, platform_test, whole_test, operator_prod, governance_prod, platform_prod, whole_prod}' \
+            <<< "${ALL_PROMOTION_NEEDS}")"
+          export PROMOTION_NEEDS
+          python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/deployment_promotion_emitter.py" \
+            --artifact-id "${CONTRACT_ARTIFACT_ID}" \
+            --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" \
+            --contract-sha256 "${CONTRACT_SHA256}" \
+            --proof-artifact-id "${PROOF_ARTIFACT_ID}" \
+            --proof-artifact-sha256 "${PROOF_ARTIFACT_SHA256}" \
+            --proof-file-sha256 "${PROOF_FILE_SHA256}" \
+            --output "${GITHUB_OUTPUT}"
   comment_result:
-    name: Comment Result
-    if: always()
+    name: comment_result
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs:
       - preflight
-      - test_preview
-      - test_destructive_diff
-      - test_iam_validation
-      - test_apply
-      - test_post_apply_drift
-      - prod_preview
-      - prod_destructive_diff
-      - prod_iam_validation
-      - prod_apply
-      - prod_post_apply_drift
-      - platform_promotion
-    timeout-minutes: 10
+      - validate_inputs
+      - operator_test
+      - governance_test
+      - platform_test
+      - whole_test
+      - operator_prod
+      - governance_prod
+      - platform_prod
+      - whole_prod
+      - prepare_promotion
+      - publish_promotion
+    if: ${{ always() && needs.preflight.outputs.feedback_pull_request_number != '' }}
     permissions:
       issues: write
-      # Result feedback is posted to the PR conversation; live QA showed
-      # GitHub rejects this with only issues: write on the Actions token.
       pull-requests: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - name: Post PR command result
+      - name: Post informational result to authenticated comment target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.preflight.outputs.feedback_pull_request_number }}
+          DISPLAY_COMMAND: ${{ needs.preflight.outputs.feedback_display_command }}
+          HEAD_SHA: ${{ needs.preflight.outputs.feedback_head_sha }}
+          GRAPH_RESULTS: ${{ toJSON(needs) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          body_file="$(mktemp)"
-          {
-            echo "## Pulumi PR command result"
-            echo
-            echo "- Command: \`${{ needs.preflight.outputs.display_command || needs.preflight.outputs.feedback_display_command || 'preflight' }}\`"
-            echo "- Commit: \`${{ needs.preflight.outputs.head_sha || needs.preflight.outputs.feedback_head_sha || 'unknown' }}\`"
-            echo "- Workflow run: ${RUN_URL}"
-            echo
-            echo "| Stage | Result |"
-            echo "| --- | --- |"
-            echo "| Preflight | \`${{ needs.preflight.result }}\` |"
-            echo "| Test preview | \`${{ needs.test_preview.result }}\` |"
-            echo "| Test destructive diff | \`${{ needs.test_destructive_diff.result }}\` |"
-            echo "| Test IAM validation | \`${{ needs.test_iam_validation.result }}\` |"
-            echo "| Test apply | \`${{ needs.test_apply.result }}\` |"
-            echo "| Test post-apply drift | \`${{ needs.test_post_apply_drift.result }}\` |"
-            echo "| Production preview | \`${{ needs.prod_preview.result }}\` |"
-            echo "| Production destructive diff | \`${{ needs.prod_destructive_diff.result }}\` |"
-            echo "| Production IAM validation | \`${{ needs.prod_iam_validation.result }}\` |"
-            echo "| Production apply | \`${{ needs.prod_apply.result }}\` |"
-            echo "| Production post-apply drift | \`${{ needs.prod_post_apply_drift.result }}\` |"
-            echo "| Verified promotion proof | \`${{ needs.platform_promotion.result }}\` |"
-            echo
-            echo "Production stages are gated behind a successful test apply and test post-apply drift check for the same PR head SHA."
-          } > "${body_file}"
-
-          pr_number="${{ needs.preflight.outputs.pull_request_number || needs.preflight.outputs.feedback_pull_request_number }}"
-          if [[ -n "${pr_number}" ]]; then
-            jq -Rs '{body: .}' < "${body_file}" \
-              | gh api \
-                --method POST \
-                "repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
-                --input -
-          else
-            cat "${body_file}"
-          fi
+          [[ "${PR_NUMBER}" =~ ^[1-9][0-9]*$ ]]
+          jq -n --arg command "${DISPLAY_COMMAND}" --arg sha "${HEAD_SHA}" \
+            --arg url "${RUN_URL}" --argjson graph "${GRAPH_RESULTS}" \
+            '{body: ("Pulumi command: `" + $command + "`\nCommit: `" + $sha + "`\nRun: " + $url + "\n\n" + ($graph | to_entries | map(.key + ": " + .value.result) | join("\n")) + "\n\n" + (if $graph.publish_promotion.result == "success" and $graph.publish_promotion.outputs.published == "true" then "Infrastructure Promotion: verified and published." else "Infrastructure Promotion was not verified as published (publisher: " + $graph.publish_promotion.result + ")." end))}' \
+            | gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --input -

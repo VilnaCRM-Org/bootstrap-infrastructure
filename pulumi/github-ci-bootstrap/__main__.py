@@ -1,4 +1,10 @@
-"""Entrypoint for the one-time GitHub CI AWS bootstrap Pulumi project."""
+"""Operator resources after independent seed enrollment and ownership cutover.
+
+Before activation, independently transfer the six boundary policy ownership
+records and reconcile OIDC read ownership and enrolled role boundaries in the
+authenticated checkpoint. This ordinary operator program cannot enact that
+transfer or establish enrollment by merely referencing policy ARNs.
+"""
 
 from __future__ import annotations
 
@@ -61,14 +67,25 @@ governance_region = aws.get_region().region
 partition = aws.get_partition().partition
 platform_iam = import_module("infra.platform_iam")
 platform_controls = import_module("infra.platform_control_iam")
+seed_catalog = import_module("seed.policy_registry").load_catalog(settings.environment)
+governance_module.assert_bootstrap_account(seed_catalog["account_id"], account_id)
+if seed_catalog["region"] != governance_region or partition != "aws":
+    raise ValueError("Seed catalog region/partition mismatch")
+external_role_boundaries = {
+    principal["arn"].rsplit("/", 1)[-1]: principal["boundary_arn"]
+    for principal in seed_catalog["principals"]
+    if principal["owner_project"] == "github-ci-bootstrap"
+    and principal["boundary_arn"] is not None
+}
 boundaries = platform_iam.PlatformIamBoundaries(
     "platform-iam-boundaries",
     settings=settings,
     account_id=account_id,
     region=governance_region,
     repositories=platform_catalog,
+    manage_policies=False,
 )
-boundary_arns = {purpose: policy.arn for purpose, policy in boundaries.policies.items()}
+boundary_arns = boundaries.boundary_arns
 control_boundary_arn = boundary_arns["control"]
 
 bootstrap = GitHubCiBootstrap(
@@ -81,7 +98,8 @@ bootstrap = GitHubCiBootstrap(
         write_secret_values=managed_secret_values,
         protect_resources=protected_resources,
         control_permissions_boundary=control_boundary_arn,
-        manage_oidc_provider=True,
+        manage_oidc_provider=False,
+        external_role_boundaries=external_role_boundaries,
     ),
     opts=pulumi.ResourceOptions(depends_on=[boundaries]),
 )
@@ -99,8 +117,7 @@ platform_control_iam = platform_controls.PlatformControlIam(
     opts=pulumi.ResourceOptions(depends_on=[boundaries, bootstrap]),
 )
 
-# The operator bootstrap owns its own runner roles and immutable service
-# boundaries. The delegated governance stack cannot change these resources.
+# Runner roles stay operator-owned; their immutable boundaries belong to seed.
 governance_automation = governance_module.GovernanceAutomation(
     "governance-automation",
     args=governance_module.GovernanceAutomationArgs(
@@ -118,6 +135,8 @@ governance_automation = governance_module.GovernanceAutomation(
             f"?region={governance_region}"
         ),
         protect_resources=protected_resources,
+        external_role_boundaries=external_role_boundaries,
+        manage_service_boundaries=False,
     ),
 )
 pulumi.export("governanceGithubVariables", governance_automation.github_variables)

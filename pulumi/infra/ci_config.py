@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 import pulumi_aws as aws
@@ -46,6 +47,8 @@ class CiConfigurationArgs:
     subjects become repo-scoped (``/{repo-project}/ci/{suffix}``). The caller
     must supply settings already scoped to that repository, including its
     default branch and immutable IDs; a mismatched override is rejected.
+    ``external_role_boundaries`` retains independently owned boundaries and must
+    include every created config reader, agreeing with ``permissions_boundary``.
     """
 
     settings: BootstrapSettings | None = None
@@ -55,6 +58,7 @@ class CiConfigurationArgs:
     permissions_boundary: str | None = None
     manage_resources: bool = True
     governed_service_workflows: bool = False
+    external_role_boundaries: Mapping[str, str] | None = None
 
 
 # Secret-leaking reads denied on the config-read role (§5.3, FR22, D4). The
@@ -71,6 +75,44 @@ _CONFIG_READ_DENY_ACTIONS = (
     "sts:GetSessionToken",
     "cognito-identity:Get*",
 )
+
+
+def _role_permissions_boundary(
+    role_name: str,
+    *,
+    account_id: str,
+    partition: str,
+    external_role_boundaries: Mapping[str, str] | None,
+    existing_boundary: pulumi.Input[str] | None = None,
+) -> pulumi.Input[str] | None:
+    """Retain an independently enrolled boundary on every created role.
+
+    A supplied map must cover this role with an exact account-local policy ARN.
+    Extra entries may belong to other constructors. An existing control/service
+    boundary must agree, including when its Pulumi Input resolves asynchronously.
+    This input neither creates the boundary nor proves independent enrollment.
+    """
+    if external_role_boundaries is None:
+        return existing_boundary
+    boundary = external_role_boundaries.get(role_name)
+    pattern = (
+        rf"arn:{re.escape(partition)}:iam::{re.escape(account_id)}:policy/"
+        r"(?:[A-Za-z0-9_+=,.@-]+/)*[A-Za-z0-9_+=,.@-]+"
+    )
+    if type(boundary) is not str or re.fullmatch(pattern, boundary) is None:
+        raise ValueError(f"Missing or invalid external boundary for role {role_name}")
+
+    def require_agreement(current: str) -> str:
+        """Reject a legacy boundary that conflicts with the enrolled role map."""
+        if current != boundary:
+            raise ValueError(f"Conflicting external boundary for role {role_name}")
+        return boundary
+
+    if existing_boundary is None:
+        return boundary
+    if isinstance(existing_boundary, str):
+        return require_agreement(existing_boundary)
+    return apply_output(pulumi.Output.from_input(existing_boundary), require_agreement)
 
 
 def _resolved_ci_repo(settings: BootstrapSettings, repo: str | None) -> str:
@@ -519,7 +561,13 @@ class CiConfiguration(pulumi.ComponentResource):
             role = aws.iam.Role(
                 f"{name}-github-ci-config-read-role-{suffix}",
                 name=role_name,
-                permissions_boundary=config.permissions_boundary,
+                permissions_boundary=_role_permissions_boundary(
+                    role_name,
+                    account_id=account_id,
+                    partition=partition,
+                    external_role_boundaries=config.external_role_boundaries,
+                    existing_boundary=config.permissions_boundary,
+                ),
                 assume_role_policy=apply_output(
                     pulumi.Output.from_input(provider_arn),
                     lambda arn, ci_suffix=suffix: _ci_config_read_assume_role_policy(

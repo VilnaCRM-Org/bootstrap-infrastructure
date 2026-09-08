@@ -555,7 +555,9 @@ def test_workflow_never_executes_pr_checkout_and_keeps_separate_context():
         if "create-github-app-token" in step.get("uses", "")
     )
     assert app_step["with"]["app-id"] == str(host.APP_ID)
-    assert "permission-deployments" not in app_step["with"]
+    assert app_step["with"]["permission-deployments"] == "read"
+    assert jobs["collect"]["permissions"]["deployments"] == "read"
+    assert jobs["collect"]["permissions"]["statuses"] == "read"
     assert (root / ".github/workflows/well-architected-evidence.yml").exists()
 
 

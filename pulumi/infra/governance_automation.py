@@ -20,7 +20,11 @@ import pulumi
 
 from .bootstrap_settings import BootstrapSettings
 from .ci_bootstrap import _ci_role_name, _ci_secret_suffixes
-from .ci_config import _ci_config_project, _ci_config_read_role_name
+from .ci_config import (
+    _ci_config_project,
+    _ci_config_read_role_name,
+    _role_permissions_boundary,
+)
 from .github_identity import (
     expand_subjects,
     identity_conditions,
@@ -146,7 +150,12 @@ _SECRET_EDIT = (
 
 @dataclass(frozen=True)
 class GovernanceAutomationArgs:
-    """Explicit account, backend and catalog inputs; no ambient fallbacks."""
+    """Explicit account, backend and catalog inputs; no ambient fallbacks.
+
+    ``external_role_boundaries`` retains independently owned boundaries and must
+    cover all three governor roles. ``manage_service_boundaries=False`` retains
+    independently enrolled policies without registering ownership or read aliases.
+    """
 
     settings: BootstrapSettings
     repositories: Sequence[ManagedRepository]
@@ -157,6 +166,8 @@ class GovernanceAutomationArgs:
     secrets_provider: str
     partition: str = "aws"
     protect_resources: bool = True
+    external_role_boundaries: Mapping[str, str] | None = None
+    manage_service_boundaries: bool = True
 
 
 def assert_bootstrap_account(expected: str | None, actual: str) -> None:
@@ -330,16 +341,21 @@ def governance_backend_policy(
 def governance_trust_policy(
     args: GovernanceAutomationArgs, purpose: str, provider_arn: str
 ) -> str:
-    """Bind normal workflow OIDC to repository, main ref and protected environment."""
+    """Bind central reusable governance OIDC to one account and role purpose."""
     if purpose not in {"preview", "drift", "apply"}:
         raise ValueError("unsupported governance role purpose")
+    if args.settings.environment not in {"test", "prod"}:
+        raise ValueError("governance automation supports test and prod only")
+    if args.settings.github_branch not in {None, "main"}:
+        raise ValueError("central governance requires the main branch")
     expected_provider = _iam_arn(
         args, "oidc-provider", "token.actions.githubusercontent.com"
     )
     if provider_arn != expected_provider:
         raise ValueError("governance OIDC provider must belong to the target account")
     repository = f"{args.settings.org}/{args.settings.repo}"
-    environment = "governance" if purpose == "apply" else "governance-preview"
+    suffix = "" if purpose == "apply" else f"-{purpose}"
+    environment = f"{args.settings.environment}-governance{suffix}"
     document = _document(
         [
             {
@@ -361,10 +377,15 @@ def governance_trust_policy(
                         ),
                         "token.actions.githubusercontent.com:repository": repository,
                         "token.actions.githubusercontent.com:workflow": (
-                            "Pulumi Governance Runner"
+                            "Pulumi PR Command Runner"
                         ),
-                        "token.actions.githubusercontent.com:ref": (
-                            f"refs/heads/{args.settings.github_branch or 'main'}"
+                        "token.actions.githubusercontent.com:ref": "refs/heads/main",
+                        "token.actions.githubusercontent.com:environment": environment,
+                        # AWS documents this GitHub claim for reusable-workflow
+                        # trust; workflow/ref above identify the calling root.
+                        "token.actions.githubusercontent.com:job_workflow_ref": (
+                            f"{repository}/.github/workflows/"
+                            "pulumi-governance-account.yml@refs/heads/main"
                         ),
                     }
                 },
@@ -600,8 +621,9 @@ class GovernanceAutomation(pulumi.ComponentResource):
         super().__init__("bootstrap:ci:GovernanceAutomation", name, None, opts)
         self.roles: dict[str, aws.iam.Role] = {}
         self.boundaries: dict[str, aws.iam.Policy] = {}
-        for repo in args.repositories:
-            self._create_boundaries(name, args, repo)
+        if args.manage_service_boundaries:
+            for repo in args.repositories:
+                self._create_boundaries(name, args, repo)
         for purpose in ("preview", "drift", "apply"):
             self._create_runner(name, args, purpose)
         prefix = f"AWS_GOVERNANCE_{args.settings.environment.upper()}"
@@ -648,6 +670,12 @@ class GovernanceAutomation(pulumi.ComponentResource):
         role = aws.iam.Role(
             f"{name}-{purpose}",
             name=role_name,
+            permissions_boundary=_role_permissions_boundary(
+                role_name,
+                account_id=args.account_id,
+                partition=args.partition,
+                external_role_boundaries=args.external_role_boundaries,
+            ),
             assume_role_policy=apply_output(
                 pulumi.Output.from_input(args.provider_arn),
                 lambda arn: governance_trust_policy(args, purpose, arn),

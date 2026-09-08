@@ -81,6 +81,18 @@ ADDITIONAL_PROTECTED_ENVIRONMENTS = (
     "test-preview",
     "prod-preview",
     "governance-preview",
+    "test-operator-preview",
+    "test-operator",
+    "test-operator-drift",
+    "prod-operator-preview",
+    "prod-operator",
+    "prod-operator-drift",
+    "test-governance-preview",
+    "test-governance",
+    "test-governance-drift",
+    "prod-governance-preview",
+    "prod-governance",
+    "prod-governance-drift",
 )
 SERVICE_PROTECTED_ENVIRONMENTS = ("test", "test-preview", "prod", "prod-preview")
 
@@ -253,6 +265,59 @@ def _evidence_environment_blockers(repo: str) -> list[str]:
     return _evidence_environment.verification_blockers(environment, policies)
 
 
+def _central_classic_blockers(repo: str) -> list[str]:
+    """Read the effective classic rule without mistaking a REST 404 for absence."""
+    if repo != _repository_controls.CENTRAL_REPOSITORY:
+        return []
+    owner, name = repo.split("/")
+    query = """query($owner:String!,$name:String!) {
+      repository(owner:$owner,name:$name) {
+        nameWithOwner ref(qualifiedName:"refs/heads/main") {
+          name branchProtectionRule { requiredStatusCheckContexts }
+        }
+      }
+    }"""
+    payload = _run_gh_api(
+        [
+            "graphql",
+            "-f",
+            f"query={query}",
+            "-f",
+            f"owner={owner}",
+            "-f",
+            f"name={name}",
+        ]
+    )
+    contexts = _classic_contexts(payload, repo)
+    if _repository_controls.GOVERNANCE_PROMOTION_CONTEXT in contexts:
+        return ["Central classic protection still requires Governance Promotion."]
+    return []
+
+
+def _classic_contexts(payload: Any, repo: str) -> list[str]:
+    """Only an authenticated branch response can establish the classic context set."""
+    try:
+        if not isinstance(payload, dict) or payload.get("errors"):
+            raise ValueError
+        repository = payload["data"]["repository"]
+        branch = repository["ref"]
+        if repository["nameWithOwner"] != repo or branch["name"] != "main":
+            raise ValueError
+        rule = branch["branchProtectionRule"]
+        if rule is None:
+            return []
+        contexts = rule["requiredStatusCheckContexts"]
+        if not isinstance(contexts, list) or not all(
+            isinstance(context, str) for context in contexts
+        ):
+            raise ValueError
+    except (KeyError, TypeError, ValueError) as error:
+        raise RuntimeError(
+            "Central classic protection metadata is not verified."
+        ) from error
+    return contexts
+
+
 def _verify_applied_controls(
     repo: str, reviewer_id: int, *, promotion_app_id: int
 ) -> dict[str, Any]:
@@ -291,9 +356,12 @@ def _verify_applied_controls(
             )
         )
     blockers = [
+        *_central_classic_blockers(repo),
         *_evidence_environment_blockers(repo),
         *additional_blockers,
-        *_ruleset_verification_blockers(ruleset, promotion_app_id=promotion_app_id),
+        *_ruleset_verification_blockers(
+            ruleset, promotion_app_id=promotion_app_id, repository=repo
+        ),
         *prod_environment_blockers,
         *reconcile_environment_blockers,
         *governance_environment_blockers,
@@ -468,8 +536,10 @@ def configure(
     verify_only: bool = False,
 ) -> None:
     """Print or apply the GitHub repository controls."""
+    if repo.casefold() == _repository_controls.CENTRAL_REPOSITORY.casefold():
+        repo = _repository_controls.CENTRAL_REPOSITORY
     # Validate the dedicated issuer before any read or write in every mode.
-    ruleset_payload(promotion_app_id=promotion_app_id)
+    ruleset_payload(promotion_app_id=promotion_app_id, repository=repo)
     if apply and not _repo_admin_allowed(repo):
         raise RuntimeError(
             "repository admin rights are required to update branch rulesets "
@@ -494,7 +564,9 @@ def configure(
     existing = _main_ruleset(repo)
     payloads: dict[str, Any] = {
         "ruleset": ruleset_payload(
-            _existing_rules(existing), promotion_app_id=promotion_app_id
+            _existing_rules(existing),
+            promotion_app_id=promotion_app_id,
+            repository=repo,
         )
     }
     if apply:
