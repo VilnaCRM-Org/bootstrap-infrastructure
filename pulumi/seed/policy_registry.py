@@ -16,8 +16,8 @@ from typing import Any, Mapping
 from .operator_trust import operator_trust_policy
 
 CATALOG_HASHES = {
-    "test": "a976261fcfa55a69740d0c66ca558ef95a9803165cd061f5f403385f13323dfe",
-    "prod": "7b706c646fddbb8e001c6b040be58f3797d67bd3a04e967b20d52d398832483d",
+    "test": "9079c48192d3ebcdbd2dd957cc36138b7f90f80aa7fe22d49a60a56f436a32f7",
+    "prod": "544a7c7f5610dc62172debcb16a6dca91c3a36eeb484f8f89b6e20af1c62ffd1",
 }
 ACCOUNTS = {"test": "891377212104", "prod": "933245420672"}
 REGION = "eu-central-1"
