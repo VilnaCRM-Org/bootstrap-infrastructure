@@ -60,8 +60,11 @@ class FakeAPI:
         self.calls = []
         self.deployments = {}
         self.statuses = {}
-        self.overrides = {}
+        self.overrides = {
+            f"apps/{emitter.APP_SLUG}": {"id": emitter.APP_ID, "slug": emitter.APP_SLUG}
+        }
         self.counter = 500
+        self.deployment_app = {"id": emitter.APP_ID, "slug": emitter.APP_SLUG}
         self.fail_after = None
         self.hook = lambda path, payload: None
         self.environment = emitter.boundary.payload()
@@ -125,10 +128,7 @@ class FakeAPI:
             value.update(
                 sha=payload["ref"],
                 repository_url="https://api.github.com/" + emitter.BASE,
-                performed_via_github_app={
-                    "id": emitter.APP_ID,
-                    "slug": emitter.APP_SLUG,
-                },
+                performed_via_github_app=deepcopy(self.deployment_app),
             )
             self.deployments[f"{path}/{self.counter}"] = value
         else:
@@ -670,3 +670,67 @@ def test_final_status_readback_rejects(field, value):
     result[field] = value
     with pytest.raises(ValueError):
         emitter._status(result, payload, path=path)
+
+
+@pytest.mark.parametrize("annotation", [None, "omitted"])
+def test_actual_nullable_app_metadata_keeps_creator_binding(annotation):
+    # Recorded PR221 deployments6318073083/6318073168 have this exact public issuer
+    # shape; these are synthetic structural tests, not copied acceptance claims.
+    value = {"creator": issuer(), "performed_via_github_app": annotation}
+    if annotation == "omitted":
+        del value["performed_via_github_app"]
+    emitter._issuer(value, app=True)
+    value["creator"]["id"] = 1
+    with pytest.raises(ValueError, match="Foreign publication creator"):
+        emitter._issuer(value, app=True)
+
+
+@pytest.mark.parametrize(
+    "integration",
+    [
+        {},
+        [],
+        "foreign",
+        {"id": True, "slug": emitter.APP_SLUG},
+        {"id": emitter.APP_ID, "slug": "foreign"},
+    ],
+)
+def test_present_foreign_app_still_fails(integration):
+    with pytest.raises(ValueError):
+        emitter._issuer(
+            {"creator": issuer(), "performed_via_github_app": integration}, app=True
+        )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        None,
+        {},
+        {"id": True, "slug": emitter.APP_SLUG},
+        {"id": 1, "slug": emitter.APP_SLUG},
+        {"id": emitter.APP_ID, "slug": "foreign"},
+    ],
+)
+def test_configured_app_binding_fails_before_write(monkeypatch, value):
+    api = FakeAPI()
+    api.overrides[f"apps/{emitter.APP_SLUG}"] = value
+    monkeypatch.setattr(emitter, "_api", api)
+    with pytest.raises(ValueError):
+        emitter._verify_authority()
+    assert not api.writes
+
+
+def test_full_publication_accepts_null_deployment_app(publication):
+    publication.api.deployment_app = None
+    result = emitter.publish(**publication.emitter_args)
+    assert result["published"] == "true"
+    assert len(publication.api.writes) == 5
+    assert all(
+        value["performed_via_github_app"] is None
+        for value in publication.api.deployments.values()
+    )
+    assert any(path == f"apps/{emitter.APP_SLUG}" for path, _ in publication.api.calls)
+    # Existing-deployment recovery also requires the original exact proof/fields.
+    assert emitter.publish(**publication.emitter_args) == result
+    assert len(publication.api.writes) == 5

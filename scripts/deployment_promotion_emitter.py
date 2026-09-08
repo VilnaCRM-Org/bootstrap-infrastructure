@@ -131,8 +131,10 @@ def _issuer(value: dict[str, Any], *, app: bool = False) -> None:
         and creator.get("type") == "Bot",
         "Foreign publication creator",
     )
-    if app:
-        integration = _object(value.get("performed_via_github_app"), "Publication App")
+    # GitHub returns null here for actual installation-token deployments. The
+    # immutable bot ID remains mandatory; authority separately binds App slug/ID.
+    if app and value.get("performed_via_github_app") is not None:
+        integration = _object(value["performed_via_github_app"], "Publication App")
         preflight.require(
             type(integration.get("id")) is int
             and integration["id"] == APP_ID
@@ -143,6 +145,10 @@ def _issuer(value: dict[str, Any], *, app: bool = False) -> None:
 
 def _verify_authority() -> None:
     """Verify App token, repository authority and live environment protections."""
+    _equal_fields(
+        _object(_read(f"apps/{APP_SLUG}"), "Configured publication App"),
+        {"id": APP_ID, "slug": APP_SLUG},
+    )
     viewer = _object(
         _api("graphql", {"query": "query { viewer { login databaseId } }"}),
         "Viewer response",
