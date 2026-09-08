@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "source_commit": "74138e5e37dc06dc93630317410bba40665fca85",
+  "installed_main_commit": "cfb95db5cc80858dd3c134c1be38784050d0bb42",
+  "accounts": {
+    "test": {
+      "account_id": "891377212104",
+      "region": "eu-central-1",
+      "catalog_sha256": "355828db7794fda3969f7e4261d96265a7442516865ce79dbf361b2afe9ea58a",
+      "bucket": "pulumi-bootstrap-infrastructure-test-state",
+      "operator_key": ".pulumi/stacks/github-ci-bootstrap/test.json",
+      "backend_key": "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be",
+      "secrets_provider": "awskms://alias/pulumi-platform-bootstrap-test?region=eu-central-1",
+      "oidc_arn": "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com",
+      "boundary_arns": [
+        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-backup-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test",
+        "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test"
+      ],
+      "role_boundaries": {
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:role/GitHubCiDrift-bootstrap-infrastructure-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:role/GitHubCiPreview-bootstrap-infrastructure-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:role/GitHubGovernanceApply-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceApply",
+        "arn:aws:iam::891377212104:role/GitHubGovernanceDrift-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift",
+        "arn:aws:iam::891377212104:role/GitHubGovernancePreview-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview",
+        "arn:aws:iam::891377212104:role/OperationsAlertTriage-bootstrap-infrastructure-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure"
+      }
+    },
+    "prod": {
+      "account_id": "933245420672",
+      "region": "eu-central-1",
+      "catalog_sha256": "53df5a070522a2932ec4a0004c42d256d27c64225c9ab2855b36c84cd6a507cd",
+      "bucket": "pulumi-bootstrap-infrastructure-prod-state",
+      "operator_key": ".pulumi/stacks/github-ci-bootstrap/prod.json",
+      "backend_key": "arn:aws:kms:eu-central-1:933245420672:key/fdba4c44-71b0-4979-b163-4705a91aa29b",
+      "secrets_provider": "awskms://alias/pulumi-platform-bootstrap-prod?region=eu-central-1",
+      "oidc_arn": "arn:aws:iam::933245420672:oidc-provider/token.actions.githubusercontent.com",
+      "boundary_arns": [
+        "arn:aws:iam::933245420672:policy/GovernanceBoundary-user-service-infrastructure-prod",
+        "arn:aws:iam::933245420672:policy/GovernanceReplicationBoundary-user-service-infrastructure-prod",
+        "arn:aws:iam::933245420672:policy/PlatformBoundary-backup-prod",
+        "arn:aws:iam::933245420672:policy/PlatformBoundary-control-prod",
+        "arn:aws:iam::933245420672:policy/PlatformBoundary-log-replication-prod",
+        "arn:aws:iam::933245420672:policy/PlatformBoundary-state-replication-prod"
+      ],
+      "role_boundaries": {
+        "arn:aws:iam::933245420672:role/GitHubCiConfigRead-bootstrap-infrastructure-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubCiConfigRead-bootstrap-infrastructure",
+        "arn:aws:iam::933245420672:role/GitHubCiConfigRead-bootstrap-infrastructure-prod-preview": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-prod-preview",
+        "arn:aws:iam::933245420672:role/GitHubCiDrift-bootstrap-infrastructure-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubCiDrift-bootstrap-infrastructure",
+        "arn:aws:iam::933245420672:role/GitHubCiPreview-bootstrap-infrastructure-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubCiPreview-bootstrap-infrastructure",
+        "arn:aws:iam::933245420672:role/GitHubGovernanceApply-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubGovernanceApply",
+        "arn:aws:iam::933245420672:role/GitHubGovernanceDrift-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubGovernanceDrift",
+        "arn:aws:iam::933245420672:role/GitHubGovernancePreview-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/GitHubGovernancePreview",
+        "arn:aws:iam::933245420672:role/OperationsAlertTriage-bootstrap-infrastructure-prod": "arn:aws:iam::933245420672:policy/issue215-seed/prod/ceiling/OperationsAlertTriage-bootstrap-infrastructure"
+      }
+    }
+  }
+}
