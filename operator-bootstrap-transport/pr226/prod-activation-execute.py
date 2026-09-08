@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute one reviewed TEST trust activation, then restore at proven terminal.
+"""Execute one reviewed PROD trust activation, then restore at proven terminal.
 PROPOSER ROOT SOURCE PACKETS NEW_RECEIPTS AWS --proposal PROPOSAL_DIRECTORY
 --change-set-arn EXACT_ARN --checkpoint-version VERSION --checkpoint-etag ETAG
 No retry of mutations. Unknown terminal state requires separate reconciliation;
@@ -15,7 +15,7 @@ import time
 import uuid
 from pathlib import Path
 
-PROPOSER_HASH = "f5020d483a002dd1afb06bf6861bd45df66ee16a8ab06bf7896e1e688bafb096"
+PROPOSER_HASH = "9ed4f221451037970a220da145020f77ae965e112016f25ca65a0d97f62381d9"
 TERMINAL = {"UPDATE_COMPLETE", "UPDATE_ROLLBACK_COMPLETE", "UPDATE_ROLLBACK_FAILED"}
 
 
@@ -145,7 +145,7 @@ def main():
     assert intent["change_set_name"] == intent["client_token"] == change.split("/")[1]
     assert (
         intent["object_key"]
-        == f"pr226/test/activation/{intent['change_set_name']}.json"
+        == f"pr226/prod/activation/{intent['change_set_name']}.json"
     )
     uploaded = json.loads((directory / "template-upload.json").read_bytes())
     version = uploaded["VersionId"]
@@ -228,7 +228,7 @@ def main():
             "permanent-policy-restored.json", {"verified": True, "policy": permanent}
         )
 
-    token = "pr226-" + "test-activation-execute-" + uuid.uuid4().hex
+    token = "pr226-" + "prod-activation-execute-" + uuid.uuid4().hex
     ctx.save(
         "execution-identity.json",
         {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TEST three-trust activation proposal only. No execution or policy changes.
+"""PROD three-trust activation proposal only. No execution or policy changes.
 ROOT SOURCE PACKETS NEW_RECEIPTS AWS --checkpoint-version VERSION --checkpoint-etag ETAG
 Requires coordinated protections, reconciled checkpoints and issuance holds.
 Never rerun after an uncertain upload/create; inspect the unique saved intent.
@@ -21,17 +21,17 @@ from urllib.parse import quote
 
 ROOT_HASH = "262ddcb3b76a82a0306c2df5735418f4b58cf5205292a8f8e614d0cbb8e8bb18"
 SOURCE_SHA = "88dfaf1f47e1afe55d282e7a2b2efa9afa2be78d"
-ACCOUNT = "891377212104"
+ACCOUNT = "933245420672"
 STACK = (
-    "arn:aws:cloudformation:eu-central-1:891377212104:stack/"
-    "issue215-operator-seed-test/21e44890-ab23-11f1-bc2a-027c8dcc491b"
+    "arn:aws:cloudformation:eu-central-1:933245420672:stack/"
+    "issue215-operator-seed-prod/2d3d1960-ab23-11f1-b7dc-02b3dc85e917"
 )
-BUCKET = "issue215-independent-seed-891377212104-test"
+BUCKET = "issue215-independent-seed-933245420672-prod"
 SEED_KEY = (
-    "arn:aws:kms:eu-central-1:891377212104:key/64db70a2-7c25-420f-85b6-eeae0618897d"
+    "arn:aws:kms:eu-central-1:933245420672:key/2d42d715-1452-4766-8cfa-020b53288443"
 )
-STATE_BUCKET = "pulumi-bootstrap-infrastructure-test-state"
-STATE_KEY = ".pulumi/stacks/github-ci-bootstrap/test.json"
+STATE_BUCKET = "pulumi-bootstrap-infrastructure-prod-state"
+STATE_KEY = ".pulumi/stacks/github-ci-bootstrap/prod.json"
 
 
 def arguments(parser):
@@ -183,7 +183,7 @@ def context(args, writes):
         **json.loads((packets / "seed-key-binding.json").read_bytes())
     )
     assert key.arn == SEED_KEY
-    packet = installation.build_installation("test", account_id=ACCOUNT, seed_key=key)
+    packet = installation.build_installation("prod", account_id=ACCOUNT, seed_key=key)
     activation = installation.build_activation(packet)
     installation.validate_activation(activation)
     before, after = (
@@ -229,7 +229,7 @@ def context(args, writes):
             SimpleNamespace(
                 source=args.source,
                 aws_executable=args.aws,
-                environment="test",
+                environment="prod",
                 seed_key_arn=SEED_KEY,
                 mode=mode,
                 output_directory=None,
@@ -255,10 +255,10 @@ def context(args, writes):
             ],
         }
         held = [
-            "GitHubGovernanceApply-test",
-            "GitHubCiApply-bootstrap-infrastructure-test",
-            "GitHubCiApply-user-service-infrastructure-test",
-            "PulumiAutomation-bootstrap-infrastructure-test",
+            "GitHubGovernanceApply-prod",
+            "GitHubCiApply-bootstrap-infrastructure-prod",
+            "GitHubCiApply-user-service-infrastructure-prod",
+            "PulumiAutomation-bootstrap-infrastructure-prod",
             "PulumiDeploy-bootstrap-infrastructure",
         ]
         for index, name in enumerate(held):
@@ -358,7 +358,7 @@ def context(args, writes):
 
 def change_pages(ctx, change, label):
     assert re.fullmatch(
-        r"arn:aws:cloudformation:eu-central-1:891377212104:changeSet/pr226-test-activation-[0-9a-f]{32}/[0-9a-f-]{36}",
+        r"arn:aws:cloudformation:eu-central-1:933245420672:changeSet/pr226-prod-activation-[0-9a-f]{32}/[0-9a-f-]{36}",
         change,
     )
     token, rows, seen, first = None, [], set(), None
@@ -422,8 +422,8 @@ def main():
         {("s3api", "put-object"), ("cloudformation", "create-change-set")},
     )
     ctx.preconditions("before", verify_enrollment=False)
-    token = "pr226-" + "test-activation-" + uuid.uuid4().hex
-    key = f"pr226/test/activation/{token}.json"
+    token = "pr226-" + "prod-activation-" + uuid.uuid4().hex
+    key = f"pr226/prod/activation/{token}.json"
     template = ctx.out / "activation-template.json"
     digest = hashlib.sha256(template.read_bytes()).hexdigest()
     ctx.save(
