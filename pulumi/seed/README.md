@@ -36,6 +36,22 @@ are hash-pinned in `policy_registry.py`; an inventory change requires a reviewed
 catalog and code update. Runtime callers cannot substitute a different account,
 resource list, guard set or policy document.
 
+## Operator secret metadata read amendment
+
+The `secret_resource_policy_read_amendment` adds only
+`secretsmanager:GetResourcePolicy` on the two exact existing CI secrets in each
+account. Pulumi AWS 7.23.0 reads the Secret resource policy after `DescribeSecret`.
+All three executor purposes receive the action in their identity and boundary;
+the closed-action guard permits it and the storage guard explicitly denies it
+outside those two secrets. Secret values, KMS permissions, resource-policy writes,
+trusts, attachments and policy ARNs remain unchanged.
+
+This changes twelve existing managed-policy documents per account. Independently
+review and install those exact policy-document updates, preserving active trusts
+and all resource identities, then verify the new complete registry hashes before
+ordinary execution. The three-role activation validator does not authorize policy
+updates. Updating source catalogs alone is not evidence of installed permissions.
+
 ## Pure API
 
 `build_registry(environment, account_id=..., seed_key=...)` returns immutable

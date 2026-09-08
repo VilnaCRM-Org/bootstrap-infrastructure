@@ -61,9 +61,60 @@ def build(environment="test", **kwargs):
     )
 
 
+def catalog_before_secret_policy_read(environment):
+    """Invert only the metadata action delta, preserving all prior policy fields."""
+    catalog = registry.load_catalog(environment)
+    amendment = catalog["provenance"].pop("secret_resource_policy_read_amendment")
+    action = amendment["action"]
+    changed = []
+    for arn, policy in catalog["policies"].items():
+        if "GitHubOperator" not in arn or not (
+            policy["kind"] in {"executor_boundary", "executor_identity"}
+            or arn.endswith(("-closed-actions", "-storage"))
+        ):
+            continue
+        statements = [
+            copy.deepcopy(catalog["statements"][k]) for k in policy["statement_ids"]
+        ]
+        edits = 0
+        for statement in statements:
+            selector = "NotAction" if "NotAction" in statement else "Action"
+            if action in statement[selector]:
+                statement[selector].remove(action)
+                edits += 1
+        assert edits == 1
+        changed.append(arn)
+        policy["statement_ids"] = [registry.document_hash(s) for s in statements]
+        catalog["statements"].update(
+            zip(policy["statement_ids"], statements, strict=True)
+        )
+        policy["template_sha256"] = registry.document_hash(
+            {"Version": "2012-10-17", "Statement": statements}
+        )
+    assert len(changed) == 12
+    used = {s for p in catalog["policies"].values() for s in p["statement_ids"]}
+    catalog["statements"] = {
+        k: v for k, v in catalog["statements"].items() if k in used
+    }
+    assert registry.document_hash(catalog) == amendment["baseline_catalog_sha256"]
+    return catalog
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_metadata_read_amendment_preserves_complete_previous_catalog(environment):
+    expected = {
+        "test": "a976261fcfa55a69740d0c66ca558ef95a9803165cd061f5f403385f13323dfe",
+        "prod": "7b706c646fddbb8e001c6b040be58f3797d67bd3a04e967b20d52d398832483d",
+    }
+    assert (
+        registry.document_hash(catalog_before_secret_policy_read(environment))
+        == expected[environment]
+    )
+
+
 def catalog_before_policy_names(environment):
     """Invert only the recorded ARN rename and recompute content-addressed rows."""
-    catalog = registry.load_catalog(environment)
+    catalog = catalog_before_secret_policy_read(environment)
     amendment = catalog["provenance"].pop("policy_name_correction")
     catalog = _rename_arns(
         catalog, {new: old for old, new in amendment["renamed_arns"].items()}
@@ -90,7 +141,7 @@ def catalog_before_policy_names(environment):
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
 def test_policy_name_correction_preserves_the_complete_prior_contract(environment):
-    catalog = registry.load_catalog(environment)
+    catalog = catalog_before_secret_policy_read(environment)
     baseline = catalog_before_policy_names(environment)
     expected_hash = {
         "test": "db3f5841c58d293b79ff5cf9913e29edf2a3f0f3c48a8ce094cd861d4ad8bc7a",
@@ -286,6 +337,67 @@ def matches_action(statement, action):
     patterns = [values] if isinstance(values, str) else values
     matched = any(fnmatchcase(action.lower(), pattern.lower()) for pattern in patterns)
     return not matched if "NotAction" in statement else matched
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("purpose", ["Preview", "Apply", "Drift"])
+def test_secret_policy_metadata_read_has_exact_allow_and_session_guard(
+    environment, purpose
+):
+    expected = build(environment)
+    policies = {p.arn: json.loads(p.document_json) for p in expected.policies}
+    executor = next(
+        p
+        for p in expected.principals
+        if p.arn.endswith(f"/GitHubOperator{purpose}-{environment}")
+    )
+    identity = next(arn for arn in executor.attachment_arns if "/identity/" in arn)
+    action = "secretsmanager:GetResourcePolicy"
+    secrets = registry.load_catalog(environment)["operator_bindings"]["secrets"]
+    grants = []
+    for arn in (executor.boundary_arn, identity):
+        matches = [s for s in policies[arn]["Statement"] if matches_action(s, action)]
+        assert len(matches) == 1
+        assert matches[0]["Effect"] == "Allow"
+        assert matches[0]["Resource"] == secrets
+        assert set(matches[0]) == {"Effect", "Action", "Resource"}
+        grants.extend(matches)
+    # The explicit storage deny closes direct resource/session grants outside
+    # the two exact secrets, even after the closed-action deny permits this API.
+    blockers = [
+        s
+        for arn in executor.guard_arns
+        for s in policies[arn]["Statement"]
+        if matches_action(s, action)
+    ]
+    assert len(blockers) == 1
+    assert blockers[0]["Effect"] == "Deny"
+    assert blockers[0]["NotResource"] == secrets
+    assert set(blockers[0]) == {"Effect", "Action", "NotResource"}
+    foreign = [
+        secrets[0] + "-other",
+        secrets[0].replace(expected.account_id, "123456789012"),
+        secrets[0].replace("eu-central-1", "eu-west-1"),
+    ]
+    for resource in secrets:
+        assert all(any(fnmatchcase(resource, p) for p in s["Resource"]) for s in grants)
+        assert any(fnmatchcase(resource, p) for p in blockers[0]["NotResource"])
+    for resource in foreign:
+        assert not any(fnmatchcase(resource, p) for s in grants for p in s["Resource"])
+        assert not any(fnmatchcase(resource, p) for p in blockers[0]["NotResource"])
+    closed = policies[
+        next(a for a in executor.guard_arns if a.endswith("-closed-actions"))
+    ]["Statement"][0]
+    for write_action in (
+        "secretsmanager:PutResourcePolicy",
+        "secretsmanager:DeleteResourcePolicy",
+    ):
+        assert matches_action(closed, write_action)
+        assert not any(
+            matches_action(s, write_action)
+            for arn in (executor.boundary_arn, identity)
+            for s in policies[arn]["Statement"]
+        )
 
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
