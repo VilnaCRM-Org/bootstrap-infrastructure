@@ -16,8 +16,8 @@ from typing import Any, Mapping
 from .operator_trust import operator_trust_policy
 
 CATALOG_HASHES = {
-    "test": "db3f5841c58d293b79ff5cf9913e29edf2a3f0f3c48a8ce094cd861d4ad8bc7a",
-    "prod": "6fb81aeeb1e114e435ea8b83e0b43be882c11849369093568464ce7bb959bc85",
+    "test": "a976261fcfa55a69740d0c66ca558ef95a9803165cd061f5f403385f13323dfe",
+    "prod": "7b706c646fddbb8e001c6b040be58f3797d67bd3a04e967b20d52d398832483d",
 }
 ACCOUNTS = {"test": "891377212104", "prod": "933245420672"}
 REGION = "eu-central-1"
@@ -330,9 +330,22 @@ def _validate_policy_inventory(policies: tuple) -> None:
         )
 
 
+def _validate_policy_names(policies: tuple) -> None:
+    names = [policy.arn.rsplit("/", 1)[-1] for policy in policies]
+    _require(
+        all(re.fullmatch(r"[A-Za-z0-9_+=,.@-]{1,128}", name) for name in names),
+        "Invalid managed policy name",
+    )
+    _require(
+        len({name.casefold() for name in names}) == len(names),
+        "Managed policy names must be unique across paths and case",
+    )
+
+
 def _validate_closure(policies: tuple, principals: tuple) -> None:
     policy_map = {p.arn: p for p in policies}
     _require(len(policy_map) == len(policies) == 55, "Expected 55 seed policies")
+    _validate_policy_names(policies)
     _require(
         len({p.arn for p in principals}) == len(principals) == 24,
         "Expected 24 principals",

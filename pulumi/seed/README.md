@@ -4,10 +4,12 @@ This package renders and verifies the closed IAM enrollment input for the TEST
 and PROD accounts. It performs no AWS calls or Pulumi resource registration.
 There is deliberately no `Pulumi.yaml`, deployment CLI, or `__main__.py`:
 ordinary PR workers receive no administrative mutation path from this package.
-The current deployment selector rejects these seed paths. Keep that failure
-explicit: a guard-registry change requires independent enrollment and actual
-hash verification before the routine graph can claim all changes were applied.
-Do not classify seed changes as an ordinary operator apply.
+The deployment selector requires operator, governance and platform validation
+for seed runtime changes; only this exact README is documentation-only.
+Selection does not authorize seed mutation: a guard-registry change still
+requires independent enrollment and actual hash verification before the routine
+graph can claim all changes were applied. Routine operator apply cannot perform
+that enrollment.
 
 Each public metadata catalog represents 24 principals and 55 managed policies:
 
@@ -43,6 +45,22 @@ hashes every rendered document, and enforces the 6,144-character policy limit an
 ten-attachment limit. The full registry's largest policy is 6,102 characters in
 TEST and 6,038 in PROD. Existing bootstrap apply uses ten attachments; new
 operator preview/drift use five and apply uses seven.
+
+Managed-policy basenames are unique across the entire account, regardless of
+IAM path or letter case. The registry rejects duplicate basenames and invalid
+names before rendering an installation. Independently compare the proposed
+names with the complete live account policy inventory before creation; registry
+validation alone cannot discover unrelated policies in AWS.
+
+The `policy_name_correction` provenance entry records eleven exact ARN renames
+per account, using short `G-`, `I-` or `C-` prefixes on the missing guard,
+identity or ceiling policy. It preserves the other 38 proposed policy identities
+and all six imported boundaries. Reversing the mapping reproduces the complete
+previous catalog hash, including its policy documents and principal bindings.
+Retained resources from a failed enrollment must be inventoried and reconciled
+before retrying. A corrected template does not automatically adopt them, and
+changing a policy name is a replacement. Never delete an existing policy merely
+to clear a name collision; installation and recovery remain independently owned.
 
 Supply `SeedKeyBinding` from independently collected `kms:DescribeKey`
 `KeyMetadata` fields: `Arn`, `KeyId`, `AWSAccountId`, `KeyManager`, `KeyState`, and

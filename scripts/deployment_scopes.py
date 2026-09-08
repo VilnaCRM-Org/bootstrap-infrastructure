@@ -115,6 +115,7 @@ PROJECT_READMES = frozenset(
         "pulumi/README.md",
         "pulumi/governance/README.md",
         "pulumi/github-ci-bootstrap/README.md",
+        "pulumi/seed/README.md",
         "policy/README.md",
     }
 )
@@ -222,7 +223,9 @@ def _central_impact(path: str) -> PathImpact | None:
     ):
         if path.startswith(prefix):
             return PathImpact(path, (stack,), reason="Project runtime/configuration")
-    if path.startswith("pulumi/infra/") or path == "pulumi/requirements.txt":
+    if path.startswith(("pulumi/infra/", "pulumi/seed/")) or path == (
+        "pulumi/requirements.txt"
+    ):
         return PathImpact(
             path, STACK_ORDER, reason="Conservative shared runtime impact"
         )
