@@ -137,21 +137,27 @@ def validate_observation(observed, config, raw):
         "ContentLength",
         "ServerSideEncryption",
         "SSEKMSKeyId",
+        "BucketKeyEnabled",
     )
     require(
         all(observed["after"].get(k) == head.get(k) for k in fields),
         "current-pointer-changed",
     )
     require(
-        observed["get"]["VersionId"] == head["VersionId"]
-        and observed["get"]["ETag"] == head["ETag"]
+        all(observed["get"].get(k) == head.get(k) for k in fields)
         and head["ContentLength"] == len(raw)
         and observed["sha256"] == digest(raw),
         "download-mismatch",
     )
     require(
-        head["ServerSideEncryption"] == "aws:kms"
-        and head["SSEKMSKeyId"] == config["backend_key"],
+        (
+            head.get("ServerSideEncryption") == "AES256"
+            and head.get("SSEKMSKeyId") is None
+        )
+        or (
+            head.get("ServerSideEncryption") == "aws:kms"
+            and head.get("SSEKMSKeyId") == config["backend_key"]
+        ),
         "backend-encryption-mismatch",
     )
 
