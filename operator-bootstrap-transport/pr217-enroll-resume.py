@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Reviewed CloudShell-only proposal: one template upload and one CFN change set.
+"""Resume only the recorded PROD enrollment upload; never upload again.
 
-No execution, IAM changes, stack-policy updates or mutation retries. Run only
-after six imports, native IN_SYNC drift and permanent deny-update guard.
-Usage: python3 -I pr217-enroll-proposal.py ENV HELPER SOURCE PACKETS RECEIPTS AWS
-RECEIPTS must be a new private directory. Never rerun to recover an uncertain
-write; inspect its recorded object key/change-set name and actual AWS state.
+Usage: python3 -I pr217-enroll-resume.py prod HELPER SOURCE PACKETS RECEIPTS AWS
+RECEIPTS is the existing failed attempt directory with only its intent/upload
+receipts. Parent confirmed the prior attempt failed before CFN proposal creation.
+Native reads recheck all prerequisites and exact uploaded VersionId/bytes; one
+CFN proposal creation is permitted, with no retries and no execution.
 """
 
 import hashlib
@@ -16,13 +16,13 @@ from pathlib import Path
 import sys
 import time
 from urllib.parse import quote
-import uuid
 
 
 def main():
     environment, helper_path, source, packets, receipts, executable = sys.argv[1:]
     accounts = {"test": "891377212104", "prod": "933245420672"}
     stacks = {"test": "21e44890-ab23-11f1-bc2a-027c8dcc491b", "prod": "2d3d1960-ab23-11f1-b7dc-02b3dc85e917"}
+    assert environment == "prod"
     account = accounts[environment]
     assert Path(executable).is_absolute() and Path(executable).resolve().name == "aws"
     assert hashlib.sha256(Path(helper_path).read_bytes()).hexdigest() == "764e6a919ec48a62417948a93c2716610ab2ede96df260cf3f9ca1d634756723"
@@ -34,7 +34,8 @@ def main():
     helper.root_caller(transport, executable, account)
     directory, receipt = Path(packets).resolve(strict=True), Path(receipts).resolve()
     os.umask(0o077)
-    receipt.mkdir(mode=0o700)
+    assert receipt.is_dir()
+    assert {x.name for x in receipt.iterdir()} == {"proposal-intent.json", "template-upload.json"}
     key = registry.SeedKeyBinding(**json.loads((directory / "seed-key-binding.json").read_text()))
     observed = helper.ambient_read(transport, executable, "kms", "describe_key", {"KeyId": key.arn})["KeyMetadata"]
     assert key == registry.SeedKeyBinding(*(observed[k] for k in ("Arn", "KeyId", "AWSAccountId", "KeyManager", "KeyState", "KeyUsage")))
@@ -44,8 +45,15 @@ def main():
     assert (directory / "stack-policy.json").read_text() == packet.stack_policy
     stack = f"arn:aws:cloudformation:eu-central-1:{account}:stack/issue215-operator-seed-{environment}/{stacks[environment]}"
     bucket = f"issue215-independent-seed-{account}-{environment}"
-    token = "pr217-enroll-" + uuid.uuid4().hex
-    object_key = f"pr217/{environment}/{token}.json"
+    intent = json.loads((receipt / "proposal-intent.json").read_text())
+    uploaded = json.loads((receipt / "template-upload.json").read_text())
+    token = "pr217-enroll-3632aa81b7d144438e8e9dd368377c3d"
+    object_key = "pr217/prod/pr217-enroll-3632aa81b7d144438e8e9dd368377c3d.json"
+    template_hash = "973d10beab21ff48a0440d4bfe39c8e6b0e6f43f235577cc514c3e324b01f88b"
+    assert intent == {"stack_id": stack, "bucket": bucket, "object_key": object_key, "change_set_name": token,
+                      "template_sha256": template_hash, "execution_authorized": False}
+    assert hashlib.sha256(template.read_bytes()).hexdigest() == template_hash
+    assert uploaded["VersionId"] == "G49zkd7mAIEIo.kO9dhgxWz8BYHYyriR"
 
     def save(name, value):
         with (receipt / name).open("x") as stream:
@@ -63,11 +71,6 @@ def main():
     assert state[0]["DriftInformation"]["StackDriftStatus"] == "IN_SYNC" and not state[0].get("RoleARN")
     policy = call("cloudformation", "get-stack-policy", "--stack-name", stack)
     assert json.loads(policy["StackPolicyBody"]) == json.loads(packet.stack_policy)
-    save("proposal-intent.json", {"stack_id": stack, "bucket": bucket, "object_key": object_key, "change_set_name": token,
-                                 "template_sha256": hashlib.sha256(template.read_bytes()).hexdigest(), "execution_authorized": False})
-    uploaded = call("s3api", "put-object", "--bucket", bucket, "--expected-bucket-owner", account, "--key", object_key,
-                    "--body", str(template), "--server-side-encryption", "AES256", "--if-none-match", "*")
-    save("template-upload.json", uploaded)
     version = uploaded["VersionId"]
     assert isinstance(version, str) and version and version != "null"
     downloaded = receipt / "enrollment-template-readback.json"
@@ -77,6 +80,9 @@ def main():
     assert metadata["VersionId"] == version and metadata["ServerSideEncryption"] == "AES256"
     assert downloaded.read_bytes() == template.read_bytes()
     url = f"https://{bucket}.s3.eu-central-1.amazonaws.com/{object_key}?versionId={quote(version, safe='')}"
+    existing = call("cloudformation", "list-change-sets", "--stack-name", stack)
+    assert not existing.get("NextToken")
+    assert all(x["ChangeSetName"] != token for x in existing["Summaries"])
     created = call("cloudformation", "create-change-set", "--stack-name", stack, "--change-set-name", token,
                    "--change-set-type", "UPDATE", "--template-url", url, "--capabilities", "CAPABILITY_NAMED_IAM", "--client-token", token)
     save("change-set-created.json", created)
@@ -106,5 +112,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        print("Enrollment proposal incomplete; inspect private receipts and actual AWS state before any retry. No execution was attempted.", file=sys.stderr)
+        print("Enrollment resume incomplete; inspect private receipts and actual AWS state. Do not rerun. No upload or execution was attempted.", file=sys.stderr)
         raise SystemExit(1) from None
