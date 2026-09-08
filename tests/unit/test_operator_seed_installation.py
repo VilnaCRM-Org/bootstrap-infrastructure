@@ -68,6 +68,16 @@ def test_exact_retained_graph_and_import_schema(environment):
     assert full["Metadata"]["ActivationAuthorized"] is False
     resources = full["Resources"]
     assert len(resources) == 58
+    policy_properties = [
+        r["Properties"]
+        for r in resources.values()
+        if r["Type"] == "AWS::IAM::ManagedPolicy"
+    ]
+    assert len({p["ManagedPolicyName"].casefold() for p in policy_properties}) == 55
+    assert {
+        f"arn:aws:iam::{expected.account_id}:policy{p['Path']}{p['ManagedPolicyName']}"
+        for p in policy_properties
+    } == {p.arn for p in expected.policies}
     assert len(imported["Resources"]) == 6
     assert all(resources[key] == value for key, value in imported["Resources"].items())
     for resource in resources.values():

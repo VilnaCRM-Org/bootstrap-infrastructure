@@ -36,6 +36,96 @@ def build(environment="test", **kwargs):
     )
 
 
+def catalog_before_policy_names(environment):
+    """Invert only the recorded ARN rename and recompute content-addressed rows."""
+    catalog = registry.load_catalog(environment)
+    amendment = catalog["provenance"].pop("policy_name_correction")
+    encoded = json.dumps(catalog)
+    for old, new in amendment["renamed_arns"].items():
+        encoded = encoded.replace(json.dumps(new), json.dumps(old))
+    catalog = json.loads(encoded)
+    ids = {
+        key: registry.document_hash(value)
+        for key, value in catalog["statements"].items()
+    }
+    catalog["statements"] = {
+        ids[key]: value for key, value in catalog["statements"].items()
+    }
+    for policy in catalog["policies"].values():
+        policy["statement_ids"] = [ids[key] for key in policy["statement_ids"]]
+        policy["template_sha256"] = registry.document_hash(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    catalog["statements"][key] for key in policy["statement_ids"]
+                ],
+            }
+        )
+    return catalog
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_policy_name_correction_preserves_the_complete_prior_contract(environment):
+    catalog = registry.load_catalog(environment)
+    baseline = catalog_before_policy_names(environment)
+    expected_hash = {
+        "test": "db3f5841c58d293b79ff5cf9913e29edf2a3f0f3c48a8ce094cd861d4ad8bc7a",
+        "prod": "6fb81aeeb1e114e435ea8b83e0b43be882c11849369093568464ce7bb959bc85",
+    }[environment]
+    amendment = catalog["provenance"]["policy_name_correction"]
+    assert registry.document_hash(baseline) == expected_hash
+    assert amendment["baseline_catalog_sha256"] == expected_hash
+    renames = amendment["renamed_arns"]
+    assert len(renames) == 11
+    assert len(set(baseline["policies"]) & set(catalog["policies"])) == 44
+    assert catalog["statements"] == baseline["statements"]
+    for arn, policy in baseline["policies"].items():
+        assert catalog["policies"][renames.get(arn, arn)] == policy
+        if policy["installed_arn"]:
+            assert arn not in renames
+            assert catalog["policies"][arn] == policy
+            assert all(
+                catalog["statements"][s] == baseline["statements"][s]
+                for s in policy["statement_ids"]
+            )
+    assert catalog["principals"] == json.loads(
+        _rename_json(json.dumps(baseline["principals"]), renames)
+    )
+    names = [arn.rsplit("/", 1)[-1].casefold() for arn in catalog["policies"]]
+    assert len(set(names)) == len(names) == 55
+
+
+def _rename_json(encoded, renames):
+    for old, new in renames.items():
+        encoded = encoded.replace(json.dumps(old), json.dumps(new))
+    return encoded
+
+
+@pytest.mark.parametrize("case_variant", [False, True])
+def test_policy_names_cannot_repeat_under_another_path(case_variant):
+    expected = build()
+    policies = list(expected.policies)
+    name = policies[0].arn.rsplit("/", 1)[-1]
+    if case_variant:
+        name = name.swapcase()
+    policies[1] = replace(
+        policies[1], arn=f"arn:aws:iam::{expected.account_id}:policy/another/{name}"
+    )
+    with pytest.raises(registry.RegistryError, match="unique across paths and case"):
+        registry._validate_closure(tuple(policies), expected.principals)
+
+
+@pytest.mark.parametrize("name", ["", "x" * 129, "invalid name", "invalid!name", "é"])
+def test_policy_name_constraints_are_checked_before_rendering(name):
+    expected = build()
+    policies = list(expected.policies)
+    policies[0] = replace(
+        policies[0], arn=f"arn:aws:iam::{expected.account_id}:policy/{name}"
+    )
+    with pytest.raises(registry.RegistryError, match="Invalid managed policy name"):
+        registry._validate_closure(tuple(policies), expected.principals)
+
+
 def observation_for(expected):
     """Model a complete initial metadata observation with disabled executor trust."""
     policies = tuple(
@@ -178,7 +268,7 @@ def test_policy_gate_permission_respects_executor_purpose(environment, purpose):
 @pytest.mark.parametrize("environment", ["test", "prod"])
 def test_catalog_amendment_is_exactly_policy_gate_permission(environment):
     """Removing the documented delta reproduces the entire prior pinned catalog."""
-    catalog = registry.load_catalog(environment)
+    catalog = catalog_before_policy_names(environment)
     action = "access-analyzer:ValidatePolicy"
     changed = []
     for arn, policy in catalog["policies"].items():

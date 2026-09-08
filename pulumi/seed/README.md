@@ -44,6 +44,22 @@ ten-attachment limit. The full registry's largest policy is 6,102 characters in
 TEST and 6,038 in PROD. Existing bootstrap apply uses ten attachments; new
 operator preview/drift use five and apply uses seven.
 
+Managed-policy basenames are unique across the entire account, regardless of
+IAM path or letter case. The registry rejects duplicate basenames and invalid
+names before rendering an installation. Independently compare the proposed
+names with the complete live account policy inventory before creation; registry
+validation alone cannot discover unrelated policies in AWS.
+
+The `policy_name_correction` provenance entry records eleven exact ARN renames
+per account, using short `G-`, `I-` or `C-` prefixes on the missing guard,
+identity or ceiling policy. It preserves the other 38 proposed policy identities
+and all six imported boundaries. Reversing the mapping reproduces the complete
+previous catalog hash, including its policy documents and principal bindings.
+Retained resources from a failed enrollment must be inventoried and reconciled
+before retrying. A corrected template does not automatically adopt them, and
+changing a policy name is a replacement. Never delete an existing policy merely
+to clear a name collision; installation and recovery remain independently owned.
+
 Supply `SeedKeyBinding` from independently collected `kms:DescribeKey`
 `KeyMetadata` fields: `Arn`, `KeyId`, `AWSAccountId`, `KeyManager`, `KeyState`, and
 `KeyUsage`. Missing input, aliases, placeholder IDs, wrong account/region, a

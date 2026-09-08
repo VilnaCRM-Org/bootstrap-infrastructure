@@ -15,28 +15,28 @@
       "arn:aws:iam::891377212104:policy/PlatformBoundary-control-test",
       "arn:aws:iam::891377212104:policy/PlatformBoundary-log-replication-test",
       "arn:aws:iam::891377212104:policy/PlatformBoundary-state-replication-test",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiConfigRead-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiPreview-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceApply",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernanceDrift",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernancePreview",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorApply-test",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorDrift-test",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorPreview-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorDrift-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorPreview-test",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-user-service-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure-test-pr",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiDrift-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-user-service-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-user-service-infrastructure",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubGovernanceApply",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceDrift",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernancePreview",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-attachments",
@@ -53,7 +53,7 @@
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-crypto",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-iam-read",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-storage",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-OperationsAlertTriage-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiAutomation-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiDeploy-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-bootstrap-infrastructure",
@@ -61,7 +61,7 @@
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/aws-config-recorder-role",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/central-logging-replication-role-705bb42",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/s3-backup-role-ac43c65",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorApply-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/I-GitHubOperatorApply-test",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorDrift-test",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorPreview-test"
     ],
@@ -111,28 +111,28 @@
       "arn:aws:iam::891377212104:policy/github-automation-iam-policy",
       "arn:aws:iam::891377212104:policy/github-automation-operations-policy",
       "arn:aws:iam::891377212104:policy/github-automation-security-policy",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiConfigRead-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiPreview-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceApply",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernanceDrift",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernancePreview",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorApply-test",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorDrift-test",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorPreview-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorDrift-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorPreview-test",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-user-service-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure-test-pr",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiDrift-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-user-service-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-user-service-infrastructure",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubGovernanceApply",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceDrift",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernancePreview",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-attachments",
@@ -149,7 +149,7 @@
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-crypto",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-iam-read",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-storage",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-OperationsAlertTriage-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiAutomation-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiDeploy-bootstrap-infrastructure",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiStateRepl-bootstrap-infrastructure",
@@ -157,7 +157,7 @@
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/aws-config-recorder-role",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/central-logging-replication-role-705bb42",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/s3-backup-role-ac43c65",
-      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorApply-test",
+      "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/I-GitHubOperatorApply-test",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorDrift-test",
       "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorPreview-test",
       "arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup",
@@ -391,7 +391,7 @@
       ],
       "template_sha256": "1c5e44c6345a851a86d0fbab01c7a354a9c2f4211734c839f8be464f7a90471b"
     },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure": {
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiConfigRead-bootstrap-infrastructure": {
       "installed_arn": false,
       "kind": "purpose_capability_boundary",
       "ownership": "new_seed_owned",
@@ -400,16 +400,7 @@
       ],
       "template_sha256": "f387c1a09fb07b0e15c2f6c86b34cfb1f674e5f5e80a5a59e0bce7da9ae1eb23"
     },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr": {
-      "installed_arn": false,
-      "kind": "purpose_capability_boundary",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "ce6809e66974deedaa2c4b22606481d9f8b893dbc13d5681e0362d2c52619f8f"
-      ],
-      "template_sha256": "c1343e1086bc85b3e9846179245ab1dda8dad1b564b51de1d594f0c546cca431"
-    },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure": {
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiPreview-bootstrap-infrastructure": {
       "installed_arn": false,
       "kind": "purpose_capability_boundary",
       "ownership": "new_seed_owned",
@@ -421,7 +412,92 @@
       ],
       "template_sha256": "f6d23a0c33254b67fc380a1f084a3f096c3a5168fcc2f3f9d459d6cf4df60e83"
     },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure": {
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernanceDrift": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "6b2d4e238e1ef4f762db301c07c26c5af58f44bbda7e934e9e67247e4883493f",
+        "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17",
+        "69f23143750aff551ef80632f283250e324a87c7e44e14cd14419b07a55fa224",
+        "d419212929bd6b38e732ed5843a6ced5557af7de60b4b36fb1886611149dcef8",
+        "c388dae0b90358d20602d537cd9b8100c7a9c62b84726197f2cd1994f30cf2f5",
+        "47eaa1262eda09394a732e260aa5fdf4abf72693431085fe6f4096205ddcee60",
+        "94a9f77e7cb16ae2b00f16f2eb57343638dfefb05d97be123d2c3d6aa49cb1a9",
+        "0d44e2be89373db8443b37a751527f1d68e951d28f56d6c258d0cced849241f6",
+        "011f168588a825ccb472baeab390c6d18583ac4d62b9ef6cdb8ceb0ea2733d50",
+        "0c5dd53a3d795b3005fe827be63a3e52438c6c95c6e342a4fcd916007454f541",
+        "2be63eb279fb8482c3d6bbdd2544e86b1ca04508fb8ae0643dfc93e6ca6978a2",
+        "08b78f220f822c5ebeacd572bd38d4e2c8eaeebcfd4c0a32444aa30b05399454"
+      ],
+      "template_sha256": "fef4d440e7363d45e3717af3f3c06f990e14af35d8335031cd4ad6fdd147c94a"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernancePreview": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "6b2d4e238e1ef4f762db301c07c26c5af58f44bbda7e934e9e67247e4883493f",
+        "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17",
+        "2be63eb279fb8482c3d6bbdd2544e86b1ca04508fb8ae0643dfc93e6ca6978a2",
+        "08b78f220f822c5ebeacd572bd38d4e2c8eaeebcfd4c0a32444aa30b05399454",
+        "0d44e2be89373db8443b37a751527f1d68e951d28f56d6c258d0cced849241f6",
+        "011f168588a825ccb472baeab390c6d18583ac4d62b9ef6cdb8ceb0ea2733d50",
+        "0c5dd53a3d795b3005fe827be63a3e52438c6c95c6e342a4fcd916007454f541",
+        "69f23143750aff551ef80632f283250e324a87c7e44e14cd14419b07a55fa224",
+        "d419212929bd6b38e732ed5843a6ced5557af7de60b4b36fb1886611149dcef8",
+        "c388dae0b90358d20602d537cd9b8100c7a9c62b84726197f2cd1994f30cf2f5",
+        "47eaa1262eda09394a732e260aa5fdf4abf72693431085fe6f4096205ddcee60",
+        "94a9f77e7cb16ae2b00f16f2eb57343638dfefb05d97be123d2c3d6aa49cb1a9"
+      ],
+      "template_sha256": "ebf09dc35113bf01aacc94677f45b465ef22f58e2d0842e655838ae6c7041a4f"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorDrift-test": {
+      "installed_arn": false,
+      "kind": "executor_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
+        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
+        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
+        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
+        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
+        "e9820ff0bb10f30f4be0f312ab4de508564d4c3a59edad1f0447f57c90e21c7c",
+        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
+        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
+        "aa379a9e5261855f5708e888b1f3598a7b3188ef43c7a3d11b0b0ef53ed55f9d",
+        "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1"
+      ],
+      "template_sha256": "82d6f404f3441ae8e92e531f153d65a743d9924978f9e1109797d48874894da4"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorPreview-test": {
+      "installed_arn": false,
+      "kind": "executor_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
+        "11c190b3c2968892e4690ccd4ef7ae033e332e182d23363b94647ed76cec377b",
+        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
+        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
+        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
+        "e9820ff0bb10f30f4be0f312ab4de508564d4c3a59edad1f0447f57c90e21c7c",
+        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
+        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
+        "aa379a9e5261855f5708e888b1f3598a7b3188ef43c7a3d11b0b0ef53ed55f9d",
+        "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1"
+      ],
+      "template_sha256": "d4d5971fe361c121740026533af05a64530b510599757cf158fd3053b5b50b9c"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr": {
+      "installed_arn": false,
+      "kind": "purpose_capability_boundary",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "ce6809e66974deedaa2c4b22606481d9f8b893dbc13d5681e0362d2c52619f8f"
+      ],
+      "template_sha256": "c1343e1086bc85b3e9846179245ab1dda8dad1b564b51de1d594f0c546cca431"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure": {
       "installed_arn": false,
       "kind": "purpose_capability_boundary",
       "ownership": "new_seed_owned",
@@ -455,46 +531,6 @@
       ],
       "template_sha256": "b8f47d84858a9572970f062d492bb17eb01dd2ba9c8301b39d8bc4069fb8aaeb"
     },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift": {
-      "installed_arn": false,
-      "kind": "purpose_capability_boundary",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "6b2d4e238e1ef4f762db301c07c26c5af58f44bbda7e934e9e67247e4883493f",
-        "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17",
-        "69f23143750aff551ef80632f283250e324a87c7e44e14cd14419b07a55fa224",
-        "d419212929bd6b38e732ed5843a6ced5557af7de60b4b36fb1886611149dcef8",
-        "c388dae0b90358d20602d537cd9b8100c7a9c62b84726197f2cd1994f30cf2f5",
-        "47eaa1262eda09394a732e260aa5fdf4abf72693431085fe6f4096205ddcee60",
-        "94a9f77e7cb16ae2b00f16f2eb57343638dfefb05d97be123d2c3d6aa49cb1a9",
-        "0d44e2be89373db8443b37a751527f1d68e951d28f56d6c258d0cced849241f6",
-        "011f168588a825ccb472baeab390c6d18583ac4d62b9ef6cdb8ceb0ea2733d50",
-        "0c5dd53a3d795b3005fe827be63a3e52438c6c95c6e342a4fcd916007454f541",
-        "2be63eb279fb8482c3d6bbdd2544e86b1ca04508fb8ae0643dfc93e6ca6978a2",
-        "08b78f220f822c5ebeacd572bd38d4e2c8eaeebcfd4c0a32444aa30b05399454"
-      ],
-      "template_sha256": "fef4d440e7363d45e3717af3f3c06f990e14af35d8335031cd4ad6fdd147c94a"
-    },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview": {
-      "installed_arn": false,
-      "kind": "purpose_capability_boundary",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "6b2d4e238e1ef4f762db301c07c26c5af58f44bbda7e934e9e67247e4883493f",
-        "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17",
-        "2be63eb279fb8482c3d6bbdd2544e86b1ca04508fb8ae0643dfc93e6ca6978a2",
-        "08b78f220f822c5ebeacd572bd38d4e2c8eaeebcfd4c0a32444aa30b05399454",
-        "0d44e2be89373db8443b37a751527f1d68e951d28f56d6c258d0cced849241f6",
-        "011f168588a825ccb472baeab390c6d18583ac4d62b9ef6cdb8ceb0ea2733d50",
-        "0c5dd53a3d795b3005fe827be63a3e52438c6c95c6e342a4fcd916007454f541",
-        "69f23143750aff551ef80632f283250e324a87c7e44e14cd14419b07a55fa224",
-        "d419212929bd6b38e732ed5843a6ced5557af7de60b4b36fb1886611149dcef8",
-        "c388dae0b90358d20602d537cd9b8100c7a9c62b84726197f2cd1994f30cf2f5",
-        "47eaa1262eda09394a732e260aa5fdf4abf72693431085fe6f4096205ddcee60",
-        "94a9f77e7cb16ae2b00f16f2eb57343638dfefb05d97be123d2c3d6aa49cb1a9"
-      ],
-      "template_sha256": "ebf09dc35113bf01aacc94677f45b465ef22f58e2d0842e655838ae6c7041a4f"
-    },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorApply-test": {
       "installed_arn": false,
       "kind": "executor_boundary",
@@ -515,42 +551,6 @@
       ],
       "template_sha256": "b74bcbfb8ad1edba506bbadf8bd3f51f432dd23d1b377bb19f79ddacb45920db"
     },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorDrift-test": {
-      "installed_arn": false,
-      "kind": "executor_boundary",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
-        "79d7cce58d0418a6006138d38fbdf8afdabcb0ef34bf3c4e4e38ee4b475dbf3a",
-        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
-        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
-        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
-        "e9820ff0bb10f30f4be0f312ab4de508564d4c3a59edad1f0447f57c90e21c7c",
-        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
-        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
-        "aa379a9e5261855f5708e888b1f3598a7b3188ef43c7a3d11b0b0ef53ed55f9d",
-        "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1"
-      ],
-      "template_sha256": "82d6f404f3441ae8e92e531f153d65a743d9924978f9e1109797d48874894da4"
-    },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorPreview-test": {
-      "installed_arn": false,
-      "kind": "executor_boundary",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
-        "11c190b3c2968892e4690ccd4ef7ae033e332e182d23363b94647ed76cec377b",
-        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
-        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
-        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
-        "e9820ff0bb10f30f4be0f312ab4de508564d4c3a59edad1f0447f57c90e21c7c",
-        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
-        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
-        "aa379a9e5261855f5708e888b1f3598a7b3188ef43c7a3d11b0b0ef53ed55f9d",
-        "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1"
-      ],
-      "template_sha256": "d4d5971fe361c121740026533af05a64530b510599757cf158fd3053b5b50b9c"
-    },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure": {
       "installed_arn": false,
       "kind": "purpose_capability_boundary",
@@ -559,6 +559,72 @@
         "987dfc91d0761f32a2b48c2d4fa4754096b4bf87b2864b49dab55d8665d0607f"
       ],
       "template_sha256": "29bcd7141a5bce8ae558bd0eb6abd4c3aa8a146ea3083901ce1c7a2be199e0c8"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiConfigRead-bootstrap-infrastructure-test-pr": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "14388ad5b11b5ed98e2aa131373de47945ec9ec363f7152da6047a2c318a3426",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "d5006a1c4e7416b58052616a3135ef403508cc41285bc21d07015fbb60ca183e",
+        "baa6ab9baad6655674d6eb91d305dc52d4d6fab8be1281410ff5a24a75aedb91"
+      ],
+      "template_sha256": "5b84ca903a95675d87362854c179f0585b45bdcd986e811ddb5bf276e6e35673"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiDrift-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "14940c5ce54ebae45c24099a1ecaa53f93e24d04c1e2601497d28df6194237cb",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "61ef87c48e7b1e49323b58a1fd5fe20eb4d72490670dc0f862d6275538e350f9",
+        "1e80b2c54c6f68a342e9806675cb6c46cf1f3410306bfe55486ab401638ff324",
+        "26f0959f649ced8227e35fdad7dc39926169b08037b08f287c9f405b29d27d1b",
+        "0436edd8295fc7f28c78d3b14b0565a5fa26e115e013882418948f69689849f0",
+        "03293e1c9a0f787897a5cdc69ac00f3a011f9f7b078f7b788bcad613d906d6e7",
+        "4fae8daf596071a45b344ddc646e6a76438e96dc7b6ad17e3ec711e1b52bcffa"
+      ],
+      "template_sha256": "30952ca7a89fded8fde98bb724b1a9cbaa9f857d4e37a54bcadc902002600992"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubGovernanceApply": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
+        "8c068aaa3d0526af49b9d871d2f2de23b11aab92043cf7146b460c2912d9a8ea",
+        "5366ec1143481bd6aa005f3b85c4f1f58f3da13a537d6e077a05e894c3403def"
+      ],
+      "template_sha256": "1115f1219a9cee5b299fa17d1dafcfb23e197deecd15d0c0d04752a660f85024"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-OperationsAlertTriage-bootstrap-infrastructure": {
+      "installed_arn": false,
+      "kind": "immutable_managed_guard",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
+        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
+        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
+        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
+        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
+        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06"
+      ],
+      "template_sha256": "5411b3b604a49897defca4cb37b13eccb3dfa8e8c961e5f133bf516efa4b160d"
     },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiApply-bootstrap-infrastructure": {
       "installed_arn": false,
@@ -611,22 +677,6 @@
       ],
       "template_sha256": "ba45f26b7bfb083783b86b2e7e467976d00967591bc9ef147a342c0fceaace09"
     },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr": {
-      "installed_arn": false,
-      "kind": "immutable_managed_guard",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "14388ad5b11b5ed98e2aa131373de47945ec9ec363f7152da6047a2c318a3426",
-        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
-        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
-        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
-        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
-        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
-        "d5006a1c4e7416b58052616a3135ef403508cc41285bc21d07015fbb60ca183e",
-        "baa6ab9baad6655674d6eb91d305dc52d4d6fab8be1281410ff5a24a75aedb91"
-      ],
-      "template_sha256": "5b84ca903a95675d87362854c179f0585b45bdcd986e811ddb5bf276e6e35673"
-    },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-user-service-infrastructure": {
       "installed_arn": false,
       "kind": "immutable_managed_guard",
@@ -658,26 +708,6 @@
         "8cffb4257a67336d939bc412f6de8cc79b1242173893bc590086340afdd338f1"
       ],
       "template_sha256": "3f565c7fa0a79d0aa6bdea596a40cddcec8cce9e691921b7776960104023aeb6"
-    },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure": {
-      "installed_arn": false,
-      "kind": "immutable_managed_guard",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "14940c5ce54ebae45c24099a1ecaa53f93e24d04c1e2601497d28df6194237cb",
-        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
-        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
-        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
-        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
-        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
-        "61ef87c48e7b1e49323b58a1fd5fe20eb4d72490670dc0f862d6275538e350f9",
-        "1e80b2c54c6f68a342e9806675cb6c46cf1f3410306bfe55486ab401638ff324",
-        "26f0959f649ced8227e35fdad7dc39926169b08037b08f287c9f405b29d27d1b",
-        "0436edd8295fc7f28c78d3b14b0565a5fa26e115e013882418948f69689849f0",
-        "03293e1c9a0f787897a5cdc69ac00f3a011f9f7b078f7b788bcad613d906d6e7",
-        "4fae8daf596071a45b344ddc646e6a76438e96dc7b6ad17e3ec711e1b52bcffa"
-      ],
-      "template_sha256": "30952ca7a89fded8fde98bb724b1a9cbaa9f857d4e37a54bcadc902002600992"
     },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-user-service-infrastructure": {
       "installed_arn": false,
@@ -728,22 +758,6 @@
         "119623e2999a209d7e94139a09d58819d9bd1ab20a4dfb506abeb2585562ce46"
       ],
       "template_sha256": "3a5ec9540b7a171bee05e2685bb72cb30530ca45dd1d6474ac7bff0c29cd866a"
-    },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply": {
-      "installed_arn": false,
-      "kind": "immutable_managed_guard",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
-        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
-        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
-        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
-        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
-        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
-        "8c068aaa3d0526af49b9d871d2f2de23b11aab92043cf7146b460c2912d9a8ea",
-        "5366ec1143481bd6aa005f3b85c4f1f58f3da13a537d6e077a05e894c3403def"
-      ],
-      "template_sha256": "1115f1219a9cee5b299fa17d1dafcfb23e197deecd15d0c0d04752a660f85024"
     },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceDrift": {
       "installed_arn": false,
@@ -961,20 +975,6 @@
       ],
       "template_sha256": "b588af9c2e8a540092e358ae253656a9428c082e8b87d18272bf58f0e86887bc"
     },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure": {
-      "installed_arn": false,
-      "kind": "immutable_managed_guard",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "dc27f076702036fcfa5ce8394694d18573f3ab6a459e27db45e6010de6423214",
-        "415affc4898eb05f0d4e3bd153cfcdc2b2000ed9a2a1c2bf292059c04e0ca33b",
-        "668edd625c4ee061d2166eda75d51a3c2d9f0eb44822e5419b5e3f5d5fd5bfb8",
-        "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
-        "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
-        "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06"
-      ],
-      "template_sha256": "5411b3b604a49897defca4cb37b13eccb3dfa8e8c961e5f133bf516efa4b160d"
-    },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/PulumiAutomation-bootstrap-infrastructure": {
       "installed_arn": false,
       "kind": "immutable_managed_guard",
@@ -1083,26 +1083,6 @@
       ],
       "template_sha256": "5411b3b604a49897defca4cb37b13eccb3dfa8e8c961e5f133bf516efa4b160d"
     },
-    "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorApply-test": {
-      "installed_arn": false,
-      "kind": "executor_identity",
-      "ownership": "new_seed_owned",
-      "statement_ids": [
-        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
-        "11c190b3c2968892e4690ccd4ef7ae033e332e182d23363b94647ed76cec377b",
-        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
-        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
-        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
-        "3f46d49a8b6ceba0ff097b63a1aa38ebb6935d19be6203a31e8ba39b5ac7288b",
-        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
-        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
-        "0efe0d3f70ae03cff49b883a27428624937c5cbe0887118dd3baa7270d291862",
-        "eac8b0bab079f9c6f7b85fc60459b3912d80771a48e4ef1fd1dccb2b4045eb31",
-        "b02bbac7e3db8f78ced162009a8c00dc9248fc91466af868fc8e1a68735de1fd",
-        "e8d162edeba0fdeb60fb03174fef240df75ec7bbff7794ac0f7ac8c6ebdd6c4f"
-      ],
-      "template_sha256": "b74bcbfb8ad1edba506bbadf8bd3f51f432dd23d1b377bb19f79ddacb45920db"
-    },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorDrift-test": {
       "installed_arn": false,
       "kind": "executor_identity",
@@ -1138,6 +1118,26 @@
         "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1"
       ],
       "template_sha256": "d4d5971fe361c121740026533af05a64530b510599757cf158fd3053b5b50b9c"
+    },
+    "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/I-GitHubOperatorApply-test": {
+      "installed_arn": false,
+      "kind": "executor_identity",
+      "ownership": "new_seed_owned",
+      "statement_ids": [
+        "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05",
+        "11c190b3c2968892e4690ccd4ef7ae033e332e182d23363b94647ed76cec377b",
+        "d797aa9492dcd533e7af06ca854b78670fe57a3e4c3442a72c6d683ad1a50cd7",
+        "02ed5d2f81c46cc2bd19a1e058fb7a4db4ab7c74cca985497fbbe40d94002c89",
+        "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d",
+        "3f46d49a8b6ceba0ff097b63a1aa38ebb6935d19be6203a31e8ba39b5ac7288b",
+        "b3455010a1c91075fcbac15db0a19bcfed5b15a78f996399cb542a9e96c63741",
+        "6dd55c459c08b3583c392d802721965073afbfe540a9b7a0727ea9f7c36a6b4e",
+        "0efe0d3f70ae03cff49b883a27428624937c5cbe0887118dd3baa7270d291862",
+        "eac8b0bab079f9c6f7b85fc60459b3912d80771a48e4ef1fd1dccb2b4045eb31",
+        "b02bbac7e3db8f78ced162009a8c00dc9248fc91466af868fc8e1a68735de1fd",
+        "e8d162edeba0fdeb60fb03174fef240df75ec7bbff7794ac0f7ac8c6ebdd6c4f"
+      ],
+      "template_sha256": "b74bcbfb8ad1edba506bbadf8bd3f51f432dd23d1b377bb19f79ddacb45920db"
     }
   },
   "principals": [
@@ -1183,7 +1183,7 @@
       "attachment_arns": [
         "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure"
       ],
-      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure",
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiConfigRead-bootstrap-infrastructure",
       "existing": true,
       "frozen_config": null,
       "guard_arns": [
@@ -1194,13 +1194,13 @@
     {
       "arn": "arn:aws:iam::891377212104:role/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
       "attachment_arns": [
-        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr"
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiConfigRead-bootstrap-infrastructure-test-pr"
       ],
       "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
       "existing": true,
       "frozen_config": null,
       "guard_arns": [
-        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr"
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiConfigRead-bootstrap-infrastructure-test-pr"
       ],
       "owner_project": "github-ci-bootstrap"
     },
@@ -1233,13 +1233,13 @@
     {
       "arn": "arn:aws:iam::891377212104:role/GitHubCiDrift-bootstrap-infrastructure-test",
       "attachment_arns": [
-        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure"
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiDrift-bootstrap-infrastructure"
       ],
       "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiDrift-bootstrap-infrastructure",
       "existing": true,
       "frozen_config": null,
       "guard_arns": [
-        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure"
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiDrift-bootstrap-infrastructure"
       ],
       "owner_project": "github-ci-bootstrap"
     },
@@ -1261,7 +1261,7 @@
       "attachment_arns": [
         "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiPreview-bootstrap-infrastructure"
       ],
-      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure",
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiPreview-bootstrap-infrastructure",
       "existing": true,
       "frozen_config": null,
       "guard_arns": [
@@ -1289,13 +1289,13 @@
         "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-metadata",
         "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-iam",
         "arn:aws:iam::891377212104:policy/GitHubGovernanceApply-test-user-service-infrastructure-storage",
-        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply"
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubGovernanceApply"
       ],
       "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceApply",
       "existing": true,
       "frozen_config": null,
       "guard_arns": [
-        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply"
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubGovernanceApply"
       ],
       "owner_project": "github-ci-bootstrap"
     },
@@ -1308,7 +1308,7 @@
         "arn:aws:iam::891377212104:policy/GitHubGovernanceDrift-test-user-service-infrastructure-storage",
         "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceDrift"
       ],
-      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift",
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernanceDrift",
       "existing": true,
       "frozen_config": null,
       "guard_arns": [
@@ -1325,7 +1325,7 @@
         "arn:aws:iam::891377212104:policy/GitHubGovernancePreview-test-user-service-infrastructure-storage",
         "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernancePreview"
       ],
-      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview",
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernancePreview",
       "existing": true,
       "frozen_config": null,
       "guard_arns": [
@@ -1342,7 +1342,7 @@
         "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-read",
         "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-iam-write",
         "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorApply-storage",
-        "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorApply-test"
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/I-GitHubOperatorApply-test"
       ],
       "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorApply-test",
       "existing": false,
@@ -1366,7 +1366,7 @@
         "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorDrift-storage",
         "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorDrift-test"
       ],
-      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorDrift-test",
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorDrift-test",
       "existing": false,
       "frozen_config": null,
       "guard_arns": [
@@ -1386,7 +1386,7 @@
         "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubOperatorPreview-storage",
         "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorPreview-test"
       ],
-      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorPreview-test",
+      "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorPreview-test",
       "existing": false,
       "frozen_config": null,
       "guard_arns": [
@@ -1400,13 +1400,13 @@
     {
       "arn": "arn:aws:iam::891377212104:role/OperationsAlertTriage-bootstrap-infrastructure-test",
       "attachment_arns": [
-        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure"
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-OperationsAlertTriage-bootstrap-infrastructure"
       ],
       "boundary_arn": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/OperationsAlertTriage-bootstrap-infrastructure",
       "existing": true,
       "frozen_config": null,
       "guard_arns": [
-        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure"
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-OperationsAlertTriage-bootstrap-infrastructure"
       ],
       "owner_project": "github-ci-bootstrap"
     },
@@ -1595,7 +1595,24 @@
       "work/issue215-source/pulumi/infra/iam/adoption.py": "5950d6c04debc4f0cd501997b2e0980c15a0e039be0803699a29b5ec73a0b2c8",
       "work/issue215-source/pulumi/infra/platform_control_iam.py": "68719d24acd8d761725f818bfb0139aff908cd2d15d58eb4cc79deaa1638c48b"
     },
-    "iam_audit_sha256": "432ec95feca17306018213751735e03ed265a285800d1c7b8873e7fc42964fb0"
+    "iam_audit_sha256": "432ec95feca17306018213751735e03ed265a285800d1c7b8873e7fc42964fb0",
+    "policy_name_correction": {
+      "baseline_catalog_sha256": "db3f5841c58d293b79ff5cf9913e29edf2a3f0f3c48a8ce094cd861d4ad8bc7a",
+      "reason": "IAM managed policy basenames are account-wide and case-insensitive; preserve retained policies and all six imports.",
+      "renamed_arns": {
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiConfigRead-bootstrap-infrastructure": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiConfigRead-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubCiPreview-bootstrap-infrastructure": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubCiPreview-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernanceDrift": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernanceDrift",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubGovernancePreview": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernancePreview",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorDrift-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorDrift-test",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/GitHubOperatorPreview-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorPreview-test",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiConfigRead-bootstrap-infrastructure-test-pr": "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiConfigRead-bootstrap-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubCiDrift-bootstrap-infrastructure": "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubCiDrift-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/GitHubGovernanceApply": "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-GitHubGovernanceApply",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/OperationsAlertTriage-bootstrap-infrastructure": "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-OperationsAlertTriage-bootstrap-infrastructure",
+        "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/GitHubOperatorApply-test": "arn:aws:iam::891377212104:policy/issue215-seed/test/identity/I-GitHubOperatorApply-test"
+      }
+    }
   },
   "region": "eu-central-1",
   "schema_version": 1,
