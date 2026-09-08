@@ -308,6 +308,32 @@ class TestPublication:
         assert "receipt" not in output.read_text()
         assert "token" not in output.read_text()
 
+    @pytest.mark.parametrize("truncate", [False, True])
+    def test_corrupt_zip_is_redacted(
+        self, publication, monkeypatch, tmp_path, capsys, truncate
+    ):
+        publication.raw = publication.raw[:20] if truncate else b"invalid ZIP"
+        digest = hashlib.sha256(publication.raw).hexdigest()
+        publication.emitter_args["proof_artifact_sha256"] = digest
+        metadata = publication.state.github.overrides[
+            ARTIFACT_PATH.replace("/123", "/301")
+        ]
+        metadata.update(digest="sha256:" + digest, size_in_bytes=len(publication.raw))
+        output = tmp_path / "output"
+        arguments = dict(publication.emitter_args)
+        monkeypatch.setenv("PROMOTION_NEEDS", arguments.pop("needs_payload"))
+        args = [
+            item
+            for key, value in {**arguments, "output": str(output)}.items()
+            for item in ("--" + key.replace("_", "-"), value)
+        ]
+        assert emitter.main(args) == 1
+        assert not output.exists()
+        assert not publication.api.writes
+        assert capsys.readouterr().err == (
+            "Promotion publication failed; no verified aggregate result.\n"
+        )
+
 
 def test_authority_boundary_rejects_foreign(monkeypatch):
     api = FakeAPI()

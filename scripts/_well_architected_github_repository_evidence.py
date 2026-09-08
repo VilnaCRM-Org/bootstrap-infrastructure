@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 import _github_repository_controls as _repository_controls
@@ -231,8 +231,13 @@ def _ruleset_promotion_requirement(ruleset: dict, branch: str) -> bool | None:
     controls = _repository_controls
     if not controls.is_active_branch_ruleset(ruleset):
         return None
-    refs = ruleset.get("conditions", {}).get("ref_name", {})
-    if not set(refs.get("include", [])).intersection(
+    conditions = ruleset.get("conditions")
+    if not isinstance(conditions, Mapping):
+        return False
+    refs = conditions.get("ref_name")
+    if not isinstance(refs, Mapping) or not _valid_rule_refs(refs):
+        return False
+    if not set(refs["include"]).intersection(
         {"~ALL", "~DEFAULT_BRANCH", f"refs/heads/{branch}"}
     ):
         return None
@@ -244,10 +249,24 @@ def _ruleset_promotion_requirement(ruleset: dict, branch: str) -> bool | None:
         }
     ):
         return None
-    return not refs.get("exclude") and controls.ruleset_has_promotion_issuer(
-        ruleset,
-        controls.CENTRAL_PROMOTION_APP_ID,
-        repository=controls.CENTRAL_REPOSITORY,
+    return (
+        not refs["exclude"]
+        and ruleset.get("bypass_actors") == []
+        and controls.ruleset_requires_strict_checks(ruleset)
+        and controls.ruleset_has_promotion_issuer(
+            ruleset,
+            controls.CENTRAL_PROMOTION_APP_ID,
+            repository=controls.CENTRAL_REPOSITORY,
+        )
+    )
+
+
+def _valid_rule_refs(refs: Mapping[str, Any]) -> bool:
+    """Malformed applicability cannot count as an unrelated, ignorable policy."""
+    return all(
+        isinstance(refs.get(key), list)
+        and all(isinstance(item, str) for item in refs[key])
+        for key in ("include", "exclude")
     )
 
 

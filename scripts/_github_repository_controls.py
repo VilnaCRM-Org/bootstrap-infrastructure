@@ -531,6 +531,9 @@ def _ruleset_requires_strict_checks(ruleset: Mapping[str, Any]) -> bool:
     )
 
 
+ruleset_requires_strict_checks = _ruleset_requires_strict_checks
+
+
 def ruleset_verification_blockers(
     ruleset: Mapping[str, Any] | None,
     *,
@@ -577,8 +580,8 @@ def _central_ruleset_blockers(ruleset: Mapping[str, Any]) -> list[str]:
         blockers.append(
             "Test Account Evidence must retain the fixed GitHub App issuer."
         )
-    if ruleset.get("bypass_actors"):
-        blockers.append("Central main ruleset must not grant bypass actors.")
+    if ruleset.get("bypass_actors") != []:
+        blockers.append("Central main ruleset must prove an empty bypass actor list.")
     if GOVERNANCE_PROMOTION_CONTEXT in required_status_contexts(ruleset):
         blockers.append(
             "Central ruleset must retire the legacy Governance Promotion requirement."

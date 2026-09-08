@@ -71,6 +71,7 @@ def policies():
         "summaries": [{"id": 1}],
         "ruleset": {
             "id": 1,
+            "bypass_actors": [],
             "target": "branch",
             "enforcement": "active",
             "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
@@ -141,6 +142,51 @@ def test_central_ruleset_scope_rejected(policies, change):
 def test_central_known_branch_policy(policies, reference):
     policies["ruleset"]["conditions"]["ref_name"]["include"] = [reference]
     assert collect(policies)["status"] == "passed"
+
+
+@pytest.mark.parametrize("strict", [False, None, "true", 1])
+def test_nonstrict_promotion_gate_fails(policies, strict):
+    policies["ruleset"]["rules"][0]["parameters"][
+        "strict_required_status_checks_policy"
+    ] = strict
+    assert collect(policies)["status"] == "failed"
+
+
+def test_bypass_actor_blocks_promotion(policies):
+    policies["ruleset"]["bypass_actors"] = [
+        {"actor_type": "OrganizationAdmin", "actor_id": 1, "bypass_mode": "always"}
+    ]
+    assert collect(policies)["status"] == "failed"
+
+
+@pytest.mark.parametrize("actors", [None, 0, False, "", {}])
+def test_unknown_bypass_list_blocks(policies, actors):
+    policies["ruleset"]["bypass_actors"] = actors
+    assert collect(policies)["status"] == "failed"
+
+
+def test_missing_bypass_list_blocks(policies):
+    del policies["ruleset"]["bypass_actors"]
+    assert collect(policies)["status"] == "failed"
+
+
+@pytest.mark.parametrize(
+    "conditions",
+    [
+        None,
+        [],
+        {},
+        {"ref_name": None},
+        {"ref_name": []},
+        {"ref_name": {"include": "~ALL", "exclude": []}},
+        {"ref_name": {"include": [None], "exclude": []}},
+        {"ref_name": {"include": ["~ALL"], "exclude": None}},
+        {"ref_name": {"include": ["~ALL"], "exclude": [False]}},
+    ],
+)
+def test_malformed_rule_refs_block(policies, conditions):
+    policies["ruleset"]["conditions"] = conditions
+    assert collect(policies)["status"] == "failed"
 
 
 @pytest.mark.parametrize("issuer", [4840884, None, True, "4840884", 15368])

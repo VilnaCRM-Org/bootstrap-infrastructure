@@ -810,6 +810,8 @@ def test_central_verify_only_requires_completed_migration(monkeypatch):
         module, "_environment_verification_blockers", lambda *args, **kwargs: []
     )
     monkeypatch.setattr(module, "_evidence_environment_blockers", lambda repo: [])
+    classic = _classic_response(None)
+    monkeypatch.setattr(module, "_run_gh_api", lambda args: classic)
     legacy = {"id": 13906584, "rules": _live_central_rules()}
     monkeypatch.setattr(module, "_main_ruleset", lambda repo: legacy)
     with pytest.raises(RuntimeError, match="Infrastructure Promotion"):
@@ -829,10 +831,23 @@ def test_central_verify_only_requires_completed_migration(monkeypatch):
     )
     assert "Infrastructure Promotion" in result["requiredStatusChecks"]
     assert "Governance Promotion" not in result["requiredStatusChecks"]
+    classic["data"]["repository"]["ref"]["branchProtectionRule"] = {
+        "requiredStatusCheckContexts": ["Governance Promotion"]
+    }
+    with pytest.raises(RuntimeError, match="classic protection still requires"):
+        module._verify_applied_controls(
+            "VilnaCRM-Org/bootstrap-infrastructure",
+            REVIEWER_ID,
+            promotion_app_id=4840884,
+        )
 
 
+@pytest.mark.parametrize(
+    "repo",
+    ["VilnaCRM-Org/bootstrap-infrastructure", "vilnacrm-org/BOOTSTRAP-INFRASTRUCTURE"],
+)
 def test_central_configuration_preview_uses_repository_specific_migration(
-    monkeypatch, capsys
+    monkeypatch, capsys, repo
 ):
     module = load_script_module(monkeypatch, "configure_github_repository_controls")
     monkeypatch.setattr(
@@ -842,7 +857,7 @@ def test_central_configuration_preview_uses_repository_specific_migration(
     )
     monkeypatch.setattr(module, "_github_user_id", lambda reviewer: REVIEWER_ID)
     module.configure(
-        "VilnaCRM-Org/bootstrap-infrastructure",
+        repo,
         "Kravalg",
         apply=False,
         promotion_app_id=4840884,
@@ -856,3 +871,79 @@ def test_central_configuration_preview_uses_repository_specific_migration(
     assert result["protectedEnvironmentBranchPolicies"]["prod"] == [
         {"name": "main", "type": "branch"}
     ]
+
+
+def _classic_response(rule):
+    return {
+        "data": {
+            "repository": {
+                "nameWithOwner": "VilnaCRM-Org/bootstrap-infrastructure",
+                "ref": {"name": "main", "branchProtectionRule": rule},
+            }
+        }
+    }
+
+
+@pytest.mark.parametrize("actors", [None, 0, False, "", {}])
+def test_central_bypass_requires_readback(monkeypatch, actors):
+    controls = load_script_module(monkeypatch, "_github_repository_controls")
+    result = controls.ruleset_payload(
+        promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+    result["bypass_actors"] = actors
+    assert controls.ruleset_verification_blockers(
+        result, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+    del result["bypass_actors"]
+    assert controls.ruleset_verification_blockers(
+        result, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
+    )
+
+
+@pytest.mark.parametrize("rule", [None, {"requiredStatusCheckContexts": ["Unit"]}])
+def test_classic_absence_requires_readback(monkeypatch, rule):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    calls = []
+
+    def api(args):
+        calls.append(args)
+        return _classic_response(rule)
+
+    monkeypatch.setattr(module, "_run_gh_api", api)
+    assert (
+        module._central_classic_blockers("VilnaCRM-Org/bootstrap-infrastructure") == []
+    )
+    assert calls[0][0] == "graphql"
+    assert 'qualifiedName:"refs/heads/main"' in calls[0][2]
+    assert "requiredStatusCheckContexts" in calls[0][2]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {},
+        {"errors": [{"message": "denied"}]},
+        {"data": {"repository": None}},
+        _classic_response({}),
+        _classic_response({"requiredStatusCheckContexts": None}),
+        _classic_response({"requiredStatusCheckContexts": [None]}),
+        {"data": {"repository": {"nameWithOwner": "other/repo", "ref": {}}}},
+    ],
+)
+def test_unknown_classic_policy_fails(monkeypatch, payload):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    monkeypatch.setattr(module, "_run_gh_api", lambda args: payload)
+    with pytest.raises(RuntimeError, match="metadata is not verified"):
+        module._central_classic_blockers("VilnaCRM-Org/bootstrap-infrastructure")
+
+
+def test_case_alias_cannot_change_issuer(monkeypatch):
+    module = load_script_module(monkeypatch, "configure_github_repository_controls")
+    with pytest.raises(ValueError, match="fixed GitHub App"):
+        module.configure(
+            "vilnacrm-org/BOOTSTRAP-INFRASTRUCTURE",
+            "Kravalg",
+            apply=False,
+            promotion_app_id=12345,
+        )

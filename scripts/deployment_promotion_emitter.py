@@ -17,11 +17,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import argparse  # noqa: E402
 import hashlib  # noqa: E402
 import json  # noqa: E402
+import lzma  # noqa: E402
 import os  # noqa: E402
 import selectors  # noqa: E402
+import struct  # noqa: E402
 import subprocess  # noqa: E402  # nosec B404
 import tempfile  # noqa: E402
 import time  # noqa: E402
+import zipfile  # noqa: E402
+import zlib  # noqa: E402
 from collections.abc import Callable  # noqa: E402
 from typing import Any  # noqa: E402
 
@@ -448,7 +452,18 @@ def main(argv: list[str] | None = None) -> int:
     output = args.pop("output")
     try:
         result = publish(**args, needs_payload=os.environ.get("PROMOTION_NEEDS", ""))
-    except (ValueError, OSError, GitHubError, subprocess.SubprocessError):
+    except (
+        ValueError,
+        OSError,
+        GitHubError,
+        subprocess.SubprocessError,
+        zipfile.BadZipFile,
+        struct.error,
+        EOFError,
+        NotImplementedError,
+        zlib.error,
+        lzma.LZMAError,
+    ):
         print(
             "Promotion publication failed; no verified aggregate result.",
             file=sys.stderr,
