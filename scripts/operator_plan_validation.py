@@ -1384,16 +1384,15 @@ def _retained_role_owner(
     catalog: Mapping[str, Any],
 ) -> bool:
     prior = resources.get(urn)
-    return (
-        target[0] == ROLE
-        and prior is not None
-        and prior["type"] == ROLE
-        and prior["urn"] == urn
-        and prior["custom"] is True
-        and prior.get("external", False) is False
-        and (ROLE, *_target(prior, catalog)) == target
-        and target[1] in catalog["operator_bindings"]["role_write"]
-    )
+    if target[0] != ROLE or prior is None:
+        return False
+    if prior["type"] != ROLE or prior["urn"] != urn:
+        return False
+    if prior["custom"] is not True or prior.get("external", False) is not False:
+        return False
+    return (ROLE, *_target(prior, catalog)) == target and target[1] in catalog[
+        "operator_bindings"
+    ]["role_write"]
 
 
 def _target_ownership(

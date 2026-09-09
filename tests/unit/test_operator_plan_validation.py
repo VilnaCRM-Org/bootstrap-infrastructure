@@ -1385,7 +1385,7 @@ def test_role_alias_compatibility_does_not_include_read_only_catalog_principals(
 
 def test_existing_role_owner_target_cannot_change_under_read_alias():
     data = fixture()
-    owner, alias = role_read_aliases(data, (False, True))
+    owner, _ = role_read_aliases(data, (False, True))
     other = next(
         arn
         for arn in data["catalog"]["operator_bindings"]["role_write"]
@@ -1393,6 +1393,19 @@ def test_existing_role_owner_target_cannot_change_under_read_alias():
     )
     assert not validation._retained_role_owner(
         owner["urn"], (validation.ROLE, other), {owner["urn"]: owner}, data["catalog"]
+    )
+
+
+@pytest.mark.parametrize("mismatch", ["type", "urn"])
+def test_retained_role_owner_rejects_mismatched_prior_identity(mismatch):
+    data = fixture()
+    owner, _ = role_read_aliases(data, (False, True))
+    urn = owner["urn"]
+    target = (validation.ROLE, *validation._target(owner, data["catalog"]))
+    prior = copy.deepcopy(owner)
+    prior[mismatch] += "-different"
+    assert not validation._retained_role_owner(
+        urn, target, {urn: prior}, data["catalog"]
     )
 
 
