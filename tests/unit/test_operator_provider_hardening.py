@@ -12,14 +12,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import operator_execution_transport as transport  # noqa: E402
 import operator_plan_validation as validation  # noqa: E402
-from test_operator_execution_transport import checkpoint as checkpoint  # noqa: E402
-from test_operator_execution_transport import installed as installed  # noqa: E402
+import test_operator_execution_transport as transport_fixtures  # noqa: E402
 from test_operator_plan_validation import (  # noqa: E402
     fixture,
     reset_noop,
     resource,
     validate,
 )
+
+checkpoint = transport_fixtures.checkpoint
+installed = transport_fixtures.installed
 
 
 def legacy_inputs():
