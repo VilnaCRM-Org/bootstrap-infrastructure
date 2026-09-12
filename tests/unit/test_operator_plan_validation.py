@@ -1705,6 +1705,156 @@ def test_plan_plaintext_secret_cannot_be_disguised_as_same():
         validate(data)
 
 
+@pytest.mark.parametrize(
+    "kind", [validation.INLINE, validation.ATTACHMENT, validation.VERSION]
+)
+@pytest.mark.parametrize("remove", [False, True])
+def test_same_accepts_empty_bridge_defaults_in_plan_preview_and_refresh(kind, remove):
+    data = fixture()
+    old = resource(data, kind)
+    if remove:
+        old["inputs"]["__defaults"] = []
+        reset_noop(data)
+    new = change(data, kind, {"__defaults": []}, ("same",))
+    if remove:
+        del new["inputs"]["__defaults"]
+        data["plan"]["resourcePlans"][old["urn"]]["goal"]["inputDiff"] = {
+            "deletes": ["__defaults"]
+        }
+    step = data["preview"]["steps"][-1]
+    # Read and Check can emit the opposite metadata representation on either side.
+    step["oldState"] = redact(copy.deepcopy(new))
+    step["newState"] = redact(copy.deepcopy(old))
+    refresh = copy.deepcopy(step)
+    refresh["op"] = "refresh"
+    data["preview"]["steps"].insert(len(data["preview"]["steps"]) - 1, refresh)
+    original = copy.deepcopy(data)
+
+    assert validate(data).changed_urns == ()
+    assert data == original
+
+
+@pytest.mark.parametrize("invalid", [None, False, ["name"], {}])
+@pytest.mark.parametrize(
+    "kind", [validation.INLINE, validation.ATTACHMENT, validation.VERSION]
+)
+def test_same_rejects_nonempty_or_malformed_default_changes(kind, invalid):
+    data = fixture()
+    change(data, kind, {"__defaults": invalid}, ("same",))
+    with pytest.raises(ValueError, match="same-input-diff"):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    "kind", [validation.ROLE, validation.POLICY, validation.SECRET]
+)
+def test_empty_defaults_equivalence_is_not_global(kind):
+    data = fixture()
+    change(data, kind, {"__defaults": []}, ("same",))
+    with pytest.raises(ValueError, match="same-input-diff"):
+        validate(data)
+
+
+@pytest.mark.parametrize("secret_field", ["ciphertext", "plaintext"])
+def test_empty_defaults_cannot_hide_a_changed_secret(secret_field):
+    data = fixture()
+    change(
+        data,
+        validation.VERSION,
+        {
+            "__defaults": [],
+            "secretString": {
+                validation.SIGNATURE: validation.WIRE_VALUE_TAG,
+                secret_field: "different-synthetic-secret",
+            },
+        },
+        ("same",),
+    )
+    with pytest.raises(ValueError, match="same-input-diff"):
+        validate(data)
+
+
+def test_same_exclusive_order_is_equivalent_in_plan_preview_and_refresh():
+    data = fixture()
+    old, _ = exclusive(data, full_inventory=True)
+    new = change(
+        data,
+        validation.EXCLUSIVE,
+        {"policyArns": list(reversed(old["inputs"]["policyArns"]))},
+        ("same",),
+    )
+    new["outputs"]["policyArns"] = new["inputs"]["policyArns"]
+    step = data["preview"]["steps"][-1]
+    step["oldState"] = copy.deepcopy(new)
+    step["newState"] = copy.deepcopy(new)
+    refresh = copy.deepcopy(step)
+    refresh["op"] = "refresh"
+    data["preview"]["steps"].insert(len(data["preview"]["steps"]) - 1, refresh)
+    original = copy.deepcopy(data)
+
+    assert validate(data).changed_urns == ()
+    assert data == original
+
+
+@pytest.mark.parametrize("invalid", ["duplicate", "missing", "foreign", "unknown"])
+def test_same_exclusive_order_does_not_relax_inventory(invalid):
+    data = fixture()
+    old, _ = exclusive(data, full_inventory=True)
+    arns = list(reversed(old["inputs"]["policyArns"]))
+    if invalid == "duplicate":
+        arns.append(arns[0])
+    elif invalid == "missing":
+        arns.pop()
+    elif invalid == "foreign":
+        arns[0] = "arn:aws:iam::111111111111:policy/foreign"
+    else:
+        arns[0] = validation.UNKNOWN
+    change(data, validation.EXCLUSIVE, {"policyArns": arns}, ("same",))
+
+    with pytest.raises(ValueError):
+        validate(data)
+
+
+def test_empty_defaults_does_not_hide_real_inline_input_change():
+    data = fixture()
+    change(
+        data,
+        validation.INLINE,
+        {"__defaults": [], "policy": '{"Statement":[{}]}'},
+        ("same",),
+    )
+    with pytest.raises(ValueError, match="same-input-diff"):
+        validate(data)
+
+
+def test_nonempty_defaults_same_diff_keeps_json_types_exact():
+    data = fixture()
+    resource(data, validation.INLINE)["inputs"]["__defaults"] = [False]
+    reset_noop(data)
+    change(data, validation.INLINE, {"__defaults": [0]}, ("same",))
+    with pytest.raises(ValueError, match="string-list"):
+        validate(data)
+
+
+def test_same_cannot_hide_integer_to_boolean_input_change():
+    data = fixture()
+    resource(data, validation.ROLE)["inputs"]["maxSessionDuration"] = 1
+    reset_noop(data)
+    change(data, validation.ROLE, {"maxSessionDuration": True}, ("same",))
+    with pytest.raises(ValueError):
+        validate(data)
+
+
+def test_malformed_refresh_output_is_sanitized():
+    data = fixture()
+    step = copy.deepcopy(data["preview"]["steps"][1])
+    step["op"] = "refresh"
+    step["newState"]["outputs"] = None
+    data["preview"]["steps"].insert(1, step)
+    with pytest.raises(ValueError, match="malformed-plan-evidence"):
+        validate(data)
+
+
 def test_guard_management_field_cannot_disappear():
     data = fixture()
     row = resource(data, validation.ROLE)
