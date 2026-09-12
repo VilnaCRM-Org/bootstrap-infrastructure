@@ -77,6 +77,21 @@ external_role_boundaries = {
     if principal["owner_project"] == "github-ci-bootstrap"
     and principal["boundary_arn"] is not None
 }
+automation_role_arn = (
+    f"arn:aws:iam::{account_id}:role/{settings.automation_role_name(settings.repo)}"
+)
+automation_principals = [
+    principal
+    for principal in seed_catalog["principals"]
+    if principal["arn"] == automation_role_arn
+]
+if len(automation_principals) != 1:
+    raise ValueError("Seed catalog must contain one automation role principal")
+automation_retained_policy_arns = automation_principals[0]["guard_arns"]
+if not set(automation_retained_policy_arns) <= set(
+    automation_principals[0]["attachment_arns"]
+):
+    raise ValueError("Automation guard catalog inventory is inconsistent")
 boundaries = platform_iam.PlatformIamBoundaries(
     "platform-iam-boundaries",
     settings=settings,
@@ -114,6 +129,7 @@ platform_control_iam = platform_controls.PlatformControlIam(
     provider_arn=bootstrap.oidc_provider_arn,
     boundary_arns=boundary_arns,
     inline_policy_names=cfg.get_object("platformInlinePolicyNames"),
+    automation_retained_policy_arns=automation_retained_policy_arns,
     opts=pulumi.ResourceOptions(depends_on=[boundaries, bootstrap]),
 )
 

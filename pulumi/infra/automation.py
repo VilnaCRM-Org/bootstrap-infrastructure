@@ -1473,14 +1473,16 @@ def _manage_automation_role_policy_attachments_exclusively(
     role: aws.iam.Role,
     managed_policies: list[aws.iam.Policy],
     policy_attachments: list[aws.iam.RolePolicyAttachment],
+    retained_policy_arns: Sequence[pulumi.Input[str]],
     *,
     import_id: str | None = None,
 ) -> aws.iam.RolePolicyAttachmentsExclusive:
-    """Remove unmanaged managed policies from the automation role."""
+    """Manage generated policies while retaining catalog-pinned guard attachments."""
     return aws.iam.RolePolicyAttachmentsExclusive(
         f"{resource_name}-managed-policy-attachments-exclusive",
         role_name=role.name,
-        policy_arns=[policy.arn for policy in managed_policies],
+        policy_arns=[policy.arn for policy in managed_policies]
+        + list(retained_policy_arns),
         opts=pulumi.ResourceOptions(
             parent=parent, depends_on=policy_attachments, import_=import_id
         ),
@@ -1493,6 +1495,7 @@ def _create_automation_role_policies(
     *,
     adopt_existing: bool = False,
     preferred_inline_policy_name: str | None = None,
+    retained_policy_arns: Sequence[pulumi.Input[str]] = (),
 ) -> tuple[
     aws.iam.RolePolicy,
     list[aws.iam.Policy],
@@ -1572,6 +1575,7 @@ def _create_automation_role_policies(
             role,
             managed_policies,
             policy_attachments,
+            retained_policy_arns,
             import_id=(
                 role_name if adopt_existing and _iam_role_exists(role_name) else None
             ),
@@ -1674,6 +1678,7 @@ class GitHubAutomation(pulumi.ComponentResource):
         permissions_boundary: pulumi.Input[str] | None = None,
         adopt_existing_policies: bool = False,
         preferred_inline_policy_name: str | None = None,
+        retained_policy_arns: Sequence[pulumi.Input[str]] = (),
         role_guard_factory: Callable[[aws.iam.Role], pulumi.Resource] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
@@ -1729,6 +1734,7 @@ class GitHubAutomation(pulumi.ComponentResource):
                 role,
                 adopt_existing=adopt_existing_policies,
                 preferred_inline_policy_name=preferred_inline_policy_name,
+                retained_policy_arns=retained_policy_arns,
             )
             policy_dependencies = [
                 inline_policy,

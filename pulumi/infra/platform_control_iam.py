@@ -87,6 +87,7 @@ class PlatformControlIam(pulumi.ComponentResource):
         provider_arn: pulumi.Input[str],
         boundary_arns: Mapping[str, pulumi.Input[str]],
         inline_policy_names: Mapping[str, Mapping[str, str]] | None = None,
+        automation_retained_policy_arns: Sequence[pulumi.Input[str]] = (),
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         _validate_platform_catalog(settings, repositories)
@@ -171,6 +172,7 @@ class PlatformControlIam(pulumi.ComponentResource):
                     "github-automation-policy",
                 )
             ),
+            retained_policy_arns=automation_retained_policy_arns,
             opts=options,
         )
         self.config = ConfigRecorderIam(
