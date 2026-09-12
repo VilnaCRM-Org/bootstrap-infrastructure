@@ -2172,7 +2172,9 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
     )
 
     start = len(pulumi_mocks.resources)
-    automation_resource = GitHubAutomation("github-automation")
+    automation_resource = GitHubAutomation(
+        "github-automation", retained_policy_arns=["catalog-guard-policy"]
+    )
 
     repository_url = _sync_await(
         future_output(automation_resource.repository.repository_url)
@@ -2282,12 +2284,9 @@ def test_github_automation_emits_runner_repository_and_role(pulumi_mocks, monkey
         exclusive_attachment_state["roleName"]
         == "PulumiAutomation-bootstrap-infrastructure-test"
     )
-    assert (
-        set(exclusive_attachment_state["policyArns"])
-        == {  # nosec B101
-            state["arn"] for state in policy_states[1:]
-        }
-    )
+    assert set(exclusive_attachment_state["policyArns"]) == {
+        state["arn"] for state in policy_states[1:]
+    } | {"catalog-guard-policy"}
     assert (  # nosec B101
         "arn:aws:iam::aws:policy/AdministratorAccess"
         not in exclusive_attachment_state["policyArns"]

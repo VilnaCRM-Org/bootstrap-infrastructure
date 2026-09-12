@@ -40,6 +40,34 @@ REPO = ManagedRepository(
 )
 
 
+def seed_catalog(
+    settings: BootstrapSettings,
+    *,
+    include_principal: bool = True,
+    guard_is_attached: bool = True,
+) -> dict[str, object]:
+    """Return the minimal retained-attachment inventory required by the entrypoint."""
+    role_name = settings.automation_role_name(settings.repo)
+    guard_arn = f"arn:aws:iam::{ACCOUNT}:policy/{role_name}-guard"
+    return {
+        "account_id": ACCOUNT,
+        "region": "eu-central-1",
+        "principals": (
+            [
+                {
+                    "arn": f"arn:aws:iam::{ACCOUNT}:role/{role_name}",
+                    "owner_project": "github-ci-bootstrap",
+                    "boundary_arn": None,
+                    "guard_arns": [guard_arn],
+                    "attachment_arns": [guard_arn] if guard_is_attached else [],
+                }
+            ]
+            if include_principal
+            else []
+        ),
+    }
+
+
 @pytest.mark.parametrize(
     "expected", [None, "", "123", "1234567890123", "１２３４５６７８９０１２"]
 )
@@ -63,8 +91,9 @@ def test_bootstrap_account_mismatch_fails():
     ],
 )
 @pytest.mark.parametrize("missing_catalog", [None, "governance", "bootstrap"])
+@pytest.mark.parametrize("seed_problem", [None, "missing-principal", "orphan-guard"])
 def test_entrypoint_asserts_account_before_first_resource(
-    monkeypatch, expected, actual, missing_catalog
+    monkeypatch, expected, actual, missing_catalog, seed_problem
 ):
     allocated = []
 
@@ -119,18 +148,18 @@ def test_entrypoint_asserts_account_before_first_resource(
         "infra.platform_iam": SimpleNamespace(PlatformIamBoundaries=allocate),
         "infra.platform_control_iam": SimpleNamespace(),
         "seed.policy_registry": SimpleNamespace(
-            load_catalog=lambda environment: {
-                "account_id": ACCOUNT,
-                "region": "eu-central-1",
-                "principals": [],
-            }
+            load_catalog=lambda environment: seed_catalog(
+                inputs().settings,
+                include_principal=seed_problem != "missing-principal",
+                guard_is_attached=seed_problem != "orphan-guard",
+            )
         ),
     }
     monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
     path = (
         Path(__file__).resolve().parents[2] / "pulumi/github-ci-bootstrap/__main__.py"
     )
-    if expected is None or expected != actual or missing_catalog:
+    if expected is None or expected != actual or missing_catalog or seed_problem:
         with pytest.raises(ValueError):
             runpy.run_path(str(path))
         assert allocated == []
@@ -279,11 +308,7 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
             PlatformControlIam=lambda name, **kw: allocations.setdefault(name, kw),
         ),
         "seed.policy_registry": SimpleNamespace(
-            load_catalog=lambda environment: {
-                "account_id": ACCOUNT,
-                "region": "eu-central-1",
-                "principals": [],
-            }
+            load_catalog=lambda environment: seed_catalog(settings)
         ),
     }
     root = Path(__file__).resolve().parents[2] / "pulumi"
