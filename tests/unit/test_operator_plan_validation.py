@@ -1734,6 +1734,127 @@ def test_same_accepts_empty_bridge_defaults_in_plan_preview_and_refresh(kind, re
     assert data == original
 
 
+@pytest.mark.parametrize(
+    "kind", [validation.INLINE, validation.ATTACHMENT, validation.VERSION]
+)
+def test_same_accepts_redundant_empty_defaults_add_without_mutating_evidence(kind):
+    data = fixture()
+    old = resource(data, kind)
+    old["inputs"]["__defaults"] = []
+    reset_noop(data)
+    data["plan"]["resourcePlans"][old["urn"]]["goal"]["inputDiff"] = {
+        "adds": {"__defaults": []}
+    }
+    original = copy.deepcopy(data)
+
+    assert validate(data).changed_urns == ()
+    assert data == original
+
+
+@pytest.mark.parametrize(
+    "kind", [validation.ROLE, validation.POLICY, validation.SECRET]
+)
+def test_redundant_empty_defaults_add_is_rejected_for_other_types(kind):
+    data = fixture()
+    old = resource(data, kind)
+    old["inputs"]["__defaults"] = []
+    reset_noop(data)
+    data["plan"]["resourcePlans"][old["urn"]]["goal"]["inputDiff"] = {
+        "adds": {"__defaults": []}
+    }
+    with pytest.raises(ValueError, match="diff-origin"):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    "input_diff",
+    [
+        {"adds": {"__defaults": []}, "updates": {"__defaults": []}},
+        {"adds": {"__defaults": []}, "deletes": ["__defaults"]},
+        {"adds": {"__defaults": []}, "updates": []},
+        {"adds": {"__defaults": []}, "deletes": {}},
+        {"adds": {"__defaults": []}, "foreign": {}},
+        {"adds": []},
+        {"adds": {"__defaults": ["name"]}},
+        {"adds": {"__defaults": None}},
+        {"adds": {"__defaults": False}},
+        {"adds": {"__defaults": {}}},
+        None,
+    ],
+)
+def test_redundant_defaults_preserves_original_diff_shape_and_overlap_checks(
+    input_diff,
+):
+    data = fixture()
+    old = resource(data, validation.INLINE)
+    old["inputs"]["__defaults"] = []
+    reset_noop(data)
+    data["plan"]["resourcePlans"][old["urn"]]["goal"]["inputDiff"] = input_diff
+    with pytest.raises(ValueError):
+        validate(data)
+
+
+def test_redundant_defaults_does_not_normalize_nonempty_prior_defaults():
+    data = fixture()
+    old = resource(data, validation.INLINE)
+    old["inputs"]["__defaults"] = ["name"]
+    reset_noop(data)
+    data["plan"]["resourcePlans"][old["urn"]]["goal"]["inputDiff"] = {
+        "adds": {"__defaults": []}
+    }
+    with pytest.raises(ValueError, match="diff-origin"):
+        validate(data)
+
+
+@pytest.mark.parametrize("ops", [("update",), ("create",)])
+def test_redundant_defaults_add_requires_same_operation(ops):
+    data = fixture()
+    old = resource(data, validation.INLINE)
+    old["inputs"]["__defaults"] = []
+    reset_noop(data)
+    change(data, validation.INLINE, {}, ops)
+    data["plan"]["resourcePlans"][old["urn"]]["goal"]["inputDiff"] = {
+        "adds": {"__defaults": []}
+    }
+    with pytest.raises(ValueError, match="diff-origin"):
+        validate(data)
+
+
+def test_redundant_defaults_cannot_hide_changed_raw_secret():
+    data = fixture()
+    old = resource(data, validation.VERSION)
+    old["inputs"]["__defaults"] = []
+    reset_noop(data)
+    change(
+        data,
+        validation.VERSION,
+        {
+            "secretString": {
+                validation.SIGNATURE: validation.WIRE_VALUE_TAG,
+                "plaintext": "different-synthetic-secret",
+            }
+        },
+        ("same",),
+    )
+    data["plan"]["resourcePlans"][old["urn"]]["goal"]["inputDiff"]["adds"] = {
+        "__defaults": []
+    }
+    with pytest.raises(ValueError, match="same-input-diff"):
+        validate(data)
+
+
+def test_redundant_empty_defaults_output_add_still_rejects():
+    data = fixture()
+    old = resource(data, validation.INLINE)
+    old["outputs"]["__defaults"] = []
+    reset_noop(data)
+    data["plan"]["resourcePlans"][old["urn"]]["goal"]["outputDiff"] = {
+        "adds": {"__defaults": []}
+    }
+    with pytest.raises(ValueError, match="diff-origin"):
+        validate(data)
+
+
 @pytest.mark.parametrize("invalid", [None, False, ["name"], {}])
 @pytest.mark.parametrize(
     "kind", [validation.INLINE, validation.ATTACHMENT, validation.VERSION]
