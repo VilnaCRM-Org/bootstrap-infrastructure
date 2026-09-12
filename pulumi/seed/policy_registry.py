@@ -21,20 +21,6 @@ CATALOG_HASHES = {
 }
 ACCOUNTS = {"test": "891377212104", "prod": "933245420672"}
 REGION = "eu-central-1"
-DISABLED_TRUST = {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Deny",
-            "Principal": "*",
-            "Action": [
-                "sts:AssumeRole",
-                "sts:AssumeRoleWithWebIdentity",
-                "sts:AssumeRoleWithSAML",
-            ],
-        }
-    ],
-}
 _KEY_ID = re.compile(
     r"(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
     r"|mrk-[0-9a-f]{32})\Z"
@@ -48,6 +34,22 @@ _BOUNDARIES = {
 
 class RegistryError(ValueError):
     """An input violates the closed enrollment contract."""
+
+
+def disabled_trust_policy(account_id: str) -> dict:
+    """Use a valid account principal with no Allow for any assumption method."""
+    if account_id not in ACCOUNTS.values():
+        raise RegistryError("Disabled trust account is outside the closed inventory")
+    return {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Deny",
+                "Principal": {"AWS": f"arn:aws:iam::{account_id}:root"},
+                "Action": "sts:AssumeRole",
+            }
+        ],
+    }
 
 
 def canonical_json(value: Any) -> str:
@@ -439,7 +441,7 @@ def _verify_role(expected: PrincipalRecord, actual: ObservedPrincipal, aws: dict
     if not expected.existing:
         _require(
             canonical_json(json.loads(actual.trust_json))
-            == canonical_json(DISABLED_TRUST),
+            == canonical_json(disabled_trust_policy(expected.arn.split(":")[4])),
             "New executor trust is not disabled",
         )
         _require(not actual.inline_policies, "Unexpected new executor inline grant")

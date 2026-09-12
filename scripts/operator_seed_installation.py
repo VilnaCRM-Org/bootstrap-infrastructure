@@ -107,7 +107,9 @@ def _role_resource(principal: registry.PrincipalRecord) -> dict[str, Any]:
         {
             "RoleName": name,
             "Path": path,
-            "AssumeRolePolicyDocument": registry.DISABLED_TRUST,
+            "AssumeRolePolicyDocument": registry.disabled_trust_policy(
+                principal.arn.split(":")[4]
+            ),
             "PermissionsBoundary": {
                 "Ref": _logical_id(cast(str, principal.boundary_arn))
             },

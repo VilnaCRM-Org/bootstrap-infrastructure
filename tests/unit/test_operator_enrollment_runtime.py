@@ -142,7 +142,7 @@ class Reader:
 
     def role_metadata(self, principal):
         """Return active executor trust without pretending it is installed."""
-        trust = registry.DISABLED_TRUST
+        trust = registry.disabled_trust_policy(self.expected.account_id)
         if not principal.existing:
             purpose = principal.arn.rsplit("/", 1)[-1][len("GitHubOperator") :]
             purpose = purpose.split("-", 1)[0].lower()
@@ -227,7 +227,18 @@ def test_complete_collection_all_accounts_and_modes(environment, purpose, encodi
         if principal.frozen_config:
             expected_trust = json.loads(principal.frozen_config.trust_json)
         elif principal.existing:
-            expected_trust = registry.DISABLED_TRUST
+            expected_trust = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Deny",
+                        "Principal": {
+                            "AWS": f"arn:aws:iam::{expected.account_id}:root"
+                        },
+                        "Action": "sts:AssumeRole",
+                    }
+                ],
+            }
         else:
             expected_trust = executor_trust[principal.arn]
         assert json.loads(observed.trust_json) == expected_trust

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 from iam_statement_matcher import iam_statement_matches
+from infra import operator_resource_options
 from infra.bootstrap_settings import BootstrapSettings
 from infra.governance_automation import (
     GovernanceAutomation,
@@ -96,6 +97,7 @@ def test_entrypoint_asserts_account_before_first_resource(
     monkeypatch, expected, actual, missing_catalog, seed_problem
 ):
     allocated = []
+    transformations = []
 
     def require(key):
         if key in {"githubRepositoryId", "githubRepositoryOwnerId"}:
@@ -106,6 +108,7 @@ def test_entrypoint_asserts_account_before_first_resource(
         return expected
 
     def allocate(*args, **kwargs):
+        assert transformations == [operator_resource_options.without_completed_import]
         allocated.append((args, kwargs))
         raise RuntimeError("reached first resource allocation")
 
@@ -113,7 +116,12 @@ def test_entrypoint_asserts_account_before_first_resource(
         require=require, get_bool=lambda key: None, get=lambda key: None
     )
     modules = {
-        "pulumi": SimpleNamespace(Config=lambda: config),
+        "pulumi": SimpleNamespace(
+            Config=lambda: config,
+            runtime=SimpleNamespace(
+                register_stack_transformation=transformations.append
+            ),
+        ),
         "pulumi_aws": SimpleNamespace(
             get_caller_identity=lambda: SimpleNamespace(account_id=actual),
             get_region=lambda: SimpleNamespace(region="eu-central-1"),
@@ -147,6 +155,7 @@ def test_entrypoint_asserts_account_before_first_resource(
         ),
         "infra.platform_iam": SimpleNamespace(PlatformIamBoundaries=allocate),
         "infra.platform_control_iam": SimpleNamespace(),
+        "infra.operator_resource_options": operator_resource_options,
         "seed.policy_registry": SimpleNamespace(
             load_catalog=lambda environment: seed_catalog(
                 inputs().settings,
@@ -220,6 +229,7 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
     catalog = [REPO]
     catalog_paths = []
     allocations = {}
+    transformations = []
     exported = {}
     bootstrap = SimpleNamespace(
         oidc_provider_arn=PROVIDER,
@@ -242,6 +252,7 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
     )
 
     def allocate_bootstrap(name, *, args, opts):
+        assert transformations == [operator_resource_options.without_completed_import]
         allocations[name] = args
         return bootstrap
 
@@ -270,6 +281,9 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
             Config=lambda: config,
             export=exported.__setitem__,
             ResourceOptions=lambda **kwargs: kwargs,
+            runtime=SimpleNamespace(
+                register_stack_transformation=transformations.append
+            ),
         ),
         "pulumi_aws": SimpleNamespace(
             get_caller_identity=lambda: SimpleNamespace(account_id=ACCOUNT),
@@ -307,6 +321,7 @@ def test_entrypoint_wires_complete_bootstrap_and_governance(
         "infra.platform_control_iam": SimpleNamespace(
             PlatformControlIam=lambda name, **kw: allocations.setdefault(name, kw),
         ),
+        "infra.operator_resource_options": operator_resource_options,
         "seed.policy_registry": SimpleNamespace(
             load_catalog=lambda environment: seed_catalog(settings)
         ),

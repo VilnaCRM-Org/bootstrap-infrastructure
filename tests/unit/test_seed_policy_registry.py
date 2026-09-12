@@ -13,6 +13,31 @@ from seed import policy_registry as registry
 TEST_KEY_ID = "9f610284-127a-4abc-a612-8d638bec729a"
 
 
+@pytest.mark.parametrize("account", ["891377212104", "933245420672"])
+def test_disabled_trust_uses_valid_account_principal_without_any_allow(account):
+    expected = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Deny",
+                "Principal": {"AWS": f"arn:aws:iam::{account}:root"},
+                "Action": "sts:AssumeRole",
+            }
+        ],
+    }
+    actual = registry.disabled_trust_policy(account)
+    assert actual == expected
+    assert not any(row["Effect"] == "Allow" for row in actual["Statement"])
+    actual["Statement"][0]["Effect"] = "Allow"
+    assert registry.disabled_trust_policy(account) == expected
+
+
+@pytest.mark.parametrize("account", ["000000000000", "*", "", None, 891377212104])
+def test_disabled_trust_rejects_unknown_account(account):
+    with pytest.raises(registry.RegistryError, match="outside the closed inventory"):
+        registry.disabled_trust_policy(account)
+
+
 def key_for(environment="test"):
     """Return explicitly synthetic public metadata for pure offline tests."""
     account = registry.ACCOUNTS[environment]
@@ -212,7 +237,9 @@ def observation_for(expected):
             p.attachment_arns,
             p.frozen_config.trust_json
             if p.frozen_config
-            else registry.canonical_json(registry.DISABLED_TRUST),
+            else registry.canonical_json(
+                registry.disabled_trust_policy(expected.account_id)
+            ),
             p.frozen_config.inline_policies if p.frozen_config else (),
         )
         for p in expected.principals
@@ -230,6 +257,33 @@ def observation_for(expected):
         roles,
         (aws_policy,),
     )
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("mutation", ["scalar", "foreign", "allow"])
+def test_initial_enrollment_rejects_other_disabled_trust_shapes(environment, mutation):
+    expected = build(environment)
+    observed = observation_for(expected)
+    principal = next(p for p in expected.principals if not p.existing)
+    trust = registry.disabled_trust_policy(expected.account_id)
+    statement = trust["Statement"][0]
+    if mutation == "scalar":
+        statement["Principal"] = "*"
+    elif mutation == "foreign":
+        other = "prod" if environment == "test" else "test"
+        statement["Principal"] = {
+            "AWS": f"arn:aws:iam::{registry.ACCOUNTS[other]}:root"
+        }
+    else:
+        statement["Effect"] = "Allow"
+    changed = tuple(
+        replace(p, trust_json=registry.canonical_json(trust))
+        if p.arn == principal.arn
+        else p
+        for p in observed.principals
+    )
+    with pytest.raises(registry.RegistryError, match="trust is not disabled"):
+        registry.verify_enrollment(expected, replace(observed, principals=changed))
 
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
