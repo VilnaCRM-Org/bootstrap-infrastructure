@@ -1145,6 +1145,23 @@ def _seed(value: Any) -> None:
         raise ValueError("plan-seed") from None
 
 
+def _same_input_diff(value: Any, old_inputs: dict[str, Any], kind: str) -> Any:
+    """Remove only the bridge's redundant empty-default add after validation."""
+    if kind not in {INLINE, ATTACHMENT, VERSION} or old_inputs.get("__defaults") != []:
+        return value
+    row = _object(value, set(), {"adds", "updates", "deletes"})
+    adds = row.get("adds", {})
+    if not isinstance(adds, dict) or adds.get("__defaults") != []:
+        return row
+    # Validate the complete original diff against its pre-refresh metadata origin.
+    # Overlapping updates/deletes of __defaults still fail; none are discarded.
+    _diff(row, {key: item for key, item in old_inputs.items() if key != "__defaults"})
+    return {
+        **row,
+        "adds": {key: item for key, item in adds.items() if key != "__defaults"},
+    }
+
+
 def _goal_inputs(
     goal: dict[str, Any],
     prior: dict[str, Any] | None,
@@ -1155,7 +1172,10 @@ def _goal_inputs(
         if prior is not None and ops[0] != "delete-replaced"
         else {}
     )
-    inputs = _diff(goal.get("inputDiff", {}), old_inputs)
+    input_diff = goal.get("inputDiff", {})
+    if prior is not None and ops == ("same",):
+        input_diff = _same_input_diff(input_diff, old_inputs, goal["type"])
+    inputs = _diff(input_diff, old_inputs)
     if ops == ("same",):
         # Compare unredacted values: redaction would hide changed secret inputs.
         _require(
