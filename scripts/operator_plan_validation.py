@@ -1087,6 +1087,20 @@ def _exclusive_guard_transition(
     _require(changed == {"policyArns"}, "exclusive-transition")
 
 
+def _property_semantics(
+    value: dict[str, Any], kind: str, *, inputs: bool
+) -> dict[str, Any]:
+    """Compare only proved bridge metadata and the exclusive attachment set."""
+    result = dict(value)
+    if inputs and kind in {INLINE, ATTACHMENT, VERSION}:
+        if result.get("__defaults") == []:
+            del result["__defaults"]
+    if kind == EXCLUSIVE and "policyArns" in result:
+        # State/target validation separately requires the exact catalog inventory.
+        result["policyArns"] = sorted(_strings(result["policyArns"]))
+    return result
+
+
 def _operation(
     prior: dict[str, Any] | None,
     desired: dict[str, Any] | None,
@@ -1103,8 +1117,8 @@ def _operation(
         _require(
             prior is not None
             and desired is not None
-            and _project(prior.get("inputs", {}))
-            == _project(desired.get("inputs", {})),
+            and _property_semantics(prior.get("inputs", {}), kind, inputs=True)
+            == _property_semantics(desired.get("inputs", {}), kind, inputs=True),
             "same-input-change",
         )
     else:
@@ -1141,9 +1155,14 @@ def _goal_inputs(
         if prior is not None and ops[0] != "delete-replaced"
         else {}
     )
-    if ops == ("same",):
-        _require(not any(goal.get("inputDiff", {}).values()), "same-input-diff")
     inputs = _diff(goal.get("inputDiff", {}), old_inputs)
+    if ops == ("same",):
+        # Compare unredacted values: redaction would hide changed secret inputs.
+        _require(
+            _property_semantics(old_inputs, goal["type"], inputs=True)
+            == _property_semantics(inputs, goal["type"], inputs=True),
+            "same-input-diff",
+        )
     _diff(goal.get("outputDiff", {}), prior.get("outputs", {}) if prior else {})
     return inputs
 
@@ -1309,13 +1328,23 @@ def _preview_state(
         "preview-ownership",
     )
     _require(
-        _project(row.get("inputs", {})) == _project(expected.get("inputs", {})),
+        _project(_property_semantics(row.get("inputs", {}), row["type"], inputs=True))
+        == _project(
+            _property_semantics(expected.get("inputs", {}), row["type"], inputs=True)
+        ),
         "preview-inputs",
     )
     if not new:
         _require(row.get("id", "") == expected.get("id", ""), "preview-old-id")
         _require(
-            _project(row.get("outputs", {})) == _project(expected.get("outputs", {})),
+            _project(
+                _property_semantics(row.get("outputs", {}), row["type"], inputs=False)
+            )
+            == _project(
+                _property_semantics(
+                    expected.get("outputs", {}), row["type"], inputs=False
+                )
+            ),
             "preview-old-outputs",
         )
     if new and row.get("id") and row.get("id") != UNKNOWN:
@@ -1338,8 +1367,18 @@ def _preview_resource(
             if prior is None:
                 raise ValueError("refresh-absent-resource")
             _require(
-                _project(row.get("newState", {}).get("outputs", {}))
-                == _project(prior.get("outputs", {})),
+                _project(
+                    _property_semantics(
+                        row.get("newState", {}).get("outputs", {}),
+                        prior["type"],
+                        inputs=False,
+                    )
+                )
+                == _project(
+                    _property_semantics(
+                        prior.get("outputs", {}), prior["type"], inputs=False
+                    )
+                ),
                 "refresh-drift",
             )
             _preview_states(row, prior, prior, catalog)
