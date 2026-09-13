@@ -104,7 +104,7 @@ def test_empty_authorized_validation_reason_and_null_exit_are_preserved():
     assert unseal(kms, seal(kms, value)) == value
 
 
-def test_detailed_private_stage_is_preserved():
+def test_detailed_private_stage_survives_encryption():
     kms = FakeKms()
     value = payload(stage="pulumi-preview")
 
