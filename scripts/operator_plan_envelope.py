@@ -343,3 +343,190 @@ def open_plan(
         raise EnvelopeError("authentication-failed") from None
     _plan(plan)
     return plan
+
+
+# Keep private diagnostics in this already trusted module. Its envelope remains
+# intentionally incompatible with the saved-plan format above.
+DIAGNOSTIC_KIND = "operator-private-diagnostic-v1"
+MAX_DIAGNOSTIC_STREAM_BYTES = 1024 * 1024
+MAX_DIAGNOSTIC_PAYLOAD_BYTES = 3 * 1024 * 1024
+MAX_DIAGNOSTIC_ENVELOPE_BYTES = 5 * 1024 * 1024
+DIAGNOSTIC_PAYLOAD_FIELDS = {
+    "stage",
+    "category",
+    "exit_code",
+    "stdout",
+    "stderr",
+    "stdout_truncated",
+    "stderr_truncated",
+    "validation_reason",
+}
+
+
+class DiagnosticEnvelopeError(ValueError):
+    """A bounded diagnostic-envelope failure category without plaintext."""
+
+
+def _diagnostic_require(condition: bool, category: str) -> None:
+    if not condition:
+        raise DiagnosticEnvelopeError(category)
+
+
+def _diagnostic_text(value: Any, maximum: int = 128) -> bool:
+    return (
+        type(value) is str
+        and 0 < len(value) <= maximum
+        and all(33 <= ord(character) <= 126 for character in value)
+    )
+
+
+def _diagnostic_reason(value: Any) -> bool:
+    if type(value) is not str or len(value) > 4096:
+        return False
+    try:
+        return len(value.encode("utf-8")) <= 4096
+    except UnicodeError:
+        return False
+
+
+def _diagnostic_payload(payload: dict) -> bytes:
+    _diagnostic_require(
+        type(payload) is dict and set(payload) == DIAGNOSTIC_PAYLOAD_FIELDS,
+        "payload-fields",
+    )
+    _diagnostic_require(_diagnostic_text(payload["stage"]), "payload-stage")
+    _diagnostic_require(_diagnostic_text(payload["category"]), "payload-category")
+    _diagnostic_require(
+        _diagnostic_reason(payload["validation_reason"]), "payload-validation-reason"
+    )
+    exit_code = payload["exit_code"]
+    _diagnostic_require(
+        exit_code is None
+        or (type(exit_code) is int and -127 <= exit_code <= 255 and exit_code != 0),
+        "payload-exit-code",
+    )
+    _diagnostic_require(
+        type(payload["stdout_truncated"]) is bool
+        and type(payload["stderr_truncated"]) is bool,
+        "payload-truncation",
+    )
+    for field in ("stdout", "stderr"):
+        try:
+            raw = _decode(payload[field], 0, MAX_DIAGNOSTIC_STREAM_BYTES)
+        except Exception:
+            raise DiagnosticEnvelopeError("payload-stream") from None
+        _diagnostic_require(
+            payload[field] == base64.b64encode(raw).decode("ascii"), "payload-stream"
+        )
+    raw = _canonical(payload)
+    _diagnostic_require(len(raw) <= MAX_DIAGNOSTIC_PAYLOAD_BYTES, "payload-size")
+    return raw
+
+
+def _diagnostic_aad(binding: dict, wrapped: bytes) -> bytes:
+    return _canonical(
+        {
+            "binding": binding,
+            "kind": DIAGNOSTIC_KIND,
+            "schema": 1,
+            "wrapped_key_sha256": _digest(wrapped),
+        }
+    )
+
+
+def seal_diagnostic(
+    payload: dict,
+    *,
+    contract: DeploymentContract,
+    execution: ExecutionBinding,
+    generate_key: KmsCall,
+) -> bytes:
+    """Return only a KMS-wrapped AES-GCM private diagnostic envelope."""
+    raw = _diagnostic_payload(payload)
+    try:
+        binding = _binding(contract, execution)
+        response, key = _kms(
+            generate_key,
+            {
+                "KeyId": execution.kms_key_arn,
+                "KeySpec": "AES_256",
+                "EncryptionContext": binding,
+            },
+            execution.kms_key_arn,
+        )
+    except Exception:
+        raise DiagnosticEnvelopeError("kms-or-binding") from None
+    wrapped = response.get("CiphertextBlob")
+    _diagnostic_require(
+        type(wrapped) is bytes and 0 < len(wrapped) <= 6144, "wrapped-key-size"
+    )
+    nonce = os.urandom(12)
+    ciphertext = AESGCM(key).encrypt(nonce, raw, _diagnostic_aad(binding, wrapped))
+    result = _canonical(
+        {
+            "schema": 1,
+            "kind": DIAGNOSTIC_KIND,
+            "binding": binding,
+            "wrapped_key": base64.b64encode(wrapped).decode("ascii"),
+            "nonce": base64.b64encode(nonce).decode("ascii"),
+            "ciphertext": base64.b64encode(ciphertext).decode("ascii"),
+        }
+    )
+    _diagnostic_require(len(result) <= MAX_DIAGNOSTIC_ENVELOPE_BYTES, "envelope-size")
+    return result
+
+
+def open_diagnostic(
+    raw: bytes,
+    *,
+    contract: DeploymentContract,
+    execution: ExecutionBinding,
+    decrypt_key: KmsCall,
+) -> dict:
+    """Open only this exact authenticated diagnostic envelope and binding."""
+    _diagnostic_require(
+        type(raw) is bytes and 0 < len(raw) <= MAX_DIAGNOSTIC_ENVELOPE_BYTES,
+        "envelope-size",
+    )
+    try:
+        binding = _binding(contract, execution)
+        envelope = _json(raw)
+    except Exception:
+        raise DiagnosticEnvelopeError("invalid-envelope") from None
+    _diagnostic_require(
+        type(envelope) is dict
+        and set(envelope)
+        == {"schema", "kind", "binding", "wrapped_key", "nonce", "ciphertext"},
+        "envelope-fields",
+    )
+    _diagnostic_require(
+        type(envelope["schema"]) is int
+        and envelope["schema"] == 1
+        and envelope["kind"] == DIAGNOSTIC_KIND,
+        "envelope-kind",
+    )
+    _diagnostic_require(envelope["binding"] == binding, "binding-mismatch")
+    try:
+        wrapped = _decode(envelope["wrapped_key"], 1, 6144)
+        nonce = _decode(envelope["nonce"], 12, 12)
+        ciphertext = _decode(
+            envelope["ciphertext"], 16, MAX_DIAGNOSTIC_PAYLOAD_BYTES + 16
+        )
+        _, key = _kms(
+            decrypt_key,
+            {
+                "KeyId": execution.kms_key_arn,
+                "CiphertextBlob": wrapped,
+                "EncryptionContext": binding,
+            },
+            execution.kms_key_arn,
+        )
+        payload = _json(
+            AESGCM(key).decrypt(nonce, ciphertext, _diagnostic_aad(binding, wrapped))
+        )
+    except InvalidTag:
+        raise DiagnosticEnvelopeError("authentication-failed") from None
+    except Exception:
+        raise DiagnosticEnvelopeError("invalid-envelope") from None
+    _diagnostic_payload(payload)
+    return payload

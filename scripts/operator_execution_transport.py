@@ -11,7 +11,7 @@ import signal
 import stat
 import subprocess  # nosec B404
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO, cast
 
@@ -34,6 +34,67 @@ PULUMI = "/opt/pulumi/pulumi"
 PYTHON = "/home/dev/.venvs/bootstrap-infrastructure/bin/python"
 PLUGIN = Path("/opt/operator-plugins/plugins/resource-aws-v7.23.0/pulumi-resource-aws")
 PLUGIN_SHA256 = "ad2008620e4504705db055f27c2cbd76f34c6e29fb465278464c286c30d63196"
+
+
+PROCESS_CATEGORIES = frozenset(
+    {
+        "spawn-failed",
+        "process-timeout",
+        "stdout-bound",
+        "stderr-bound",
+        "process-exit",
+        "child-cleanup-failed",
+        "unknown",
+    }
+)
+
+
+DIAGNOSTIC_PREFIX_BYTES = 1024 * 1024
+
+
+@dataclass
+class DiagnosticCapture:
+    """Root-private bounded prefixes; never stringify or publish these bytes."""
+
+    stdout: bytearray = field(default_factory=bytearray, repr=False)
+    stderr: bytearray = field(default_factory=bytearray, repr=False)
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
+
+    def append(self, stdout, chunk):
+        """Retain prefixes independently of draining and total process limits."""
+        target = self.stdout if stdout else self.stderr
+        remaining = DIAGNOSTIC_PREFIX_BYTES - len(target)
+        target.extend(chunk[:remaining])
+        if len(chunk) > remaining:
+            if stdout:
+                self.stdout_truncated = True
+            else:
+                self.stderr_truncated = True
+
+
+def safe_exit_code(value):
+    """Accept only bounded native exits/signals, never bools or printable objects."""
+    return value if type(value) is int and -127 <= value <= 255 and value != 0 else None
+
+
+class ProcessFailure(ValueError):
+    """Carry trusted process attribution without retaining any private output."""
+
+    def __init__(self, category, exit_code=None):
+        super().__init__("private-process-failed")
+        self.category = (
+            category
+            if type(category) is str and category in PROCESS_CATEGORIES
+            else "unknown"
+        )
+        self.exit_code = safe_exit_code(exit_code)
+
+
+def _process_require(condition, category):
+    """Reject a bounded stream failure before the general dispatcher redacts it."""
+    if not condition:
+        raise ProcessFailure(category)
 
 
 def require(value, message):
@@ -100,7 +161,7 @@ def private_read(path):
     return raw
 
 
-def _streams(process, timeout):
+def _streams(process, timeout, capture=None):
     """Drain bounded stdout/stderr concurrently to prevent pipe deadlocks."""
     result = bytearray()
     errors = 0
@@ -110,23 +171,24 @@ def _streams(process, timeout):
         selector.register(cast(BinaryIO, process.stderr), selectors.EVENT_READ, False)
         while selector.get_map():
             remaining = deadline - time.monotonic()
-            require(remaining > 0, "private-process-timeout")
+            _process_require(remaining > 0, "process-timeout")
             for key, _ in selector.select(remaining):
                 chunk = os.read(key.fd, 65536)
+                if capture is not None:
+                    capture.append(key.data, chunk)
                 if not chunk:
                     selector.unregister(key.fileobj)
                 elif key.data:
-                    require(
-                        len(result) + len(chunk) <= MAX_BYTES, "private-output-bound"
+                    _process_require(
+                        len(result) + len(chunk) <= MAX_BYTES, "stdout-bound"
                     )
                     result.extend(chunk)
                 else:
                     errors += len(chunk)
-                    require(errors <= 1024 * 1024, "private-error-bound")
-        require(
-            process.wait(timeout=max(0.01, deadline - time.monotonic())) == 0,
-            "private-process-failed",
-        )
+                    _process_require(errors <= 1024 * 1024, "stderr-bound")
+        exit_code = process.wait(timeout=max(0.01, deadline - time.monotonic()))
+        if exit_code != 0:
+            raise ProcessFailure("process-exit", exit_code)
     return bytes(result)
 
 
@@ -157,33 +219,49 @@ def _stop_children():
         time.sleep(0.01)
 
 
-def run(command, *, env, cwd, child=False, timeout=1200):
-    """Execute trusted absolute binaries without a shell or unbounded output."""
+def _cleanup_process(process, child):
+    """Preserve unconditional process cleanup and safely attribute child failures."""
+    if process.poll() is None:
+        process.kill()
+        process.wait()
+    if child:
+        try:
+            _stop_children()
+        except Exception:
+            raise ProcessFailure("child-cleanup-failed") from None
+
+
+def run(command, *, env, cwd, child=False, timeout=1200, capture=None):
+    """Execute trusted binaries; preserve only fixed process failure attribution."""
     require(Path(command[0]).is_absolute(), "absolute-executable-required")
     try:
-        # Only installed fixed executables reach this private dispatcher.
-        with subprocess.Popen(  # nosec B603
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            cwd=cwd,
-            shell=False,
-            user=2000 if child else None,
-            group=2000 if child else None,
-            extra_groups=() if child else None,
-        ) as process:
+        try:
+            # Fixed argv and installed executables; never a shell or PR launcher.
+            process = subprocess.Popen(  # nosec B603
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                cwd=cwd,
+                shell=False,
+                user=2000 if child else None,
+                group=2000 if child else None,
+                extra_groups=() if child else None,
+            )
+        except OSError:
+            raise ProcessFailure("spawn-failed") from None
+        with process:
             try:
-                return _streams(process, timeout)
+                return _streams(process, timeout, capture)
             finally:
-                if process.poll() is None:
-                    process.kill()
-                    process.wait()
-                if child:
-                    _stop_children()
+                _cleanup_process(process, child)
+    except ProcessFailure:
+        raise
+    except subprocess.TimeoutExpired:
+        raise ProcessFailure("process-timeout") from None
     except Exception:
-        raise ValueError("private-process-failed") from None
+        raise ProcessFailure("unknown") from None
 
 
 @dataclass(frozen=True)
@@ -206,6 +284,7 @@ class OperatorTransport:
         self.environment = environment
         self.account, self.key = ACCOUNTS[environment]
         self.area, self.source = area, source
+        self.diagnostic_capture = None
         self.bucket = f"pulumi-bootstrap-infrastructure-{environment}-state"
         self.object_key = f".pulumi/stacks/github-ci-bootstrap/{environment}.json"
         self.uri = f"awskms://alias/pulumi-platform-bootstrap-{environment}?region=eu-central-1"
@@ -494,8 +573,15 @@ class OperatorTransport:
             ]
             if stage == "drift":
                 command += ["--refresh", "--expect-no-changes"]
+        self.diagnostic_capture = DiagnosticCapture() if stage == "preview" else None
         try:
-            result = run(command, env=self.child_env, cwd=self.work, child=True)
+            result = run(
+                command,
+                env=self.child_env,
+                cwd=self.work,
+                child=True,
+                capture=self.diagnostic_capture,
+            )
             return (b"", b"") if stage == "apply" else (private_read(plan_path), result)
         finally:
             config_path.unlink(missing_ok=True)

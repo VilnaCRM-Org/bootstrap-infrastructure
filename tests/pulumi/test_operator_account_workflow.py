@@ -145,3 +145,32 @@ def test_full_plan_and_iam_gates_are_completed_before_apply():
         )
     assert "command == 'up'" in JOBS["apply"]["if"]
     assert "command == 'up'" in JOBS["post_apply_drift"]["if"]
+
+
+def test_preview_failure_uploads_only_exact_encrypted_diagnostic_for_one_day():
+    uploads = [
+        step
+        for step in JOBS["preview"]["steps"]
+        if step.get("name") == "Upload only the encrypted preview diagnostic"
+    ]
+    assert len(uploads) == 1
+    step = uploads[0]
+    assert step["if"] == "${{ failure() && steps.execute.outcome == 'failure' }}"
+    assert (
+        step["uses"]
+        == "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+    )
+    assert step["with"] == {
+        "name": (
+            "operator-diagnostic-preview-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-"
+            "${{ inputs.account }}-${{ needs.resolve.outputs.head_sha }}"
+        ),
+        "path": "${{ runner.temp }}/operator-public/operator-diagnostic.encrypted.json",
+        "if-no-files-found": "warn",
+        "retention-days": 1,
+    }
+    for name in ("resolve", "apply", "post_apply_drift"):
+        assert all(
+            "diagnostic" not in step.get("name", "") for step in JOBS[name]["steps"]
+        )
