@@ -199,6 +199,11 @@ def test_pulumi_commands_use_private_full_plans_and_isolated_child(
     command, options = calls[0]
     assert command[0] == transport.PULUMI
     assert options["child"] is True
+    assert options["capture"] is installed.diagnostic_capture
+    if stage == "preview":
+        assert type(options["capture"]) is transport.DiagnosticCapture
+    else:
+        assert options["capture"] is None
     assert "GH_TOKEN" not in options["env"]
     assert options["env"]["PULUMI_DISABLE_AUTOMATIC_PLUGIN_ACQUISITION"] == "true"
     if stage == "apply":

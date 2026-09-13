@@ -2,7 +2,7 @@
 
 Invoke with isolated Python. The root worker rechecks admission before OIDC;
 this process authenticates it again, then verifies actual active enrollment and
-fresh checkpoint/provider evidence. Only encrypted saved-plan artifacts leave
+fresh checkpoint/provider evidence. Only encrypted plan/diagnostic artifacts leave
 the process. Independent seed installation is mandatory and never performed here.
 """
 
@@ -36,6 +36,7 @@ from operator_execution_transport import (  # noqa: E402
     AWS,
     MAX_BYTES,
     PROCESS_CATEGORIES,
+    DiagnosticCapture,
     OperatorTransport,
     ProcessFailure,
     decode,
@@ -90,6 +91,64 @@ def _failure_record(exc, stage):
     elif type(exc) is ValueError:
         category = "validation-rejected"
     return {"stage": stage, "category": category, "exit_code": exit_code}
+
+
+def _publish_diagnostic(destination, encrypted):
+    """Publish complete ciphertext exclusively; a failed write is never uploadable."""
+    pending = destination.with_name(".operator-diagnostic.pending")
+    try:
+        private_write(pending, encrypted)
+        pending.chmod(0o644)
+        os.link(pending, destination)
+    finally:
+        pending.unlink(missing_ok=True)
+
+
+def _write_diagnostic(arguments, transport, exc):
+    """Seal preview failure bytes before cleanup; never replace the original error."""
+    capture = getattr(transport, "diagnostic_capture", None)
+    binding = getattr(arguments, "diagnostic_binding", None)
+    if (
+        arguments.stage != "preview"
+        or type(capture) is not DiagnosticCapture
+        or binding is None
+    ):
+        return
+    destination = arguments.public_dir / "operator-diagnostic.encrypted.json"
+    try:
+        reason = ""
+        if type(exc) is ValueError and len(exc.args) == 1 and type(exc.args[0]) is str:
+            reason = (
+                exc.args[0][:4096]
+                .encode("utf-8", "replace")[:4096]
+                .decode("utf-8", "ignore")
+            )
+        payload = {
+            **_failure_record(exc, arguments.diagnostic_stage),
+            "stdout": base64.b64encode(capture.stdout).decode("ascii"),
+            "stderr": base64.b64encode(capture.stderr).decode("ascii"),
+            "stdout_truncated": capture.stdout_truncated,
+            "stderr_truncated": capture.stderr_truncated,
+            "validation_reason": reason,
+        }
+        contract, execution = binding
+        encrypted = envelope.seal_diagnostic(
+            payload,
+            contract=contract,
+            execution=execution,
+            generate_key=lambda request: transport.kms("generate-data-key", request),
+        )
+        _publish_diagnostic(destination, encrypted)
+        print(
+            json.dumps({"diagnostic_sha256": hashlib.sha256(encrypted).hexdigest()}),
+            file=sys.stderr,
+        )
+    except Exception:
+        # Remove a partial or stale exact diagnostic file, never publish plaintext.
+        try:
+            destination.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def selected_registry(environment, key_arn):
@@ -301,6 +360,7 @@ def execute(arguments, transport):
     enrollment(expected, arguments.stage)
     arguments.diagnostic_stage = "initial-snapshot"
     before = transport.snapshot()
+    arguments.diagnostic_binding = (contract, before.execution)
     catalog = registry.load_catalog(arguments.account)
     if arguments.stage == "apply":
         arguments.diagnostic_stage = "saved-plan-input"
@@ -422,7 +482,11 @@ def main(argv=None):
                 transport = OperatorTransport(
                     arguments.account, Path(directory), arguments.source
                 )
-                outputs = execute(arguments, transport)
+                try:
+                    outputs = execute(arguments, transport)
+                except Exception as exc:
+                    _write_diagnostic(arguments, transport, exc)
+                    raise
         arguments.diagnostic_stage = "public-output"
         with Path(arguments.output).open("a", encoding="utf-8") as handle:
             for key, value in outputs.items():

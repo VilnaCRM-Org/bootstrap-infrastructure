@@ -219,6 +219,14 @@ jobs:
             --artifact-sha256 "${CONTRACT_ARTIFACT_SHA256}" --contract-sha256 "${CONTRACT_SHA256}" \
             --output /public/outputs
           cat "${RUNNER_TEMP}/operator-public/outputs" >> "${GITHUB_OUTPUT}"
+      - name: Upload only the encrypted preview diagnostic
+        if: ${{ failure() && steps.execute.outcome == 'failure' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: operator-diagnostic-preview-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.account }}-${{ needs.resolve.outputs.head_sha }}
+          path: ${{ runner.temp }}/operator-public/operator-diagnostic.encrypted.json
+          if-no-files-found: warn
+          retention-days: 1
       - name: Upload only the encrypted saved plan
         id: upload
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
