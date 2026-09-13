@@ -92,6 +92,9 @@ if not set(automation_retained_policy_arns) <= set(
     automation_principals[0]["attachment_arns"]
 ):
     raise ValueError("Automation guard catalog inventory is inconsistent")
+pulumi.runtime.register_stack_transformation(
+    import_module("infra.operator_resource_options").without_completed_import
+)
 boundaries = platform_iam.PlatformIamBoundaries(
     "platform-iam-boundaries",
     settings=settings,

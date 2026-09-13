@@ -7,7 +7,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from infra import ManagedRepositoryCatalog, governance_automation, platform_iam
+from infra import (
+    ManagedRepositoryCatalog,
+    governance_automation,
+    operator_resource_options,
+    platform_iam,
+)
 from pulumi.runtime.stack import wait_for_rpcs
 from pulumi.runtime.sync_await import _sync_await
 from seed import policy_registry
@@ -71,6 +76,7 @@ def test_entrypoint_uses_actual_pinned_seed_bindings(
         get_object=values.get,
     )
     allocations = {}
+    transformations = []
     bootstrap = SimpleNamespace(
         oidc_provider_arn=catalog["operator_bindings"]["oidc"],
         ci_configuration=SimpleNamespace(secret_ids={}, read_role_arns={}),
@@ -82,6 +88,7 @@ def test_entrypoint_uses_actual_pinned_seed_bindings(
     )
 
     def allocate(name, **kwargs):
+        assert transformations == [operator_resource_options.without_completed_import]
         allocations[name] = kwargs
         if name == "github-ci-bootstrap":
             return bootstrap
@@ -98,6 +105,9 @@ def test_entrypoint_uses_actual_pinned_seed_bindings(
             Config=lambda: config,
             ResourceOptions=lambda **kw: kw,
             export=lambda *args: None,
+            runtime=SimpleNamespace(
+                register_stack_transformation=transformations.append
+            ),
         ),
         "pulumi_aws": SimpleNamespace(
             get_caller_identity=lambda: SimpleNamespace(account_id=account),
@@ -122,6 +132,7 @@ def test_entrypoint_uses_actual_pinned_seed_bindings(
         "infra.platform_iam": SimpleNamespace(PlatformIamBoundaries=allocate),
         "infra.platform_control_iam": SimpleNamespace(PlatformControlIam=allocate),
         "seed.policy_registry": policy_registry,
+        "infra.operator_resource_options": operator_resource_options,
     }
     monkeypatch.setattr(importlib, "import_module", modules.__getitem__)
     entrypoint = (
