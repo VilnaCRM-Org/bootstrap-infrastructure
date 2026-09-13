@@ -74,6 +74,18 @@ def _validate_platform_catalog(settings, repositories):
         )
 
 
+def _triage_permissions_boundary(settings, account_id, partition, external_boundaries):
+    """Retain the catalog boundary only for the PROD-owned triage role."""
+    if settings.environment != "prod":
+        return None
+    return _role_permissions_boundary(
+        _operations_alert_triage_role_name(settings, settings.repo or ""),
+        account_id=account_id,
+        partition=partition,
+        external_role_boundaries=external_boundaries,
+    )
+
+
 class PlatformControlIam(pulumi.ComponentResource):
     """Adopt control identities once; normal platform stacks only reference them."""
 
@@ -166,15 +178,8 @@ class PlatformControlIam(pulumi.ComponentResource):
             manage_repository=False,
             manage_roles=True,
             manage_triage=settings.environment == "prod",
-            triage_permissions_boundary=(
-                _role_permissions_boundary(
-                    _operations_alert_triage_role_name(settings, settings.repo or ""),
-                    account_id=account_id,
-                    partition=partition,
-                    external_role_boundaries=external_role_boundaries,
-                )
-                if settings.environment == "prod"
-                else None
+            triage_permissions_boundary=_triage_permissions_boundary(
+                settings, account_id, partition, external_role_boundaries
             ),
             permissions_boundary=control_boundary_arn,
             adopt_existing_policies=True,

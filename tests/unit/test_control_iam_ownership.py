@@ -588,3 +588,10 @@ def test_operator_prod_triage_rejects_missing_catalog_boundary(
             external_role_boundaries={},
         )
     _sync_await(wait_for_rpcs())
+
+
+def test_platform_catalog_rejects_nonprimary_repository():
+    import infra.platform_control_iam as module
+
+    with pytest.raises(ValueError, match="only the primary bootstrap repository"):
+        module._validate_platform_catalog(inputs("prod").settings, [REPO])
