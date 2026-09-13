@@ -157,6 +157,7 @@ def test_entrypoint_uses_actual_pinned_seed_bindings(
     governor_args = allocations["governance-automation"]["args"]
     assert bootstrap_args["external_role_boundaries"] == expected
     assert governor_args["external_role_boundaries"] == expected
+    assert allocations["platform-control-iam"]["external_role_boundaries"] == expected
     assert bootstrap_args["manage_oidc_provider"] is False
     assert allocations["platform-iam-boundaries"]["manage_policies"] is False
     assert governor_args["manage_service_boundaries"] is False
