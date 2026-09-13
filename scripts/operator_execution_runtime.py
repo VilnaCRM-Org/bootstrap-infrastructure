@@ -93,6 +93,12 @@ def _failure_record(exc, stage):
     return {"stage": stage, "category": category, "exit_code": exit_code}
 
 
+def _public_record(exc, stage):
+    """Keep child-selected numeric exits exclusively inside encrypted diagnostics."""
+    record = _failure_record(exc, stage)
+    return {"stage": record["stage"], "category": record["category"]}
+
+
 def _publish_diagnostic(destination, encrypted):
     """Publish complete ciphertext exclusively; a failed write is never uploadable."""
     pending = destination.with_name(".operator-diagnostic.pending")
@@ -494,9 +500,7 @@ def main(argv=None):
         return 0
     except Exception as exc:
         print(
-            json.dumps(
-                _failure_record(exc, arguments.diagnostic_stage), sort_keys=True
-            ),
+            json.dumps(_public_record(exc, arguments.diagnostic_stage), sort_keys=True),
             file=sys.stderr,
         )
         return 1

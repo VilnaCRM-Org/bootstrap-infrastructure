@@ -1,7 +1,8 @@
 # Operator preview failure diagnostics
 
-The trusted operator runner reports a fixed stage, process category and bounded
-exit code when execution fails. These public fields contain no exception text,
+The trusted operator runner reports only a fixed stage and category when execution
+fails. Numeric exit codes remain inside the encrypted diagnostic. Public fields
+contain no exception text,
 child output, credentials or stack data. A failure remains a failure.
 
 For a failed preview after authenticated contract and checkpoint binding, the

@@ -237,7 +237,6 @@ def test_main_reports_actual_preview_stage_without_output_or_success(
     assert json.loads(output.err) == {
         "stage": "pulumi-preview" if point == "pulumi" else "plan-validation",
         "category": category,
-        "exit_code": 23 if point == "pulumi" else None,
     }
     assert CANARY not in output.err
     assert not (tmp_path / "outputs").exists()
@@ -342,7 +341,6 @@ def test_failed_preview_preserves_original_error_and_only_recoverable_ciphertext
     assert records[-1] == {
         "stage": "pulumi-preview" if failure == "child" else "plan-validation",
         "category": "process-exit" if failure == "child" else "validation-rejected",
-        "exit_code": 9 if failure == "child" else None,
     }
     if failure in {"child", "validator"}:
         raw = destination.read_bytes()
@@ -353,6 +351,7 @@ def test_failed_preview_preserves_original_error_and_only_recoverable_ciphertext
             execution=scenario.snapshot.execution,
             decrypt_key=FakeKms().decrypt,
         )
+        assert payload["exit_code"] == (9 if failure == "child" else None)
         assert base64.b64decode(payload["stderr"]) == (CANARY + "\n").encode()
         assert payload["validation_reason"] == (
             CANARY if failure == "validator" else ""
@@ -422,3 +421,13 @@ def test_diagnostic_cleanup_error_does_not_replace_original_failure(
     monkeypatch.setattr(Path, "unlink", deny)
     runtime._write_diagnostic(scenario.args, scenario.transport, ValueError(CANARY))
     assert capsys.readouterr() == ("", "")
+
+
+@pytest.mark.parametrize("exit_code", [-127, -15, 1, 9, 23, 255])
+def test_public_category_hides_distinct_process_exit_values(exit_code):
+    failure = transport.ProcessFailure("process-exit", exit_code)
+    assert runtime._public_record(failure, "pulumi-preview") == {
+        "stage": "pulumi-preview",
+        "category": "process-exit",
+    }
+    assert runtime._failure_record(failure, "pulumi-preview")["exit_code"] == exit_code
