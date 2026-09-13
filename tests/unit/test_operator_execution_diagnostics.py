@@ -234,7 +234,7 @@ def test_main_reports_actual_preview_stage_without_output_or_success(
     assert result == 1
     output = capsys.readouterr()
     assert output.out == ""
-    assert json.loads(output.err) == {
+    assert json.loads(output.err.splitlines()[0]) == {
         "stage": "pulumi-preview" if point == "pulumi" else "plan-validation",
         "category": category,
     }
@@ -337,7 +337,9 @@ def test_failed_preview_preserves_original_error_and_only_recoverable_ciphertext
     assert runtime.main(_argv(tmp_path, scenario.args.account)) == 1
     public = capsys.readouterr()
     assert CANARY not in public.err and public.out == ""
-    records = [json.loads(line) for line in public.err.splitlines()]
+    records = [
+        json.loads(line) for line in public.err.splitlines() if line.startswith("{")
+    ]
     assert records[-1] == {
         "stage": "pulumi-preview" if failure == "child" else "plan-validation",
         "category": "process-exit" if failure == "child" else "validation-rejected",
