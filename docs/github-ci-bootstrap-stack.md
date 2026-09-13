@@ -90,6 +90,13 @@ Existing deployments require the separately reviewed ownership migration to be
 complete; a code-mode switch cannot repair duplicate owners. Reject unintended
 deletion, replacement, import or provider/role ownership drift.
 
+After that cutover, the operator entrypoint clears completed import hints from
+its managed IAM and Secrets Manager resources before registration. The existing
+checkpoint determines ownership; `.get()` provider reads and engine reads remain
+unchanged. Shared constructors retain their import behavior outside this
+entrypoint. First-time adoption still requires the separate reviewed migration;
+removing an import hint does not establish ownership or permit a new import.
+
 The operator's own backend is distinct from `github-ci-bootstrap:pulumiBackendUrl`.
 That configuration field is emitted into platform CI payloads, typically with
 `state/test` or `state/prod`. It must not redirect the operator project to the
