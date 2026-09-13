@@ -99,6 +99,138 @@ def _public_record(exc, stage):
     return {"stage": record["stage"], "category": record["category"]}
 
 
+PROCESS_GUIDANCE = {
+    "spawn-failed": (
+        "A required process could not start. Check the pinned worker "
+        "image and executable permissions."
+    ),
+    "process-timeout": (
+        "A private process exceeded its deadline. Review available "
+        "encrypted diagnostics and service availability before retrying."
+    ),
+    "stdout-bound": (
+        "Private process output exceeded its limit. Review available "
+        "encrypted diagnostics; reduce unnecessary output without raising "
+        "safety limits."
+    ),
+    "stderr-bound": (
+        "Private error output exceeded its limit. Review available "
+        "encrypted diagnostics without publishing the captured output."
+    ),
+    "process-exit": (
+        "A private process failed. Follow "
+        "docs/operator-preview-diagnostics.md to privately inspect the "
+        "operator-diagnostic-preview artifact, when available, before "
+        "retrying."
+    ),
+    "child-cleanup-failed": (
+        "Isolated process cleanup failed. Check the trusted worker "
+        "process isolation before retrying."
+    ),
+}
+VALIDATION_GUIDANCE = {
+    ("plan-validation", "unsupported-goal-option"): (
+        "The saved plan contains an unsupported lifecycle option. Review "
+        "import and replacement options against completed checkpoint "
+        "ownership; keep validation enabled."
+    ),
+    ("plan-validation", "preview-old-outputs"): (
+        "Preview prior outputs disagree with the checkpoint. Review "
+        "checkpoint and refresh consistency privately before generating a "
+        "fresh plan."
+    ),
+    ("plan-validation", "aws-provider-version-region"): (
+        "The plan provider differs from the required version or region. "
+        "Restore the reviewed provider pins before generating a fresh "
+        "plan."
+    ),
+    ("iam-analysis", "iam-analysis-failed"): (
+        "IAM analysis did not accept the complete policy result. Review "
+        "the policy validation findings privately; do not bypass the IAM "
+        "gate."
+    ),
+    ("destructive-review", "destructive-review-required"): (
+        "A destructive change lacks the required review. Review its "
+        "necessity and the existing destructive-change approval procedure "
+        "before retrying."
+    ),
+    ("admission-recheck", "admission-changed"): (
+        "Request admission changed during execution. Recheck the PR head "
+        "and authorization, then submit a fresh request."
+    ),
+    ("saved-plan-input", "saved-checkpoint-changed"): (
+        "The saved plan checkpoint no longer matches. Generate and review "
+        "a fresh plan before applying."
+    ),
+    ("drift-validation", "post-apply-drift"): (
+        "The drift check found remaining changes. Investigate the "
+        "difference before declaring deployment complete."
+    ),
+}
+STAGE_GUIDANCE = {
+    "initial-enrollment": (
+        "Active enrollment could not be verified. Review the exact role "
+        "identity, trust, boundaries and policy inventory; do not "
+        "reactivate roles or bypass enrollment."
+    ),
+    "final-enrollment": (
+        "Active enrollment could not be reverified. Review changes to the "
+        "exact role identity, trust, boundaries and policy inventory "
+        "before retrying."
+    ),
+    "initial-snapshot": (
+        "The checkpoint or provider could not be verified. Check the "
+        "canonical backend version and pinned KMS provider through "
+        "private metadata review."
+    ),
+    "post-preview-snapshot": (
+        "Checkpoint consistency could not be verified after preview. "
+        "Review backend version changes privately before generating a "
+        "fresh plan."
+    ),
+    "final-snapshot": (
+        "Checkpoint consistency could not be reverified. Review backend "
+        "version changes privately before generating a fresh plan."
+    ),
+    "plan-validation": (
+        "The private plan failed validation. Review the encrypted preview "
+        "diagnostic, when available, and correct the source or state "
+        "mismatch without relaxing validation."
+    ),
+}
+UNKNOWN_GUIDANCE = (
+    "The failure could not be classified more precisely without private "
+    "evidence. Review available encrypted diagnostics and the trusted "
+    "worker before retrying."
+)
+
+
+def _public_guidance(exc, record):
+    """Select static advice only; never interpolate or coerce private error data."""
+    if (
+        type(exc) is ValueError
+        and len(exc.args) == 1
+        and type(exc.args[0]) is str
+        and len(exc.args[0]) <= 96
+    ):
+        guidance = VALIDATION_GUIDANCE.get((record["stage"], exc.args[0]))
+        if guidance is not None:
+            return guidance
+    return PROCESS_GUIDANCE.get(record["category"]) or STAGE_GUIDANCE.get(
+        record["stage"], UNKNOWN_GUIDANCE
+    )
+
+
+def _failure_annotation(exc, stage):
+    """Build a single GitHub annotation solely from trusted finite literals."""
+    record = _public_record(exc, stage)
+    return (
+        "::error title=Operator execution failed::"
+        f"Stage: {record['stage']}. Category: {record['category']}. "
+        + _public_guidance(exc, record)
+    )
+
+
 def _publish_diagnostic(destination, encrypted):
     """Publish complete ciphertext exclusively; a failed write is never uploadable."""
     pending = destination.with_name(".operator-diagnostic.pending")
@@ -503,6 +635,7 @@ def main(argv=None):
             json.dumps(_public_record(exc, arguments.diagnostic_stage), sort_keys=True),
             file=sys.stderr,
         )
+        print(_failure_annotation(exc, arguments.diagnostic_stage), file=sys.stderr)
         return 1
 
 
