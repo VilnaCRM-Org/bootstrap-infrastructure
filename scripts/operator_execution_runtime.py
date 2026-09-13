@@ -20,6 +20,7 @@ import argparse  # noqa: E402
 import base64  # noqa: E402
 import hashlib  # noqa: E402
 import io  # noqa: E402
+import json  # noqa: E402
 import os  # noqa: E402
 import re  # noqa: E402
 import stat  # noqa: E402
@@ -34,16 +35,61 @@ from operator_enrollment_runtime import collect_enrollment  # noqa: E402
 from operator_execution_transport import (  # noqa: E402
     AWS,
     MAX_BYTES,
+    PROCESS_CATEGORIES,
     OperatorTransport,
+    ProcessFailure,
     decode,
     encode,
     private_write,
     require,
     run,
+    safe_exit_code,
 )
 from operator_plan_validation import _goal_inputs, validate_operator_plan  # noqa: E402
 from pulumi_ci_guardrails import find_destructive_steps  # noqa: E402
 from seed import policy_registry as registry  # noqa: E402
+
+STAGES = frozenset(
+    {
+        "initialization",
+        "transport-setup",
+        "public-output",
+        "admission",
+        "tools",
+        "initial-enrollment",
+        "initial-snapshot",
+        "saved-plan-input",
+        "plan-validation",
+        "iam-analysis",
+        "destructive-review",
+        "admission-recheck",
+        "final-enrollment",
+        "final-snapshot",
+        "pulumi-preview",
+        "pulumi-apply",
+        "pulumi-drift",
+        "post-preview-snapshot",
+        "post-apply-snapshot",
+        "drift-validation",
+        "plan-seal",
+    }
+)
+
+
+def _failure_record(exc, stage):
+    """Emit only fixed source stages/categories and bounded native exits/signals."""
+    stage = stage if type(stage) is str and stage in STAGES else "unknown"
+    category, exit_code = "unknown", None
+    if type(exc) is ProcessFailure:
+        category = (
+            exc.category
+            if type(exc.category) is str and exc.category in PROCESS_CATEGORIES
+            else "unknown"
+        )
+        exit_code = safe_exit_code(exc.exit_code)
+    elif type(exc) is ValueError:
+        category = "validation-rejected"
+    return {"stage": stage, "category": category, "exit_code": exit_code}
 
 
 def selected_registry(environment, key_arn):
@@ -242,17 +288,22 @@ def _destructive(preview, contract):
 
 def execute(arguments, transport):
     """Execute concrete stages after enrollment and fresh evidence checks."""
+    arguments.diagnostic_stage = "admission"
     expected = selected_registry(arguments.account, arguments.seed_key_arn)
     contract = _contract(arguments)
     require(
         arguments.stage == "preview" or contract.identity.command == "up",
         "apply-or-drift-not-requested",
     )
+    arguments.diagnostic_stage = "tools"
     transport.tools(contract.identity.head_sha)
+    arguments.diagnostic_stage = "initial-enrollment"
     enrollment(expected, arguments.stage)
+    arguments.diagnostic_stage = "initial-snapshot"
     before = transport.snapshot()
     catalog = registry.load_catalog(arguments.account)
     if arguments.stage == "apply":
+        arguments.diagnostic_stage = "saved-plan-input"
         encrypted = _encrypted_artifact(arguments, contract)
         bundle = _unbundle(
             envelope.open_plan(
@@ -263,34 +314,54 @@ def execute(arguments, transport):
             )
         )
         require(bundle["checkpoint"] == before.checkpoint, "saved-checkpoint-changed")
+        arguments.diagnostic_stage = "plan-validation"
         validate_operator_plan(
             bundle["plan"], bundle["preview"], before.checkpoint, catalog=catalog
         )
+        arguments.diagnostic_stage = "iam-analysis"
         _iam(bundle["plan"], before.checkpoint, transport)
+        arguments.diagnostic_stage = "destructive-review"
         _destructive(bundle["preview"], contract)
+        arguments.diagnostic_stage = "admission-recheck"
         require(_contract(arguments) == contract, "admission-changed")
+        arguments.diagnostic_stage = "final-enrollment"
         enrollment(expected, "apply")
+        arguments.diagnostic_stage = "final-snapshot"
         _same(before, transport.snapshot())
+        arguments.diagnostic_stage = "pulumi-apply"
         transport.pulumi("apply", before, bundle["plan"])
+        arguments.diagnostic_stage = "post-apply-snapshot"
         after = transport.snapshot()
         require(
             after.execution.provider == before.execution.provider,
             "post-apply-provider-changed",
         )
         return {}
+    arguments.diagnostic_stage = (
+        "pulumi-drift" if arguments.stage == "drift" else "pulumi-preview"
+    )
     plan, preview = transport.pulumi(arguments.stage, before)
+    arguments.diagnostic_stage = "post-preview-snapshot"
     _same(before, transport.snapshot())
+    arguments.diagnostic_stage = "plan-validation"
     validation = validate_operator_plan(
         plan, preview, before.checkpoint, catalog=catalog
     )
     if arguments.stage == "drift":
+        arguments.diagnostic_stage = "drift-validation"
         require(not validation.changed_urns, "post-apply-drift")
         return {}
+    arguments.diagnostic_stage = "iam-analysis"
     _iam(plan, before.checkpoint, transport)
+    arguments.diagnostic_stage = "destructive-review"
     _destructive(preview, contract)
+    arguments.diagnostic_stage = "admission-recheck"
     require(_contract(arguments) == contract, "admission-changed")
+    arguments.diagnostic_stage = "final-enrollment"
     enrollment(expected, "preview")
+    arguments.diagnostic_stage = "final-snapshot"
     _same(before, transport.snapshot())
+    arguments.diagnostic_stage = "plan-seal"
     encrypted = envelope.seal_plan(
         _bundle(plan, preview, before.checkpoint),
         contract=contract,
@@ -306,7 +377,7 @@ def execute(arguments, transport):
 
 
 def main(argv=None):
-    """Emit only public coordinates/digests; all failures use one redacted message."""
+    """Emit public coordinates/digests or fixed failure attribution, never details."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--stage", choices=("resolve", "preview", "apply", "drift"), required=True
@@ -325,6 +396,7 @@ def main(argv=None):
     parser.add_argument("--source", type=Path, default=Path("/source"))
     parser.add_argument("--public-dir", type=Path, default=Path("/public"))
     arguments = parser.parse_args(argv)
+    arguments.diagnostic_stage = "initialization"
     try:
         expected = selected_registry(arguments.account, arguments.seed_key_arn)
         contract = _contract(arguments)
@@ -346,17 +418,21 @@ def main(argv=None):
             )
         else:
             with tempfile.TemporaryDirectory(prefix="operator-private-") as directory:
+                arguments.diagnostic_stage = "transport-setup"
                 transport = OperatorTransport(
                     arguments.account, Path(directory), arguments.source
                 )
                 outputs = execute(arguments, transport)
+        arguments.diagnostic_stage = "public-output"
         with Path(arguments.output).open("a", encoding="utf-8") as handle:
             for key, value in outputs.items():
                 handle.write(f"{key}={value}\n")
         return 0
-    except Exception:
+    except Exception as exc:
         print(
-            "Operator stage failed its execution or enrollment prerequisites.",
+            json.dumps(
+                _failure_record(exc, arguments.diagnostic_stage), sort_keys=True
+            ),
             file=sys.stderr,
         )
         return 1
