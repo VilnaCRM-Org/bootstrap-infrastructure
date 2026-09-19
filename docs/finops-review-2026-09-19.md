@@ -11,7 +11,7 @@ recorder **only when both the environment is `test` and the AWS account is
 `891377212104`**, as explicitly approved by the owner on 19 September 2026.
 Production and other account/environment combinations retain both services.
 The account pin and opt-out live in the non-secret per-stack policy
-`pulumi/cost-controls.test.json`; reusable Python components contain no account
+`pulumi/infra/config/cost-controls.test.json`; reusable Python components contain no account
 number literals. Malformed policy fails the preview rather than disabling checks.
 The Config recorder, delivery channel, bucket and existing retention remain;
 GuardDuty, CloudTrail, encryption and backups are unchanged.

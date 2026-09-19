@@ -20,7 +20,7 @@ AWS_SOURCE_ACCOUNT_CONDITION_KEY = "aws:SourceAccount"
 AWS_SOURCE_ARN_CONDITION_KEY = "aws:SourceArn"
 CONFIG_RECORDER_MANAGED_POLICY = "service-role/AWS_ConfigRole"
 TEST_COST_CONTROLS_PATH = (
-    Path(__file__).resolve().parents[1] / "cost-controls.test.json"
+    Path(__file__).resolve().parent / "config" / "cost-controls.test.json"
 )
 
 
