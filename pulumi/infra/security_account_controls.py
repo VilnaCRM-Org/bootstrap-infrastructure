@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
+from pathlib import Path
 
 import pulumi_aws as aws
 
@@ -17,9 +19,34 @@ AWS_CONFIG_SERVICE_PRINCIPAL = "config.amazonaws.com"
 AWS_SOURCE_ACCOUNT_CONDITION_KEY = "aws:SourceAccount"
 AWS_SOURCE_ARN_CONDITION_KEY = "aws:SourceArn"
 CONFIG_RECORDER_MANAGED_POLICY = "service-role/AWS_ConfigRole"
-# The cost exception is approved for this test account only. An environment
-# label alone must never disable production posture checks.
-TEST_COST_OPTIMIZATION_ACCOUNT_ID = "891377212104"
+TEST_COST_CONTROLS_PATH = (
+    Path(__file__).resolve().parents[1] / "cost-controls.test.json"
+)
+
+
+def _security_posture_enabled(environment: str, account_id: str) -> bool:
+    """Apply the reviewed non-secret test policy only to its pinned AWS account."""
+    if environment != "test":
+        return True
+    policy = json.loads(TEST_COST_CONTROLS_PATH.read_text(encoding="utf-8"))
+    if not isinstance(policy, dict) or set(policy) != {
+        "accountId",
+        "securityPostureEnabled",
+    }:
+        raise ValueError(
+            "Test cost policy must contain accountId and securityPostureEnabled."
+        )
+    expected_account = policy["accountId"]
+    enabled = policy["securityPostureEnabled"]
+    if (
+        not isinstance(expected_account, str)
+        or re.fullmatch(r"[0-9]{12}", expected_account) is None
+        or not isinstance(enabled, bool)
+    ):
+        raise ValueError(
+            "Test cost policy requires a 12-digit account ID and a boolean."
+        )
+    return account_id != expected_account or enabled
 
 
 def _environment_part(settings: BootstrapSettings) -> str:
@@ -196,9 +223,8 @@ class SecurityAccountControls(pulumi.ComponentResource):
         account_id = aws.get_caller_identity().account_id
         partition = aws.get_partition().partition
         region = aws.get_region().name
-        self.security_posture_enabled = not (
-            configured_settings.environment == "test"
-            and account_id == TEST_COST_OPTIMIZATION_ACCOUNT_ID
+        self.security_posture_enabled = _security_posture_enabled(
+            configured_settings.environment, account_id
         )
         base_opts = pulumi.ResourceOptions(
             parent=self,

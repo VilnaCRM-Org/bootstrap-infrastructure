@@ -10,6 +10,9 @@ This patch disables Security Hub CSPM and stops the customer-managed AWS Config
 recorder **only when both the environment is `test` and the AWS account is
 `891377212104`**, as explicitly approved by the owner on 19 September 2026.
 Production and other account/environment combinations retain both services.
+The account pin and opt-out live in the non-secret per-stack policy
+`pulumi/cost-controls.test.json`; reusable Python components contain no account
+number literals. Malformed policy fails the preview rather than disabling checks.
 The Config recorder, delivery channel, bucket and existing retention remain;
 GuardDuty, CloudTrail, encryption and backups are unchanged.
 
@@ -150,8 +153,9 @@ The TEST plan must show deletion of only the Security Hub account resource
 `security-account-controls-security-hub` for the security exception, plus
 `isEnabled: true -> false` on the existing Config recorder status. No Config
 recorder, delivery channel, bucket, KMS key, GuardDuty detector or backup may be
-deleted. Use the existing `allow-destructive-infra-change` review mechanism for
-the deliberate Security Hub removal; do not weaken the deletion guardrail.
+deleted. Keep the destructive-diff guardrails in place. If an override is
+required, use only the existing `allow-destructive-infra-change` review mechanism
+after checking the exact plan; do not pre-authorize unrelated deletions.
 The PROD plan must retain Security Hub and enabled Config recording, with only
 the intended budget changes. Abort if these boundaries do not match the plan.
 
@@ -169,8 +173,9 @@ Security Hub disabled in Frankfurt, and continuing GuardDuty/CloudTrail coverage
 omitted from serialized Pulumi stack outputs; use `securityPostureEnabled` as the
 explicit status instead of expecting a JSON `null` ARN. Production retains its ARN.
 AWS may take time to remove service-linked rules; investigate residual charges
-before claiming zero Config/Security Hub cost. To roll back, revert the explicit
-test account exception and use a newly reviewed saved plan to re-enable CSPM and
+before claiming zero Config/Security Hub cost. To roll back, set
+`securityPostureEnabled` to `true` in the non-secret test cost policy and use a
+newly reviewed saved plan to re-enable CSPM and
 Config. Deleted Security Hub findings cannot be recovered by a code rollback.
 
 After approved changes deploy, compare full-month or normalized daily costs at

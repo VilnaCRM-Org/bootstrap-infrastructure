@@ -2,6 +2,7 @@ import asyncio
 import json
 import runpy
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -1770,6 +1771,41 @@ def test_security_account_controls_emit_detection_and_config_resources(
 
 
 @pytest.mark.parametrize(
+    "policy",
+    [
+        [],
+        {},
+        {"accountId": "891377212104"},
+        {"accountId": 891377212104, "securityPostureEnabled": False},
+        {"accountId": "invalid", "securityPostureEnabled": False},
+        {"accountId": "891377212104", "securityPostureEnabled": "false"},
+    ],
+)
+def test_security_cost_policy_rejects_invalid_configuration(
+    tmp_path, monkeypatch, policy
+):
+    """Malformed cost policy fails closed instead of silently disabling security."""
+    path = tmp_path / "cost-controls.test.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    monkeypatch.setattr(security_account_controls, "TEST_COST_CONTROLS_PATH", path)
+    with pytest.raises(ValueError, match="Test cost policy"):
+        security_account_controls._security_posture_enabled("test", "891377212104")
+
+
+def test_security_cost_policy_can_restore_checks(tmp_path, monkeypatch):
+    """A reviewed policy change can restore checks without changing runtime code."""
+    path = tmp_path / "cost-controls.test.json"
+    path.write_text(
+        json.dumps({"accountId": "891377212104", "securityPostureEnabled": True}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(security_account_controls, "TEST_COST_CONTROLS_PATH", path)
+    assert security_account_controls._security_posture_enabled(  # nosec B101
+        "test", "891377212104"
+    )
+
+
+@pytest.mark.parametrize(
     "environment,account_id,enabled",
     [
         ("test", "891377212104", False),
@@ -1783,8 +1819,6 @@ def test_security_cost_exception_is_scoped_and_preserves_config_history(
     pulumi_mocks, monkeypatch, environment, account_id, enabled
 ):
     """Only the approved test account stops posture checks, never its audit storage."""
-    from types import SimpleNamespace
-
     monkeypatch.setattr(
         security_account_controls.aws,
         "get_caller_identity",
@@ -2777,12 +2811,20 @@ def test_stack_main_executes(pulumi_mocks, monkeypatch):  # noqa: ARG001
         config.managed_repositories.cache_clear()
 
 
+@pytest.mark.parametrize(
+    "account_id,enabled", [("123456789012", True), ("891377212104", False)]
+)
 def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
-    pulumi_mocks, monkeypatch
+    pulumi_mocks, monkeypatch, account_id, enabled
 ):
     config.managed_repositories.cache_clear()
     exported = {}
     monkeypatch.setattr(pulumi, "export", exported.__setitem__)
+    monkeypatch.setattr(
+        security_account_controls.aws,
+        "get_caller_identity",
+        lambda: SimpleNamespace(account_id=account_id),
+    )
     try:
         monkeypatch.setattr(config.settings, "repo", "repo")
         monkeypatch.setattr(config.settings, "org", "VilnaCRM-Org")
@@ -2798,7 +2840,7 @@ def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
         class FakeConfig:
             def require(self, key):
                 return {
-                    "awsAccountId": "123456789012",
+                    "awsAccountId": account_id,
                     "githubRepositoryId": "1098568429",
                     "githubRepositoryOwnerId": "114362548",
                 }[key]
@@ -2825,8 +2867,8 @@ def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
 
         module_globals = runpy.run_path(str(stack_path))
 
-        assert exported["securityPostureEnabled"] is True  # nosec B101
-        assert "securityHubAccountArn" in exported  # nosec B101
+        assert exported["securityPostureEnabled"] is enabled  # nosec B101
+        assert ("securityHubAccountArn" in exported) is enabled  # nosec B101
         assert module_globals["state"].backend_urls  # nosec B101
         assert module_globals["secrets"].provider_urls  # nosec B101
         assert module_globals["oidc"].deploy_role_arns  # nosec B101
