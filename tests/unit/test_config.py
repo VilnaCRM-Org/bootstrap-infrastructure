@@ -225,12 +225,51 @@ def test_bootstrap_settings_from_pulumi_config_uses_defaults_and_stack_fallback(
     assert settings_obj.github_token is github_token  # nosec B101
     assert settings_obj.github_oidc_provider_arn is None  # nosec B101
     assert settings_obj.repository_catalog_path is None  # nosec B101
-    assert settings_obj.monthly_budget_limit_usd == "100"  # nosec B101
+    assert settings_obj.monthly_budget_limit_usd == "30"  # nosec B101
     assert settings_obj.cost_anomaly_threshold_usd == "10"  # nosec B101
     assert settings_obj.cost_anomaly_monitor_arn is None  # nosec B101
     assert settings_obj.manage_cost_allocation_tags is False  # nosec B101
     assert settings_obj.operations_cloudtrail_name is None  # nosec B101
     assert settings_obj.platform_backup_vault_arn is None  # nosec B101
+
+
+@pytest.mark.parametrize(
+    "environment, default", [("prod", "65"), ("test", "30"), ("dev", "100")]
+)
+@pytest.mark.parametrize("override", [None, "100", "42.50"])
+@pytest.mark.parametrize("use_stack_fallback", [False, True])
+def test_monthly_budget_config_defaults_and_overrides(
+    monkeypatch, environment, default, override, use_stack_fallback
+):
+    """Environment allocations apply only when the budget has no explicit override."""
+    values = {"githubOrg": "test-org"}
+    if not use_stack_fallback:
+        values["environment"] = environment
+    if override is not None:
+        values["monthlyBudgetLimitUsd"] = override
+    monkeypatch.setattr(
+        pulumi, "get_stack", lambda: environment if use_stack_fallback else "other"
+    )
+
+    settings_obj = BootstrapSettings.from_pulumi_config(
+        DummyPulumiConfig(values=values)
+    )
+
+    assert settings_obj.monthly_budget_limit_usd == (override or default)  # nosec B101
+
+
+@pytest.mark.parametrize(
+    "environment, default", [("prod", "65"), ("test", "30"), ("dev", "100")]
+)
+def test_monthly_budget_direct_construction(environment, default):
+    """Direct construction resolves the same defaults and preserves explicit budgets."""
+    assert (
+        _bootstrap_settings(environment=environment).monthly_budget_limit_usd == default
+    )  # nosec B101
+    settings_obj = _bootstrap_settings(
+        environment=environment, monthly_budget_limit_usd="100"
+    )
+    assert settings_obj.monthly_budget_limit_usd == "100"  # nosec B101
 
 
 def test_bootstrap_settings_from_pulumi_config_uses_explicit_values(monkeypatch):

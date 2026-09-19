@@ -128,6 +128,7 @@ if bootstrap_requested:
     pulumi.export("costAnomalySubscriptionArn", cost_anomaly_subscription_arn)
     pulumi.export("guardDutyDetectorId", bootstrap.outputs["guardDutyDetectorId"])
     pulumi.export("securityHubAccountArn", bootstrap.outputs["securityHubAccountArn"])
+    pulumi.export("securityPostureEnabled", bootstrap.outputs["securityPostureEnabled"])
     pulumi.export(
         "awsConfigRecorderName",
         bootstrap.outputs["awsConfigRecorderName"],

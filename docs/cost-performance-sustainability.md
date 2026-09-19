@@ -81,10 +81,26 @@ Configuration values are non-secret:
 
 | Config key | Default | Purpose |
 | --- | ---: | --- |
-| `bootstrap-infrastructure:monthlyBudgetLimitUsd` | `100` | Monthly budget limit in USD. |
+| `bootstrap-infrastructure:monthlyBudgetLimitUsd` | `65` for `prod`, `30` for `test`, otherwise `100` | Monthly budget limit in USD, including tax. Explicit values override these defaults. |
 | `bootstrap-infrastructure:costAnomalyThresholdUsd` | `10` | Absolute anomaly impact threshold in USD. |
 | `bootstrap-infrastructure:costAnomalyMonitorArn` | unset | Existing Cost Anomaly monitor ARN to reuse when the account already has a service-dimensional monitor. |
 | `bootstrap-infrastructure:manageCostAllocationTags` | `false` | Activates the repo-managed cost allocation tags in Cost Explorer when the account owner approves the account-global change. |
+
+The default production and test allocations total **95 USD per month including
+tax**, leaving **5 USD headroom** below the combined 100 USD target. The resolved
+`environment` selects the allocation, falling back to the Pulumi stack name when
+that setting is absent. Direct `BootstrapSettings` construction uses the same
+defaults when no budget is supplied.
+
+Existing explicit `monthlyBudgetLimitUsd: 100` overrides remain effective. They
+need a reviewed configuration change to adopt the 65/30 allocations; changing
+the code defaults alone does not change those budgets. Review any other explicit
+allocations against the combined target. Stack configuration is not changed by
+this update.
+
+Budgets include tax explicitly and send alerts; they are **not spending caps**
+and do not create savings or guarantee a bill below 100 USD. Confirm combined
+test/prod spend and tax attribution with current billing evidence.
 
 Pulumi exports provide non-secret evidence handles for reviews:
 

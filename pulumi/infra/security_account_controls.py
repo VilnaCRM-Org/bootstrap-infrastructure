@@ -17,6 +17,9 @@ AWS_CONFIG_SERVICE_PRINCIPAL = "config.amazonaws.com"
 AWS_SOURCE_ACCOUNT_CONDITION_KEY = "aws:SourceAccount"
 AWS_SOURCE_ARN_CONDITION_KEY = "aws:SourceArn"
 CONFIG_RECORDER_MANAGED_POLICY = "service-role/AWS_ConfigRole"
+# The cost exception is approved for this test account only. An environment
+# label alone must never disable production posture checks.
+TEST_COST_OPTIMIZATION_ACCOUNT_ID = "891377212104"
 
 
 def _environment_part(settings: BootstrapSettings) -> str:
@@ -193,6 +196,10 @@ class SecurityAccountControls(pulumi.ComponentResource):
         account_id = aws.get_caller_identity().account_id
         partition = aws.get_partition().partition
         region = aws.get_region().name
+        self.security_posture_enabled = not (
+            configured_settings.environment == "test"
+            and account_id == TEST_COST_OPTIMIZATION_ACCOUNT_ID
+        )
         base_opts = pulumi.ResourceOptions(
             parent=self,
             depends_on=list(resource_dependencies or []),
@@ -208,12 +215,21 @@ class SecurityAccountControls(pulumi.ComponentResource):
             ),
             opts=base_opts,
         )
-        self.security_hub_account = aws.securityhub.Account(
-            f"{name}-security-hub",
-            auto_enable_controls=True,
-            control_finding_generator="SECURITY_CONTROL",
-            enable_default_standards=True,
-            opts=base_opts,
+        self.security_hub_account = (
+            aws.securityhub.Account(
+                f"{name}-security-hub",
+                auto_enable_controls=True,
+                control_finding_generator="SECURITY_CONTROL",
+                enable_default_standards=True,
+                opts=base_opts,
+            )
+            if self.security_posture_enabled
+            else None
+        )
+        self.security_hub_account_arn = (
+            self.security_hub_account.arn
+            if self.security_hub_account is not None
+            else pulumi.Output.from_input(None)
         )
 
         self.config_bucket = aws.s3.Bucket(
@@ -388,7 +404,9 @@ class SecurityAccountControls(pulumi.ComponentResource):
         self.config_recorder_status = aws.cfg.RecorderStatus(
             f"{name}-configuration-recorder-status",
             name=self.config_recorder.name,
-            is_enabled=True,
+            # Stop new recording in the approved test account; retain the
+            # recorder, delivery channel, bucket and historical evidence.
+            is_enabled=self.security_posture_enabled,
             opts=pulumi.ResourceOptions(
                 parent=self,
                 depends_on=[self.config_delivery_channel],
@@ -398,7 +416,8 @@ class SecurityAccountControls(pulumi.ComponentResource):
         self.register_outputs(
             {
                 "guardduty_detector_id": self.guardduty_detector.id,
-                "security_hub_account_arn": self.security_hub_account.arn,
+                "security_hub_account_arn": self.security_hub_account_arn,
+                "security_posture_enabled": self.security_posture_enabled,
                 "config_bucket_name": self.config_bucket.bucket,
                 "config_recorder_name": self.config_recorder.name,
                 "config_delivery_channel_name": self.config_delivery_channel.name,
