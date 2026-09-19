@@ -248,7 +248,7 @@ def test_main_reports_actual_preview_stage_without_output_or_success(
 def test_prefix_capture_continues_draining_without_changing_success(
     tmp_path, monkeypatch
 ):
-    monkeypatch.setattr(transport, "DIAGNOSTIC_PREFIX_BYTES", 128)
+    monkeypatch.setattr(transport, "MAX_DIAGNOSTIC_STDOUT_BYTES", 128)
     capture = transport.DiagnosticCapture()
     result = transport.run(
         [
@@ -277,8 +277,90 @@ def test_captured_stderr_total_limit_still_fails_closed(tmp_path):
             capture=capture,
         )
     assert caught.value.category == "stderr-bound"
-    assert len(capture.stderr) == transport.DIAGNOSTIC_PREFIX_BYTES
+    assert len(capture.stderr) == transport.MAX_DIAGNOSTIC_STDERR_BYTES
     assert capture.stderr_truncated is True
+
+
+@pytest.mark.parametrize("stdout,maximum", [(True, 32), (False, 8)])
+def test_capture_split_exact_and_over_limit(monkeypatch, stdout, maximum):
+    monkeypatch.setattr(transport, "MAX_DIAGNOSTIC_STDOUT_BYTES", 32)
+    monkeypatch.setattr(transport, "MAX_DIAGNOSTIC_STDERR_BYTES", 8)
+    capture = transport.DiagnosticCapture()
+    field = "stdout" if stdout else "stderr"
+    other = "stderr" if stdout else "stdout"
+    capture.append(stdout, b"x" * maximum)
+    capture.append(stdout, b"")
+    assert getattr(capture, field) == b"x" * maximum
+    assert getattr(capture, field + "_truncated") is False
+    capture.append(stdout, b"y")
+    capture.append(stdout, b"more")
+    assert getattr(capture, field) == b"x" * maximum
+    assert getattr(capture, field + "_truncated") is True
+    assert getattr(capture, other) == b""
+    assert getattr(capture, other + "_truncated") is False
+
+
+def test_large_real_child_preview_failure_retains_complete_encrypted_stdout(
+    scenario,  # noqa: F811
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    expected = json.dumps(
+        {"padding": "x" * (1024 * 1024 + 128), "tail": CANARY}
+    ).encode()
+    original = scenario.transport.pulumi
+
+    def pulumi(*args):
+        plan, _ = original(*args)
+        capture = transport.DiagnosticCapture()
+        scenario.transport.diagnostic_capture = capture
+        preview = transport.run(
+            [
+                sys.executable,
+                "-I",
+                "-c",
+                "import json,sys; "
+                "sys.stdout.write(json.dumps({'padding':'x'*(1024*1024+128),"
+                f"'tail':{CANARY!r}}})); sys.stderr.write({CANARY!r})",
+            ],
+            env={"PATH": os.defpath},
+            cwd=tmp_path,
+            capture=capture,
+        )
+        assert preview == expected
+        assert not list(tmp_path.iterdir())
+        return plan, preview
+
+    def reject(*_args, **_kwargs):
+        raise ValueError("unsupported-input-change")
+
+    monkeypatch.setattr(scenario.transport, "pulumi", pulumi)
+    monkeypatch.setattr(runtime, "validate_operator_plan", reject)
+    monkeypatch.setattr(runtime, "OperatorTransport", lambda *_: scenario.transport)
+    assert runtime.main(_argv(tmp_path, scenario.args.account)) == 1
+    public = capsys.readouterr()
+    assert public.out == "" and CANARY not in public.err
+    records = [json.loads(line) for line in public.err.splitlines()]
+    assert len(records) == 2 and set(records[0]) == {"diagnostic_sha256"}
+    assert records[1] == {"stage": "plan-validation", "category": "validation-rejected"}
+    destination = tmp_path / "operator-diagnostic.encrypted.json"
+    raw = destination.read_bytes()
+    assert CANARY.encode() not in raw
+    value = runtime.envelope.open_diagnostic(
+        raw,
+        contract=scenario.contract,
+        execution=scenario.snapshot.execution,
+        decrypt_key=FakeKms().decrypt,
+    )
+    assert base64.b64decode(value["stdout"]) == expected
+    assert base64.b64decode(value["stderr"]) == CANARY.encode()
+    assert value["stdout_truncated"] is False
+    assert value["stderr_truncated"] is False
+    assert value["validation_reason"] == "unsupported-input-change"
+    assert value["exit_code"] is None
+    assert set(tmp_path.iterdir()) == {destination}
+    assert "apply" not in scenario.events
 
 
 def _private_capture():

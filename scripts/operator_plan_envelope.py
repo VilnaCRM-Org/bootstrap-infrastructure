@@ -348,9 +348,13 @@ def open_plan(
 # Keep private diagnostics in this already trusted module. Its envelope remains
 # intentionally incompatible with the saved-plan format above.
 DIAGNOSTIC_KIND = "operator-private-diagnostic-v1"
-MAX_DIAGNOSTIC_STREAM_BYTES = 1024 * 1024
-MAX_DIAGNOSTIC_PAYLOAD_BYTES = 3 * 1024 * 1024
-MAX_DIAGNOSTIC_ENVELOPE_BYTES = 5 * 1024 * 1024
+# Retain a complete validator-sized preview without changing process/plan limits.
+# Stderr remains a small bounded prefix. Payload and envelope limits include both
+# base64 expansions (streams, then ciphertext), JSON fields and AES-GCM overhead.
+MAX_DIAGNOSTIC_STDOUT_BYTES = 32 * 1024 * 1024
+MAX_DIAGNOSTIC_STDERR_BYTES = 1024 * 1024
+MAX_DIAGNOSTIC_PAYLOAD_BYTES = 45 * 1024 * 1024
+MAX_DIAGNOSTIC_ENVELOPE_BYTES = 61 * 1024 * 1024
 DIAGNOSTIC_PAYLOAD_FIELDS = {
     "stage",
     "category",
@@ -410,9 +414,12 @@ def _diagnostic_payload(payload: dict) -> bytes:
         and type(payload["stderr_truncated"]) is bool,
         "payload-truncation",
     )
-    for field in ("stdout", "stderr"):
+    for field, maximum in (
+        ("stdout", MAX_DIAGNOSTIC_STDOUT_BYTES),
+        ("stderr", MAX_DIAGNOSTIC_STDERR_BYTES),
+    ):
         try:
-            raw = _decode(payload[field], 0, MAX_DIAGNOSTIC_STREAM_BYTES)
+            raw = _decode(payload[field], 0, maximum)
         except Exception:
             raise DiagnosticEnvelopeError("payload-stream") from None
         _diagnostic_require(
