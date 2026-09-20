@@ -143,6 +143,25 @@ cadence or retiring sandboxes requires a workflow decision and consumer checks.
 
 ## Rollout and proof
 
+### PROD operator boundary preservation
+
+The cost rollout exposed a pre-existing PROD constructor defect: the dedicated
+`OperationsAlertTriage` role did not receive its catalog-defined permissions
+boundary. The operator now forwards that exact boundary through
+`PlatformControlIam` and `GitHubAutomation`; a missing or invalid PROD mapping
+fails the preview. TEST retains its separate role ownership path. The generic
+automation-role boundary is not substituted for the triage boundary.
+
+This is a desired-configuration repair, not an IAM permission expansion or a
+cost saving by itself. Keep the operator validator unchanged: removing an
+existing boundary must remain rejected. Fresh TEST and PROD previews must prove
+the boundary is retained and all remaining changes satisfy the rollout below.
+The latest failed PROD preview reported `unsupported-input-change`, but truncated
+diagnostics did not identify its exact resource. The constructor defect and
+matching rejection were reproduced offline; further live blockers may remain.
+
+### Saved-plan deployment
+
 Use existing IaC ownership: platform Pulumi owns these account controls; do not
 create competing Terraform resources. Follow the repository's protected,
 saved-plan test-then-prod workflow. Review budget configuration overrides and
