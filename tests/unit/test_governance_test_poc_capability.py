@@ -27,6 +27,43 @@ PREFIX = "route53:ChangeResourceRecordSets"
 POLICY = (
     f"arn:aws:iam::{ACCOUNT}:policy/GitHubCiApply-{REPOSITORY}-test-poc-prerequisites"
 )
+REAL_READ_TEXT = Path.read_text
+
+
+@pytest.fixture(autouse=True)
+def stage_capability_for_pure_renderer_tests(monkeypatch):
+    """Exercise the proposed grant without activating it in packaged IaC."""
+
+    def staged_read(path, *args, **kwargs):
+        content = REAL_READ_TEXT(path, *args, **kwargs)
+        if path.name == "test-poc-identity.json":
+            identity = json.loads(content)
+            identity["enabled"] = True
+            return json.dumps(identity)
+        return content
+
+    monkeypatch.setattr(Path, "read_text", staged_read)
+
+
+def test_packaged_capability_remains_disabled_until_seed_installation(monkeypatch):
+    monkeypatch.setattr(Path, "read_text", REAL_READ_TEXT)
+    assert capability() == []
+    args = arguments()
+    boundary = json.loads(service_boundary_policy(args, REPO))["Statement"]
+    catalog = load_catalog("test")
+    pin = catalog["policies"][
+        f"arn:aws:iam::{ACCOUNT}:policy/GovernanceBoundary-{REPOSITORY}-test"
+    ]
+    assert [catalog["statements"][s] for s in pin["statement_ids"]] == boundary
+    specs = _governance_role_specs(
+        account_id=ACCOUNT,
+        partition="aws",
+        settings=args.settings,
+        region="eu-central-1",
+        repo=REPOSITORY,
+        project=REPOSITORY,
+    )
+    assert all("poc-prerequisites" not in dict(spec.policy_documents) for spec in specs)
 
 
 def arguments():
@@ -143,7 +180,7 @@ def test_missing_packaged_identity_fails_closed(monkeypatch):
         capability()
 
 
-def test_identity_boundary_seed_and_governor_match():
+def test_staged_identity_boundary_governor_matches_but_seed_remains_closed():
     args = arguments()
     full = capability()
     boundary = json.loads(service_boundary_policy(args, REPO))["Statement"]
@@ -152,7 +189,9 @@ def test_identity_boundary_seed_and_governor_match():
     pin = catalog["policies"][
         f"arn:aws:iam::{ACCOUNT}:policy/GovernanceBoundary-{REPOSITORY}-test"
     ]
-    assert [catalog["statements"][s] for s in pin["statement_ids"]] == boundary
+    assert [catalog["statements"][s] for s in pin["statement_ids"]] == boundary[
+        : -len(full)
+    ]
     specs = _governance_role_specs(
         account_id=ACCOUNT,
         partition="aws",
@@ -169,7 +208,7 @@ def test_identity_boundary_seed_and_governor_match():
     assert any(POLICY in s["Resource"] for s in governor["Statement"])
     permitted = _mutable_attachment_sets(build("test"))
     role = f"arn:aws:iam::{ACCOUNT}:role/GitHubCiApply-{REPOSITORY}-test"
-    assert POLICY in permitted[role]
+    assert POLICY not in permitted[role]
     assert all(
         POLICY not in policies
         for principal, policies in permitted.items()
@@ -306,7 +345,7 @@ def test_missing_identity_pair_and_prod_have_no_role_capability():
         )
 
 
-def test_governor_guard_accepts_new_policy_and_still_denies_other_policies():
+def test_active_seed_guard_denies_staged_policy_until_independent_install():
     catalog = load_catalog("test")
     pin = catalog["policies"][
         f"arn:aws:iam::{ACCOUNT}:policy/issue215-seed/test/guard/G-GitHubGovernanceApply"
@@ -324,7 +363,7 @@ def test_governor_guard_accepts_new_policy_and_still_denies_other_policies():
         )
     ]
     assert len(not_resources) == 2
-    assert all(POLICY in resources for resources in not_resources)
+    assert all(POLICY not in resources for resources in not_resources)
     for candidate in (
         POLICY + "-foreign",
         POLICY.replace("891377212104", "933245420672").replace("-test-", "-prod-"),

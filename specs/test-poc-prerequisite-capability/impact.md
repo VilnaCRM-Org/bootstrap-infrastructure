@@ -1,5 +1,10 @@
 # Source impact relationships
 
+Operational correction: the packaged identity now has `enabled: false`, and
+the active TEST seed catalog remains at the previously installed hash. The
+graph below describes the proposed capability **after** independent seed
+installation and a separate gate-enabling review; it is not currently emitted.
+
 ```text
 RepoGovernance._repo_settings (immutable catalog identity)
   -> _governance_role_specs -> _governance_policy_documents

@@ -7,5 +7,6 @@
   "region": "eu-central-1",
   "project": "user-service-infrastructure",
   "repository_id": "911736693",
-  "repository_owner_id": "114362548"
+  "repository_owner_id": "114362548",
+  "enabled": false
 }

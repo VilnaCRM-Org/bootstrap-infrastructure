@@ -313,14 +313,9 @@
         "082c5348b9609ee995824dd8bd60a0a464ebea5f253935edd7ae794905dde7de",
         "0705102896cf01bb35aa0b1b22255be893275b1a6c32e73bd623c0cd1099ab06",
         "cfa02f708f83ffa7f1d4fae78f604d146c2a5598274675e37dbedc63dbfa734a",
-        "96521f4ca72faf1a5759cd280429db8cc0dbda1545c8f536646fe986c156a649",
-        "d95b174f7ca32440ff883998612a4acc09817999b873e7e811f4e65865ad49dd",
-        "af8628f43eb9324f3295b8ce7f439b0cf7fbf005ed6da5628e295e3dbd3f4906",
-        "9bebbc7cf87054e165110e2eb417de3c1c8c572d6b300d64c5afa6e876400ce1",
-        "5ea26fb2d58579d6c6c6d671e927aeb1213c957373ae2b59ab3c2b86c40a0bb6",
-        "9e6888d221c58d04c0da333aaccdd4dc128e22405a3d3c5d1768f90d50032e3d"
+        "96521f4ca72faf1a5759cd280429db8cc0dbda1545c8f536646fe986c156a649"
       ],
-      "template_sha256": "78b16d0d230ce2f7972acfb81778ca9bfe68ac1f2ba803c72d6044249f61f332"
+      "template_sha256": "4a170a1cf18cc87dba99289f1e4ac342082e6d7198c64855662cd40527bdaf84"
     },
     "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test": {
       "installed_arn": true,
@@ -423,7 +418,7 @@
       "ownership": "new_seed_owned",
       "statement_ids": [
         "6b2d4e238e1ef4f762db301c07c26c5af58f44bbda7e934e9e67247e4883493f",
-        "f16f91318cd2e350ec848dc19bd6cc13112013a35bbf5ca5a6e4c9f5e21d0df1",
+        "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17",
         "69f23143750aff551ef80632f283250e324a87c7e44e14cd14419b07a55fa224",
         "d419212929bd6b38e732ed5843a6ced5557af7de60b4b36fb1886611149dcef8",
         "c388dae0b90358d20602d537cd9b8100c7a9c62b84726197f2cd1994f30cf2f5",
@@ -435,7 +430,7 @@
         "2be63eb279fb8482c3d6bbdd2544e86b1ca04508fb8ae0643dfc93e6ca6978a2",
         "08b78f220f822c5ebeacd572bd38d4e2c8eaeebcfd4c0a32444aa30b05399454"
       ],
-      "template_sha256": "02517ab54e01f164dbcd290a468b76dc8153ae7b2951fbc7f3585de9a160c07f"
+      "template_sha256": "fef4d440e7363d45e3717af3f3c06f990e14af35d8335031cd4ad6fdd147c94a"
     },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubGovernancePreview": {
       "installed_arn": false,
@@ -443,7 +438,7 @@
       "ownership": "new_seed_owned",
       "statement_ids": [
         "6b2d4e238e1ef4f762db301c07c26c5af58f44bbda7e934e9e67247e4883493f",
-        "f16f91318cd2e350ec848dc19bd6cc13112013a35bbf5ca5a6e4c9f5e21d0df1",
+        "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17",
         "2be63eb279fb8482c3d6bbdd2544e86b1ca04508fb8ae0643dfc93e6ca6978a2",
         "08b78f220f822c5ebeacd572bd38d4e2c8eaeebcfd4c0a32444aa30b05399454",
         "0d44e2be89373db8443b37a751527f1d68e951d28f56d6c258d0cced849241f6",
@@ -455,7 +450,7 @@
         "47eaa1262eda09394a732e260aa5fdf4abf72693431085fe6f4096205ddcee60",
         "94a9f77e7cb16ae2b00f16f2eb57343638dfefb05d97be123d2c3d6aa49cb1a9"
       ],
-      "template_sha256": "b97d4596cde3454a697e14453c5b7e9a904f6aef8c940d6857a275872e65e076"
+      "template_sha256": "ebf09dc35113bf01aacc94677f45b465ef22f58e2d0842e655838ae6c7041a4f"
     },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/ceiling/C-GitHubOperatorDrift-test": {
       "installed_arn": false,
@@ -612,10 +607,10 @@
         "6bd9deea59a33f271476b75b66d54baf33a35f31851dde9c930dd4534c1e0cbe",
         "05f77e26f692433266c27553ff8917c8b657b2c2406d240dc52172aab191dbc4",
         "d413d73aa6201d1b018919909a55a3422934330d285795998bdc16aa9caa5c06",
-        "21195ff85b24a146afb5b2dc4639ef318dd0d6b9b07b17f04609550c960bf770",
-        "bb116727da51f8b38675dedeb3631229c161c690bfdf83aeed76a8dd91b82438"
+        "8c068aaa3d0526af49b9d871d2f2de23b11aab92043cf7146b460c2912d9a8ea",
+        "5366ec1143481bd6aa005f3b85c4f1f58f3da13a537d6e077a05e894c3403def"
       ],
-      "template_sha256": "b6d1a587aba8767d40258add3f8b056711e51ffc6e18b536f115105fc7480d53"
+      "template_sha256": "1115f1219a9cee5b299fa17d1dafcfb23e197deecd15d0c0d04752a660f85024"
     },
     "arn:aws:iam::891377212104:policy/issue215-seed/test/guard/G-OperationsAlertTriage-bootstrap-infrastructure": {
       "installed_arn": false,
@@ -1630,12 +1625,6 @@
         "drift"
       ],
       "resource_binding": "operator_bindings.secrets"
-    },
-    "test_poc_prerequisites_amendment": {
-      "base_commit": "e849dbfb1e9a1b6a543c9b9ae757f6328e682a9d",
-      "baseline_catalog_sha256": "9079c48192d3ebcdbd2dd957cc36138b7f90f80aa7fe22d49a60a56f436a32f7",
-      "scope": "TEST initial two ECR repositories and SES identity/DKIM creation; hold preserved",
-      "service_source_commit": "7e8748fea7505c4a804cc31643229f0cd498f205"
     }
   },
   "region": "eu-central-1",
@@ -2109,24 +2098,6 @@
       "Effect": "Deny",
       "NotResource": "arn:aws:s3:::pulumi-bootstrap-infrastructure-test-state/state/test/.pulumi/locks/*"
     },
-    "21195ff85b24a146afb5b2dc4639ef318dd0d6b9b07b17f04609550c960bf770": {
-      "Action": "iam:*",
-      "Effect": "Deny",
-      "NotResource": [
-        "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com",
-        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
-        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny",
-        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
-        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
-        "arn:aws:iam::891377212104:role/GitHubCiApply-user-service-infrastructure-test",
-        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test",
-        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test-pr",
-        "arn:aws:iam::891377212104:role/GitHubCiDrift-user-service-infrastructure-test",
-        "arn:aws:iam::891377212104:role/GitHubCiPreview-user-service-infrastructure-test",
-        "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test",
-        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-poc-prerequisites"
-      ]
-    },
     "26f0959f649ced8227e35fdad7dc39926169b08037b08f287c9f405b29d27d1b": {
       "Action": [
         "kms:CancelKeyDeletion",
@@ -2275,6 +2246,22 @@
       "NotResource": [
         "arn:aws:kms:eu-central-1:891377212104:key/1ab201ad-c498-496d-ad36-a529021da6be",
         "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221"
+      ]
+    },
+    "339af045884f7cefaf23eef714c802ff80873d77749089dab92828b3110f2c17": {
+      "Action": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListEntitiesForPolicy",
+        "iam:ListPolicyTags",
+        "iam:ListPolicyVersions"
+      ],
+      "Effect": "Allow",
+      "Resource": [
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny",
+        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test"
       ]
     },
     "33b79acc7c562cc6e627fd9f124adb95c6fcd486033dd3ff344e2e5077d1c01d": {
@@ -2503,6 +2490,22 @@
         "arn:aws:iam::891377212104:role/s3-backup-role-ac43c65"
       ]
     },
+    "5366ec1143481bd6aa005f3b85c4f1f58f3da13a537d6e077a05e894c3403def": {
+      "Action": [
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion",
+        "iam:TagPolicy",
+        "iam:UntagPolicy"
+      ],
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny"
+      ]
+    },
     "57c3d74630484d0456e7edb7e9a2063227d169236b0be54103ce73bcc4a3478b": {
       "Action": [
         "s3:GetReplicationConfiguration",
@@ -2580,16 +2583,6 @@
       },
       "Effect": "Deny",
       "Resource": "arn:aws:kms:eu-central-1:891377212104:key/9a5d115a-429d-4608-a061-cc3602912221"
-    },
-    "5ea26fb2d58579d6c6c6d671e927aeb1213c957373ae2b59ab3c2b86c40a0bb6": {
-      "Action": [
-        "route53:GetChange"
-      ],
-      "Effect": "Allow",
-      "Resource": [
-        "arn:aws:route53:::change/*"
-      ],
-      "Sid": "PocDkimChangeStatus"
     },
     "61ef87c48e7b1e49323b58a1fd5fe20eb4d72490670dc0f862d6275538e350f9": {
       "Action": [
@@ -2919,6 +2912,23 @@
       "Effect": "Deny",
       "Resource": "*"
     },
+    "8c068aaa3d0526af49b9d871d2f2de23b11aab92043cf7146b460c2912d9a8ea": {
+      "Action": "iam:*",
+      "Effect": "Deny",
+      "NotResource": [
+        "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
+        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny",
+        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiApply-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiConfigRead-user-service-infrastructure-test-pr",
+        "arn:aws:iam::891377212104:role/GitHubCiDrift-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/GitHubCiPreview-user-service-infrastructure-test",
+        "arn:aws:iam::891377212104:role/PulumiStateRepl-user-service-infrastructure-test"
+      ]
+    },
     "8cffb4257a67336d939bc412f6de8cc79b1242173893bc590086340afdd338f1": {
       "Action": "kms:Decrypt",
       "Condition": {
@@ -3030,17 +3040,6 @@
       "Effect": "Allow",
       "Resource": "arn:aws:sqs:*:891377212104:bootstrap-test-operations-alerts"
     },
-    "9bebbc7cf87054e165110e2eb417de3c1c8c572d6b300d64c5afa6e876400ce1": {
-      "Action": [
-        "route53:GetHostedZone",
-        "route53:ListResourceRecordSets"
-      ],
-      "Effect": "Allow",
-      "Resource": [
-        "arn:aws:route53:::hostedzone/Z04999481RZ4UQK2NANVH"
-      ],
-      "Sid": "PocDkimZoneMetadata"
-    },
     "9c5e3ad3942fdbe4e62a3200155303e6dc7c09f702f35c8f4e6a7d14ada5906c": {
       "Action": [
         "kms:CancelKeyDeletion",
@@ -3081,36 +3080,6 @@
       ],
       "Effect": "Deny",
       "NotResource": "arn:aws:secretsmanager:eu-central-1:891377212104:secret:/bootstrap-infrastructure/ci/*"
-    },
-    "9e6888d221c58d04c0da333aaccdd4dc128e22405a3d3c5d1768f90d50032e3d": {
-      "Action": [
-        "route53:ChangeResourceRecordSets"
-      ],
-      "Condition": {
-        "ForAllValues:StringEquals": {
-          "route53:ChangeResourceRecordSetsActions": [
-            "CREATE"
-          ],
-          "route53:ChangeResourceRecordSetsRecordTypes": [
-            "CNAME"
-          ]
-        },
-        "ForAllValues:StringLike": {
-          "route53:ChangeResourceRecordSetsNormalizedRecordNames": [
-            "*._domainkey.user.vilnacrmtest.com"
-          ]
-        },
-        "Null": {
-          "route53:ChangeResourceRecordSetsActions": "false",
-          "route53:ChangeResourceRecordSetsNormalizedRecordNames": "false",
-          "route53:ChangeResourceRecordSetsRecordTypes": "false"
-        }
-      },
-      "Effect": "Allow",
-      "Resource": [
-        "arn:aws:route53:::hostedzone/Z04999481RZ4UQK2NANVH"
-      ],
-      "Sid": "PocDkimRecords"
     },
     "9f042722eaedcebe00da6fb5f38ad6b5ffa8b19e63860edbf2fe544222177e05": {
       "Action": [
@@ -3328,20 +3297,6 @@
       "Effect": "Deny",
       "Resource": "*"
     },
-    "af8628f43eb9324f3295b8ce7f439b0cf7fbf005ed6da5628e295e3dbd3f4906": {
-      "Action": [
-        "ses:GetEmailIdentity",
-        "ses:ListTagsForResource",
-        "ses:CreateEmailIdentity",
-        "ses:TagResource",
-        "ses:UntagResource"
-      ],
-      "Effect": "Allow",
-      "Resource": [
-        "arn:aws:ses:eu-central-1:891377212104:identity/user.vilnacrmtest.com"
-      ],
-      "Sid": "PocMailIdentityMetadata"
-    },
     "af88daca91aa269a8a390002db322627fb5bf5223f8d82b3ca45caafb3b8ae8f": {
       "Action": [
         "access-analyzer:ValidatePolicy",
@@ -3483,23 +3438,6 @@
       },
       "Effect": "Deny",
       "Resource": "*"
-    },
-    "bb116727da51f8b38675dedeb3631229c161c690bfdf83aeed76a8dd91b82438": {
-      "Action": [
-        "iam:CreatePolicy",
-        "iam:CreatePolicyVersion",
-        "iam:DeletePolicy",
-        "iam:DeletePolicyVersion",
-        "iam:SetDefaultPolicyVersion",
-        "iam:TagPolicy",
-        "iam:UntagPolicy"
-      ],
-      "Effect": "Deny",
-      "NotResource": [
-        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
-        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny",
-        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-poc-prerequisites"
-      ]
     },
     "bc1f7723c83ef067951db3c6be7ea69ab7703247f3ea8d3bd6ea3943b6c69771": {
       "Action": [
@@ -3849,21 +3787,6 @@
         "arn:aws:guardduty:*:891377212104:detector/*"
       ]
     },
-    "d95b174f7ca32440ff883998612a4acc09817999b873e7e811f4e65865ad49dd": {
-      "Action": [
-        "ecr:DescribeRepositories",
-        "ecr:ListTagsForResource",
-        "ecr:CreateRepository",
-        "ecr:TagResource",
-        "ecr:UntagResource"
-      ],
-      "Effect": "Allow",
-      "Resource": [
-        "arn:aws:ecr:eu-central-1:891377212104:repository/user-service-test-web",
-        "arn:aws:ecr:eu-central-1:891377212104:repository/user-service-test-worker"
-      ],
-      "Sid": "PocRegistryMetadata"
-    },
     "d962a56e07465aaf3878a39818c0e5364c6f781e5de1683c2950f2ccbc5d62a1": {
       "Action": [
         "kms:Decrypt"
@@ -4060,23 +3983,6 @@
       "Effect": "Allow",
       "Resource": "arn:aws:s3:::awsbackup-restore-test-bootstrap-891377212104-*",
       "Sid": "RestoreToIsolatedDrillBuckets"
-    },
-    "f16f91318cd2e350ec848dc19bd6cc13112013a35bbf5ca5a6e4c9f5e21d0df1": {
-      "Action": [
-        "iam:GetPolicy",
-        "iam:GetPolicyVersion",
-        "iam:ListEntitiesForPolicy",
-        "iam:ListPolicyTags",
-        "iam:ListPolicyVersions"
-      ],
-      "Effect": "Allow",
-      "Resource": [
-        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-pulumi-backend",
-        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-secret-read-deny",
-        "arn:aws:iam::891377212104:policy/GovernanceBoundary-user-service-infrastructure-test",
-        "arn:aws:iam::891377212104:policy/GovernanceReplicationBoundary-user-service-infrastructure-test",
-        "arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-poc-prerequisites"
-      ]
     },
     "f37a7242c0fffb00edf85bb250bcf911ab6709a0f9b924de55d160cdaa69a672": {
       "Action": "backup:TagResource",
