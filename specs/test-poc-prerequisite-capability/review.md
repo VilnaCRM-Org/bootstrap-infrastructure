@@ -1,4 +1,15 @@
-STATUS: FAIL
+# Historical review of the earlier enabled proposal
+
+This scorecard records the earlier #253 source proposal and its release failure.
+PR #255 restores the previously installed active TEST seed catalog and packages
+the new identity with `enabled: false`. Statements below about an active
+governor allowlist amendment, seed amendment reversal, and boundary/catalog
+equality describe that earlier proposal, not the current disabled package.
+The current behavior and test references are in `impact.md` and
+`requirements.md`. A source-stage PASS for the restoration does not replace
+the full CI, review, live IAM and protected deployment acceptance still needed.
+
+STATUS: FAIL (historical full acceptance)
 Issues:
 1. Draft PR #253 has failing checks at its previously published head. The repaired source needs new hosted CI and native effective-permission/deployment evidence. Full BMAD and release acceptance cannot pass.
 2. The service TEST apply role retains `Issue215CutoverSessions`, an unconditional deny-all hold. This is required and deliberately prevents activation.
