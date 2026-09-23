@@ -31,7 +31,7 @@ from .github_identity import (
     identity_conditions,
     validate_trust_policy_size,
 )
-from .governance import _test_poc_capability_statements
+from .governance import _test_poc_capability_statements, _TestPocTarget
 from .managed_repository import ManagedRepository
 from .pulumi_state import (
     DEFAULT_REPLICATION_REGION,
@@ -407,12 +407,14 @@ def _test_poc_statements(
         github_repository_owner_id=repo.repository_owner_id,
     )
     return _test_poc_capability_statements(
-        args.account_id,
-        args.partition,
+        _TestPocTarget(
+            args.account_id,
+            args.partition,
+            repo.name,
+            args.region,
+            _ci_config_project(args.settings, repo.name),
+        ),
         settings,
-        repo.name,
-        args.region,
-        _ci_config_project(args.settings, repo.name),
         write=True,
     )
 

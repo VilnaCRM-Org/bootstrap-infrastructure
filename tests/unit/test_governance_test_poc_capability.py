@@ -6,7 +6,11 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 import pytest
-from infra.governance import _governance_role_specs, _test_poc_capability_statements
+from infra.governance import (
+    _governance_role_specs,
+    _test_poc_capability_statements,
+    _TestPocTarget,
+)
 from infra.governance_automation import (
     governance_repo_iam_policy,
     service_boundary_policy,
@@ -50,7 +54,25 @@ def capability(*, write=True, **changes):
         write=write,
     )
     values.update(changes)
-    return _test_poc_capability_statements(**values)
+    settings = values.pop("settings")
+    write = values.pop("write")
+    return _test_poc_capability_statements(
+        _TestPocTarget(**values), settings, write=write
+    )
+
+
+def dns_condition_matches(operator, actual, expected):
+    """Evaluate one supported condition without broadening the test oracle."""
+    if operator == "Null":
+        return (actual is None) == (expected == "true")
+    if operator == "ForAllValues:StringEquals":
+        return all(value in expected for value in actual or [])
+    if operator == "ForAllValues:StringLike":
+        return all(
+            any(fnmatchcase(value, pattern) for pattern in expected)
+            for value in actual or []
+        )
+    raise AssertionError(f"Unimplemented condition: {operator}")
 
 
 def dns_allowed(statement, zone=ZONE, **changes):
@@ -63,24 +85,11 @@ def dns_allowed(statement, zone=ZONE, **changes):
     context.update(changes)
     if zone not in statement["Resource"]:
         return False
-    for operator, entries in statement["Condition"].items():
-        for key, expected in entries.items():
-            actual = context.get(key)
-            if operator == "Null":
-                if (actual is None) != (expected == "true"):
-                    return False
-            elif operator == "ForAllValues:StringEquals":
-                if not all(value in expected for value in actual or []):
-                    return False
-            elif operator == "ForAllValues:StringLike":
-                if not all(
-                    any(fnmatchcase(value, p) for p in expected)
-                    for value in actual or []
-                ):
-                    return False
-            else:
-                raise AssertionError(f"Unimplemented condition: {operator}")
-    return True
+    return all(
+        dns_condition_matches(operator, context.get(key), expected)
+        for operator, entries in statement["Condition"].items()
+        for key, expected in entries.items()
+    )
 
 
 @pytest.mark.parametrize(

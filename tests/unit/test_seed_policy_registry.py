@@ -36,6 +36,16 @@ def build(environment="test", **kwargs):
     )
 
 
+def remove_policy_references(statement, policy_arn):
+    """Remove and count only the reviewed policy's exact resource references."""
+    references = 0
+    for selector in ("Resource", "NotResource"):
+        if policy_arn in statement.get(selector, []):
+            statement[selector].remove(policy_arn)
+            references += 1
+    return references
+
+
 def catalog_before_test_poc_prerequisites(environment):
     """Invert exactly the TEST prerequisite cap and governor attachment inventory."""
     catalog = registry.load_catalog(environment)
@@ -56,10 +66,7 @@ def catalog_before_test_poc_prerequisites(environment):
             if statement.get("Sid", "").startswith("Poc"):
                 removed.append(statement["Sid"])
                 continue
-            for selector in ("Resource", "NotResource"):
-                if added in statement.get(selector, []):
-                    statement[selector].remove(added)
-                    references += 1
+            references += remove_policy_references(statement, added)
             statements.append(statement)
         if removed or references:
             changes[arn] = (removed, references)
@@ -846,13 +853,12 @@ def test_current_mutable_grants_can_change_only_inside_each_project_catalog(
     observed = active_observation_for(expected)
     permitted = registry._mutable_attachment_sets(expected)
     assert len(permitted) == 14
+    governance_policy_count = 3 if environment == "test" else 2
     by_arn = {p.arn: p for p in expected.principals}
     for arn, allowed in permitted.items():
         role = by_arn[arn]
         assert len(allowed) == (
-            (3 if environment == "test" else 2)
-            if role.owner_project == "governance"
-            else 26
+            governance_policy_count if role.owner_project == "governance" else 26
         )
         for policy in allowed:
             roles = tuple(

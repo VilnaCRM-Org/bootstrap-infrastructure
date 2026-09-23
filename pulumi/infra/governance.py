@@ -275,13 +275,20 @@ def _governance_read_only_policy_document(
     )
 
 
+@dataclass(frozen=True)
+class _TestPocTarget:
+    """Resource identity checked before granting the fixed TEST capability."""
+
+    account_id: str
+    partition: str
+    repo: str
+    region: str
+    project: str
+
+
 def _test_poc_capability_statements(
-    account_id: str,
-    partition: str,
+    target: _TestPocTarget,
     settings: BootstrapSettings,
-    repo: str,
-    region: str,
-    project: str,
     *,
     write: bool,
 ) -> list[dict[str, object]]:
@@ -292,13 +299,13 @@ def _test_poc_capability_statements(
     This capability does not alter trust or retire the live cutover session hold.
     """
     actual = (
-        account_id,
-        partition,
+        target.account_id,
+        target.partition,
         settings.environment,
         settings.org,
-        repo,
-        region,
-        project,
+        target.repo,
+        target.region,
+        target.project,
         settings.github_repository_id,
         settings.github_repository_owner_id,
     )
@@ -319,6 +326,7 @@ def _test_poc_capability_statements(
     )
     if actual != expected:
         return []
+    account_id, partition, region = target.account_id, target.partition, target.region
     registry_actions = ["ecr:DescribeRepositories", "ecr:ListTagsForResource"]
     mail_actions = ["ses:GetEmailIdentity", "ses:ListTagsForResource"]
     if write:
@@ -439,7 +447,9 @@ def _governance_policy_documents(
             )
         )
     capability = _test_poc_capability_statements(
-        account_id, partition, settings, repo, region, project, write=purpose == "apply"
+        _TestPocTarget(account_id, partition, repo, region, project),
+        settings,
+        write=purpose == "apply",
     )
     if capability:
         documents.append(
