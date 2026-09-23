@@ -122,8 +122,10 @@ def test_platform_automation_keeps_ecr_but_only_reads_control_roles(allocations)
 
 
 @pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("triage_boundary", [None, "distinct-triage-boundary"])
+@pytest.mark.parametrize("adopt", [False, True])
 def test_operator_automation_adopts_control_policies_without_creating_ecr(
-    allocations, monkeypatch, existing
+    allocations, monkeypatch, existing, triage_boundary, adopt
 ):
     monkeypatch.setattr(
         adoption,
@@ -138,14 +140,20 @@ def test_operator_automation_adopts_control_policies_without_creating_ecr(
         oidc_provider_arn=PROVIDER,
         manage_repository=False,
         permissions_boundary="control-boundary",
-        adopt_existing_policies=True,
+        triage_permissions_boundary=triage_boundary,
+        adopt_existing_policies=adopt,
     )
     _sync_await(wait_for_rpcs())
     assert not managed(allocations, "aws:ecr/")
     assert component.repository is None
     roles = managed(allocations, "aws:iam/role:")
     assert len(roles) == 2
-    assert any(r.inputs.get("permissionsBoundary") == "control-boundary" for r in roles)
+    triage = next(
+        r for r in roles if r.inputs["name"].startswith("OperationsAlertTriage-")
+    )
+    generic = next(r for r in roles if r is not triage)
+    assert generic.inputs["permissionsBoundary"] == "control-boundary"
+    assert triage.inputs.get("permissionsBoundary") == triage_boundary
     assert component.policy_dependencies
 
 
@@ -216,6 +224,11 @@ def test_operator_composition_uses_existing_kms_and_separates_test_triage(
             "log-replication": "log-boundary",
         },
         automation_retained_policy_arns=["catalog-guard-policy"],
+        external_role_boundaries={
+            f"OperationsAlertTriage-{repo.name}-{environment}": (
+                f"arn:aws:iam::{ACCOUNT}:policy/triage-only"
+            )
+        },
     )
     _sync_await(wait_for_rpcs())
     assert set(component.state_guards) == {("automation", ""), ("deploy", repo.name)}
@@ -234,6 +247,10 @@ def test_operator_composition_uses_existing_kms_and_separates_test_triage(
     assert calls["automation"][0] == "github-automation"
     assert calls["automation"][1]["manage_repository"] is False
     assert calls["automation"][1]["manage_triage"] is (environment == "prod")
+    assert calls["automation"][1]["triage_permissions_boundary"] == (
+        f"arn:aws:iam::{ACCOUNT}:policy/triage-only" if environment == "prod" else None
+    )
+    assert calls["automation"][1]["permissions_boundary"] == "control-boundary"
     assert calls["automation"][1]["retained_policy_arns"] == ["catalog-guard-policy"]
     assert calls["config"][1]["adopt_existing"] is True
     assert calls["replication"][1]["adopt_existing"] is True
@@ -383,6 +400,11 @@ def test_complete_operator_control_graph_has_only_iam_ownership(
             "log-replication": "log-boundary",
         },
         inline_policy_names=preferred,
+        external_role_boundaries={
+            f"OperationsAlertTriage-bootstrap-infrastructure-{environment}": (
+                f"arn:aws:iam::{ACCOUNT}:policy/triage-only"
+            )
+        },
     )
     _sync_await(wait_for_rpcs())
     customs = managed(allocations, "aws:")
@@ -416,6 +438,18 @@ def test_complete_operator_control_graph_has_only_iam_ownership(
     assert len(managed(allocations, "aws:iam/role:")) == (
         6 if environment == "prod" else 5
     )
+    triage_roles = [
+        record
+        for record in managed(allocations, "aws:iam/role:")
+        if record.inputs["name"].startswith("OperationsAlertTriage-")
+    ]
+    if environment == "prod":
+        assert len(triage_roles) == 1
+        assert triage_roles[0].inputs["permissionsBoundary"] == (
+            f"arn:aws:iam::{ACCOUNT}:policy/triage-only"
+        )
+    else:
+        assert triage_roles == []
     # Resource names/URNs are safe migration-review metadata; never persist policies.
     records_by_name = {record.name: record for record in customs}
     metadata = []
@@ -542,3 +576,107 @@ def test_shared_role_context_preserves_explicit_scopes_without_creating_guard():
     assert context.repo == "explicit-infrastructure"
     assert context.project == "explicit-project"
     assert _create_role_guard(context, None, None) == []
+
+
+@pytest.mark.parametrize(
+    "boundaries",
+    [
+        None,
+        {},
+        {"another-role": f"arn:aws:iam::{ACCOUNT}:policy/triage-only"},
+        {"OperationsAlertTriage-bootstrap-infrastructure-prod": None},
+        {"OperationsAlertTriage-bootstrap-infrastructure-prod": ""},
+        {"OperationsAlertTriage-bootstrap-infrastructure-prod": 42},
+        {"OperationsAlertTriage-bootstrap-infrastructure-prod": "control-boundary"},
+        {
+            "OperationsAlertTriage-bootstrap-infrastructure-prod": (
+                "arn:aws:iam::999999999999:policy/triage-only"
+            )
+        },
+        {
+            "OperationsAlertTriage-bootstrap-infrastructure-prod": (
+                f"arn:aws-cn:iam::{ACCOUNT}:policy/triage-only"
+            )
+        },
+        {
+            "OperationsAlertTriage-bootstrap-infrastructure-prod": (
+                f"arn:aws:iam::{ACCOUNT}:role/triage-only"
+            )
+        },
+    ],
+)
+def test_prod_triage_boundary_rejects_absent_or_invalid_mapping(boundaries):
+    """PROD cannot fall back to no boundary or a different account/partition."""
+    from infra.platform_control_iam import _triage_permissions_boundary
+
+    settings = replace(inputs("prod").settings, repo="bootstrap-infrastructure")
+    with pytest.raises(ValueError, match="Missing or invalid external boundary"):
+        _triage_permissions_boundary(settings, ACCOUNT, "aws", boundaries)
+
+
+@pytest.mark.parametrize("boundaries", [None, {}, {"unrelated": "invalid"}])
+def test_test_triage_boundary_does_not_validate_prod_mapping(boundaries):
+    """TEST keeps its separate bootstrap-owned triage constructor unchanged."""
+    from infra.platform_control_iam import _triage_permissions_boundary
+
+    assert (
+        _triage_permissions_boundary(
+            inputs("test").settings, ACCOUNT, "aws", boundaries
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_triage_boundary_uses_exact_enrolled_catalog_policy(environment):
+    """Only PROD selects this role's boundary, never the generic control policy."""
+    from infra.platform_control_iam import _triage_permissions_boundary
+    from seed.policy_registry import load_catalog
+
+    catalog = load_catalog(environment)
+    settings = replace(inputs(environment).settings, repo="bootstrap-infrastructure")
+    boundaries = {
+        principal["arn"].rsplit("/", 1)[-1]: principal["boundary_arn"]
+        for principal in catalog["principals"]
+        if principal["owner_project"] == "github-ci-bootstrap"
+        and principal["boundary_arn"] is not None
+    }
+    expected = boundaries[
+        f"OperationsAlertTriage-bootstrap-infrastructure-{environment}"
+    ]
+    assert (
+        expected != boundaries[f"GitHubCiApply-bootstrap-infrastructure-{environment}"]
+    )
+    assert _triage_permissions_boundary(
+        settings, catalog["account_id"], "aws", boundaries
+    ) == (expected if environment == "prod" else None)
+
+
+@pytest.mark.parametrize("boundaries", [None, {}])
+def test_operator_prod_triage_rejects_missing_boundary_before_automation(
+    allocations, monkeypatch, boundaries
+):
+    """Composition cannot silently omit the mandatory enrolled PROD boundary."""
+    import infra.platform_control_iam as module
+
+    monkeypatch.setattr(module, "GitHubOidcRoles", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        module.aws.kms, "get_alias", lambda **kw: SimpleNamespace(target_key_arn="key")
+    )
+    calls = []
+    monkeypatch.setattr(module, "GitHubAutomation", lambda *a, **kw: calls.append(kw))
+    with pytest.raises(ValueError, match="Missing or invalid external boundary"):
+        PlatformControlIam(
+            "missing-triage-boundary",
+            settings=replace(inputs("prod").settings, repo=REPO.name),
+            repositories=[REPO],
+            account_id=ACCOUNT,
+            partition="aws",
+            region="eu-central-1",
+            provider_arn=PROVIDER,
+            boundary_arns={"control": "control-boundary"},
+            external_role_boundaries=boundaries,
+        )
+    _sync_await(wait_for_rpcs())
+    assert calls == []
+    assert not managed(allocations, "aws:iam/role:")

@@ -2,6 +2,7 @@ import asyncio
 import json
 import runpy
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -1647,6 +1648,7 @@ def test_cost_controls_emit_budget_and_anomaly_resources(pulumi_mocks, monkeypat
 
     assert budget_state["limitAmount"] == "75"  # nosec B101
     assert budget_state["limitUnit"] == "USD"  # nosec B101
+    assert budget_state["costTypes"]["includeTax"] is True  # nosec B101
     assert budget_state["notifications"][0]["subscriberSnsTopicArns"] == [  # nosec B101
         "arn:aws:sns:us-east-1:123456789012:bootstrap-test-operations"
     ]
@@ -1766,6 +1768,106 @@ def test_security_account_controls_emit_detection_and_config_resources(
         for statement in assume_role_statements
     )
     assert "AWSConfigBucketDelivery" in bucket_policy_state["policy"]  # nosec B101
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        [],
+        {},
+        {"accountId": "891377212104"},
+        {"accountId": 891377212104, "securityPostureEnabled": False},
+        {"accountId": "invalid", "securityPostureEnabled": False},
+        {"accountId": "891377212104", "securityPostureEnabled": "false"},
+    ],
+)
+def test_security_cost_policy_rejects_invalid_configuration(
+    tmp_path, monkeypatch, policy
+):
+    """Malformed cost policy fails closed instead of silently disabling security."""
+    path = tmp_path / "cost-controls.test.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    monkeypatch.setattr(security_account_controls, "TEST_COST_CONTROLS_PATH", path)
+    with pytest.raises(ValueError, match="Test cost policy"):
+        security_account_controls._security_posture_enabled("test", "891377212104")
+
+
+def test_security_cost_policy_can_restore_checks(tmp_path, monkeypatch):
+    """A reviewed policy change can restore checks without changing runtime code."""
+    path = tmp_path / "cost-controls.test.json"
+    path.write_text(
+        json.dumps({"accountId": "891377212104", "securityPostureEnabled": True}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(security_account_controls, "TEST_COST_CONTROLS_PATH", path)
+    assert security_account_controls._security_posture_enabled(  # nosec B101
+        "test", "891377212104"
+    )
+
+
+@pytest.mark.parametrize(
+    "environment,account_id,enabled",
+    [
+        ("test", "891377212104", False),
+        ("prod", "933245420672", True),
+        ("test", "933245420672", True),
+        ("test", "123456789012", True),
+        ("preview", "891377212104", True),
+    ],
+)
+def test_security_cost_exception_is_scoped_and_preserves_config_history(
+    pulumi_mocks, monkeypatch, environment, account_id, enabled
+):
+    """Only the approved test account stops posture checks, never its audit storage."""
+    monkeypatch.setattr(
+        security_account_controls.aws,
+        "get_caller_identity",
+        lambda: SimpleNamespace(account_id=account_id),
+    )
+    start = len(pulumi_mocks.resources)
+    controls = SecurityAccountControls(
+        "security-cost-exception",
+        settings=_ci_bootstrap_settings(environment),
+    )
+    hub_arn = _sync_await(future_output(controls.security_hub_account_arn))
+    _sync_await(future_output(controls.config_recorder_status.id))
+    _sync_await(future_output(controls.guardduty_detector.id))
+    _sync_await(wait_for_rpcs())
+    resources = pulumi_mocks.resources[start:]
+    resource_types = {kind for kind, _name, _state in resources}
+
+    assert controls.security_posture_enabled is enabled  # nosec B101
+    assert (controls.security_hub_account is not None) is enabled  # nosec B101
+    assert (hub_arn is not None) is enabled  # nosec B101
+    assert ("aws:securityhub/account:Account" in resource_types) is enabled  # nosec B101
+    recorder_status = next(
+        state
+        for kind, _name, state in resources
+        if kind == "aws:cfg/recorderStatus:RecorderStatus"
+    )
+    assert recorder_status["isEnabled"] is enabled  # nosec B101
+    assert {  # nosec B101
+        "aws:cfg/recorder:Recorder",
+        "aws:cfg/deliveryChannel:DeliveryChannel",
+        "aws:s3/bucket:Bucket",
+        "aws:s3/bucketVersioning:BucketVersioning",
+        "aws:s3/bucketLifecycleConfiguration:BucketLifecycleConfiguration",
+    }.issubset(resource_types)
+    detector = next(
+        state
+        for kind, _name, state in resources
+        if kind == "aws:guardduty/detector:Detector"
+    )
+    assert detector["enable"] is True  # nosec B101
+    lifecycle = next(
+        state
+        for kind, _name, state in resources
+        if kind == "aws:s3/bucketLifecycleConfiguration:BucketLifecycleConfiguration"
+    )
+    assert lifecycle["rules"][0]["expiration"]["days"] == 365  # nosec B101
+    assert (  # nosec B101
+        lifecycle["rules"][0]["noncurrentVersionExpiration"]["noncurrentDays"] == 90
+    )
 
 
 def test_bootstrap_infrastructure_composes_catalog_and_di(pulumi_mocks, monkeypatch):  # noqa: ARG001
@@ -2709,10 +2811,20 @@ def test_stack_main_executes(pulumi_mocks, monkeypatch):  # noqa: ARG001
         config.managed_repositories.cache_clear()
 
 
+@pytest.mark.parametrize(
+    "account_id,enabled", [("123456789012", True), ("891377212104", False)]
+)
 def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
-    pulumi_mocks, monkeypatch
+    pulumi_mocks, monkeypatch, account_id, enabled
 ):
     config.managed_repositories.cache_clear()
+    exported = {}
+    monkeypatch.setattr(pulumi, "export", exported.__setitem__)
+    monkeypatch.setattr(
+        security_account_controls.aws,
+        "get_caller_identity",
+        lambda: SimpleNamespace(account_id=account_id),
+    )
     try:
         monkeypatch.setattr(config.settings, "repo", "repo")
         monkeypatch.setattr(config.settings, "org", "VilnaCRM-Org")
@@ -2728,7 +2840,7 @@ def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
         class FakeConfig:
             def require(self, key):
                 return {
-                    "awsAccountId": "123456789012",
+                    "awsAccountId": account_id,
                     "githubRepositoryId": "1098568429",
                     "githubRepositoryOwnerId": "114362548",
                 }[key]
@@ -2755,6 +2867,8 @@ def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
 
         module_globals = runpy.run_path(str(stack_path))
 
+        assert exported["securityPostureEnabled"] is enabled  # nosec B101
+        assert ("securityHubAccountArn" in exported) is enabled  # nosec B101
         assert module_globals["state"].backend_urls  # nosec B101
         assert module_globals["secrets"].provider_urls  # nosec B101
         assert module_globals["oidc"].deploy_role_arns  # nosec B101
