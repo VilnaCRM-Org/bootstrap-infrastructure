@@ -1334,8 +1334,45 @@ def _preview_steps(
     return result
 
 
+def _record_preview_input_mismatch(
+    row: dict[str, Any],
+    observed: dict[str, Any],
+    expected: dict[str, Any],
+    *,
+    new: bool,
+    operation: str,
+    mismatch: list[dict[str, Any]] | None,
+) -> None:
+    """Retain one schema-allowlisted comparison without property values."""
+    allowed = _INPUT_FIELDS.get(row["type"])
+    if mismatch is None or mismatch or allowed is None:
+        return
+    absent = object()
+    differing = sorted(
+        key
+        for key in observed.keys() | expected.keys()
+        if key in allowed | {"__defaults"}
+        and observed.get(key, absent) != expected.get(key, absent)
+    )
+    mismatch.append(
+        {
+            "urn": row["urn"],
+            "type": row["type"],
+            "side": "new" if new else "old",
+            "operation": operation,
+            "fields": differing,
+        }
+    )
+
+
 def _preview_state(
-    value: Any, expected: dict[str, Any], *, new: bool, catalog: Mapping[str, Any]
+    value: Any,
+    expected: dict[str, Any],
+    *,
+    new: bool,
+    catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
+    operation: str = "",
 ) -> None:
     row = _state(
         value,
@@ -1347,13 +1384,22 @@ def _preview_state(
         row["urn"] == expected["urn"] and _ownership(row) == _ownership(expected),
         "preview-ownership",
     )
-    _require(
-        _project(_property_semantics(row.get("inputs", {}), row["type"], inputs=True))
-        == _project(
-            _property_semantics(expected.get("inputs", {}), row["type"], inputs=True)
-        ),
-        "preview-inputs",
+    observed_inputs = _project(
+        _property_semantics(row.get("inputs", {}), row["type"], inputs=True)
     )
+    expected_inputs = _project(
+        _property_semantics(expected.get("inputs", {}), row["type"], inputs=True)
+    )
+    if observed_inputs != expected_inputs:
+        _record_preview_input_mismatch(
+            row,
+            observed_inputs,
+            expected_inputs,
+            new=new,
+            operation=operation,
+            mismatch=mismatch,
+        )
+        raise ValueError("preview-inputs")
     if not new:
         _require(row.get("id", "") == expected.get("id", ""), "preview-old-id")
         _require(
@@ -1379,6 +1425,7 @@ def _preview_resource(
     desired: dict[str, Any] | None,
     ops: tuple[str, ...],
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> None:
     actual = tuple(row["op"] for row in rows if row["op"] != "refresh")
     _require(actual == ops, "plan-preview-operations")
@@ -1401,10 +1448,10 @@ def _preview_resource(
                 ),
                 "refresh-drift",
             )
-            _preview_states(row, prior, prior, catalog)
+            _preview_states(row, prior, prior, catalog, mismatch=mismatch)
         else:
             new = None if row["op"] in {"delete", "delete-replaced"} else desired
-            _preview_states(row, prior, new, catalog)
+            _preview_states(row, prior, new, catalog, mismatch=mismatch)
 
 
 def _preview_states(
@@ -1412,6 +1459,7 @@ def _preview_states(
     old: dict[str, Any] | None,
     new: dict[str, Any] | None,
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> None:
     if old is not None:
         observed_old = row.get("oldState")
@@ -1423,11 +1471,25 @@ def _preview_states(
                 "replacement-delete-marker",
             )
             observed_old = {**observed_old, "delete": False}
-        _preview_state(observed_old, old, new=False, catalog=catalog)
+        _preview_state(
+            observed_old,
+            old,
+            new=False,
+            catalog=catalog,
+            mismatch=mismatch,
+            operation=row["op"],
+        )
     else:
         _require("oldState" not in row, "unexpected-old-state")
     if new is not None:
-        _preview_state(row.get("newState"), new, new=True, catalog=catalog)
+        _preview_state(
+            row.get("newState"),
+            new,
+            new=True,
+            catalog=catalog,
+            mismatch=mismatch,
+            operation=row["op"],
+        )
     else:
         _require("newState" not in row, "unexpected-new-state")
     _require(
@@ -1500,6 +1562,7 @@ def _validate_resources(
     goals: dict[str, Any],
     preview: dict[str, list[dict[str, Any]]],
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> None:
     desired: dict[str, dict[str, Any] | None] = {}
     for urn, value in goals.items():
@@ -1514,11 +1577,18 @@ def _validate_resources(
         ops = tuple(row["steps"])
         _operation(prior, desired[urn], ops, catalog)
         if not _default_provider(urn):
-            _preview_resource(preview[urn], prior, desired[urn], ops, catalog)
+            _preview_resource(
+                preview[urn], prior, desired[urn], ops, catalog, mismatch=mismatch
+            )
     for urn in resources.keys() - goals.keys():
         _require(resources[urn].get("external") is True, "missing-owned-goal")
         _preview_resource(
-            preview[urn], resources[urn], resources[urn], ("read",), catalog
+            preview[urn],
+            resources[urn],
+            resources[urn],
+            ("read",),
+            catalog,
+            mismatch=mismatch,
         )
     _desired_inventory(resources, desired, catalog)
 
@@ -1529,6 +1599,7 @@ def _validate_operator_plan(
     checkpoint_payload: bytes,
     *,
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> OperatorPlanValidation:
     """Validate a complete saved plan against authenticated caller-supplied facts.
 
@@ -1565,7 +1636,7 @@ def _validate_operator_plan(
         == {urn for urn in set(resources) | set(goals) if not _default_provider(urn)},
         "complete-inventory",
     )
-    _validate_resources(resources, goals, preview, catalog)
+    _validate_resources(resources, goals, preview, catalog, mismatch=mismatch)
     return OperatorPlanValidation(
         hashlib.sha256(plan_payload).hexdigest(),
         hashlib.sha256(preview_payload).hexdigest(),
@@ -1581,6 +1652,7 @@ def validate_operator_plan(
     checkpoint_payload: bytes,
     *,
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> OperatorPlanValidation:
     """Validate private plan/preview and version-3 stack-export checkpoint bytes.
 
@@ -1591,7 +1663,11 @@ def validate_operator_plan(
     """
     try:
         return _validate_operator_plan(
-            plan_payload, preview_payload, checkpoint_payload, catalog=catalog
+            plan_payload,
+            preview_payload,
+            checkpoint_payload,
+            catalog=catalog,
+            mismatch=mismatch,
         )
     except (TypeError, KeyError, AttributeError, RecursionError, OverflowError):
         raise ValueError("malformed-plan-evidence") from None

@@ -21,6 +21,8 @@ from _pulumi_stack_config import _configuration
 from operator_aws_read import _session_environment
 from operator_plan_envelope import (
     ACCOUNTS,
+    MAX_DIAGNOSTIC_STDERR_BYTES,
+    MAX_DIAGNOSTIC_STDOUT_BYTES,
     CheckpointBinding,
     ExecutionBinding,
     ProviderBinding,
@@ -49,9 +51,6 @@ PROCESS_CATEGORIES = frozenset(
 )
 
 
-DIAGNOSTIC_PREFIX_BYTES = 1024 * 1024
-
-
 @dataclass
 class DiagnosticCapture:
     """Root-private bounded prefixes; never stringify or publish these bytes."""
@@ -64,7 +63,8 @@ class DiagnosticCapture:
     def append(self, stdout, chunk):
         """Retain prefixes independently of draining and total process limits."""
         target = self.stdout if stdout else self.stderr
-        remaining = DIAGNOSTIC_PREFIX_BYTES - len(target)
+        maximum = MAX_DIAGNOSTIC_STDOUT_BYTES if stdout else MAX_DIAGNOSTIC_STDERR_BYTES
+        remaining = maximum - len(target)
         target.extend(chunk[:remaining])
         if len(chunk) > remaining:
             if stdout:
