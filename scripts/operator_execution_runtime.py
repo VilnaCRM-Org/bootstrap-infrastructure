@@ -46,7 +46,11 @@ from operator_execution_transport import (  # noqa: E402
     run,
     safe_exit_code,
 )
-from operator_plan_validation import _goal_inputs, validate_operator_plan  # noqa: E402
+from operator_plan_validation import (  # noqa: E402
+    _INPUT_FIELDS,
+    _goal_inputs,
+    validate_operator_plan,
+)
 from pulumi_ci_guardrails import find_destructive_steps  # noqa: E402
 from seed import policy_registry as registry  # noqa: E402
 
@@ -110,6 +114,95 @@ def _publish_diagnostic(destination, encrypted):
         pending.unlink(missing_ok=True)
 
 
+_PREVIEW_OPERATIONS = frozenset(
+    {
+        "same",
+        "read",
+        "create",
+        "update",
+        "delete",
+        "replace",
+        "create-replacement",
+        "delete-replaced",
+        "refresh",
+    }
+)
+
+
+def _mismatch_fields(fields, kind):
+    """Keep only fixed provider-schema names, never user-controlled keys."""
+    return (
+        type(fields) is list
+        and 0 < len(fields) <= 32
+        and all(type(field) is str for field in fields)
+        and fields == sorted(set(fields))
+        and set(fields) <= _INPUT_FIELDS[kind] | {"__defaults"}
+    )
+
+
+def _mismatch_identity(urn, kind):
+    """Check the validator's provider type against its resource identity."""
+    if type(urn) is not str or type(kind) is not str:
+        return False
+    if kind not in _INPUT_FIELDS:
+        return False
+    parts = urn.split("::")
+    return len(parts) == 4 and parts[-2].split("$")[-1] == kind
+
+
+def _mismatch_coordinate(side, operation):
+    """Require fixed preview coordinates before encoding a private reason."""
+    return (
+        type(side) is str
+        and side in {"old", "new"}
+        and type(operation) is str
+        and operation in _PREVIEW_OPERATIONS
+    )
+
+
+def _mismatch_metadata(value):
+    """Accept only the validator's first bounded resource comparison."""
+    if type(value) is not dict or set(value) != {
+        "urn",
+        "type",
+        "side",
+        "operation",
+        "fields",
+    }:
+        return None
+    urn, kind, side, operation, fields = (
+        value[key] for key in ("urn", "type", "side", "operation", "fields")
+    )
+    if not _mismatch_identity(urn, kind):
+        return None
+    if not _mismatch_coordinate(side, operation):
+        return None
+    if not _mismatch_fields(fields, kind):
+        return None
+    return {
+        "schema": 1,
+        "reason": "preview-inputs",
+        "type": kind,
+        "side": side,
+        "operation": operation,
+        "fields": fields,
+    }
+
+
+def _mismatch_reason(value):
+    """Encode one allowlisted comparison inside the existing private reason."""
+    result = _mismatch_metadata(value)
+    if result is None:
+        return "preview-inputs"
+    urn = value["urn"]
+    if len(urn) <= 1024 and all(33 <= ord(c) <= 126 for c in urn):
+        result["urn"] = urn
+    else:
+        result["identity_omitted"] = True
+    encoded = json.dumps(result, sort_keys=True, separators=(",", ":"))
+    return encoded if len(encoded.encode("utf-8")) <= 4096 else "preview-inputs"
+
+
 def _write_diagnostic(arguments, transport, exc):
     """Seal preview failure bytes before cleanup; never replace the original error."""
     capture = getattr(transport, "diagnostic_capture", None)
@@ -129,6 +222,8 @@ def _write_diagnostic(arguments, transport, exc):
                 .encode("utf-8", "replace")[:4096]
                 .decode("utf-8", "ignore")
             )
+        if reason == "preview-inputs":
+            reason = _mismatch_reason(getattr(arguments, "diagnostic_mismatch", None))
         payload = {
             **_failure_record(exc, arguments.diagnostic_stage),
             "stdout": base64.b64encode(capture.stdout).decode("ascii"),
@@ -410,9 +505,14 @@ def execute(arguments, transport):
     arguments.diagnostic_stage = "post-preview-snapshot"
     _same(before, transport.snapshot())
     arguments.diagnostic_stage = "plan-validation"
-    validation = validate_operator_plan(
-        plan, preview, before.checkpoint, catalog=catalog
-    )
+    mismatches: list[dict] = []
+    try:
+        validation = validate_operator_plan(
+            plan, preview, before.checkpoint, catalog=catalog, mismatch=mismatches
+        )
+    finally:
+        if mismatches:
+            arguments.diagnostic_mismatch = mismatches[0]
     if arguments.stage == "drift":
         arguments.diagnostic_stage = "drift-validation"
         require(not validation.changed_urns, "post-apply-drift")
