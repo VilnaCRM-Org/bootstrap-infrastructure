@@ -311,12 +311,13 @@ def change(data, kind, updates, ops=("update",)):
     return new
 
 
-def validate(data):
+def validate(data, *, mismatch=None):
     return validation.validate_operator_plan(
         encoded(data["plan"]),
         encoded(data["preview"]),
         encoded(data["checkpoint"]),
         catalog=data["catalog"],
+        mismatch=mismatch,
     )
 
 
@@ -443,8 +444,47 @@ def test_preview_new_state_cannot_substitute_computed_tags_all_input():
     step = next(item for item in data["preview"]["steps"] if item["urn"] == role["urn"])
     del step["newState"]["inputs"]["tagsAll"]
 
+    mismatches = []
+    with pytest.raises(ValueError, match="preview-inputs"):
+        validate(data, mismatch=mismatches)
+    assert mismatches == [
+        {
+            "urn": role["urn"],
+            "type": validation.ROLE,
+            "side": "new",
+            "operation": "update",
+            "fields": ["tagsAll"],
+        }
+    ]
+
+
+def test_preview_old_mismatch_records_only_first_allowlisted_field():
+    data = fixture()
+    role = resource(data, validation.ROLE)
+    step = next(item for item in data["preview"]["steps"] if item["urn"] == role["urn"])
+    step["oldState"]["inputs"]["description"] = "different private value"
+    mismatches = []
+    with pytest.raises(ValueError, match="preview-inputs"):
+        validate(data, mismatch=mismatches)
+    assert mismatches == [
+        {
+            "urn": role["urn"],
+            "type": validation.ROLE,
+            "side": "old",
+            "operation": "same",
+            "fields": ["description"],
+        }
+    ]
+    assert "different private value" not in repr(mismatches)
     with pytest.raises(ValueError, match="preview-inputs"):
         validate(data)
+
+
+def test_matching_preview_collects_no_mismatch():
+    data = fixture()
+    mismatches = []
+    assert validate(data, mismatch=mismatches).changed_urns == ()
+    assert mismatches == []
 
 
 def test_computed_tags_all_is_limited_to_provider_tagged_resources():

@@ -22,6 +22,17 @@ to 4 KiB. Diagnostic encryption or upload failure never permits deployment or
 changes a failed job into a successful one; a missing artifact is not evidence
 that the original error was harmless.
 
+When full-plan validation rejects `preview-inputs`, the same encrypted reason
+field may contain a versioned JSON object with the first mismatching resource's
+URN, resource type, preview operation, old/new comparison side, and differing
+top-level input field names. The validator still raises `preview-inputs` and
+the preview still fails. Field names come only from the trusted per-resource
+input schema; no input values, nested keys, secret digests or policy text are
+included. If an identity exceeds the diagnostic bound or contains unsupported
+characters, the object records `identity_omitted` instead. If safe attribution
+cannot be built, the reason remains the original plain `preview-inputs` label.
+The reason remains limited to 4 KiB and is never truncated mid-JSON.
+
 The plaintext diagnostic payload is bounded to 45 MiB and its encrypted envelope
 to 61 MiB, accounting for stream and ciphertext base64 encoding. These are
 diagnostic-only bounds; saved-plan limits, authentication, apply/drift behavior,
@@ -48,7 +59,9 @@ Do not publish decrypted payloads or attach them to issues, PRs or normal logs.
    reject the larger bounded artifact. Never relax identity, checkpoint, or KMS
    bindings to reuse an earlier artifact. If a stream is marked truncated, it
    cannot establish a complete comparison. A diagnostic is not a retained saved
-   plan and cannot establish full saved-plan validation.
+   plan and cannot establish full saved-plan validation. Parse a structured
+   `validation_reason` only after authentication, with an exact schema and
+   allowlisted fields; otherwise treat it as a plain fixed reason label.
 3. Report the specific actionable finding with secret values removed. Keep the
    original failed deployment result and its identity separate from diagnostic
    observations. Correct and review the cause before requesting another normal

@@ -446,6 +446,82 @@ def test_failed_preview_preserves_original_error_and_only_recoverable_ciphertext
     assert not (tmp_path / "saved-plan.encrypted.json").exists()
 
 
+def test_preview_input_failure_seals_only_allowlisted_comparison_metadata(
+    scenario,  # noqa: F811
+    monkeypatch,
+    tmp_path,
+    capsys,  # noqa: F811
+):
+    original = scenario.transport.pulumi
+    urn = "urn:pulumi:test::github-ci-bootstrap::aws:iam/role:Role::role"
+
+    def pulumi(*args):
+        plan, preview = original(*args)
+        scenario.transport.diagnostic_capture = _private_capture()
+        return plan, preview
+
+    def reject(*_args, mismatch=None, **_kwargs):
+        mismatch.append(
+            {
+                "urn": urn,
+                "type": "aws:iam/role:Role",
+                "side": "new",
+                "operation": "update",
+                "fields": ["permissionsBoundary"],
+            }
+        )
+        raise ValueError("preview-inputs")
+
+    monkeypatch.setattr(scenario.transport, "pulumi", pulumi)
+    monkeypatch.setattr(runtime, "validate_operator_plan", reject)
+    monkeypatch.setattr(runtime, "OperatorTransport", lambda *_: scenario.transport)
+    assert runtime.main(_argv(tmp_path, scenario.args.account)) == 1
+    public = capsys.readouterr()
+    assert public.out == "" and urn not in public.err
+    assert json.loads(public.err.splitlines()[-1]) == {
+        "stage": "plan-validation",
+        "category": "validation-rejected",
+    }
+    raw = (tmp_path / "operator-diagnostic.encrypted.json").read_bytes()
+    payload = runtime.envelope.open_diagnostic(
+        raw,
+        contract=scenario.contract,
+        execution=scenario.snapshot.execution,
+        decrypt_key=FakeKms().decrypt,
+    )
+    reason = json.loads(payload["validation_reason"])
+    assert reason == {
+        "schema": 1,
+        "reason": "preview-inputs",
+        "urn": urn,
+        "type": "aws:iam/role:Role",
+        "side": "new",
+        "operation": "update",
+        "fields": ["permissionsBoundary"],
+    }
+    assert set(payload) == runtime.envelope.DIAGNOSTIC_PAYLOAD_FIELDS
+    assert "apply" not in scenario.events
+
+
+def test_preview_mismatch_reason_omits_hostile_or_oversized_identity():
+    assert runtime._mismatch_reason(None) == "preview-inputs"
+    row = {
+        "urn": "urn:pulumi:test::github-ci-bootstrap::aws:iam/role:Role::" + "x" * 1100,
+        "type": "aws:iam/role:Role",
+        "side": "old",
+        "operation": "same",
+        "fields": ["description"],
+    }
+    result = json.loads(runtime._mismatch_reason(row))
+    assert result["identity_omitted"] is True
+    assert "urn" not in result
+    row["fields"] = ["arbitrary-secret-key"]
+    assert runtime._mismatch_reason(row) == "preview-inputs"
+    row["fields"] = ["description"]
+    row["urn"] = "not-an-operator-urn"
+    assert runtime._mismatch_reason(row) == "preview-inputs"
+
+
 @pytest.mark.parametrize(
     "error,expected",
     [
