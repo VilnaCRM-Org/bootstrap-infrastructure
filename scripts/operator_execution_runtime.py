@@ -431,19 +431,11 @@ def _analyze(document, key, transport):
 
 
 def _destructive(preview, contract):
-    """Apply the existing destructive-change label rule against fresh GitHub labels."""
-    if find_destructive_steps(decode(preview)["steps"]):
-        labels = preflight.gh(
-            f"repos/{contract.identity.repository}/issues/{contract.identity.pull_request_number}/labels?per_page=100"
-        )
-        require(
-            type(labels) is list
-            and len(labels) < 100
-            and any(
-                row.get("name") == "allow-destructive-infra-change" for row in labels
-            ),
-            "destructive-review-required",
-        )
+    """Reject critical destructive steps on preview and saved-plan replay."""
+    require(
+        not find_destructive_steps(decode(preview)["steps"]),
+        "destructive-review-required",
+    )
 
 
 def execute(arguments, transport):

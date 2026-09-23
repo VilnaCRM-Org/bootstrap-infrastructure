@@ -209,7 +209,7 @@ def test_preview_iam_destructive_and_saved_apply_are_real_operations():
     text = apply["run"]
     assert text.index("make test-destructive-diff") < text.index("make pulumi-up-plan")
     assert 'test "${found_preview}" = true' in text
-    assert "issues/${PR_NUMBER}/labels" in text
+    assert "issues/${PR_NUMBER}/labels" not in text
     assert "rm -f .artifacts/pulumi-preview/pull-request-event.json" in text
     for predicate in (".state", ".merged", ".head.sha", ".base.ref", ".base.sha"):
         assert predicate in text
