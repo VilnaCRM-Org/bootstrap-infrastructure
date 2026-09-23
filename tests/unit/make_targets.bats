@@ -430,6 +430,10 @@ EOF
   [ "$status" -eq 0 ]
   assert_compose_env_file
   [[ "$output" == *"gitleaks git . --log-opts=\"-1\" --config .gitleaks.toml --no-banner --redact"* ]]
+
+  run make -n test-secrets GITLEAKS_LOG_OPTS="--diff-merges=separate 1111111111111111111111111111111111111111..2222222222222222222222222222222222222222"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"gitleaks git . --log-opts=\"--diff-merges=separate 1111111111111111111111111111111111111111..2222222222222222222222222222222222222222\" --config .gitleaks.toml --no-banner --redact"* ]]
 }
 
 @test "make test-deps-security executes pip-audit in strict mode" {

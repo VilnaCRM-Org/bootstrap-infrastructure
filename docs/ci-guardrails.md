@@ -25,7 +25,7 @@ These checks are intended to be marked as required in branch protection:
 | `Local Battery` | `make ci-pr` or `make ci-pr-unprivileged` | Dockerized PR battery including image build and local gate composition |
 | `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
 | `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
-| `Secrets Scan` | `make test-secrets` | Runs Gitleaks against tracked Git content |
+| `Secrets Scan` | `make test-secrets` | Scans the full PR commit range, including merge resolutions; main pushes and default local runs scan the latest commit |
 | `Dependency Audit` | `make test-deps-security` | Audits Python dependencies with `pip-audit --strict` |
 | `Bandit` | `make test-bandit` | Lints repository Python code for common security hazards |
 | `Dependency Review` | GitHub-native | Reviews pull-request dependency risk against GitHub advisories |

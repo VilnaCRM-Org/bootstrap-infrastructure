@@ -322,8 +322,23 @@ def test_security_scan_workflow_runs_repo_make_targets() -> None:
     assert jobs["secrets"]["timeout-minutes"] == 10
     assert jobs["dependency_audit"]["timeout-minutes"] == 15
     assert jobs["actionlint"]["timeout-minutes"] == 10
-    assert any(  # nosec B101
-        step.get("run") == "make test-secrets" for step in jobs["secrets"]["steps"]
+    secrets_steps = jobs["secrets"]["steps"]
+    checkout = next(
+        step for step in secrets_steps if "actions/checkout@" in step.get("uses", "")
+    )
+    assert checkout["with"]["persist-credentials"] is False
+    assert checkout["with"]["fetch-depth"] == 0
+    assert checkout["with"]["ref"] == (
+        "${{ github.event.pull_request.head.sha || github.sha }}"
+    )
+    scan = next(
+        step for step in secrets_steps if step.get("run") == "make test-secrets"
+    )
+    assert scan["env"]["GITLEAKS_LOG_OPTS"] == (
+        "${{ github.event_name == 'pull_request' && "
+        "format('--diff-merges=separate {0}..{1}', "
+        "github.event.pull_request.base.sha, "
+        "github.event.pull_request.head.sha) || '-1' }}"
     )
     assert any(
         step.get("run") == "make test-deps-security"
