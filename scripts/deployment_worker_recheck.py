@@ -13,6 +13,7 @@ from pathlib import Path
 
 import deployment_scopes
 import pulumi_command_preflight as preflight
+import reviewed_source_admission
 from deployment_controller import (
     OWNER_ID,
     REPOSITORY,
@@ -107,6 +108,11 @@ def _recheck_admitted_facts(
     _verify_controller_run(controller)
     _recheck_selection(contract)
     _verify_environments(contract)
+    reviewed_source_admission.admit(
+        contract.identity.pull_request_number,
+        contract.identity.head_sha,
+        controller.sha,
+    )
 
 
 def recheck_admission(contract: DeploymentContract) -> None:

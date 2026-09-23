@@ -216,7 +216,6 @@ def test_non_prod_subject_set_is_branch_ref_and_environment_test():
     )
     assert subjects == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
-        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request",
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test",
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test-preview",
     ]

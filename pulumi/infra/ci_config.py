@@ -211,6 +211,8 @@ def _github_actions_subjects(
     branch = settings.github_branch or "main"
     repo_slug = f"{settings.org}/{resolved_repo}"
     if suffix == "test-pr":
+        if repo_slug == "VilnaCRM-Org/bootstrap-infrastructure":
+            return [f"repo:{repo_slug}:ref:refs/heads/{branch}"]
         return [f"repo:{repo_slug}:pull_request"]
     if suffix == "test":
         return [
@@ -246,6 +248,10 @@ def _github_actions_workflows(
     }
     if governed_service_workflows and suffix in service_workflows:
         return service_workflows[suffix]
+    if suffix == "test-pr" and f"{settings.org}/{settings.repo}" == (
+        "VilnaCRM-Org/bootstrap-infrastructure"
+    ):
+        return ["Reviewed PR Preview"]
     workflows_by_suffix = {
         "test-pr": [
             PULUMI_PR_GUARDRAILS_WORKFLOW,
