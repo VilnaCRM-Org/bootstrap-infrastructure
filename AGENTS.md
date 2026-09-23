@@ -17,7 +17,7 @@ This repository is a Pulumi-based infrastructure template. Agents should keep ch
 11. Keep `./scripts/prepare_policy_pack.py`, `policy/PulumiPolicy.yaml`, `policy/.venv`, and the shared `uv` environment contract aligned when changing Pulumi policy-pack behavior.
 12. Reproduce PR safety checks with `make test-security`, `make test-repo-hygiene`, `make test-guardrails`, or `make ci-pr` before pushing infra-related workflow or policy changes.
 13. Do not add long-lived static AWS credentials to workflows; use the documented OIDC role variables instead.
-14. Treat `allow-destructive-infra-change` as the only supported override for destructive Pulumi diffs.
+14. Reject critical destructive Pulumi diffs in the PoC route; labels do not authorize overrides.
 15. Keep `make test-coverage` green when changing Python code; the repo expects 100% branch coverage across the covered Pulumi, policy, and helper modules, with the unit, integration, and policy suites each held to 100% line coverage.
 16. Keep `make test-dependency-hygiene` green when editing `pyproject.toml`, `uv.lock`, or import relationships.
 17. Use `make report-quality` when you need the scheduled Wily, Vulture, docstring-coverage, and SBOM reports locally.

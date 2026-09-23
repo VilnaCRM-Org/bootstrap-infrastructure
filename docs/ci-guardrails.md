@@ -70,8 +70,8 @@ skip for a same-repo infrastructure PR. If a maintainer cannot rerun the change
 from a trusted same-repo branch, a repository branch-protection owner must
 explicitly approve the temporary exception and record the missing check, reason,
 compensating validation, and follow-up before the PR can be treated as merge
-ready. The destructive-diff gate remains governed only by the
-`allow-destructive-infra-change` label described below.
+ready. The destructive-diff gate rejects critical destructive changes on the
+PoC route; a pull-request label cannot authorize an override.
 
 ## Preview model
 
@@ -168,9 +168,10 @@ replacements against critical resource families such as:
 - Route53 records
 - EKS resources
 
-Intentional destructive changes must be reviewed manually and then approved with
-the pull-request label `allow-destructive-infra-change`. The label is the only
-supported override because it leaves an auditable trail in GitHub.
+Critical deletes and replacements fail the destructive-diff gate and are
+checked again before saved-plan replay. The operator route also rejects them
+before sealing its plan. Revise the change to avoid a critical destructive
+operation; the old pull-request label no longer authorizes an override.
 
 ## Cost and Quota Proxy
 

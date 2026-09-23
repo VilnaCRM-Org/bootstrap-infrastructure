@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import operator_execution_runtime as runtime  # noqa: E402
 from operator_execution_transport import Snapshot, encode  # noqa: E402
-from operator_plan_validation import INLINE, ROLE  # noqa: E402
+from operator_plan_validation import ATTACHMENT, INLINE, ROLE  # noqa: E402
 from test_deployment_controller import build as contract_for  # noqa: E402
 from test_operator_plan_envelope import FakeKms, execution  # noqa: E402
 from test_operator_plan_validation import change, fixture, validate  # noqa: E402
@@ -137,6 +137,37 @@ def test_apply_reauthenticates_and_rechecks_enrollment_and_checkpoint(
     assert scenario.events.count("enrollment-apply") == 2
 
 
+@pytest.mark.parametrize("stage", ["preview", "apply"])
+def test_critical_replacement_cannot_be_sealed_or_replayed(
+    scenario, monkeypatch, stage
+):
+    """A previously sealed, valid replacement still cannot reach apply."""
+    change(
+        scenario.data,
+        ATTACHMENT,
+        {"policyArn": scenario.data["catalog"]["operator_bindings"]["policy_write"][1]},
+        ("create-replacement", "replace", "delete-replaced"),
+    )
+    assert validate(scenario.data).changed_urns
+    if stage == "apply":
+        guard = runtime._destructive
+        monkeypatch.setattr(runtime, "_destructive", lambda *_: None)
+        runtime.execute(scenario.args, scenario.transport)
+        encrypted = (
+            scenario.args.public_dir / "saved-plan.encrypted.json"
+        ).read_bytes()
+        monkeypatch.setattr(runtime, "_destructive", guard)
+        monkeypatch.setattr(runtime, "_encrypted_artifact", lambda *_: encrypted)
+        scenario.args.stage = "apply"
+    scenario.events.clear()
+    with pytest.raises(ValueError, match="destructive-review-required"):
+        runtime.execute(scenario.args, scenario.transport)
+    assert "apply" not in scenario.events
+    assert "generate-data-key" not in scenario.events
+    if stage == "preview":
+        assert not (scenario.args.public_dir / "saved-plan.encrypted.json").exists()
+
+
 def test_drift_runs_actual_refresh_preview_and_validates_no_changes(scenario):
     scenario.args.stage = "drift"
     assert runtime.execute(scenario.args, scenario.transport) == {}
@@ -256,7 +287,7 @@ def test_exact_zip_artifact_origin_and_digest(scenario, monkeypatch):
             runtime._encrypted_artifact(scenario.args, scenario.contract)
 
 
-def test_bundle_fields_and_current_destructive_label_fail_closed(monkeypatch):
+def test_bundle_fields_and_legacy_destructive_label_fail_closed(monkeypatch):
     with pytest.raises(ValueError):
         runtime._unbundle(encode({"plan": ""}))
     contract = contract_for()
@@ -271,13 +302,14 @@ def test_bundle_fields_and_current_destructive_label_fail_closed(monkeypatch):
             ]
         }
     )
-    monkeypatch.setattr(runtime.preflight, "gh", lambda *_: [])
+
+    def no_label_lookup(*_):
+        raise AssertionError("destructive labels must not be queried")
+
+    monkeypatch.setattr(runtime.preflight, "gh", no_label_lookup)
     with pytest.raises(ValueError, match="destructive-review"):
         runtime._destructive(preview, contract)
-    monkeypatch.setattr(
-        runtime.preflight, "gh", lambda *_: [{"name": "allow-destructive-infra-change"}]
-    )
-    runtime._destructive(preview, contract)
+    runtime._destructive(encode({"steps": [{"op": "same"}]}), contract)
 
 
 def test_main_redacts_all_execution_errors(tmp_path, monkeypatch, capsys):

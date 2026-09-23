@@ -546,7 +546,7 @@ def test_guardrail_docs_are_indexed_from_root_docs() -> None:
     assert "AWS_PREVIEW_ROLE_ARN" in content  # nosec B101
     assert "prod-preview" in content  # nosec B101
     assert "required reviewers" in content  # nosec B101
-    assert "allow-destructive-infra-change" in content  # nosec B101
+    assert "label cannot authorize an override" in content  # nosec B101
     assert "CodeQL" in content  # nosec B101
     assert "Gitleaks" in content  # nosec B101
 

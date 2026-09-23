@@ -101,7 +101,7 @@ Coverage:
 - `make test-bandit` runs Bandit against repository Python code
 - `make test-preview` generates the Pulumi preview artifact consumed by later checks
 - `make test-preview-unprivileged` generates the fallback artifact used when AWS-backed preview variables are absent
-- `make test-destructive-diff` blocks deletes and replacements of critical infrastructure without an explicit PR override label
+- `make test-destructive-diff` blocks deletes and replacements of critical infrastructure regardless of PR labels
 - `make test-cost-proxy` flags unusual durable-resource fanout from preview JSON
 - `make test-guardrails` keeps the real preview, destructive-diff, and cost-proxy flow reproducible locally
 - `make test-guardrails-unprivileged` keeps the fallback preview, destructive-diff, cost-proxy, and IAM-input extraction path reproducible locally
