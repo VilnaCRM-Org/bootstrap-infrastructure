@@ -172,9 +172,10 @@ The TEST plan must show deletion of only the Security Hub account resource
 `security-account-controls-security-hub` for the security exception, plus
 `isEnabled: true -> false` on the existing Config recorder status. No Config
 recorder, delivery channel, bucket, KMS key, GuardDuty detector or backup may be
-deleted. Keep the destructive-diff guardrails in place. If an override is
-required, use only the existing `allow-destructive-infra-change` review mechanism
-after checking the exact plan; do not pre-authorize unrelated deletions.
+deleted. Keep the destructive-diff guardrails in place. The intended Security Hub
+account deletion is outside the gate's critical resource list. If the gate flags
+a critical delete or replacement, revise the plan to remove it; no pull-request
+label authorizes an override.
 The PROD plan must retain Security Hub and enabled Config recording, with only
 the intended budget changes. Abort if these boundaries do not match the plan.
 

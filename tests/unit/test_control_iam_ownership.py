@@ -15,7 +15,7 @@ from infra.repository_catalog import ManagedRepositoryCatalog
 from pulumi.runtime.stack import wait_for_rpcs
 from pulumi.runtime.sync_await import _sync_await
 
-from pulumi import Output
+from pulumi import ComponentResource, Output
 
 
 @pytest.fixture
@@ -652,19 +652,28 @@ def test_triage_boundary_uses_exact_enrolled_catalog_policy(environment):
     ) == (expected if environment == "prod" else None)
 
 
-@pytest.mark.parametrize("boundaries", [None, {}])
-def test_operator_prod_triage_rejects_missing_boundary_before_automation(
+@pytest.mark.parametrize(
+    "boundaries",
+    [
+        None,
+        {},
+        {"another-role": f"arn:aws:iam::{ACCOUNT}:policy/triage-only"},
+        {
+            "OperationsAlertTriage-bootstrap-infrastructure-prod": (
+                "arn:aws:iam::999999999999:policy/triage-only"
+            )
+        },
+    ],
+)
+def test_operator_prod_triage_rejects_invalid_boundary_before_registration(
     allocations, monkeypatch, boundaries
 ):
-    """Composition cannot silently omit the mandatory enrolled PROD boundary."""
-    import infra.platform_control_iam as module
-
-    monkeypatch.setattr(module, "GitHubOidcRoles", lambda *a, **kw: None)
+    """Invalid PROD boundaries fail before component or child registration."""
     monkeypatch.setattr(
-        module.aws.kms, "get_alias", lambda **kw: SimpleNamespace(target_key_arn="key")
+        ComponentResource,
+        "__init__",
+        lambda *a, **kw: pytest.fail("must validate before registration"),
     )
-    calls = []
-    monkeypatch.setattr(module, "GitHubAutomation", lambda *a, **kw: calls.append(kw))
     with pytest.raises(ValueError, match="Missing or invalid external boundary"):
         PlatformControlIam(
             "missing-triage-boundary",
@@ -678,5 +687,4 @@ def test_operator_prod_triage_rejects_missing_boundary_before_automation(
             external_role_boundaries=boundaries,
         )
     _sync_await(wait_for_rpcs())
-    assert calls == []
-    assert not managed(allocations, "aws:iam/role:")
+    assert allocations == []

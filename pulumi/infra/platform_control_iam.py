@@ -111,6 +111,9 @@ class PlatformControlIam(pulumi.ComponentResource):
             repositories,
             {} if inline_policy_names is None else inline_policy_names,
         )
+        triage_permissions_boundary = _triage_permissions_boundary(
+            settings, account_id, partition, external_role_boundaries
+        )
         super().__init__("bootstrap:iam:PlatformControlIam", name, None, opts)
         options = pulumi.ResourceOptions(parent=self, protect=True)
         control_boundary_arn = boundary_arns["control"]
@@ -178,9 +181,7 @@ class PlatformControlIam(pulumi.ComponentResource):
             manage_repository=False,
             manage_roles=True,
             manage_triage=settings.environment == "prod",
-            triage_permissions_boundary=_triage_permissions_boundary(
-                settings, account_id, partition, external_role_boundaries
-            ),
+            triage_permissions_boundary=triage_permissions_boundary,
             permissions_boundary=control_boundary_arn,
             adopt_existing_policies=True,
             role_guard_factory=lambda role: create_guard(None, role),
