@@ -1365,6 +1365,32 @@ def _record_preview_input_mismatch(
     )
 
 
+def _external_oidc_read_placeholder(
+    row: dict[str, Any],
+    expected: dict[str, Any],
+    *,
+    new: bool,
+    operation: str,
+) -> bool:
+    """Recognize only Pulumi's empty new-side read of a pinned OIDC reference.
+
+    The old side is still checked against the complete checkpoint first. The
+    external provider has no saved-plan goal, and the preview's read newState
+    carries identity/ownership metadata but no inputs or outputs. This accepts
+    a preview representation, not proof of the provider's live AWS settings.
+    """
+    return (
+        new
+        and operation == "read"
+        and row["type"] == OIDC
+        and row.get("external") is True
+        and expected.get("external") is True
+        and "inputs" not in row
+        and "outputs" not in row
+        and row.get("id") == expected.get("id")
+    )
+
+
 def _preview_state(
     value: Any,
     expected: dict[str, Any],
@@ -1390,7 +1416,9 @@ def _preview_state(
     expected_inputs = _project(
         _property_semantics(expected.get("inputs", {}), row["type"], inputs=True)
     )
-    if observed_inputs != expected_inputs:
+    if observed_inputs != expected_inputs and not _external_oidc_read_placeholder(
+        row, expected, new=new, operation=operation
+    ):
         _record_preview_input_mismatch(
             row,
             observed_inputs,

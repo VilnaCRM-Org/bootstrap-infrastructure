@@ -321,6 +321,23 @@ def validate(data, *, mismatch=None):
     )
 
 
+def external_oidc_read(data):
+    """Match the pinned Pulumi preview shape for an existing OIDC .get()."""
+    oidc = resource(data, validation.OIDC)
+    oidc["external"] = True
+    oidc["protect"] = False
+    del data["plan"]["resourcePlans"][oidc["urn"]]
+    step = next(item for item in data["preview"]["steps"] if item["urn"] == oidc["urn"])
+    step["op"] = "read"
+    step["oldState"] = redact(copy.deepcopy(oidc))
+    step["newState"] = {
+        key: copy.deepcopy(oidc[key])
+        for key in ("urn", "type", "custom", "external", "id", "parent", "provider")
+    }
+    recount(data["preview"])
+    return oidc, step
+
+
 def computed_tags(data):
     tags = {"Project": "bootstrap", "Environment": "test"}
     for kind in (
@@ -485,6 +502,99 @@ def test_matching_preview_collects_no_mismatch():
     mismatches = []
     assert validate(data, mismatch=mismatches).changed_urns == ()
     assert mismatches == []
+
+
+def test_external_oidc_read_accepts_only_empty_new_side_placeholder():
+    data = fixture("prod")
+    external_oidc_read(data)
+    mismatches = []
+    assert validate(data, mismatch=mismatches).changed_urns == ()
+    assert mismatches == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "failure"),
+    [
+        ("new-input", "preview-inputs"),
+        ("explicit-empty-maps", "preview-inputs"),
+        ("explicit-empty-outputs", "preview-inputs"),
+        ("nonempty-outputs", "preview-inputs"),
+        ("null-outputs", "state-map"),
+    ],
+)
+def test_external_oidc_read_rejects_nonplaceholder_inputs_or_outputs(mutation, failure):
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    if mutation == "new-input":
+        step["newState"]["inputs"] = {"url": "https://example.invalid"}
+    elif mutation == "explicit-empty-maps":
+        step["newState"]["inputs"] = {}
+        step["newState"]["outputs"] = {}
+    elif mutation == "explicit-empty-outputs":
+        step["newState"]["outputs"] = {}
+    elif mutation == "nonempty-outputs":
+        step["newState"]["outputs"] = {"arn": oidc["id"]}
+    elif mutation == "null-outputs":
+        step["newState"]["outputs"] = None
+    with pytest.raises(ValueError, match=failure):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "failure"),
+    [
+        ("wrong-id", "preview-inputs"),
+        ("changed-old", "preview-inputs"),
+        ("placeholder-old", "preview-inputs"),
+        ("changed-old-outputs", "preview-old-outputs"),
+        ("managed-new", "preview-ownership"),
+        ("wrong-provider", "preview-ownership"),
+        ("non-read", "plan-preview-operations"),
+        ("external-goal", "external-plan-goal"),
+    ],
+)
+def test_external_oidc_read_rejects_changed_identity_or_prerequisites(
+    mutation, failure
+):
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    if mutation == "wrong-id":
+        step["newState"]["id"] = "arn:aws:iam::933245420672:oidc-provider/other.invalid"
+    elif mutation == "changed-old":
+        step["oldState"]["inputs"]["url"] = "https://example.invalid"
+    elif mutation == "placeholder-old":
+        del step["oldState"]["inputs"]
+        del step["oldState"]["outputs"]
+    elif mutation == "changed-old-outputs":
+        step["oldState"]["outputs"]["arn"] = "different-arn"
+    elif mutation == "managed-new":
+        step["newState"]["external"] = False
+    elif mutation == "wrong-provider":
+        step["newState"]["provider"] = "different-provider"
+    elif mutation == "non-read":
+        step["op"] = "same"
+        recount(data["preview"])
+    else:
+        data["plan"]["resourcePlans"][oidc["urn"]] = {
+            "steps": ["same"],
+            "state": None,
+        }
+    with pytest.raises(ValueError, match=failure):
+        validate(data)
+
+
+def test_external_policy_read_cannot_use_oidc_placeholder_exception():
+    data = fixture("prod")
+    row = next(
+        item
+        for item in data["checkpoint"]["deployment"]["resources"]
+        if item["type"] == validation.POLICY and item.get("external")
+    )
+    step = next(item for item in data["preview"]["steps"] if item["urn"] == row["urn"])
+    del step["newState"]["inputs"]
+    del step["newState"]["outputs"]
+    with pytest.raises(ValueError, match="preview-inputs"):
+        validate(data)
 
 
 def test_computed_tags_all_is_limited_to_provider_tagged_resources():
