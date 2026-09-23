@@ -592,9 +592,10 @@ def test_makefile_secret_and_guardrail_targets_stay_developer_safe() -> None:
     makefile_text = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
 
     assert (
-        'gitleaks git . --log-opts="-1" --config .gitleaks.toml --no-banner --redact'
-        in makefile_text
+        'gitleaks git . --log-opts="$(GITLEAKS_LOG_OPTS)" '
+        "--config .gitleaks.toml --no-banner --redact" in makefile_text
     )
+    assert "GITLEAKS_LOG_OPTS ?= -1" in makefile_text
     assert "gitleaks dir ." not in makefile_text
     guardrails_block = makefile_text.split("test-guardrails:", maxsplit=1)[1].split(
         "test-drift:",
