@@ -488,6 +488,26 @@ def test_isolated_process_ignores_hostile_cwd_and_pythonpath(
         "users/Kravalg": {"id": 44},
         "request": github.artifact,
     }
+    backend[f"{root}/pulls/78"] = {
+        **github.evidence["pr"],
+        "number": 78,
+        "user": {"id": 99},
+    }
+    backend[f"{root}/commits/main"] = {"sha": artifact.contract.identity.controller.sha}
+    backend[f"{root}/pulls/78/reviews?per_page=100"] = [
+        [
+            {
+                "id": 10,
+                "state": "APPROVED",
+                "commit_id": "a" * 40,
+                "user": {"id": 44, "login": "Kravalg", "type": "User"},
+            }
+        ]
+    ]
+    backend[f"{root}/collaborators/Kravalg/permission"] = {
+        "permission": "write",
+        "user": {"id": 44},
+    }
     for name in required_environments(artifact.contract):
         backend[f"{root}/environments/{name}"] = github.protected
         backend[f"{root}/environments/{name}/deployment-branch-policies"] = (

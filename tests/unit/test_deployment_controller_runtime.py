@@ -15,6 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import deployment_controller_runtime as runtime  # noqa: E402
+import reviewed_source_admission  # noqa: E402
 from test_deployment_controller import input_facts  # noqa: E402
 
 
@@ -84,6 +85,7 @@ def fake_api(state, path, *args):
 @pytest.fixture
 def github(monkeypatch, tmp_path):
     """Replace API and artifact transport while retaining real validation/claim code."""
+    monkeypatch.setattr(reviewed_source_admission, "admit", lambda *args: {})
     request, evidence, metadata = input_facts()
     created = (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat()
     evidence["comment"].update(created_at=created, updated_at=created)

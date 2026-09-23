@@ -145,3 +145,10 @@ Generate the complete dependency closure with
 [`scripts/scaffold_infrastructure_repository.py`](../scripts/scaffold_infrastructure_repository.py).
 See [the governance runbook](governance-stack.md); real workload capability and
 current-head deployment/manual acceptance remain separate prerequisites.
+
+For central bootstrap PR previews, `AWS_TEST_PR_CI_CONFIG_ROLE_ARN` now belongs to
+the trusted main `Reviewed PR Preview` workflow, following independent exact-head
+review admission. Retire the generic PR OIDC subject from both this reader and the
+runtime preview role before treating the source change as active. See
+[reviewed-source admission](reviewed-source-admission.md) for rollout and the
+separate downstream-service gap.

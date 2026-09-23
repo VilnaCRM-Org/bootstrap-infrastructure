@@ -92,7 +92,7 @@ def test_mutation_target_ci_config_secret_contract():
         "/bootstrap-infrastructure/ci/test"
     )
     assert ci_config._github_actions_subjects(settings, "test-pr") == [  # nosec B101
-        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
     ]
     assert ci_config._github_actions_subjects(settings, "test") == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main",
@@ -188,11 +188,10 @@ def test_mutation_target_ci_config_validation_and_lookup_helpers(monkeypatch):
         "GitHubCiConfigRead-bootstrap-infrastructure-test"
     )
     assert ci_config._github_actions_subjects(settings, "test-pr") == [  # nosec B101
-        "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request"
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
     ]
     assert ci_config._github_actions_workflows(settings, "test-pr") == [  # nosec B101
-        "Pulumi PR Guardrails",
-        "Well-Architected Evidence",
+        "Reviewed PR Preview",
     ]
     assert ci_config._github_actions_subjects(settings, "prod") == [  # nosec B101
         "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:prod"

@@ -1,91 +1,84 @@
-name: Pulumi PR Guardrails
-
-on:
-  pull_request:
-  push:
-    branches:
-      - main
-
+# Activation requires installed retirement of generic PR OIDC subjects.
+name: Reviewed PR Preview
+'on':
+  workflow_run:
+    workflows:
+      - Pulumi PR Guardrails
+      - Reviewed Source Signal
+    types:
+      - completed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: reviewed-preview-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
-
+permissions:
+  contents: read
 defaults:
   run:
     shell: bash
-
-permissions:
-  contents: read
-
 jobs:
-  preview_mode:
-    name: Preview Mode
+  admission:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      statuses: write
     outputs:
-      privileged: ${{ steps.preview_mode.outputs.privileged }}
-    env:
-      GITHUB_EVENT_NAME: ${{ github.event_name }}
-      GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-      GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+      head_sha: ${{ steps.admission.outputs.head_sha }}
+      pull_request_number: ${{ steps.admission.outputs.pull_request_number }}
     steps:
-      - name: Select preview mode
-        id: preview_mode
-        run: |
-          privileged=true
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            privileged=false
-            echo "::notice::Pull request source awaits independent admission; running unprivileged Pulumi guardrails without AWS credentials."
-          fi
-          echo "privileged=${privileged}" >> "${GITHUB_OUTPUT}"
-
+      - name: Check out trusted admission policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ github.sha }}
+          path: .trusted
+          persist-credentials: false
+      - name: Recheck independent source approval before credentials
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/reviewed_source_admission.py" --publish-pending
+    # Reject fork signals before allocating admission or credentialed runners.
+    # Trusted Python admission additionally verifies numeric identity and review.
+    if: >-
+      ${{ github.event.workflow_run.head_repository.full_name == github.repository &&
+          (github.event.workflow_run.event == 'pull_request' ||
+           github.event.workflow_run.event == 'pull_request_review') }}
   preview:
-    name: Preview (Main)
-    if: ${{ needs.preview_mode.outputs.privileged == 'true' }}
+    name: Preview
     runs-on: ubuntu-latest
     needs:
-      - preview_mode
+      - admission
     timeout-minutes: 20
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_SKIP_UPDATE_CHECK: 'true'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Check out trusted admission policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          ref: ${{ github.sha }}
+          path: .trusted
           persist-credentials: false
-
+      - name: Recheck independent source approval before credentials
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/reviewed_source_admission.py" --number "${{ needs.admission.outputs.pull_request_number }}" --head-sha "${{ needs.admission.outputs.head_sha }}"
       - name: Select test AWS CI configuration
         id: ci_config_target
         env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
           AWS_TEST_PR_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN }}
-          AWS_TEST_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            ci_environment="test-pr"
-            config_role_arn="${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}"
-            config_variable_name="AWS_TEST_PR_CI_CONFIG_ROLE_ARN"
-          else
-            ci_environment="test"
-            config_role_arn="${AWS_TEST_CI_CONFIG_ROLE_ARN}"
-            config_variable_name="AWS_TEST_CI_CONFIG_ROLE_ARN"
-          fi
-          if [[ -z "${config_role_arn}" ]]; then
-            printf 'error: %s must be set for %s AWS CI configuration.\n' \
-              "${config_variable_name}" "${ci_environment}" >&2
-            exit 1
-          fi
-          {
-            echo "environment=${ci_environment}"
-            echo "config-role-arn=${config_role_arn}"
-          } >> "${GITHUB_OUTPUT}"
-
+        run: |-
+          test -n "${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}"
+          echo "environment=test-pr" >> "${GITHUB_OUTPUT}"
+          echo "config-role-arn=${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}" >> "${GITHUB_OUTPUT}"
       - name: Load test PR AWS CI configuration
         id: ci_config
-        # Reviewed immutable loader; PR program still receives bounded preview credentials.
         uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@d1297f1f00658c351dd6b94e510b394835b13ede
         with:
           environment: ${{ steps.ci_config_target.outputs.environment }}
@@ -93,10 +86,7 @@ jobs:
           expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: test preview
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
-
+          required-keys: AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN, PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
       - name: Validate preview prerequisites
         run: |
           missing=()
@@ -127,7 +117,6 @@ jobs:
             echo "error: PULUMI_SECRETS_PROVIDER must use an awskms:// URI." >&2
             exit 1
           fi
-
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
@@ -135,147 +124,107 @@ jobs:
           role-session-name: gha-test-preview-${{ github.run_id }}
           aws-region: ${{ steps.ci_config.outputs.aws-region }}
           allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
-
       - name: Emit preview evidence
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
           echo "CI config secret: ${CI_CONFIG_SECRET_ID}"
           echo "Backend type: s3"
-          echo "Commit SHA: ${GITHUB_SHA}"
+          echo "Trusted policy SHA: ${GITHUB_SHA}"
+          echo "Admitted source SHA: ${{ needs.admission.outputs.head_sha }}"
           echo "Expected AWS account ID: ${AWS_ACCOUNT_ID}"
           echo "Current AWS account ID: ${account_id}"
           echo "Pulumi stacks: ${PULUMI_PREVIEW_STACKS}"
           echo "Guardrail mode: privileged"
           echo "Role purpose: preview"
-
+      - name: Check out exact independently admitted source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          persist-credentials: false
       - name: Start development environment
         run: make start
-
       - name: Run preview guardrail
         env:
-          PULUMI_REQUIRE_SHARED_BACKEND: "true"
+          PULUMI_REQUIRE_SHARED_BACKEND: 'true'
           GITHUB_TOKEN: ${{ github.token }}
         run: make publish-pulumi-preview-summary
-
       - name: Upload preview artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: pulumi-preview
           path: .artifacts/pulumi-preview
           retention-days: 7
-
-  preview_unprivileged:
-    name: Preview (Unprivileged)
-    if: ${{ needs.preview_mode.outputs.privileged != 'true' }}
-    runs-on: ubuntu-latest
-    needs:
-      - preview_mode
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          persist-credentials: false
-
-      - name: Start development environment
-        run: make start
-
-      - name: Run unprivileged preview guardrail
-        run: |
-          echo "Guardrail mode: unprivileged"
-          make test-preview-unprivileged
-
-      - name: Upload preview artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: pulumi-preview
-          path: .artifacts/pulumi-preview
-          retention-days: 7
-
   destructive_diff:
-    name: Destructive Diff Gate (Local)
-    if: ${{ always() && (needs.preview.result == 'success' || needs.preview_unprivileged.result == 'success') }}
+    name: Destructive Diff Gate
     runs-on: ubuntu-latest
     needs:
+      - admission
       - preview
-      - preview_unprivileged
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
-
+          ref: ${{ github.sha }}
       - name: Start development environment
         run: make start
-
       - name: Download preview artifact
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
         with:
           name: pulumi-preview
           path: .artifacts/pulumi-preview
-
-      - name: Stage GitHub event payload for the guardrail helper
-        run: |
+      - name: Stage current PR event for existing guardrails
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.admission.outputs.pull_request_number }}
+        run: |-
           mkdir -p .artifacts
-          cp "${GITHUB_EVENT_PATH}" .artifacts/github-event.json
-
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" | jq '{pull_request: .}' > .artifacts/github-event.json
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
-
       - name: Enforce cost and quota proxy
         run: |
           make test-cost-proxy || cost_rc=$?
           cat .artifacts/pulumi-preview/reports/cost-proxy.md >> "${GITHUB_STEP_SUMMARY}" 2>/dev/null || true
           exit "${cost_rc:-0}"
-
+    permissions:
+      contents: read
+      pull-requests: read
   iam_validation:
-    name: IAM Validation (Main)
-    if: ${{ needs.preview.result == 'success' }}
+    name: IAM Validation
     runs-on: ubuntu-latest
     needs:
+      - admission
       - preview
     timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
+      pull-requests: read
     env:
-      PULUMI_SKIP_UPDATE_CHECK: "true"
+      PULUMI_SKIP_UPDATE_CHECK: 'true'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Check out trusted admission policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          ref: ${{ github.sha }}
+          path: .trusted
           persist-credentials: false
-
+      - name: Recheck independent source approval before credentials
+        id: admission
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/reviewed_source_admission.py" --number "${{ needs.admission.outputs.pull_request_number }}" --head-sha "${{ needs.admission.outputs.head_sha }}"
       - name: Select test AWS CI configuration
         id: ci_config_target
         env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
           AWS_TEST_PR_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_PR_CI_CONFIG_ROLE_ARN }}
-          AWS_TEST_CI_CONFIG_ROLE_ARN: ${{ vars.AWS_TEST_CI_CONFIG_ROLE_ARN }}
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            ci_environment="test-pr"
-            config_role_arn="${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}"
-            config_variable_name="AWS_TEST_PR_CI_CONFIG_ROLE_ARN"
-          else
-            ci_environment="test"
-            config_role_arn="${AWS_TEST_CI_CONFIG_ROLE_ARN}"
-            config_variable_name="AWS_TEST_CI_CONFIG_ROLE_ARN"
-          fi
-          if [[ -z "${config_role_arn}" ]]; then
-            printf 'error: %s must be set for %s AWS CI configuration.\n' \
-              "${config_variable_name}" "${ci_environment}" >&2
-            exit 1
-          fi
-          {
-            echo "environment=${ci_environment}"
-            echo "config-role-arn=${config_role_arn}"
-          } >> "${GITHUB_OUTPUT}"
-
+        run: |-
+          test -n "${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}"
+          echo "environment=test-pr" >> "${GITHUB_OUTPUT}"
+          echo "config-role-arn=${AWS_TEST_PR_CI_CONFIG_ROLE_ARN}" >> "${GITHUB_OUTPUT}"
       - name: Load test PR AWS CI configuration
         id: ci_config
-        # Reviewed immutable loader; PR program still receives bounded preview credentials.
         uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@d1297f1f00658c351dd6b94e510b394835b13ede
         with:
           environment: ${{ steps.ci_config_target.outputs.environment }}
@@ -283,10 +232,7 @@ jobs:
           expected-account-id: ${{ vars.AWS_TEST_ACCOUNT_ID }}
           aws-region: ${{ vars.AWS_TEST_REGION }}
           purpose: test IAM validation
-          required-keys: >-
-            AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN,
-            PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
-
+          required-keys: AWS_ACCOUNT_ID,AWS_REGION,AWS_PREVIEW_ROLE_ARN, PULUMI_BACKEND_URL,PULUMI_SECRETS_PROVIDER,PULUMI_PREVIEW_STACKS
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@8df5847569e6427dd6c4fb1cf565c83acfa8afa7
         with:
@@ -294,41 +240,43 @@ jobs:
           role-session-name: gha-test-iam-validate-${{ github.run_id }}
           aws-region: ${{ steps.ci_config.outputs.aws-region }}
           allowed-account-ids: ${{ steps.ci_config.outputs.aws-account-id }}
-
+      - name: Check out exact independently admitted source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          persist-credentials: false
       - name: Start development environment
         run: make start
-
       - name: Download preview artifact
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
         with:
           name: pulumi-preview
           path: .artifacts/pulumi-preview
-
       - name: Validate IAM policies
         run: make test-iam-validation
-
-  iam_validation_unprivileged:
-    name: IAM Validation (Unprivileged)
-    if: ${{ needs.preview_unprivileged.result == 'success' }}
+  publish:
+    name: Publish reviewed preview status
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs:
-      - preview_unprivileged
-    timeout-minutes: 10
+      - admission
+      - preview
+      - destructive_diff
+      - iam_validation
+    if: ${{ always() && needs.admission.result == 'success' }}
     permissions:
       contents: read
+      pull-requests: read
+      statuses: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Check out trusted admission policy
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
+          ref: ${{ github.sha }}
+          path: .trusted
           persist-credentials: false
-
-      - name: Start development environment
-        run: make start
-
-      - name: Download preview artifact
-        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e
-        with:
-          name: pulumi-preview
-          path: .artifacts/pulumi-preview
-
-      - name: Validate IAM policies
-        run: make test-iam-validation-unprivileged
+      - name: Recheck source and publish real guardrail outcomes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUARDRAIL_RESULT: ${{ needs.preview.result == 'success' && needs.destructive_diff.result == 'success' && needs.iam_validation.result == 'success' && 'success' || 'failure' }}
+        run: python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/reviewed_source_admission.py" --number "${{ needs.admission.outputs.pull_request_number }}" --head-sha "${{ needs.admission.outputs.head_sha }}" --publish-result "${GUARDRAIL_RESULT}"
