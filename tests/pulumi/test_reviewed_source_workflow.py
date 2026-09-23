@@ -70,6 +70,20 @@ def test_trusted_credentials_precede_only_admitted_pr_execution():
     assert "make test-iam-validation" in str(trusted["jobs"]["iam_validation"])
 
 
+def test_fork_signal_is_rejected_before_admission_and_credentialed_jobs():
+    jobs = workflow("reviewed-pr-preview.yml")["jobs"]
+    assert " ".join(jobs["admission"]["if"].split()) == (
+        "${{ github.event.workflow_run.head_repository.full_name == "
+        "github.repository && "
+        "(github.event.workflow_run.event == 'pull_request' || "
+        "github.event.workflow_run.event == 'pull_request_review') }}"
+    )
+    for job_id in ("preview", "iam_validation"):
+        assert "admission" in jobs[job_id]["needs"]
+        # Default success() keeps a skipped/failed admission from issuing credentials.
+        assert "if" not in jobs[job_id]
+
+
 def test_only_clean_publisher_can_complete_required_pr_contexts():
     trusted = workflow("reviewed-pr-preview.yml")
     jobs = trusted["jobs"]

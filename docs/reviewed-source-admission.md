@@ -5,6 +5,10 @@ The central bootstrap repository runs ordinary PR guardrails without AWS credent
 main. A completed PR check or submitted/edited/dismissed review supplies a signal;
 its artifacts and output values do not authorize execution. The runner fetches the
 actual source run and current PR from GitHub, then admits one exact head SHA.
+An explicit admission-job repository check rejects fork signals before the
+admission job starts; both credentialed jobs require that job to succeed. This
+early filter supplements the trusted verifier's numeric repository identity and
+exact-head review checks; repository membership alone never authorizes execution.
 
 The trusted policy in `scripts/reviewed_source_admission.py` requires:
 

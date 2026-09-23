@@ -39,7 +39,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 -I "${GITHUB_WORKSPACE}/.trusted/scripts/reviewed_source_admission.py" --publish-pending
-    if: ${{ github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'pull_request_review' }}
+    # Reject fork signals before allocating admission or credentialed runners.
+    # Trusted Python admission additionally verifies numeric identity and review.
+    if: >-
+      ${{ github.event.workflow_run.head_repository.full_name == github.repository &&
+          (github.event.workflow_run.event == 'pull_request' ||
+           github.event.workflow_run.event == 'pull_request_review') }}
   preview:
     name: Preview
     runs-on: ubuntu-latest
