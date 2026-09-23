@@ -234,7 +234,7 @@ def test_main_reports_actual_preview_stage_without_output_or_success(
     assert result == 1
     output = capsys.readouterr()
     assert output.out == ""
-    assert json.loads(output.err) == {
+    assert json.loads(output.err.splitlines()[0]) == {
         "stage": "pulumi-preview" if point == "pulumi" else "plan-validation",
         "category": category,
     }
@@ -341,9 +341,14 @@ def test_large_real_child_preview_failure_retains_complete_encrypted_stdout(
     assert runtime.main(_argv(tmp_path, scenario.args.account)) == 1
     public = capsys.readouterr()
     assert public.out == "" and CANARY not in public.err
-    records = [json.loads(line) for line in public.err.splitlines()]
+    records = [
+        json.loads(line) for line in public.err.splitlines() if line.startswith("{")
+    ]
     assert len(records) == 2 and set(records[0]) == {"diagnostic_sha256"}
     assert records[1] == {"stage": "plan-validation", "category": "validation-rejected"}
+    assert public.err.splitlines()[-1] == runtime._failure_annotation(
+        ValueError("unsupported-input-change"), "plan-validation"
+    )
     destination = tmp_path / "operator-diagnostic.encrypted.json"
     raw = destination.read_bytes()
     assert CANARY.encode() not in raw
@@ -419,7 +424,9 @@ def test_failed_preview_preserves_original_error_and_only_recoverable_ciphertext
     assert runtime.main(_argv(tmp_path, scenario.args.account)) == 1
     public = capsys.readouterr()
     assert CANARY not in public.err and public.out == ""
-    records = [json.loads(line) for line in public.err.splitlines()]
+    records = [
+        json.loads(line) for line in public.err.splitlines() if line.startswith("{")
+    ]
     assert records[-1] == {
         "stage": "pulumi-preview" if failure == "child" else "plan-validation",
         "category": "process-exit" if failure == "child" else "validation-rejected",
@@ -478,10 +485,16 @@ def test_preview_input_failure_seals_only_allowlisted_comparison_metadata(
     assert runtime.main(_argv(tmp_path, scenario.args.account)) == 1
     public = capsys.readouterr()
     assert public.out == "" and urn not in public.err
-    assert json.loads(public.err.splitlines()[-1]) == {
+    records = [
+        json.loads(line) for line in public.err.splitlines() if line.startswith("{")
+    ]
+    assert records[-1] == {
         "stage": "plan-validation",
         "category": "validation-rejected",
     }
+    assert public.err.splitlines()[-1] == runtime._failure_annotation(
+        ValueError("preview-inputs"), "plan-validation"
+    )
     raw = (tmp_path / "operator-diagnostic.encrypted.json").read_bytes()
     payload = runtime.envelope.open_diagnostic(
         raw,
