@@ -97,8 +97,15 @@ fail. Existing ordinary identity-policy documents remain editable within their
 ceilings; the initial expected attachment set is not a perpetual freeze on
 routine grants.
 
-All three new executors must still have exactly `DISABLED_TRUST` and no inline
-grants during verification. The result records verified disabled enrollment and
+All three new executors must still have exactly
+`disabled_trust_policy(account_id)` and no inline grants during verification.
+The disabled document uses the selected account ARN as an AWS principal with
+only a Deny for `sts:AssumeRole`. It has no Allow statement, so neither AWS nor
+OIDC/SAML callers can assume it. A scalar wildcard principal is not used when
+creating roles. The account ARN identifies the account, not only its root user.
+See the [AWS principal contract](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_principal.html#principal-accounts)
+and [trust-policy evaluation](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_evaluation-logic_policy-eval-denyallow.html).
+The result records verified disabled enrollment and
 always sets `activation_authorized=False`. It does not attest that metadata came
 from AWS, authorize an apply, enable trust, or claim successful installation.
 
