@@ -11,11 +11,11 @@ registry resource owner, and `pulumi/Pulumi.test.yaml`). Provider: Pulumi AWS
 | ID | Requirement | Evidence |
 | --- | --- | --- |
 | FR1 | Only the exact TEST account, region, organization, service project/repository and immutable repository/owner IDs receive the capability. | `test_other_resources_receive_no_capability`, `test_other_identities_receive_no_capability` |
-| FR2 | Apply can create/tag the fixed two ECR repositories and one SES identity; preview/drift can read their metadata. | `test_only_initial_prerequisite_actions_and_exact_resources`, `test_identity_boundary_seed_and_governor_match` |
-| FR3 | Every DNS change is CREATE, CNAME and inside the reviewed DKIM namespace and exact zone; missing keys and mixed unauthorized batches fail. | DNS negative/positive tests in `test_governance_test_poc_capability.py` |
-| FR4 | Seed boundary, governed identity documents, governor policy inventory and mutable apply attachment allowlist agree. | `test_identity_boundary_seed_and_governor_match`, seed amendment reversal tests |
-| NFR1 | No PROD, publisher, runtime, IAM, send-mail, delete, DNS UPSERT or lifecycle grants. | Exact action-set tests; PROD catalog unchanged; exact amendment reversal |
-| NFR2 | Preserve trust, existing service guards and `Issue215CutoverSessions`; no live mutation. | Trust/create-role code unchanged; seed amendment reversal; no AWS/push operations |
+| FR2 | After separate seed installation and gate enablement, TEST apply can create/tag the fixed two ECR repositories and one SES identity; preview/drift can read their metadata. The packaged capability is currently disabled. | `test_only_initial_prerequisite_actions_and_exact_resources`, `test_packaged_capability_remains_disabled_until_seed_installation` |
+| FR3 | Once enabled, every DNS change is CREATE, CNAME and inside the reviewed DKIM namespace and exact zone; missing keys and mixed unauthorized batches fail. | DNS negative/positive tests in `test_governance_test_poc_capability.py`; packaged-disabled test |
+| FR4 | Proposed boundary and governed identity documents agree, while the active TEST seed boundary, governor guard and mutable attachment allowlist stay closed until a separate seed amendment is installed. | `test_staged_identity_boundary_governor_matches_but_seed_remains_closed`, `test_active_seed_guard_denies_staged_policy_until_independent_install`, `test_complete_deterministic_inventory_and_disabled_enrollment` |
+| NFR1 | No active new grants; the staged capability excludes PROD, publisher, runtime, send-mail, delete, DNS UPSERT and lifecycle grants. | Packaged-disabled and exact action-set tests; PROD catalog unchanged; active seed guard test |
+| NFR2 | Preserve trust, existing service guards and `Issue215CutoverSessions`; this source change does not directly mutate AWS. | Trust/create-role code unchanged; unchanged active seed catalog and disabled enrollment tests |
 | NFR3 | Managed policies fit quotas; source can be tested without AWS credentials. | Policy length assertion, governor `_document` guard, focused offline suite |
 | NFR4 | Record residual IAM limitations, installation dependency and acceptance honestly. | Runbook and review scorecard |
 

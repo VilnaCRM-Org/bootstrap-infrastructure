@@ -324,7 +324,9 @@ def _test_poc_capability_statements(
         identity["repository_id"],
         identity["repository_owner_id"],
     )
-    if actual != expected:
+    # The staged capability must not enter an operator plan before its
+    # independently owned seed boundary and guards are installed and verified.
+    if actual != expected or identity.get("enabled") is not True:
         return []
     account_id, partition, region = target.account_id, target.partition, target.region
     registry_actions = ["ecr:DescribeRepositories", "ecr:ListTagsForResource"]
