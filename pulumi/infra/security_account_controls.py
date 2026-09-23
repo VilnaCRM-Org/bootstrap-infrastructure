@@ -54,6 +54,32 @@ def _environment_part(settings: BootstrapSettings) -> str:
     return settings.sanitize_bucket_component(settings.environment, "environment")
 
 
+def _config_recording_group(environment: str) -> aws.cfg.RecorderRecordingGroupArgs:
+    """Exclude only PROD compliance history, retaining all underlying resources."""
+    if environment != "prod":
+        return aws.cfg.RecorderRecordingGroupArgs(
+            all_supported=True,
+            include_global_resource_types=True,
+        )
+    # EXCLUSION records all current/future supported types, including global IAM,
+    # unless explicitly excluded. The global flag is ignored for this strategy
+    # and cannot remain true with all_supported=False in the pinned provider.
+    return aws.cfg.RecorderRecordingGroupArgs(
+        all_supported=False,
+        include_global_resource_types=False,
+        recording_strategies=[
+            aws.cfg.RecorderRecordingGroupRecordingStrategyArgs(
+                use_only="EXCLUSION_BY_RESOURCE_TYPES",
+            )
+        ],
+        exclusion_by_resource_types=[
+            aws.cfg.RecorderRecordingGroupExclusionByResourceTypeArgs(
+                resource_types=["AWS::Config::ResourceCompliance"],
+            )
+        ],
+    )
+
+
 def _config_bucket_name(
     settings: BootstrapSettings, account_id: str, region: str
 ) -> str:
@@ -393,10 +419,7 @@ class SecurityAccountControls(pulumi.ComponentResource):
             f"{name}-configuration-recorder",
             name=_config_recorder_name(configured_settings),
             role_arn=self.config_role.arn,
-            recording_group=aws.cfg.RecorderRecordingGroupArgs(
-                all_supported=True,
-                include_global_resource_types=True,
-            ),
+            recording_group=_config_recording_group(configured_settings.environment),
             recording_mode=aws.cfg.RecorderRecordingModeArgs(
                 recording_frequency="DAILY"
             ),

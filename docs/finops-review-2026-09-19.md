@@ -131,7 +131,8 @@ cadence or retiring sandboxes requires a workflow decision and consumer checks.
 2. **Narrower Config recording:** excluding compliance-history records or unused
    resource types may save money while retaining selected security checks, but
    removes parts of configuration/compliance history and requires dependency
-   analysis. No exclusion is enabled by this PR.
+   analysis. The original test exception added no exclusions; the bounded PROD
+   follow-up below excludes only compliance-history records.
 3. **Build cadence:** running expensive application regression suites less often
    can reduce build charges but delays feedback. Keep per-release checks unless
    the owner approves a different cadence.
@@ -140,6 +141,55 @@ cadence or retiring sandboxes requires a workflow decision and consumer checks.
 5. **KMS:** do not delete or consolidate keys without encrypted-state, secret,
    backup and recovery dependency analysis. Keeping an old key for decryption
    means its fixed charge remains.
+
+## PROD compliance-history follow-up (2026-09-20)
+
+Prepared from `debd88b` on `cost/config-compliance-history`; this section describes
+desired code, not a completed deployment or a new human security attestation.
+Only the PROD recorder changes from `ALL_SUPPORTED_RESOURCE_TYPES` to
+`EXCLUSION_BY_RESOURCE_TYPES`, excluding exactly
+`AWS::Config::ResourceCompliance`. There is no configurable exclusion list.
+TEST and other environments retain their prior recording groups; the approved
+TEST recorder remains stopped.
+
+AWS states that Security Hub CSPM security checks do not require recording this
+resource type. Under the exclusion strategy, all other current and future
+supported types remain recorded, including global IAM types in supported Regions.
+`all_supported=False` selects the exclusion form, not a finite inclusion list.
+Setting `include_global_resource_types=False` avoids retaining an incompatible
+true flag with the pinned provider; AWS ignores that flag in exclusion mode,
+so it does not remove IAM recording.
+No IAM, Backup recovery point, or other resource type is excluded.
+
+The tradeoff is loss of **future AWS Config compliance-history recording** for
+this type. Security Hub checks/findings and underlying resource recording remain
+enabled. Existing delivered history, bucket lifecycle, recorder/role identities,
+DAILY recording, 24-hour delivery, GuardDuty, CloudTrail, backups and KMS are
+unchanged. This does not delete historical objects or disable Config rules.
+
+The parent operator reported these read-only PROD checks on 2026-09-20: one
+customer PAID recorder, all-supported/global recording with DAILY frequency;
+355 rules all created by `securityhub.amazonaws.com`, none with
+`AWS::Config::ResourceCompliance` in `Scope.ComplianceResourceTypes`; no Config
+aggregators or conformance packs; and no default-bus EventBridge rules mentioning
+`aws.config` or `ResourceCompliance`. Inventory contained 1,653 resources,
+including 733 ResourceCompliance, 208 IAMPolicy and 180 BackupRecoveryPoint.
+These are inventory counts, not billable change volumes or a dollar estimate.
+Repository review found no compliance-history query, Config event consumer,
+aggregator, conformance pack or Audit Manager integration. External consumers
+outside the inspected repository/default bus remain an owner-review boundary.
+
+Before apply, independently review the exact saved plan: this patch should update
+the existing PROD recorder in place, without replacement or other resource
+changes attributable to this exclusion. After authorized apply, verify the exact
+single exclusion, continued IAM/resource recording, recorder and delivery health,
+and current Security Hub evaluations (including Config.1). Refresh security and
+data-protection evidence; do not rewrite historical attestations. Reverting this
+helper restores future recording, but cannot reconstruct the intervening history.
+Measure later billed usage before claiming savings or the combined $100 target.
+
+References: [Security Hub Config prerequisites](https://docs.aws.amazon.com/securityhub/latest/userguide/securityhub-setup-prereqs.html)
+and [AWS Config recording-group semantics](https://docs.aws.amazon.com/config/latest/APIReference/API_RecordingGroup.html).
 
 ## Rollout and proof
 

@@ -1846,6 +1846,73 @@ def test_security_cost_exception_is_scoped_and_preserves_config_history(
         if kind == "aws:cfg/recorderStatus:RecorderStatus"
     )
     assert recorder_status["isEnabled"] is enabled  # nosec B101
+    recorder = next(
+        state for kind, _name, state in resources if kind == "aws:cfg/recorder:Recorder"
+    )
+    expected_group = {
+        "allSupported": True,
+        "includeGlobalResourceTypes": True,
+    }
+    if environment == "prod":
+        # AWS exclusion semantics retain all current/future supported types,
+        # including global IAM, unless explicitly excluded. This is not an
+        # inclusion allowlist, despite allSupported/includeGlobal being false.
+        expected_group = {
+            "allSupported": False,
+            "includeGlobalResourceTypes": False,
+            "recordingStrategies": [{"useOnly": "EXCLUSION_BY_RESOURCE_TYPES"}],
+            "exclusionByResourceTypes": [
+                {"resourceTypes": ["AWS::Config::ResourceCompliance"]}
+            ],
+        }
+    assert recorder["recordingGroup"] == expected_group  # nosec B101
+    assert recorder["recordingMode"] == {"recordingFrequency": "DAILY"}  # nosec B101
+    assert recorder["name"] == (  # nosec B101
+        f"bootstrap-{environment}-configuration-recorder"
+    )
+    assert recorder_status["name"] == recorder["name"]  # nosec B101
+    assert {  # nosec B101
+        (kind, name) for kind, name, _state in resources if kind.startswith("aws:cfg/")
+    } == {
+        ("aws:cfg/recorder:Recorder", "security-cost-exception-configuration-recorder"),
+        (
+            "aws:cfg/deliveryChannel:DeliveryChannel",
+            "security-cost-exception-configuration-delivery-channel",
+        ),
+        (
+            "aws:cfg/recorderStatus:RecorderStatus",
+            "security-cost-exception-configuration-recorder-status",
+        ),
+    }
+    assert _sync_await(future_output(controls.config_role.name)) == (  # nosec B101
+        f"aws-config-recorder-role-{environment}"
+    )
+    assert recorder["roleArn"] == _sync_await(  # nosec B101
+        future_output(controls.config_role.arn)
+    )
+    delivery = next(
+        state
+        for kind, _name, state in resources
+        if kind == "aws:cfg/deliveryChannel:DeliveryChannel"
+    )
+    assert delivery["name"] == (  # nosec B101
+        f"bootstrap-{environment}-configuration-delivery"
+    )
+    assert delivery["s3BucketName"] == (  # nosec B101
+        f"bootstrap-{account_id}-us-east-1-{environment}-aws-config"
+    )
+    assert delivery["snapshotDeliveryProperties"] == {  # nosec B101
+        "deliveryFrequency": "TwentyFour_Hours"
+    }
+    if enabled:
+        hub = next(
+            state
+            for kind, _name, state in resources
+            if kind == "aws:securityhub/account:Account"
+        )
+        assert hub["autoEnableControls"] is True  # nosec B101
+        assert hub["enableDefaultStandards"] is True  # nosec B101
+        assert hub["controlFindingGenerator"] == "SECURITY_CONTROL"  # nosec B101
     assert {  # nosec B101
         "aws:cfg/recorder:Recorder",
         "aws:cfg/deliveryChannel:DeliveryChannel",
