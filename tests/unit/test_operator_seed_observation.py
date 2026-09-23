@@ -32,10 +32,13 @@ def native(monkeypatch, tmp_path, request):
     """Replace only subprocess execution, retaining real native input/JSON checks."""
     expected = build(getattr(request, "param", "test"))
     reader = InitialReader(expected)
+    fixture_name = (
+        "aws-config-role-v73.json"
+        if expected.environment == "test"
+        else "aws-config-role-v72.json"
+    )
     policy = json.loads(
-        (
-            Path(__file__).resolve().parents[1] / "fixtures/aws-config-role-v72.json"
-        ).read_text()
+        (Path(__file__).resolve().parents[1] / "fixtures" / fixture_name).read_text()
     )
     frozen = next(p.frozen_config for p in expected.principals if p.frozen_config)
     assert registry.document_hash(policy) == frozen.aws_policy_sha256

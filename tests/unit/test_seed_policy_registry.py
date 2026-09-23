@@ -36,9 +36,47 @@ def build(environment="test", **kwargs):
     )
 
 
+def catalog_before_test_config_v73():
+    """Invert only the TEST managed-policy pin on main 570fc727."""
+    catalog = registry.load_catalog("test")
+    frozen = [
+        principal["frozen_config"]
+        for principal in catalog["principals"]
+        if principal["frozen_config"] is not None
+    ]
+    assert len(frozen) == 1
+    managed = frozen[0]["aws_managed_policy"]
+    assert managed == {
+        "arn": "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole",
+        "document_sha256": (
+            "74a0a7adc735b32d4af8b8bba82cd59577c9dc89368c1621247fadf36494c7f9"
+        ),
+        "version_id": "v73",
+    }
+    managed["version_id"] = "v72"
+    managed["document_sha256"] = (
+        "800d2de29e1503c081b58465590b2856a601749d1ba9db207f6951f358822ac7"
+    )
+    assert registry.document_hash(catalog) == (
+        "9079c48192d3ebcdbd2dd957cc36138b7f90f80aa7fe22d49a60a56f436a32f7"
+    )
+    return catalog
+
+
+def test_test_config_v73_changes_only_the_reviewed_managed_policy_pin():
+    catalog_before_test_config_v73()
+    assert registry.document_hash(registry.load_catalog("prod")) == (
+        "544a7c7f5610dc62172debcb16a6dca91c3a36eeb484f8f89b6e20af1c62ffd1"
+    )
+
+
 def catalog_before_secret_policy_read(environment):
     """Invert only the metadata action delta, preserving all prior policy fields."""
-    catalog = registry.load_catalog(environment)
+    catalog = (
+        catalog_before_test_config_v73()
+        if environment == "test"
+        else registry.load_catalog(environment)
+    )
     amendment = catalog["provenance"].pop("secret_resource_policy_read_amendment")
     action = amendment["action"]
     changed = []
@@ -273,7 +311,9 @@ def test_executor_and_config_envelopes_remain_exact(environment):
     assert len(config.attachment_arns) == 2
     assert len(config.frozen_config.inline_policies) == 1
     assert "s3:PutObject" in config.frozen_config.inline_policies[0][1]
-    assert config.frozen_config.aws_policy_version == "v72"
+    assert config.frozen_config.aws_policy_version == (
+        "v73" if environment == "test" else "v72"
+    )
     assert all(set(p.guard_arns) <= set(p.attachment_arns) for p in expected.principals)
 
 
@@ -730,7 +770,8 @@ def test_config_full_trust_and_inline_grants_frozen(change, message):
 @pytest.mark.parametrize(
     "change,message",
     [
-        ({"default_version_id": "v73"}, "version requires enrollment review"),
+        ({"default_version_id": "v72"}, "version requires enrollment review"),
+        ({"default_version_id": "v74"}, "version requires enrollment review"),
         ({"document_sha256": "0" * 64}, "AWS-managed policy document changed"),
     ],
 )
@@ -1022,7 +1063,7 @@ def test_active_verifier_reuses_complete_inventory_and_config_freeze(kind):
         changes = (
             {"document_sha256": "0" * 64}
             if kind == "config-aws-policy"
-            else {"default_version_id": "v73"}
+            else {"default_version_id": "v74"}
         )
         observed = replace(
             observed,

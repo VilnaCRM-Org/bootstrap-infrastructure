@@ -52,6 +52,27 @@ and all resource identities, then verify the new complete registry hashes before
 ordinary execution. The three-role activation validator does not authorize policy
 updates. Updating source catalogs alone is not evidence of installed permissions.
 
+## TEST AWS-managed Config role v73 observation
+
+The TEST catalog pins the existing AWS-managed `AWS_ConfigRole` default version
+`v73` and complete canonical document SHA-256
+`74a0a7adc735b32d4af8b8bba82cd59577c9dc89368c1621247fadf36494c7f9`.
+Read-only TEST IAM `GetPolicy` and `GetPolicyVersion` on 2026-09-24 confirmed
+the live default is v73, updated 2026-09-23 21:07:08 UTC, and the entire
+document matches `tests/fixtures/aws-config-role-v73.json`. The older v72
+fixture remains for the unchanged PROD catalog; fresh PROD verification is
+required before changing its source pin or planning PROD deployment.
+
+Compared with v72, the four statement envelopes, resources and conditions are
+unchanged. The first two statements gain 99 and 93 read-only actions, with no
+removed actions. Read access can expose resource metadata, so reviewers must
+assess this AWS-managed policy expansion even though AWS already installed it
+externally. This source pin changes no trust, attachment, customer-managed
+grant or live IAM resource. The TEST enrollment validator still rejects any
+different future version or document and retains the installed-seed checks.
+Reverting only the TEST version and digest reproduces the previous complete
+catalog hash `9079c48192d3ebcdbd2dd957cc36138b7f90f80aa7fe22d49a60a56f436a32f7`.
+
 ## Pure API
 
 `build_registry(environment, account_id=..., seed_key=...)` returns immutable
