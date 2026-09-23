@@ -1,7 +1,14 @@
 # Operator preview failure diagnostics
 
 The trusted operator runner reports only a fixed stage and category when execution
-fails. Numeric exit codes remain inside the encrypted diagnostic. Public fields
+fails. A GitHub error annotation adds a fixed explanation and next step. Selected
+validation reasons receive specific guidance only when the exact known literal
+and its expected execution stage match. Other failures use fixed process or
+stage guidance, with an explicit unknown fallback. This is a finite lookup, not
+redaction of arbitrary logs: exception text, child streams and resource names
+are never interpolated. The stage/category JSON record remains available; a
+separate JSON record reports the ciphertext digest when capture succeeds. Numeric
+exit codes remain inside the encrypted diagnostic. Public fields
 contain no exception text,
 child output, credentials or stack data. A failure remains a failure.
 
