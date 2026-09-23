@@ -217,12 +217,6 @@ jobs:
             needs.preflight.outputs.head_sha }}-test-preview
           path: .artifacts/pulumi-preview
 
-      - name: Stage pull request labels for destructive diff override
-        run: |
-          mkdir -p .artifacts/pulumi-preview
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
-
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
 
@@ -351,8 +345,6 @@ jobs:
           test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
           test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
           # Remove only obsolete event metadata; preserve the original diff files.
           rm -f .artifacts/pulumi-preview/pull-request-event.json
           make test-destructive-diff
@@ -604,12 +596,6 @@ jobs:
             needs.preflight.outputs.head_sha }}-prod-preview
           path: .artifacts/pulumi-preview
 
-      - name: Stage pull request labels for destructive diff override
-        run: |
-          mkdir -p .artifacts/pulumi-preview
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${{ needs.preflight.outputs.pull_request_number }}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
-
       - name: Enforce destructive diff gate
         run: make test-destructive-diff
 
@@ -751,8 +737,6 @@ jobs:
           test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
           test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
           # Remove only obsolete event metadata; preserve the original diff files.
           rm -f .artifacts/pulumi-preview/pull-request-event.json
           make test-destructive-diff

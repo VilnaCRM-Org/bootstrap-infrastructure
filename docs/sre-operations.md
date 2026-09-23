@@ -398,8 +398,8 @@ When something looks wrong:
 4. inspect `pulumi -C pulumi stack output` for the non-secret state you expect
 5. use an ephemeral stack for risky experiments instead of debugging directly in
    a shared environment
-6. if a change is intentionally destructive, document the reason and add the
-   `allow-destructive-infra-change` label instead of bypassing the workflow
+6. if a change is intentionally destructive, document the reason and revise it
+   to avoid critical deletes/replacements; the PoC workflow has no label override
 
 ## CI Troubleshooting
 
