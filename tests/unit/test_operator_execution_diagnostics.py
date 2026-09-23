@@ -523,6 +523,28 @@ def test_preview_mismatch_reason_omits_hostile_or_oversized_identity():
 
 
 @pytest.mark.parametrize(
+    "invalid",
+    [
+        {"urn": None},
+        {"type": None},
+        {"type": "aws:iam/unknown:Unknown"},
+        {"side": "unexpected"},
+        {"operation": "unexpected"},
+    ],
+)
+def test_preview_mismatch_reason_rejects_invalid_coordinates(invalid):
+    row = {
+        "urn": "urn:pulumi:test::github-ci-bootstrap::aws:iam/role:Role::role",
+        "type": "aws:iam/role:Role",
+        "side": "new",
+        "operation": "update",
+        "fields": ["permissionsBoundary"],
+    }
+    row.update(invalid)
+    assert runtime._mismatch_reason(row) == "preview-inputs"
+
+
+@pytest.mark.parametrize(
     "error,expected",
     [
         (ValueError("界" * 10000), "界" * (4096 // 3)),
