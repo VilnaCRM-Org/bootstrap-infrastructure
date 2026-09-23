@@ -8,6 +8,7 @@ new workload capabilities require an explicit reviewed boundary update.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from collections.abc import Mapping, Sequence
@@ -30,6 +31,7 @@ from .github_identity import (
     identity_conditions,
     validate_trust_policy_size,
 )
+from .governance import _test_poc_capability_statements
 from .managed_repository import ManagedRepository
 from .pulumi_state import (
     DEFAULT_REPLICATION_REGION,
@@ -395,6 +397,26 @@ def governance_trust_policy(
     return validate_trust_policy_size(document)
 
 
+def _test_poc_statements(
+    args: GovernanceAutomationArgs, repo: ManagedRepository
+) -> list[dict[str, object]]:
+    """Use the same exact identity predicate for grants and the independent cap."""
+    settings = dataclasses.replace(
+        args.settings,
+        github_repository_id=repo.repository_id,
+        github_repository_owner_id=repo.repository_owner_id,
+    )
+    return _test_poc_capability_statements(
+        args.account_id,
+        args.partition,
+        settings,
+        repo.name,
+        args.region,
+        _ci_config_project(args.settings, repo.name),
+        write=True,
+    )
+
+
 def service_boundary_policy(
     args: GovernanceAutomationArgs, repo: ManagedRepository
 ) -> str:
@@ -426,6 +448,7 @@ def service_boundary_policy(
                 },
             ),
             _allow(_SECRET_READ, _repo_secrets(args, repo)),
+            *_test_poc_statements(args, repo),
         ]
     )
 
@@ -455,13 +478,13 @@ def _role_resources(
 def _managed_policy_resources(
     args: GovernanceAutomationArgs, repo: ManagedRepository
 ) -> list[str]:
-    """Resolve only the two service-apply policy names; never boundary policies."""
+    """Resolve exact service-apply policy names; never boundary policies."""
     project = _ci_config_project(args.settings, repo.name)
     apply_name = _ci_role_name(args.settings, "apply", project)
-    return [
-        _iam_arn(args, "policy", f"{apply_name}-{suffix}")
-        for suffix in ("pulumi-backend", "secret-read-deny")
-    ]
+    suffixes = ["pulumi-backend", "secret-read-deny"]
+    if _test_poc_statements(args, repo):
+        suffixes.append("poc-prerequisites")
+    return [_iam_arn(args, "policy", f"{apply_name}-{suffix}") for suffix in suffixes]
 
 
 def governance_repo_iam_policy(

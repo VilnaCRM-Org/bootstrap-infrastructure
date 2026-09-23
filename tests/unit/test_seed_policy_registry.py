@@ -36,9 +36,67 @@ def build(environment="test", **kwargs):
     )
 
 
+def catalog_before_test_poc_prerequisites(environment):
+    """Invert exactly the TEST prerequisite cap and governor attachment inventory."""
+    catalog = registry.load_catalog(environment)
+    if environment != "test":
+        return catalog
+    amendment = catalog["provenance"].pop("test_poc_prerequisites_amendment")
+    added = (
+        "arn:aws:iam::891377212104:policy/"
+        "GitHubCiApply-user-service-infrastructure-test-poc-prerequisites"
+    )
+    changes = {}
+    for arn, policy in catalog["policies"].items():
+        statements = []
+        removed = []
+        references = 0
+        for sid in policy["statement_ids"]:
+            statement = copy.deepcopy(catalog["statements"][sid])
+            if statement.get("Sid", "").startswith("Poc"):
+                removed.append(statement["Sid"])
+                continue
+            for selector in ("Resource", "NotResource"):
+                if added in statement.get(selector, []):
+                    statement[selector].remove(added)
+                    references += 1
+            statements.append(statement)
+        if removed or references:
+            changes[arn] = (removed, references)
+        policy["statement_ids"] = [registry.document_hash(s) for s in statements]
+        catalog["statements"].update(
+            zip(policy["statement_ids"], statements, strict=True)
+        )
+        policy["template_sha256"] = registry.document_hash(
+            {"Version": "2012-10-17", "Statement": statements}
+        )
+    used = {s for p in catalog["policies"].values() for s in p["statement_ids"]}
+    catalog["statements"] = {
+        k: v for k, v in catalog["statements"].items() if k in used
+    }
+    prefix = "arn:aws:iam::891377212104:policy/"
+    assert changes == {
+        prefix + "GovernanceBoundary-user-service-infrastructure-test": (
+            [
+                "PocRegistryMetadata",
+                "PocMailIdentityMetadata",
+                "PocDkimZoneMetadata",
+                "PocDkimChangeStatus",
+                "PocDkimRecords",
+            ],
+            0,
+        ),
+        prefix + "issue215-seed/test/ceiling/C-GitHubGovernanceDrift": ([], 1),
+        prefix + "issue215-seed/test/ceiling/C-GitHubGovernancePreview": ([], 1),
+        prefix + "issue215-seed/test/guard/G-GitHubGovernanceApply": ([], 2),
+    }
+    assert registry.document_hash(catalog) == amendment["baseline_catalog_sha256"]
+    return catalog
+
+
 def catalog_before_secret_policy_read(environment):
     """Invert only the metadata action delta, preserving all prior policy fields."""
-    catalog = registry.load_catalog(environment)
+    catalog = catalog_before_test_poc_prerequisites(environment)
     amendment = catalog["provenance"].pop("secret_resource_policy_read_amendment")
     action = amendment["action"]
     changed = []
@@ -791,7 +849,11 @@ def test_current_mutable_grants_can_change_only_inside_each_project_catalog(
     by_arn = {p.arn: p for p in expected.principals}
     for arn, allowed in permitted.items():
         role = by_arn[arn]
-        assert len(allowed) == (2 if role.owner_project == "governance" else 26)
+        assert len(allowed) == (
+            (3 if environment == "test" else 2)
+            if role.owner_project == "governance"
+            else 26
+        )
         for policy in allowed:
             roles = tuple(
                 replace(p, attachment_arns=role.guard_arns + (policy,))

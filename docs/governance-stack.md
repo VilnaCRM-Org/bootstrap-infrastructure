@@ -438,3 +438,36 @@ cannot publish success. Scope and promotion reporters share a per-PR concurrency
 group, preventing a pending scope update from racing a completed proof. The required
 status retains the name `Governance Promotion`; non-governance scope success alone
 never creates successful test/prod deployment records.
+
+## TEST PoC prerequisite capability
+
+The fixed `VilnaCRM-Org/user-service-infrastructure` identity (repository
+`911736693`, owner `114362548`) has a source-proposed initial prerequisite
+capability only in account `891377212104`, region `eu-central-1`, stack `test`.
+Apply gets a separate `poc-prerequisites` managed policy. Preview and drift get
+only its metadata-read subset through their existing inline-policy path. The
+independent TEST seed boundary and governor policy inventory carry the same cap.
+PROD and other repositories retain the backend-only default.
+
+The cap permits creation/tagging of `user-service-test-web` and
+`user-service-test-worker`, one SESv2 identity `user.vilnacrmtest.com`, and only
+Route53 CREATE requests for CNAME records beneath
+`*._domainkey.user.vilnacrmtest.com` in zone `Z04999481RZ4UQK2NANVH`. It does not
+permit repository/identity deletion, DNS DELETE or UPSERT, image publishing,
+mail sending, IAM changes, lifecycle-policy changes or workload resources.
+`GetHostedZone` and `ListResourceRecordSets` reveal metadata for the entire fixed
+zone because Route53 has no record-scoped read authorization. Apply can poll
+`GetChange` on generated change IDs.
+
+IAM cannot constrain record values or bind unknown Easy DKIM tokens to exactly
+three future names. The trusted service plan validator must enforce those facts,
+RSA-2048 Easy DKIM, fixed repository settings, and `allow_overwrite=false`. A later
+update that needs excluded actions fails closed and requires a separate review.
+
+This source change is not installation or activation authority. Retain
+`Issue215CutoverSessions` on the service TEST apply role; no policy in this change
+removes or bypasses that deny-all hold. Independently review/enroll the TEST seed
+boundary and governor pin changes, then deploy the reviewed governance grant via
+the existing protected saved-plan path. Native metadata verification, current-head
+CI/review and same-revision deployment evidence remain required. See
+[`specs/test-poc-prerequisite-capability/`](../specs/test-poc-prerequisite-capability/).

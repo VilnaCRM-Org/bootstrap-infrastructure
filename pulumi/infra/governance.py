@@ -10,7 +10,7 @@ resources a governed repo needs to run its own Pulumi CI against its account:
 - per-repo CI-config secret(s) + config-read role(s) (``CiConfiguration`` with
   the ``repo`` override, FR4),
 - the preview/apply/drift deploy trio via the shared ``_create_roles`` resource
-  builder with explicit backend-only service permissions. Apply trusts only
+  builder with explicit service permissions. Apply trusts only
   the account-specific protected test/prod environment; preview and drift
   have separate subjects and cannot mint apply credentials.
 
@@ -18,10 +18,9 @@ The ``GovernanceStack`` loop (part 2, Story 1.5 / E1.S4b) consumes the
 per-account OIDC provider by pinned ARN and instantiates one ``RepoGovernance``
 per catalog repo; it is added in a later story.
 
-Every rendered ARN uses ``{account_id}``/``{region}`` interpolation (the
-injectable ``region``), never a literal ``891377212104``/``eu-central-1``
-(FEAS-3), so the documents render under the session Pulumi mocks (account
-``123456789012``, region ``us-east-1``).
+Generic backend ARNs use injectable account and region. The reviewed TEST PoC
+prerequisite capability is a deliberate exact-identity exception; other accounts,
+regions, repositories and immutable GitHub IDs receive no workload capability.
 """
 
 from __future__ import annotations
@@ -30,6 +29,7 @@ import dataclasses
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 import pulumi_aws as aws
 
@@ -275,6 +275,126 @@ def _governance_read_only_policy_document(
     )
 
 
+def _test_poc_capability_statements(
+    account_id: str,
+    partition: str,
+    settings: BootstrapSettings,
+    repo: str,
+    region: str,
+    project: str,
+    *,
+    write: bool,
+) -> list[dict[str, object]]:
+    """Grant only the reviewed TEST registry and SES/DKIM prerequisite slice.
+
+    DNS values and the three generated token names require trusted plan admission.
+    IAM caps changes at the dedicated DKIM namespace, type and hosted zone.
+    This capability does not alter trust or retire the live cutover session hold.
+    """
+    actual = (
+        account_id,
+        partition,
+        settings.environment,
+        settings.org,
+        repo,
+        region,
+        project,
+        settings.github_repository_id,
+        settings.github_repository_owner_id,
+    )
+    # This packaged, reviewed identity is not overridable by stack configuration.
+    identity = json.loads(
+        Path(__file__).with_name("test-poc-identity.json").read_text(encoding="utf-8")
+    )
+    expected = (
+        identity["account_id"],
+        identity["partition"],
+        identity["environment"],
+        identity["organization"],
+        identity["repository"],
+        identity["region"],
+        identity["project"],
+        identity["repository_id"],
+        identity["repository_owner_id"],
+    )
+    if actual != expected:
+        return []
+    registry_actions = ["ecr:DescribeRepositories", "ecr:ListTagsForResource"]
+    mail_actions = ["ses:GetEmailIdentity", "ses:ListTagsForResource"]
+    if write:
+        registry_actions += [
+            "ecr:CreateRepository",
+            "ecr:TagResource",
+            "ecr:UntagResource",
+        ]
+        mail_actions += [
+            "ses:CreateEmailIdentity",
+            "ses:TagResource",
+            "ses:UntagResource",
+        ]
+    statements: list[dict[str, object]] = [
+        {
+            "Sid": "PocRegistryMetadata",
+            "Effect": "Allow",
+            "Action": registry_actions,
+            "Resource": [
+                f"arn:{partition}:ecr:{region}:{account_id}:repository/user-service-test-{kind}"
+                for kind in ("web", "worker")
+            ],
+        },
+        {
+            "Sid": "PocMailIdentityMetadata",
+            "Effect": "Allow",
+            "Action": mail_actions,
+            "Resource": [
+                f"arn:{partition}:ses:{region}:{account_id}:identity/user.vilnacrmtest.com"
+            ],
+        },
+        {
+            "Sid": "PocDkimZoneMetadata",
+            "Effect": "Allow",
+            "Action": ["route53:GetHostedZone", "route53:ListResourceRecordSets"],
+            "Resource": ["arn:aws:route53:::hostedzone/Z04999481RZ4UQK2NANVH"],
+        },
+    ]
+    if write:
+        statements.extend(
+            [
+                {
+                    "Sid": "PocDkimChangeStatus",
+                    "Effect": "Allow",
+                    "Action": ["route53:GetChange"],
+                    "Resource": ["arn:aws:route53:::change/*"],
+                },
+                {
+                    "Sid": "PocDkimRecords",
+                    "Effect": "Allow",
+                    "Action": ["route53:ChangeResourceRecordSets"],
+                    "Resource": ["arn:aws:route53:::hostedzone/Z04999481RZ4UQK2NANVH"],
+                    "Condition": {
+                        "ForAllValues:StringLike": {
+                            "route53:ChangeResourceRecordSetsNormalizedRecordNames": [
+                                "*._domainkey.user.vilnacrmtest.com"
+                            ]
+                        },
+                        "ForAllValues:StringEquals": {
+                            "route53:ChangeResourceRecordSetsRecordTypes": ["CNAME"],
+                            "route53:ChangeResourceRecordSetsActions": ["CREATE"],
+                        },
+                        "Null": {
+                            "route53:ChangeResourceRecordSetsNormalizedRecordNames": (
+                                "false"
+                            ),
+                            "route53:ChangeResourceRecordSetsRecordTypes": "false",
+                            "route53:ChangeResourceRecordSetsActions": "false",
+                        },
+                    },
+                },
+            ]
+        )
+    return statements
+
+
 def _governance_policy_documents(
     *,
     purpose: str,
@@ -315,6 +435,22 @@ def _governance_policy_documents(
                 "read-only",
                 _governance_read_only_policy_document(
                     account_id, partition, settings, repo, region, project
+                ),
+            )
+        )
+    capability = _test_poc_capability_statements(
+        account_id, partition, settings, repo, region, project, write=purpose == "apply"
+    )
+    if capability:
+        documents.append(
+            (
+                "poc-prerequisites",
+                json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": capability,
+                    },
+                    sort_keys=True,
                 ),
             )
         )

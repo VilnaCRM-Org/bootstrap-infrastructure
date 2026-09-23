@@ -1,0 +1,11 @@
+{
+  "account_id": "891377212104",
+  "partition": "aws",
+  "environment": "test",
+  "organization": "VilnaCRM-Org",
+  "repository": "user-service-infrastructure",
+  "region": "eu-central-1",
+  "project": "user-service-infrastructure",
+  "repository_id": "911736693",
+  "repository_owner_id": "114362548"
+}
