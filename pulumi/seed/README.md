@@ -52,26 +52,32 @@ and all resource identities, then verify the new complete registry hashes before
 ordinary execution. The three-role activation validator does not authorize policy
 updates. Updating source catalogs alone is not evidence of installed permissions.
 
-## TEST AWS-managed Config role v73 observation
+## AWS-managed Config role v73 observation
 
-The TEST catalog pins the existing AWS-managed `AWS_ConfigRole` default version
-`v73` and complete canonical document SHA-256
+The TEST and PROD catalogs pin the existing AWS-managed `AWS_ConfigRole`
+default version `v73` and complete canonical document SHA-256
 `74a0a7adc735b32d4af8b8bba82cd59577c9dc89368c1621247fadf36494c7f9`.
 Read-only TEST IAM `GetPolicy` and `GetPolicyVersion` on 2026-09-24 confirmed
 the live default is v73, updated 2026-09-23 21:07:08 UTC, and the entire
-document matches `tests/fixtures/aws-config-role-v73.json`. The older v72
-fixture remains for the unchanged PROD catalog; fresh PROD verification is
-required before changing its source pin or planning PROD deployment.
+document matches `tests/fixtures/aws-config-role-v73.json`. An earlier PROD
+IAM observation also saw v73, but the PROD CLI session expired before a fresh
+recheck. AWS documents that its managed-policy updates affect every attached
+identity and that AWS sets the [operative default version](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_managed-versioning.html).
+The same AWS-managed ARN is attached in both catalogs. This source pin does
+not replace a fresh PROD version/document observation before any PROD plan or
+apply; the enrollment check remains fail-closed if PROD differs. The v72
+fixture is retained as the reviewed prior document.
 
 Compared with v72, the four statement envelopes, resources and conditions are
 unchanged. The first two statements gain 99 and 93 read-only actions, with no
 removed actions. Read access can expose resource metadata, so reviewers must
 assess this AWS-managed policy expansion even though AWS already installed it
 externally. This source pin changes no trust, attachment, customer-managed
-grant or live IAM resource. The TEST enrollment validator still rejects any
-different future version or document and retains the installed-seed checks.
-Reverting only the TEST version and digest reproduces the previous complete
-catalog hash `9079c48192d3ebcdbd2dd957cc36138b7f90f80aa7fe22d49a60a56f436a32f7`.
+grant or live IAM resource. Both enrollment validators still reject any
+different future version or document and retain the installed-seed checks.
+Reverting only the version and digest reproduces the previous complete TEST
+catalog hash `9079c48192d3ebcdbd2dd957cc36138b7f90f80aa7fe22d49a60a56f436a32f7`
+and PROD hash `544a7c7f5610dc62172debcb16a6dca91c3a36eeb484f8f89b6e20af1c62ffd1`.
 
 ## Pure API
 

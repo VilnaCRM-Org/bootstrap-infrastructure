@@ -17,7 +17,7 @@ from .operator_trust import operator_trust_policy
 
 CATALOG_HASHES = {
     "test": "ef419680ab38a437ba2e374839c29437b4ca3243fab665ef29e81c01bed47dd3",
-    "prod": "544a7c7f5610dc62172debcb16a6dca91c3a36eeb484f8f89b6e20af1c62ffd1",
+    "prod": "d4b56073a101401ce7c3a23cdad71fa13149a462714481981b937f952d563ee6",
 }
 ACCOUNTS = {"test": "891377212104", "prod": "933245420672"}
 REGION = "eu-central-1"

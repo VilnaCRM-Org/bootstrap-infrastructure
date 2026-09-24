@@ -36,9 +36,9 @@ def build(environment="test", **kwargs):
     )
 
 
-def catalog_before_test_config_v73():
-    """Invert only the TEST managed-policy pin on main 570fc727."""
-    catalog = registry.load_catalog("test")
+def catalog_before_config_v73(environment):
+    """Invert only the managed-policy pin for one main-570fc727 catalog."""
+    catalog = registry.load_catalog(environment)
     frozen = [
         principal["frozen_config"]
         for principal in catalog["principals"]
@@ -57,26 +57,22 @@ def catalog_before_test_config_v73():
     managed["document_sha256"] = (
         "800d2de29e1503c081b58465590b2856a601749d1ba9db207f6951f358822ac7"
     )
-    assert registry.document_hash(catalog) == (
-        "9079c48192d3ebcdbd2dd957cc36138b7f90f80aa7fe22d49a60a56f436a32f7"
-    )
+    previous = {
+        "test": "9079c48192d3ebcdbd2dd957cc36138b7f90f80aa7fe22d49a60a56f436a32f7",
+        "prod": "544a7c7f5610dc62172debcb16a6dca91c3a36eeb484f8f89b6e20af1c62ffd1",
+    }
+    assert registry.document_hash(catalog) == previous[environment]
     return catalog
 
 
-def test_test_config_v73_changes_only_the_reviewed_managed_policy_pin():
-    catalog_before_test_config_v73()
-    assert registry.document_hash(registry.load_catalog("prod")) == (
-        "544a7c7f5610dc62172debcb16a6dca91c3a36eeb484f8f89b6e20af1c62ffd1"
-    )
+@pytest.mark.parametrize("environment", ["test", "prod"])
+def test_config_v73_changes_only_the_reviewed_managed_policy_pin(environment):
+    catalog_before_config_v73(environment)
 
 
 def catalog_before_secret_policy_read(environment):
     """Invert only the metadata action delta, preserving all prior policy fields."""
-    catalog = (
-        catalog_before_test_config_v73()
-        if environment == "test"
-        else registry.load_catalog(environment)
-    )
+    catalog = catalog_before_config_v73(environment)
     amendment = catalog["provenance"].pop("secret_resource_policy_read_amendment")
     action = amendment["action"]
     changed = []
@@ -311,9 +307,7 @@ def test_executor_and_config_envelopes_remain_exact(environment):
     assert len(config.attachment_arns) == 2
     assert len(config.frozen_config.inline_policies) == 1
     assert "s3:PutObject" in config.frozen_config.inline_policies[0][1]
-    assert config.frozen_config.aws_policy_version == (
-        "v73" if environment == "test" else "v72"
-    )
+    assert config.frozen_config.aws_policy_version == "v73"
     assert all(set(p.guard_arns) <= set(p.attachment_arns) for p in expected.principals)
 
 
@@ -775,14 +769,17 @@ def test_config_full_trust_and_inline_grants_frozen(change, message):
         ({"document_sha256": "0" * 64}, "AWS-managed policy document changed"),
     ],
 )
-def test_config_complete_aws_managed_grant_checked_by_observed_digest(change, message):
-    expected = build()
-    observed = observation_for(expected)
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("active", [False, True])
+def test_config_complete_aws_managed_grant_checked_by_observed_digest(
+    change, message, environment, active
+):
+    expected = build(environment)
+    observed = active_observation_for(expected) if active else observation_for(expected)
+    verify = registry.verify_active_enrollment if active else registry.verify_enrollment
     changed = replace(observed.aws_managed_policies[0], **change)
     with pytest.raises(registry.RegistryError, match=message):
-        registry.verify_enrollment(
-            expected, replace(observed, aws_managed_policies=(changed,))
-        )
+        verify(expected, replace(observed, aws_managed_policies=(changed,)))
 
 
 def active_observation_for(expected):

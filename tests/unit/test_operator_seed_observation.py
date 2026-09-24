@@ -32,13 +32,10 @@ def native(monkeypatch, tmp_path, request):
     """Replace only subprocess execution, retaining real native input/JSON checks."""
     expected = build(getattr(request, "param", "test"))
     reader = InitialReader(expected)
-    fixture_name = (
-        "aws-config-role-v73.json"
-        if expected.environment == "test"
-        else "aws-config-role-v72.json"
-    )
     policy = json.loads(
-        (Path(__file__).resolve().parents[1] / "fixtures" / fixture_name).read_text()
+        (
+            Path(__file__).resolve().parents[1] / "fixtures/aws-config-role-v73.json"
+        ).read_text()
     )
     frozen = next(p.frozen_config for p in expected.principals if p.frozen_config)
     assert registry.document_hash(policy) == frozen.aws_policy_sha256
@@ -142,6 +139,35 @@ def test_native_initial_observation_checks_complete_disabled_enrollment(native):
         "list_role_policies",
         "get_role_policy",
     }
+
+
+@pytest.mark.parametrize("native", ["test", "prod"], indirect=True)
+@pytest.mark.parametrize(
+    "change,message",
+    [
+        ("v72", "version requires enrollment review"),
+        ("v74", "version requires enrollment review"),
+        ("document", "AWS-managed policy document changed"),
+    ],
+)
+def test_native_config_policy_requires_exact_version_and_document(
+    native, change, message
+):
+    expected, reader, _, _, calls = native
+    frozen = next(p.frozen_config for p in expected.principals if p.frozen_config)
+    version, policy = reader.policies[frozen.aws_policy_arn]
+    if change == "document":
+        policy["Statement"][0]["Action"].append("iam:CreateRole")
+    else:
+        version = change
+    reader.policies[frozen.aws_policy_arn] = (version, policy)
+    with pytest.raises(registry.RegistryError, match=message):
+        invoke(native)
+    assert (
+        "iam",
+        "get_policy_version",
+        {"PolicyArn": frozen.aws_policy_arn, "VersionId": version},
+    ) in calls
 
 
 @pytest.mark.parametrize(
