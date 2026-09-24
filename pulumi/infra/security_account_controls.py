@@ -33,6 +33,14 @@ def _test_guardduty_s3_policy(
     """Return the approved TEST S3 posture only in its pinned account/Region."""
     if environment != "test":
         return None
+    expected_account, expected_region, enabled = _validated_test_guardduty_s3_policy()
+    if account_id != expected_account or region != expected_region:
+        return None
+    return enabled
+
+
+def _validated_test_guardduty_s3_policy() -> tuple[str, str, bool]:
+    """Reject malformed or broadened account/Region exceptions."""
     policy = json.loads(TEST_GUARDDUTY_S3_POLICY_PATH.read_text(encoding="utf-8"))
     if not isinstance(policy, dict) or set(policy) != {
         "accountId",
@@ -51,9 +59,31 @@ def _test_guardduty_s3_policy(
         or not isinstance(enabled, bool)
     ):
         raise ValueError("Test GuardDuty S3 policy has invalid field values.")
-    if account_id != expected_account or region != expected_region:
+    return expected_account, expected_region, enabled
+
+
+def _guardduty_s3_feature(
+    name: str,
+    parent: pulumi.Resource,
+    detector: aws.guardduty.Detector,
+    enabled: bool | None,
+) -> aws.guardduty.DetectorFeature | None:
+    """Manage only the explicitly approved account's S3 detection feature."""
+    if enabled is None:
         return None
-    return enabled
+    return aws.guardduty.DetectorFeature(
+        f"{name}-guardduty-s3-feature",
+        detector_id=detector.id,
+        name="S3_DATA_EVENTS",
+        status="ENABLED" if enabled else "DISABLED",
+        opts=pulumi.ResourceOptions(
+            parent=parent,
+            depends_on=[detector],
+            # Provider deletion only forgets this feature; require an
+            # explicit status=ENABLED rollback before removing state.
+            protect=True,
+        ),
+    )
 
 
 def _security_posture_enabled(environment: str, account_id: str) -> bool:
@@ -278,23 +308,12 @@ class SecurityAccountControls(pulumi.ComponentResource):
         )
         self.guardduty_s3_protection_managed = guardduty_s3_policy is not None
         self.guardduty_s3_protection_enabled = guardduty_s3_policy
-        self.guardduty_s3_feature: aws.guardduty.DetectorFeature | None = None
-        if guardduty_s3_policy is not None:
-            self.guardduty_s3_feature = aws.guardduty.DetectorFeature(
-                f"{name}-guardduty-s3-feature",
-                detector_id=self.guardduty_detector.id,
-                name="S3_DATA_EVENTS",
-                status=(
-                    "ENABLED" if self.guardduty_s3_protection_enabled else "DISABLED"
-                ),
-                opts=pulumi.ResourceOptions(
-                    parent=self,
-                    depends_on=[self.guardduty_detector],
-                    # Provider deletion only forgets this feature; require an
-                    # explicit status=ENABLED rollback before removing state.
-                    protect=True,
-                ),
-            )
+        self.guardduty_s3_feature = _guardduty_s3_feature(
+            name,
+            self,
+            self.guardduty_detector,
+            guardduty_s3_policy,
+        )
         self.security_hub_account = (
             aws.securityhub.Account(
                 f"{name}-security-hub",
