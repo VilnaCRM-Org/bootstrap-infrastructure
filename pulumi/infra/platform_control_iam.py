@@ -12,10 +12,12 @@ from . import platform_iam
 from .automation import (
     GitHubAutomation,
     _automation_policy_documents,
+    _operations_alert_triage_role_name,
     _validate_automation_policy_documents,
 )
 from .bootstrap_infrastructure import _repository_project
 from .bootstrap_settings import BootstrapSettings
+from .ci_config import _role_permissions_boundary
 from .iam.github_oidc import GitHubOidcRoles, _repo_suffix, _role_name_for_suffix
 from .managed_repository import ManagedRepository
 from .platform_iam import PlatformReplicationIam
@@ -72,6 +74,18 @@ def _validate_platform_catalog(settings, repositories):
         )
 
 
+def _triage_permissions_boundary(settings, account_id, partition, external_boundaries):
+    """Require the catalog boundary for the PROD-owned triage role."""
+    if settings.environment != "prod":
+        return None
+    return _role_permissions_boundary(
+        _operations_alert_triage_role_name(settings, settings.repo or ""),
+        account_id=account_id,
+        partition=partition,
+        external_role_boundaries=external_boundaries or {},
+    )
+
+
 class PlatformControlIam(pulumi.ComponentResource):
     """Adopt control identities once; normal platform stacks only reference them."""
 
@@ -88,6 +102,7 @@ class PlatformControlIam(pulumi.ComponentResource):
         boundary_arns: Mapping[str, pulumi.Input[str]],
         inline_policy_names: Mapping[str, Mapping[str, str]] | None = None,
         automation_retained_policy_arns: Sequence[pulumi.Input[str]] = (),
+        external_role_boundaries: Mapping[str, str] | None = None,
         opts: pulumi.ResourceOptions | None = None,
     ) -> None:
         _validate_platform_catalog(settings, repositories)
@@ -95,6 +110,9 @@ class PlatformControlIam(pulumi.ComponentResource):
             settings,
             repositories,
             {} if inline_policy_names is None else inline_policy_names,
+        )
+        triage_permissions_boundary = _triage_permissions_boundary(
+            settings, account_id, partition, external_role_boundaries
         )
         super().__init__("bootstrap:iam:PlatformControlIam", name, None, opts)
         options = pulumi.ResourceOptions(parent=self, protect=True)
@@ -163,6 +181,7 @@ class PlatformControlIam(pulumi.ComponentResource):
             manage_repository=False,
             manage_roles=True,
             manage_triage=settings.environment == "prod",
+            triage_permissions_boundary=triage_permissions_boundary,
             permissions_boundary=control_boundary_arn,
             adopt_existing_policies=True,
             role_guard_factory=lambda role: create_guard(None, role),
