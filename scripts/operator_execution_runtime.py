@@ -81,6 +81,59 @@ STAGES = frozenset(
 )
 
 
+# Public reason codes are literal validator invariants, never private evidence.
+# Keep this list explicit: new or unexpected exception text must stay private.
+_PLAN_VALIDATION_REASONS = frozenset(
+    """
+    autonamed-target aws-provider-account aws-provider-version-region
+    catalog-environment catalog-hash checkpoint-arn checkpoint-pending-or-corrupt
+    checkpoint-pending-shape checkpoint-resources checkpoint-secrets-provider
+    checkpoint-version complete-inventory concrete-identity corrupt-preview
+    delete-goal diff-map diff-origin diff-overlap document-object document-size
+    duplicate-checkpoint-urn duplicate-desired-target duplicate-json-key
+    duplicate-list-item duplicate-operator-config-key duplicate-physical-owner
+    duplicate-preview-step exclusive-guard-retention exclusive-id
+    exclusive-output-binding exclusive-ownership exclusive-policy-inventory
+    exclusive-resource-name exclusive-transition external-id-change
+    external-plan-goal external-target-ownership forbidden-lifecycle
+    foreign-dependency foreign-exclusive-role foreign-iam-target
+    foreign-oidc-target foreign-policy-target foreign-role-target
+    foreign-secret-target foreign-urn frozen-config-inline frozen-config-trust
+    frozen-prior-change frozen-resource-change goal-name goal-replacement-option
+    iam-path inline-id inline-policies input-boolean input-integer input-string
+    internal-provider-preview-step invalid-json-document invalid-urn
+    legacy-provider-name lifecycle-inventory malformed-plan-evidence
+    manifest-magic manifest-plugins missing-operation-resource missing-owned-goal
+    missing-parent nonfinite-json object-fields object-required operator-config
+    operator-config-key ownership-change parent-qualified-type
+    physical-alias-target physical-target-change plan-goals
+    plan-preview-operations plan-seed plan-state plan-steps policy-document
+    policy-statement policy-statements preview-config preview-diagnostics
+    preview-diff preview-diff-kind preview-duration preview-error preview-inputs
+    preview-new-id preview-old-id preview-old-outputs preview-operation
+    preview-ownership preview-provider preview-read-count preview-steps
+    preview-summary preview-summary-counts protected-resource-deletion
+    provider-credential-or-endpoint-option provider-hardening-identity
+    provider-hardening-inputs provider-hardening-inventory
+    provider-hardening-origin provider-internal-metadata provider-owner
+    provider-validation-disabled pulumi-version refresh-absent-resource
+    refresh-drift replacement-delete-marker resource-id role-attachment-ceiling
+    role-boundary role-force-detach role-guard-management-removal
+    role-guard-removal role-id root-stack-identity same-input-change
+    same-input-diff secret-input-shape secret-name-identity
+    secret-output-declassification secret-region secret-replica-fields
+    secret-replicas secret-shape secret-value-required secret-value-shape
+    stack-owner state-boolean state-map state-string string-list tags-all-inputs
+    tags-all-output tags-all-shape tags-shape unexpected-new-state
+    unexpected-old-state unknown-input unprotected-control-resource
+    unsupported-goal-option unsupported-input-change
+    unsupported-property-signature unsupported-provider-input
+    unsupported-resource-type unsupported-state-option urn-type version-id
+    version-secret-id
+    """.split()
+)
+
+
 def _failure_record(exc, stage):
     """Emit only fixed source stages/categories and bounded native exits/signals."""
     stage = stage if type(stage) is str and stage in STAGES else "unknown"
@@ -98,9 +151,18 @@ def _failure_record(exc, stage):
 
 
 def _public_record(exc, stage):
-    """Keep child-selected numeric exits exclusively inside encrypted diagnostics."""
+    """Publish fixed reason codes; keep process exits and evidence private."""
     record = _failure_record(exc, stage)
-    return {"stage": record["stage"], "category": record["category"]}
+    public = {"stage": record["stage"], "category": record["category"]}
+    if (
+        record["stage"] == "plan-validation"
+        and type(exc) is ValueError
+        and len(exc.args) == 1
+        and type(exc.args[0]) is str
+        and exc.args[0] in _PLAN_VALIDATION_REASONS
+    ):
+        public["reason"] = exc.args[0]
+    return public
 
 
 def _publish_diagnostic(destination, encrypted):
