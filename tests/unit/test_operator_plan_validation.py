@@ -504,6 +504,122 @@ def test_matching_preview_collects_no_mismatch():
     assert mismatches == []
 
 
+@pytest.mark.parametrize(
+    "kind",
+    [
+        validation.STACK,
+        validation.ROLE,
+        validation.POLICY,
+        validation.INLINE,
+        validation.ATTACHMENT,
+        validation.SECRET,
+        validation.VERSION,
+        validation.OIDC,
+    ],
+)
+def test_old_output_mismatch_records_only_digest_and_fixed_labels(kind):
+    data = fixture("prod")
+    prior = resource(data, kind)
+    step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == prior["urn"]
+    )
+    private = "PRIVATE_CANARY::untrusted-key-or-value"
+    step["oldState"]["outputs"].update(
+        {"tags": {private: private}, "secretString": private, private: private}
+    )
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=mismatches)
+    assert mismatches == [
+        {
+            "resource_sha256": hashlib.sha256(prior["urn"].encode()).hexdigest(),
+            "type": kind,
+            "operation": "same",
+            "fields": ["other", "secretString", "tags"],
+        }
+    ]
+    assert private not in repr(mismatches)
+    assert prior["urn"] not in repr(mismatches)
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data)
+
+
+def test_output_diagnostic_keeps_first_failure_and_exact_secret_projection():
+    data = fixture("prod")
+    prior = resource(data, validation.VERSION)
+    prior["outputs"]["secretString"] = copy.deepcopy(prior["inputs"]["secretString"])
+    step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == prior["urn"]
+    )
+    step["oldState"]["outputs"]["secretString"] = "[secret]"
+    mismatches = []
+    assert validate(data, mismatch=mismatches).changed_urns == ()
+    assert mismatches == []
+    step["oldState"]["outputs"]["versionId"] = "PRIVATE_CANARY"
+    retained = [{"prior": "already-recorded"}]
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=retained)
+    assert retained == [{"prior": "already-recorded"}]
+
+
+def test_output_diagnostic_identifies_read_and_retained_refresh_mismatch():
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    step["oldState"]["outputs"]["arn"] = "PRIVATE_CANARY"
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=mismatches)
+    assert mismatches[0]["operation"] == "read"
+    assert mismatches[0]["fields"] == ["arn"]
+    assert (
+        mismatches[0]["resource_sha256"]
+        == hashlib.sha256(oidc["urn"].encode()).hexdigest()
+    )
+
+    data = fixture("prod")
+    prior = resource(data, validation.ROLE)
+    append_preview(data["preview"], prior, prior, "refresh")
+    step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == prior["urn"]
+    )
+    step["oldState"]["outputs"]["managedPolicyArns"] = ["PRIVATE_CANARY"]
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=mismatches)
+    assert mismatches[0]["operation"] == "same"
+    assert mismatches[0]["fields"] == ["managedPolicyArns"]
+
+
+@pytest.mark.parametrize("secret_side", ["oldState", "checkpoint"])
+def test_output_diagnostic_preserves_whole_map_secret_mismatch(secret_side):
+    data = fixture("prod")
+    prior = resource(data, validation.STACK)
+    step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == prior["urn"]
+    )
+    selected = prior if secret_side == "checkpoint" else step["oldState"]
+    selected["outputs"] = {
+        validation.SIGNATURE: validation.WIRE_VALUE_TAG,
+        "ciphertext": "PRIVATE_CANARY",
+    }
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=mismatches)
+    assert mismatches[0]["fields"] == ["other"]
+    assert "PRIVATE_CANARY" not in repr(mismatches)
+
+
+def test_output_diagnostic_hashes_unusual_identity_without_replacing_rejection():
+    prior = {"urn": "synthetic-\ud800", "type": validation.ROLE, "outputs": {}}
+    observed = {**prior, "outputs": {"description": "PRIVATE_CANARY"}}
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validation._preview_old_outputs(observed, prior, "same", mismatches)
+    assert len(mismatches[0]["resource_sha256"]) == 64
+    assert mismatches[0]["fields"] == ["description"]
+    assert "PRIVATE_CANARY" not in repr(mismatches)
+
+
 @pytest.mark.parametrize("environment", ["test", "prod"])
 @pytest.mark.parametrize("maps", [(), ("inputs",), ("outputs",), ("inputs", "outputs")])
 def test_external_oidc_read_accepts_only_empty_new_side_placeholder(environment, maps):

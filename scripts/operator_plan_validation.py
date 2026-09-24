@@ -259,6 +259,16 @@ _INPUT_FIELDS = {
     OIDC: {"url", "clientIdLists", "thumbprintLists", "tags", "tagsAll"},
 }
 
+# Public diagnostic labels only. Unknown output keys collapse to "other";
+# neither property names supplied by a program nor property values are exposed.
+_OUTPUT_DIAGNOSTIC_FIELDS = frozenset(
+    "arn id assumeRolePolicy description inlinePolicies managedPolicyArns "
+    "permissionsBoundary policy policyArns role roleName tags tagsAll "
+    "clientIdLists thumbprintLists url secretId secretString secretBinary "
+    "versionId versionStages __defaults __meta other".split()
+)
+_OUTPUT_DIAGNOSTIC_TYPES = frozenset(_INPUT_FIELDS) | {STACK, PROVIDER}
+
 
 def _input_fields(row: dict[str, Any]) -> None:
     kind, inputs = row["type"], row.get("inputs", {})
@@ -1391,6 +1401,49 @@ def _external_oidc_read_placeholder(
     )
 
 
+def _output_mismatch_fields(observed: Any, expected: Any) -> list[str]:
+    """Collapse private output keys and whole-map secret wrappers to fixed labels."""
+    if not isinstance(observed, dict) or not isinstance(expected, dict):
+        return ["other"]
+    absent = object()
+    return sorted(
+        {
+            key if key in _OUTPUT_DIAGNOSTIC_FIELDS else "other"
+            for key in observed.keys() | expected.keys()
+            if observed.get(key, absent) != expected.get(key, absent)
+        }
+    )
+
+
+def _preview_old_outputs(
+    row: dict[str, Any],
+    expected: dict[str, Any],
+    operation: str,
+    mismatch: list[dict[str, Any]] | None,
+) -> None:
+    """Keep exact comparison; retain only fixed labels and a resource digest."""
+    observed_outputs = _project(
+        _property_semantics(row.get("outputs", {}), row["type"], inputs=False)
+    )
+    expected_outputs = _project(
+        _property_semantics(expected.get("outputs", {}), row["type"], inputs=False)
+    )
+    if observed_outputs == expected_outputs:
+        return
+    if mismatch is not None and not mismatch:
+        mismatch.append(
+            {
+                "resource_sha256": hashlib.sha256(
+                    expected["urn"].encode("utf-8", "surrogatepass")
+                ).hexdigest(),
+                "type": row["type"],
+                "operation": operation,
+                "fields": _output_mismatch_fields(observed_outputs, expected_outputs),
+            }
+        )
+    raise ValueError("preview-old-outputs")
+
+
 def _preview_state(
     value: Any,
     expected: dict[str, Any],
@@ -1430,17 +1483,7 @@ def _preview_state(
         raise ValueError("preview-inputs")
     if not new:
         _require(row.get("id", "") == expected.get("id", ""), "preview-old-id")
-        _require(
-            _project(
-                _property_semantics(row.get("outputs", {}), row["type"], inputs=False)
-            )
-            == _project(
-                _property_semantics(
-                    expected.get("outputs", {}), row["type"], inputs=False
-                )
-            ),
-            "preview-old-outputs",
-        )
+        _preview_old_outputs(row, expected, operation, mismatch)
     if new and row.get("id") and row.get("id") != UNKNOWN:
         _require(row["id"] == expected.get("id"), "preview-new-id")
     if expected.get("external", False):
