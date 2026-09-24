@@ -450,6 +450,11 @@ graph. The active TEST seed catalog remains pinned to the installed IAM policy
 versions; it does not yet carry the proposed cap. PROD and other repositories
 retain the backend-only default.
 
+The same disabled capability stages `s3:GetBucketVersioning` only for
+`arn:aws:s3:::pulumi-user-service-infrastructure-test-state`. This backend
+observation grant also requires independent seed installation and verification
+before activation; it does not change the active TEST catalog or pin.
+
 The cap permits creation/tagging of `user-service-test-web` and
 `user-service-test-worker`, one SESv2 identity `user.vilnacrmtest.com`, and only
 Route53 CREATE requests for CNAME records beneath
