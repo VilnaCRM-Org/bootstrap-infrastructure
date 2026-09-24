@@ -201,14 +201,18 @@ Config. Deleted Security Hub findings cannot be recovered by a code rollback.
 ### Separate TEST GuardDuty S3 Protection exception
 
 The reviewed `pulumi/infra/config/guardduty-s3.test.json` policy targets only
-TEST account `891377212104` in `eu-central-1`. Its explicit
-`s3ProtectionEnabled=false` manages only GuardDuty's `S3_DATA_EVENTS` feature;
+TEST account `891377212104` in `eu-central-1`. The separately reviewed seed
+identity is checked at plan time, so editable policy cannot retarget the
+exception. Setting `s3ProtectionEnabled=false` manages only GuardDuty's
+`S3_DATA_EVENTS` feature;
 the detector itself stays enabled, and PROD creates no feature resource from
 this exception. Disabling S3 Protection stops object-level S3 threat findings
 for **every bucket in that TEST account and Region**, not just bootstrap
-buckets. Recent S3-data-event charges suggest approximately USD 5–6 per full
-month before tax if workload remains similar, but no saving is counted until
-the reviewed plan applies and post-change billing is observed.
+buckets. Read-only Cost Explorer usage-type data shows USD 0.8522 for the
+complete August 2026 month and USD 2.6708 for September 1–24. A simple
+30-day scaling of September is about USD 3.34 before tax, not the earlier
+USD 5–6 estimate; workload and billing lag can change it. No saving is
+counted until the reviewed plan applies and post-change billing is observed.
 
 The pinned AWS provider's `DetectorFeature` create operation uses
 `UpdateDetector` with only `S3_DATA_EVENTS`, so this is an IaC-managed
