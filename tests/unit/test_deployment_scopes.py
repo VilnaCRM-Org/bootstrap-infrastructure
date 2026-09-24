@@ -61,6 +61,7 @@ def select_records(records: list[Mapping[str, object]]) -> DeploymentScopes:
         ("pulumi/infra/new_helper.py", ALL, False, False, False),
         ("pulumi/infra/new_runtime_data.json", ALL, False, False, False),
         ("pulumi/infra/config/cost-controls.test.json", ALL, False, False, False),
+        ("pulumi/infra/config/guardduty-s3.test.json", ALL, False, False, False),
         ("pulumi/infra/new_runtime_data.md", ALL, False, False, False),
         ("pulumi/seed/catalogs/test.json", ALL, False, False, False),
         ("pulumi/seed/catalogs/prod.json", ALL, False, False, False),

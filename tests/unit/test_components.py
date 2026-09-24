@@ -1806,6 +1806,187 @@ def test_security_cost_policy_can_restore_checks(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "policy",
+    [
+        [],
+        {"accountId": "891377212104"},
+        {
+            "accountId": 891377212104,
+            "region": "eu-central-1",
+            "s3ProtectionEnabled": True,
+        },
+        {
+            "accountId": "891377212104",
+            "region": "not-a-region",
+            "s3ProtectionEnabled": True,
+        },
+        {
+            "accountId": "891377212104",
+            "region": "eu-central-1",
+            "detectorId": "not-a-detector-id",
+            "s3ProtectionEnabled": True,
+        },
+        {
+            "accountId": "891377212104",
+            "region": "eu-central-1",
+            "s3ProtectionEnabled": "true",
+        },
+        {
+            "accountId": "933245420672",
+            "region": "eu-central-1",
+            "s3ProtectionEnabled": False,
+        },
+        {
+            "accountId": "891377212104",
+            "region": "us-east-1",
+            "s3ProtectionEnabled": False,
+        },
+        {
+            "accountId": "933245420672",
+            "region": "us-east-1",
+            "s3ProtectionEnabled": False,
+        },
+    ],
+)
+def test_guardduty_s3_policy_rejects_unsafe_configuration(
+    tmp_path, monkeypatch, policy
+):
+    """Malformed policy cannot silently widen the security exception."""
+    path = tmp_path / "guardduty-s3.test.json"
+    path.write_text(json.dumps(policy), encoding="utf-8")
+    monkeypatch.setattr(
+        security_account_controls, "TEST_GUARDDUTY_S3_POLICY_PATH", path
+    )
+    with pytest.raises(ValueError, match="GuardDuty S3"):
+        security_account_controls._test_guardduty_s3_policy(
+            "test", "891377212104", "eu-central-1"
+        )
+
+
+def test_guardduty_s3_policy_cannot_follow_mislabelled_prod_account(
+    tmp_path, monkeypatch
+):
+    """Editable policy and stack metadata cannot re-target the exception to PROD."""
+    path = tmp_path / "guardduty-s3.test.json"
+    path.write_text(
+        json.dumps(
+            {
+                "accountId": "933245420672",
+                "region": "eu-central-1",
+                "s3ProtectionEnabled": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        security_account_controls, "TEST_GUARDDUTY_S3_POLICY_PATH", path
+    )
+    with pytest.raises(ValueError, match="unapproved account/Region"):
+        security_account_controls._test_guardduty_s3_policy(
+            "test", "933245420672", "eu-central-1"
+        )
+
+
+@pytest.mark.parametrize(
+    "environment,account_id,region,managed",
+    [
+        ("test", "891377212104", "eu-central-1", True),
+        ("test", "933245420672", "eu-central-1", False),
+        ("prod", "891377212104", "eu-central-1", False),
+        ("test", "891377212104", "us-east-1", False),
+    ],
+)
+def test_guardduty_s3_exception_is_pinned_and_preserves_detector(
+    pulumi_mocks, monkeypatch, environment, account_id, region, managed
+):
+    """Disable only TEST's S3 feature without changing core GuardDuty."""
+    monkeypatch.setattr(
+        security_account_controls.aws,
+        "get_caller_identity",
+        lambda: SimpleNamespace(account_id=account_id),
+    )
+    monkeypatch.setattr(
+        security_account_controls.aws,
+        "get_region",
+        lambda: SimpleNamespace(name=region, region=region),
+    )
+    start = len(pulumi_mocks.resources)
+    controls = SecurityAccountControls(
+        "security-guardduty-s3-exception",
+        settings=_ci_bootstrap_settings(environment),
+    )
+    _sync_await(future_output(controls.guardduty_detector.id))
+    _sync_await(wait_for_rpcs())
+    resources = pulumi_mocks.resources[start:]
+    feature_states = [
+        state
+        for kind, _name, state in resources
+        if kind == "aws:guardduty/detectorFeature:DetectorFeature"
+    ]
+    assert bool(feature_states) is managed  # nosec B101
+    assert (controls.guardduty_s3_feature is not None) is managed  # nosec B101
+    assert controls.guardduty_s3_protection_managed is managed  # nosec B101
+    assert controls.guardduty_s3_protection_enabled is (  # nosec B101
+        False if managed else None
+    )
+    if managed:
+        assert feature_states[0]["name"] == "S3_DATA_EVENTS"  # nosec B101
+        assert feature_states[0]["status"] == "DISABLED"  # nosec B101
+    detector = next(
+        state
+        for kind, _name, state in resources
+        if kind == "aws:guardduty/detector:Detector"
+    )
+    assert detector["enable"] is True  # nosec B101
+
+
+def test_guardduty_s3_policy_restores_enabled_posture(
+    tmp_path, monkeypatch, pulumi_mocks
+):
+    """Rollback changes status in IaC instead of deleting the managed feature."""
+    path = tmp_path / "guardduty-s3.test.json"
+    path.write_text(
+        json.dumps(
+            {
+                "accountId": "891377212104",
+                "region": "eu-central-1",
+                "s3ProtectionEnabled": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        security_account_controls, "TEST_GUARDDUTY_S3_POLICY_PATH", path
+    )
+    monkeypatch.setattr(
+        security_account_controls.aws,
+        "get_caller_identity",
+        lambda: SimpleNamespace(account_id="891377212104"),
+    )
+    monkeypatch.setattr(
+        security_account_controls.aws,
+        "get_region",
+        lambda: SimpleNamespace(name="eu-central-1", region="eu-central-1"),
+    )
+    start = len(pulumi_mocks.resources)
+    controls = SecurityAccountControls(
+        "security-guardduty-s3-exception", settings=_ci_bootstrap_settings("test")
+    )
+    _sync_await(future_output(controls.guardduty_detector.id))
+    _sync_await(wait_for_rpcs())
+    feature = next(
+        (name, state)
+        for kind, name, state in pulumi_mocks.resources[start:]
+        if kind == "aws:guardduty/detectorFeature:DetectorFeature"
+    )
+    assert controls.guardduty_s3_protection_managed is True  # nosec B101
+    assert controls.guardduty_s3_protection_enabled is True  # nosec B101
+    assert feature[0] == "security-guardduty-s3-exception-guardduty-s3-feature"  # nosec B101
+    assert feature[1]["name"] == "S3_DATA_EVENTS"  # nosec B101
+    assert feature[1]["status"] == "ENABLED"  # nosec B101
+
+
+@pytest.mark.parametrize(
     "environment,account_id,enabled",
     [
         ("test", "891377212104", False),
@@ -2812,10 +2993,15 @@ def test_stack_main_executes(pulumi_mocks, monkeypatch):  # noqa: ARG001
 
 
 @pytest.mark.parametrize(
-    "account_id,enabled", [("123456789012", True), ("891377212104", False)]
+    "account_id,enabled,region,feature_managed",
+    [
+        ("123456789012", True, "eu-central-1", False),
+        ("891377212104", False, "eu-central-1", True),
+        ("891377212104", False, "us-east-1", False),
+    ],
 )
 def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
-    pulumi_mocks, monkeypatch, account_id, enabled
+    pulumi_mocks, monkeypatch, account_id, enabled, region, feature_managed
 ):
     config.managed_repositories.cache_clear()
     exported = {}
@@ -2824,6 +3010,11 @@ def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
         security_account_controls.aws,
         "get_caller_identity",
         lambda: SimpleNamespace(account_id=account_id),
+    )
+    monkeypatch.setattr(
+        security_account_controls.aws,
+        "get_region",
+        lambda: SimpleNamespace(name=region, region=region),
     )
     try:
         monkeypatch.setattr(config.settings, "repo", "repo")
@@ -2868,6 +3059,10 @@ def test_stack_main_executes_bootstrap_repo_mode(  # noqa: ARG001
         module_globals = runpy.run_path(str(stack_path))
 
         assert exported["securityPostureEnabled"] is enabled  # nosec B101
+        assert exported["guardDutyS3ProtectionManaged"] is feature_managed  # nosec B101
+        assert ("guardDutyS3ProtectionEnabled" in exported) is feature_managed  # nosec B101
+        if feature_managed:
+            assert exported["guardDutyS3ProtectionEnabled"] is False  # nosec B101
         assert ("securityHubAccountArn" in exported) is enabled  # nosec B101
         assert module_globals["state"].backend_urls  # nosec B101
         assert module_globals["secrets"].provider_urls  # nosec B101

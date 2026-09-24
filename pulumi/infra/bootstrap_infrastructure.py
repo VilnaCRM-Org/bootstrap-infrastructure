@@ -130,6 +130,12 @@ def _base_outputs(
         "guardDutyDetectorId": (
             bootstrap.security_account_controls.guardduty_detector.id
         ),
+        "guardDutyS3ProtectionEnabled": (
+            bootstrap.security_account_controls.guardduty_s3_protection_enabled
+        ),
+        "guardDutyS3ProtectionManaged": (
+            bootstrap.security_account_controls.guardduty_s3_protection_managed
+        ),
         "securityHubAccountArn": (
             bootstrap.security_account_controls.security_hub_account_arn
         ),

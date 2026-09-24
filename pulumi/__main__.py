@@ -127,6 +127,15 @@ if bootstrap_requested:
     cost_anomaly_subscription_arn = bootstrap.outputs["costAnomalySubscriptionArn"]
     pulumi.export("costAnomalySubscriptionArn", cost_anomaly_subscription_arn)
     pulumi.export("guardDutyDetectorId", bootstrap.outputs["guardDutyDetectorId"])
+    pulumi.export(
+        "guardDutyS3ProtectionManaged",
+        bootstrap.outputs["guardDutyS3ProtectionManaged"],
+    )
+    if bootstrap.security_account_controls.guardduty_s3_protection_managed:
+        pulumi.export(
+            "guardDutyS3ProtectionEnabled",
+            bootstrap.outputs["guardDutyS3ProtectionEnabled"],
+        )
     if bootstrap.security_account_controls.security_posture_enabled:
         pulumi.export(
             "securityHubAccountArn", bootstrap.outputs["securityHubAccountArn"]
