@@ -119,6 +119,7 @@ class CostControls(pulumi.ComponentResource):
             f"{name}-monthly-budget",
             account_id=account_id,
             budget_type="COST",
+            cost_types=aws.budgets.BudgetCostTypesArgs(include_tax=True),
             limit_amount=configured_settings.monthly_budget_limit_usd,
             limit_unit="USD",
             name=_budget_name(configured_settings),
