@@ -48,6 +48,8 @@ from operator_execution_transport import (  # noqa: E402
 )
 from operator_plan_validation import (  # noqa: E402
     _INPUT_FIELDS,
+    _OUTPUT_DIAGNOSTIC_FIELDS,
+    _OUTPUT_DIAGNOSTIC_TYPES,
     _goal_inputs,
     validate_operator_plan,
 )
@@ -150,7 +152,7 @@ def _failure_record(exc, stage):
     return {"stage": stage, "category": category, "exit_code": exit_code}
 
 
-def _public_record(exc, stage):
+def _public_record(exc, stage, *, execution_stage=None, mismatch=None):
     """Publish fixed reason codes; keep process exits and evidence private."""
     record = _failure_record(exc, stage)
     public = {"stage": record["stage"], "category": record["category"]}
@@ -162,6 +164,10 @@ def _public_record(exc, stage):
         and exc.args[0] in _PLAN_VALIDATION_REASONS
     ):
         public["reason"] = exc.args[0]
+        if execution_stage == "drift" and exc.args[0] == "preview-old-outputs":
+            metadata = _public_output_mismatch(mismatch)
+            if metadata is not None:
+                public["mismatch"] = metadata
     return public
 
 
@@ -189,6 +195,42 @@ _PREVIEW_OPERATIONS = frozenset(
         "refresh",
     }
 )
+
+
+def _public_output_mismatch(value):
+    """Revalidate every public label; never copy private keys or identities."""
+    keys = {"resource_sha256", "type", "operation", "fields"}
+    if type(value) is not dict or set(value) != keys:
+        return None
+    digest, kind, operation, fields = (
+        value[key] for key in ("resource_sha256", "type", "operation", "fields")
+    )
+    if not _public_output_identity(digest, kind, operation):
+        return None
+    if not _public_output_fields(fields):
+        return None
+    return {key: value[key] for key in keys}
+
+
+def _public_output_identity(digest, kind, operation):
+    """Require a digest and fixed type/operation labels before publishing."""
+    return (
+        all(type(item) is str for item in (digest, kind, operation))
+        and re.fullmatch(r"[0-9a-f]{64}", digest) is not None
+        and kind in _OUTPUT_DIAGNOSTIC_TYPES
+        and operation in _PREVIEW_OPERATIONS
+    )
+
+
+def _public_output_fields(fields):
+    """Bound all public field labels to source-controlled vocabulary."""
+    return (
+        type(fields) is list
+        and 0 < len(fields) <= len(_OUTPUT_DIAGNOSTIC_FIELDS)
+        and all(type(field) is str for field in fields)
+        and fields == sorted(set(fields))
+        and set(fields) <= _OUTPUT_DIAGNOSTIC_FIELDS
+    )
 
 
 def _mismatch_fields(fields, kind):
@@ -654,7 +696,15 @@ def main(argv=None):
         return 0
     except Exception as exc:
         print(
-            json.dumps(_public_record(exc, arguments.diagnostic_stage), sort_keys=True),
+            json.dumps(
+                _public_record(
+                    exc,
+                    arguments.diagnostic_stage,
+                    execution_stage=arguments.stage,
+                    mismatch=getattr(arguments, "diagnostic_mismatch", None),
+                ),
+                sort_keys=True,
+            ),
             file=sys.stderr,
         )
         return 1
