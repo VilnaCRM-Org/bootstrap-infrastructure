@@ -504,9 +504,12 @@ def test_matching_preview_collects_no_mismatch():
     assert mismatches == []
 
 
-def test_external_oidc_read_accepts_only_empty_new_side_placeholder():
-    data = fixture("prod")
-    external_oidc_read(data)
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("maps", [(), ("inputs",), ("outputs",), ("inputs", "outputs")])
+def test_external_oidc_read_accepts_only_empty_new_side_placeholder(environment, maps):
+    data = fixture(environment)
+    _, step = external_oidc_read(data)
+    step["newState"].update({key: {} for key in maps})
     mismatches = []
     assert validate(data, mismatch=mismatches).changed_urns == ()
     assert mismatches == []
@@ -516,8 +519,6 @@ def test_external_oidc_read_accepts_only_empty_new_side_placeholder():
     ("mutation", "failure"),
     [
         ("new-input", "preview-inputs"),
-        ("explicit-empty-maps", "preview-inputs"),
-        ("explicit-empty-outputs", "preview-inputs"),
         ("nonempty-outputs", "preview-inputs"),
         ("null-outputs", "state-map"),
     ],
@@ -527,11 +528,6 @@ def test_external_oidc_read_rejects_nonplaceholder_inputs_or_outputs(mutation, f
     oidc, step = external_oidc_read(data)
     if mutation == "new-input":
         step["newState"]["inputs"] = {"url": "https://example.invalid"}
-    elif mutation == "explicit-empty-maps":
-        step["newState"]["inputs"] = {}
-        step["newState"]["outputs"] = {}
-    elif mutation == "explicit-empty-outputs":
-        step["newState"]["outputs"] = {}
     elif mutation == "nonempty-outputs":
         step["newState"]["outputs"] = {"arn": oidc["id"]}
     elif mutation == "null-outputs":
@@ -540,6 +536,86 @@ def test_external_oidc_read_rejects_nonplaceholder_inputs_or_outputs(mutation, f
         validate(data)
 
 
+@pytest.mark.parametrize("field", ["inputs", "outputs"])
+@pytest.mark.parametrize("value", [None, [], "", False, 0, validation.UNKNOWN])
+def test_external_oidc_read_placeholder_rejects_non_map_properties(field, value):
+    data = fixture("prod")
+    _, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    step["newState"][field] = value
+    with pytest.raises(ValueError, match="state-map"):
+        validate(data)
+
+
+@pytest.mark.parametrize("side", ["oldState", "newState"])
+@pytest.mark.parametrize(
+    ("field", "value", "failure"),
+    [
+        (
+            "id",
+            "arn:aws:iam::933245420672:oidc-provider/other.invalid",
+            "preview-(inputs|old-id)",
+        ),
+        ("id", validation.UNKNOWN, "preview-(inputs|old-id)"),
+        ("id", "", "preview-(inputs|old-id)"),
+        (
+            "urn",
+            "urn:pulumi:prod::github-ci-bootstrap::" + validation.OIDC + "::other",
+            "preview-ownership",
+        ),
+        ("provider", "different-provider", "preview-ownership"),
+        ("parent", "different-parent", "preview-ownership"),
+        ("external", False, "preview-ownership"),
+        ("custom", False, "preview-ownership"),
+        ("protect", True, "preview-ownership"),
+    ],
+)
+def test_empty_oidc_maps_preserve_identity_and_ownership(side, field, value, failure):
+    data = fixture("prod")
+    _, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    step[side][field] = value
+    with pytest.raises(ValueError, match=failure):
+        validate(data)
+
+
+@pytest.mark.parametrize("missing", ["checkpoint", "oldState"])
+def test_empty_oidc_maps_require_existing_checkpoint_and_old_state(missing):
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    if missing == "checkpoint":
+        data["checkpoint"]["deployment"]["resources"].remove(oidc)
+    else:
+        del step["oldState"]
+    with pytest.raises(ValueError, match="complete-inventory|object-required"):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "failure"),
+    [
+        (
+            "id",
+            "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com",
+            "foreign-oidc-target",
+        ),
+        ("outputs", {"arn": "different-arn"}, "checkpoint-arn"),
+        ("external", False, "complete-inventory"),
+    ],
+)
+def test_empty_oidc_maps_do_not_bypass_checkpoint_binding(field, value, failure):
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    oidc[field] = value
+    step["oldState"][field] = copy.deepcopy(value)
+    step["newState"][field] = copy.deepcopy(value)
+    with pytest.raises(ValueError, match=failure):
+        validate(data)
+
+
+@pytest.mark.parametrize("explicit_maps", [False, True])
 @pytest.mark.parametrize(
     ("mutation", "failure"),
     [
@@ -554,10 +630,12 @@ def test_external_oidc_read_rejects_nonplaceholder_inputs_or_outputs(mutation, f
     ],
 )
 def test_external_oidc_read_rejects_changed_identity_or_prerequisites(
-    mutation, failure
+    mutation, failure, explicit_maps
 ):
     data = fixture("prod")
     oidc, step = external_oidc_read(data)
+    if explicit_maps:
+        step["newState"].update(inputs={}, outputs={})
     if mutation == "wrong-id":
         step["newState"]["id"] = "arn:aws:iam::933245420672:oidc-provider/other.invalid"
     elif mutation == "changed-old":
@@ -583,7 +661,8 @@ def test_external_oidc_read_rejects_changed_identity_or_prerequisites(
         validate(data)
 
 
-def test_external_policy_read_cannot_use_oidc_placeholder_exception():
+@pytest.mark.parametrize("explicit_maps", [False, True])
+def test_external_policy_read_cannot_use_oidc_placeholder_exception(explicit_maps):
     data = fixture("prod")
     row = next(
         item
@@ -593,6 +672,21 @@ def test_external_policy_read_cannot_use_oidc_placeholder_exception():
     step = next(item for item in data["preview"]["steps"] if item["urn"] == row["urn"])
     del step["newState"]["inputs"]
     del step["newState"]["outputs"]
+    if explicit_maps:
+        step["newState"].update(inputs={}, outputs={})
+    with pytest.raises(ValueError, match="preview-inputs"):
+        validate(data)
+
+
+def test_empty_oidc_maps_do_not_mask_other_resource_input_mismatches():
+    data = fixture("prod")
+    _, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    role = resource(data, validation.ROLE)
+    role_step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == role["urn"]
+    )
+    role_step["newState"]["inputs"]["description"] = "unexpected change"
     with pytest.raises(ValueError, match="preview-inputs"):
         validate(data)
 

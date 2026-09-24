@@ -1376,8 +1376,8 @@ def _external_oidc_read_placeholder(
 
     The old side is still checked against the complete checkpoint first. The
     external provider has no saved-plan goal, and the preview's read newState
-    carries identity/ownership metadata but no inputs or outputs. This accepts
-    a preview representation, not proof of the provider's live AWS settings.
+    carries identity/ownership metadata but omitted or empty input/output maps.
+    This accepts a preview representation, not proof of live AWS settings.
     """
     return (
         new
@@ -1385,8 +1385,8 @@ def _external_oidc_read_placeholder(
         and row["type"] == OIDC
         and row.get("external") is True
         and expected.get("external") is True
-        and "inputs" not in row
-        and "outputs" not in row
+        and row.get("inputs", {}) == {}
+        and row.get("outputs", {}) == {}
         and row.get("id") == expected.get("id")
     )
 
