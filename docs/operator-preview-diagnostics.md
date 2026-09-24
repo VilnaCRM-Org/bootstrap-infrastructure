@@ -36,9 +36,10 @@ The reason remains limited to 4 KiB and is never truncated mid-JSON.
 For post-apply drift rejected as `preview-old-outputs`, the public failure record
 may include a `mismatch` object for the first differing resource. It contains
 only a SHA-256 of the resource URN, a fixed resource type and preview operation,
-and fixed allowlisted top-level output field labels. Unknown field names collapse
-to `other`. The runner validates this exact shape before publishing it; malformed
-metadata is omitted. No raw URN, key, value, nested path, secret or resource ID
+and fixed allowlisted top-level output field labels. Unknown resource types and
+field names collapse to `other`. The runner validates this exact shape before
+publishing it; malformed metadata is omitted. No raw URN, key, value, nested
+path, secret or resource ID
 is published. The comparison still rejects the drift, and no private drift
 diagnostic artifact is captured.
 

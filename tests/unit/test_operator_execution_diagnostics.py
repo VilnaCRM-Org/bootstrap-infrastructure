@@ -194,6 +194,19 @@ def _output_mismatch():
     }
 
 
+def test_public_output_metadata_accepts_fixed_unknown_type_label():
+    metadata = {**_output_mismatch(), "type": "other", "fields": ["other"]}
+    assert (
+        runtime._public_record(
+            ValueError("preview-old-outputs"),
+            "plan-validation",
+            execution_stage="drift",
+            mismatch=metadata,
+        )["mismatch"]
+        == metadata
+    )
+
+
 @pytest.mark.parametrize(
     "invalid",
     [

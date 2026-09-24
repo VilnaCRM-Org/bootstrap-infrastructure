@@ -620,6 +620,19 @@ def test_output_diagnostic_hashes_unusual_identity_without_replacing_rejection()
     assert "PRIVATE_CANARY" not in repr(mismatches)
 
 
+def test_output_diagnostic_collapses_unrecognized_resource_type():
+    kind = "aws:cloudwatch/logGroup:LogGroup"
+    prior = {"urn": "urn:pulumi:prod::operator::unknown", "type": kind, "outputs": {}}
+    observed = {**prior, "outputs": {"PRIVATE_KEY": "PRIVATE_CANARY"}}
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validation._preview_old_outputs(observed, prior, "same", mismatches)
+    assert mismatches[0]["type"] == "other"
+    assert mismatches[0]["fields"] == ["other"]
+    assert kind not in repr(mismatches)
+    assert "PRIVATE_CANARY" not in repr(mismatches)
+
+
 @pytest.mark.parametrize("environment", ["test", "prod"])
 @pytest.mark.parametrize("maps", [(), ("inputs",), ("outputs",), ("inputs", "outputs")])
 def test_external_oidc_read_accepts_only_empty_new_side_placeholder(environment, maps):

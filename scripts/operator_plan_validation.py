@@ -267,7 +267,17 @@ _OUTPUT_DIAGNOSTIC_FIELDS = frozenset(
     "clientIdLists thumbprintLists url secretId secretString secretBinary "
     "versionId versionStages __defaults __meta other".split()
 )
-_OUTPUT_DIAGNOSTIC_TYPES = frozenset(_INPUT_FIELDS) | {STACK, PROVIDER}
+_OUTPUT_DIAGNOSTIC_FALLBACK = "other"
+_OUTPUT_DIAGNOSTIC_TYPES = frozenset(_INPUT_FIELDS) | {
+    STACK,
+    PROVIDER,
+    _OUTPUT_DIAGNOSTIC_FALLBACK,
+}
+
+
+def _output_diagnostic_type(kind: str) -> str:
+    """Collapse resource types outside the fixed public vocabulary."""
+    return kind if kind in _OUTPUT_DIAGNOSTIC_TYPES else _OUTPUT_DIAGNOSTIC_FALLBACK
 
 
 def _input_fields(row: dict[str, Any]) -> None:
@@ -1436,7 +1446,7 @@ def _preview_old_outputs(
                 "resource_sha256": hashlib.sha256(
                     expected["urn"].encode("utf-8", "surrogatepass")
                 ).hexdigest(),
-                "type": row["type"],
+                "type": _output_diagnostic_type(row["type"]),
                 "operation": operation,
                 "fields": _output_mismatch_fields(observed_outputs, expected_outputs),
             }
