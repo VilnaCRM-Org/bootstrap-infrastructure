@@ -8,6 +8,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pulumi_aws as aws
+from seed.policy_registry import ACCOUNTS as APPROVED_SEED_ACCOUNTS
+from seed.policy_registry import REGION as APPROVED_SEED_REGION
 
 import pulumi
 
@@ -25,10 +27,10 @@ TEST_COST_CONTROLS_PATH = (
 TEST_GUARDDUTY_S3_POLICY_PATH = (
     Path(__file__).resolve().parent / "config" / "guardduty-s3.test.json"
 )
-# This exceptional coverage reduction is approved for one account and Region.
-# Keep its identity independent of the editable policy and stack configuration.
-APPROVED_TEST_GUARDDUTY_S3_ACCOUNT_ID = "891377212104"
-APPROVED_TEST_GUARDDUTY_S3_REGION = "eu-central-1"
+# This exceptional coverage reduction uses the reviewed seed identity, not the
+# editable policy or stack configuration. Infra components contain no account IDs.
+APPROVED_TEST_GUARDDUTY_S3_ACCOUNT_ID = APPROVED_SEED_ACCOUNTS["test"]
+APPROVED_TEST_GUARDDUTY_S3_REGION = APPROVED_SEED_REGION
 
 
 def _test_guardduty_s3_policy(
