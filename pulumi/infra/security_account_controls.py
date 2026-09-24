@@ -22,6 +22,38 @@ CONFIG_RECORDER_MANAGED_POLICY = "service-role/AWS_ConfigRole"
 TEST_COST_CONTROLS_PATH = (
     Path(__file__).resolve().parent / "config" / "cost-controls.test.json"
 )
+TEST_GUARDDUTY_S3_POLICY_PATH = (
+    Path(__file__).resolve().parent / "config" / "guardduty-s3.test.json"
+)
+
+
+def _test_guardduty_s3_policy(
+    environment: str, account_id: str, region: str
+) -> bool | None:
+    """Return the approved TEST S3 posture only in its pinned account/Region."""
+    if environment != "test":
+        return None
+    policy = json.loads(TEST_GUARDDUTY_S3_POLICY_PATH.read_text(encoding="utf-8"))
+    if not isinstance(policy, dict) or set(policy) != {
+        "accountId",
+        "region",
+        "s3ProtectionEnabled",
+    }:
+        raise ValueError("Test GuardDuty S3 policy has missing or extra fields.")
+    expected_account = policy["accountId"]
+    expected_region = policy["region"]
+    enabled = policy["s3ProtectionEnabled"]
+    if (
+        not isinstance(expected_account, str)
+        or re.fullmatch(r"[0-9]{12}", expected_account) is None
+        or not isinstance(expected_region, str)
+        or re.fullmatch(r"[a-z]{2}-[a-z]+-[0-9]", expected_region) is None
+        or not isinstance(enabled, bool)
+    ):
+        raise ValueError("Test GuardDuty S3 policy has invalid field values.")
+    if account_id != expected_account or region != expected_region:
+        return None
+    return enabled
 
 
 def _security_posture_enabled(environment: str, account_id: str) -> bool:
@@ -241,6 +273,28 @@ class SecurityAccountControls(pulumi.ComponentResource):
             ),
             opts=base_opts,
         )
+        guardduty_s3_policy = _test_guardduty_s3_policy(
+            configured_settings.environment, account_id, region
+        )
+        self.guardduty_s3_protection_managed = guardduty_s3_policy is not None
+        self.guardduty_s3_protection_enabled = guardduty_s3_policy
+        self.guardduty_s3_feature: aws.guardduty.DetectorFeature | None = None
+        if guardduty_s3_policy is not None:
+            self.guardduty_s3_feature = aws.guardduty.DetectorFeature(
+                f"{name}-guardduty-s3-feature",
+                detector_id=self.guardduty_detector.id,
+                name="S3_DATA_EVENTS",
+                status=(
+                    "ENABLED" if self.guardduty_s3_protection_enabled else "DISABLED"
+                ),
+                opts=pulumi.ResourceOptions(
+                    parent=self,
+                    depends_on=[self.guardduty_detector],
+                    # Provider deletion only forgets this feature; require an
+                    # explicit status=ENABLED rollback before removing state.
+                    protect=True,
+                ),
+            )
         self.security_hub_account = (
             aws.securityhub.Account(
                 f"{name}-security-hub",
@@ -442,6 +496,12 @@ class SecurityAccountControls(pulumi.ComponentResource):
         self.register_outputs(
             {
                 "guardduty_detector_id": self.guardduty_detector.id,
+                "guardduty_s3_protection_enabled": (
+                    self.guardduty_s3_protection_enabled
+                ),
+                "guardduty_s3_protection_managed": (
+                    self.guardduty_s3_protection_managed
+                ),
                 "security_hub_account_arn": self.security_hub_account_arn,
                 "security_posture_enabled": self.security_posture_enabled,
                 "config_bucket_name": self.config_bucket.bucket,
