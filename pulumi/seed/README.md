@@ -63,10 +63,12 @@ document matches `tests/fixtures/aws-config-role-v73.json`. An earlier PROD
 IAM observation also saw v73, but the PROD CLI session expired before a fresh
 recheck. AWS documents that its managed-policy updates affect every attached
 identity and that AWS sets the [operative default version](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_managed-versioning.html).
-The same AWS-managed ARN is attached in both catalogs. This source pin does
-not replace a fresh PROD version/document observation before any PROD plan or
-apply; the enrollment check remains fail-closed if PROD differs. The v72
-fixture is retained as the reviewed prior document.
+The same AWS-managed ARN is attached in both catalogs. The protected PROD plan
+must independently observe the live version and complete document during
+initial enrollment before sealing a saved plan, and apply must reverify it.
+This is not a claim of fresh manual PROD CLI verification; the enrollment
+check remains fail-closed if PROD differs. The v72 fixture is retained as the
+reviewed prior document.
 
 Compared with v72, the four statement envelopes, resources and conditions are
 unchanged. The first two statements gain 99 and 93 read-only actions, with no
