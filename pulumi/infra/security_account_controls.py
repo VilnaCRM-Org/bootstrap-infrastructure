@@ -25,6 +25,10 @@ TEST_COST_CONTROLS_PATH = (
 TEST_GUARDDUTY_S3_POLICY_PATH = (
     Path(__file__).resolve().parent / "config" / "guardduty-s3.test.json"
 )
+# This exceptional coverage reduction is approved for one account and Region.
+# Keep its identity independent of the editable policy and stack configuration.
+APPROVED_TEST_GUARDDUTY_S3_ACCOUNT_ID = "891377212104"
+APPROVED_TEST_GUARDDUTY_S3_REGION = "eu-central-1"
 
 
 def _test_guardduty_s3_policy(
@@ -59,6 +63,13 @@ def _validated_test_guardduty_s3_policy() -> tuple[str, str, bool]:
         or not isinstance(enabled, bool)
     ):
         raise ValueError("Test GuardDuty S3 policy has invalid field values.")
+    if (expected_account, expected_region) != (
+        APPROVED_TEST_GUARDDUTY_S3_ACCOUNT_ID,
+        APPROVED_TEST_GUARDDUTY_S3_REGION,
+    ):
+        raise ValueError(
+            "Test GuardDuty S3 policy targets an unapproved account/Region."
+        )
     return expected_account, expected_region, enabled
 
 

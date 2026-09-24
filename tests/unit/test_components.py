@@ -1831,6 +1831,21 @@ def test_security_cost_policy_can_restore_checks(tmp_path, monkeypatch):
             "region": "eu-central-1",
             "s3ProtectionEnabled": "true",
         },
+        {
+            "accountId": "933245420672",
+            "region": "eu-central-1",
+            "s3ProtectionEnabled": False,
+        },
+        {
+            "accountId": "891377212104",
+            "region": "us-east-1",
+            "s3ProtectionEnabled": False,
+        },
+        {
+            "accountId": "933245420672",
+            "region": "us-east-1",
+            "s3ProtectionEnabled": False,
+        },
     ],
 )
 def test_guardduty_s3_policy_rejects_unsafe_configuration(
@@ -1845,6 +1860,30 @@ def test_guardduty_s3_policy_rejects_unsafe_configuration(
     with pytest.raises(ValueError, match="GuardDuty S3"):
         security_account_controls._test_guardduty_s3_policy(
             "test", "891377212104", "eu-central-1"
+        )
+
+
+def test_guardduty_s3_policy_cannot_follow_mislabelled_prod_account(
+    tmp_path, monkeypatch
+):
+    """Editable policy and stack metadata cannot re-target the exception to PROD."""
+    path = tmp_path / "guardduty-s3.test.json"
+    path.write_text(
+        json.dumps(
+            {
+                "accountId": "933245420672",
+                "region": "eu-central-1",
+                "s3ProtectionEnabled": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        security_account_controls, "TEST_GUARDDUTY_S3_POLICY_PATH", path
+    )
+    with pytest.raises(ValueError, match="unapproved account/Region"):
+        security_account_controls._test_guardduty_s3_policy(
+            "test", "933245420672", "eu-central-1"
         )
 
 
