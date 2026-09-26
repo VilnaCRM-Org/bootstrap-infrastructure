@@ -28,6 +28,7 @@ jobs:
       GITHUB_EVENT_NAME: ${{ github.event_name }}
       GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+      REVIEWED_SOURCE_PREVIEW_ACTIVE: ${{ vars.REVIEWED_SOURCE_PREVIEW_ACTIVE }}
     steps:
       - name: Select preview mode
         id: preview_mode
@@ -37,6 +38,10 @@ jobs:
             "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
             privileged=false
             echo "::notice::Fork pull request detected; running unprivileged Pulumi guardrails without AWS credentials."
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
+            "${REVIEWED_SOURCE_PREVIEW_ACTIVE:-false}" == "true" ]]; then
+            privileged=false
+            echo "::notice::Pull request source awaits independent admission; running unprivileged Pulumi guardrails."
           fi
           echo "privileged=${privileged}" >> "${GITHUB_OUTPUT}"
 

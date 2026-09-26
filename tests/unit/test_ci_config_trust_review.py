@@ -159,6 +159,14 @@ def test_current_loader_workflow_names_are_in_the_fixed_suffix_lists():
         suffix_options = {
             "${{ steps.ci_config_target.outputs.environment }}": ["test-pr", "test"]
         }
+        if path.name == "pulumi-pr-guardrails.yml":
+            suffix_options = {
+                "${{ steps.ci_config_target.outputs.environment }}": ["test"]
+            }
+        if path.name == "reviewed-pr-preview.yml":
+            suffix_options = {
+                "${{ steps.ci_config_target.outputs.environment }}": ["test-pr"]
+            }
         if "workflow_call" in workflow.get("on", {}):
             # Standard OIDC claims identify the caller; job_workflow_ref identifies
             # the reusable worker. Its runtime authenticates this sole coordinator.
@@ -212,3 +220,26 @@ def test_service_workflows_require_explicit_scope_and_preserve_platform_lists(
     del platform[PREFIX + "workflow"]
     assert service == platform
     assert ci_config.CiConfigurationArgs().governed_service_workflows is False
+
+
+def test_bootstrap_pr_reader_retires_generic_pr_subject_only_for_central_repo():
+    central = conditions(_settings(), "test-pr")
+    assert central[PREFIX + "workflow"] == ["Reviewed PR Preview"]
+    assert central[PREFIX + "sub"] == [
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
+    ]
+    claims = {
+        key: value[0] if isinstance(value, list) else value
+        for key, value in central.items()
+    }
+    assert not matches(
+        central,
+        {
+            **claims,
+            PREFIX + "sub": "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request",
+        },
+    )
+    downstream = conditions(scoped_settings(), "test-pr")
+    assert all(
+        subject.endswith(":pull_request") for subject in downstream[PREFIX + "sub"]
+    )
