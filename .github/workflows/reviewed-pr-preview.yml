@@ -8,7 +8,7 @@ name: Reviewed PR Preview
     types:
       - completed
 concurrency:
-  group: reviewed-preview-${{ github.event.workflow_run.head_branch }}
+  group: reviewed-preview-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 permissions:
   contents: read
@@ -64,12 +64,14 @@ jobs:
     # Reject fork signals before allocating admission or credentialed runners.
     # Trusted Python admission additionally verifies numeric identity and review.
     if: >-
-      ${{ github.event.workflow_run.head_repository.full_name == github.repository &&
+      ${{ vars.REVIEWED_SOURCE_PREVIEW_ACTIVE == 'true' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
           (github.event.workflow_run.event == 'pull_request' ||
            github.event.workflow_run.event == 'pull_request_review') }}
   preview:
     name: Execute reviewed preview
     runs-on: ubuntu-latest
+    environment: reviewed-pr-preview
     needs:
       - admission
     timeout-minutes: 20
@@ -215,6 +217,7 @@ jobs:
   iam_validation:
     name: Validate reviewed IAM
     runs-on: ubuntu-latest
+    environment: reviewed-pr-preview
     needs:
       - admission
       - preview
