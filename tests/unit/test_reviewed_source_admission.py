@@ -1,5 +1,7 @@
 """Exercise trusted-source admission with hostile and changing API evidence."""
 
+import os
+import subprocess
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -191,6 +193,34 @@ def test_paginated_github_transport_rejects_non_array_or_malformed_pages(
     )
     with pytest.raises(ValueError):
         gate.gh("repos/example", "--paginate", "--slurp")
+
+
+def test_isolated_cli_loads_only_installed_pagination_helper(tmp_path):
+    (tmp_path / "github_api_pages.py").write_text("raise RuntimeError('untrusted cwd')")
+    script = Path(gate.__file__).resolve()
+    command = [sys.executable, "-I", str(script)]
+    env = {"PATH": os.environ["PATH"]}
+    help_result = subprocess.run(  # nosec B603
+        [*command, "--help"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert help_result.returncode == 0
+    assert "usage: reviewed_source_admission.py" in help_result.stdout
+    assert "untrusted cwd" not in help_result.stderr
+    missing_context = subprocess.run(  # nosec B603
+        command,
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert missing_context.returncode != 0
+    assert missing_context.stdout == ""
 
 
 @pytest.mark.parametrize("signal", [False, True])

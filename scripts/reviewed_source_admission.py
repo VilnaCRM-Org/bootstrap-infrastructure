@@ -11,7 +11,12 @@ import json
 import os
 import re
 import subprocess  # nosec B404
+import sys
 from pathlib import Path
+
+# Isolated execution excludes the script directory; admit only this installed
+# trusted directory, never the caller's working directory or PYTHONPATH.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from github_api_pages import decode_array_pages
 
