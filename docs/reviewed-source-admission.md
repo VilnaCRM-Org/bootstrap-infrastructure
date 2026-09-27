@@ -141,6 +141,14 @@ environments and request authentication.
    legacy runtime role; the reviewed workflow's environment subject must not
    match that role's retained main-branch trust. Keep `test`/`test-preview`
    deployment branch policies restricted to main.
+
+   The reviewed `python3 scripts/configure_github_repository_controls.py --repo VilnaCRM-Org/bootstrap-infrastructure --reviewed-source-only --apply`
+   creates only missing `reviewed-source-publisher` and `reviewed-pr-preview`
+   environments with these main-only, no-bypass controls. It first verifies any
+   existing environment and refuses to rewrite a weaker one or another repository
+   control. Run `--verify-only` after creation. This step installs no App key,
+   variable, AWS trust or credentialed route; the remaining Stage 2 checks below
+   still apply.
 2. Record live negative STS tests for both retired PR subjects. A new submitted,
    edited or dismissed review provides a trusted signal even while the legacy
    PR credential attempts fail after trust retirement. Failed or skipped source
