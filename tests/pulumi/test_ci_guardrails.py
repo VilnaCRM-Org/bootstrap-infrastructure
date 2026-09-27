@@ -217,7 +217,9 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     assert jobs["iam_validation"]["needs"] == ["preview"]  # nosec B101
     assert jobs["iam_validation_unprivileged"]["needs"] == ["preview_unprivileged"]  # nosec B101
     assert preview_mode_step is not None  # nosec B101
-    assert "Fork pull request detected" in preview_mode_step["run"]  # nosec B101
+    assert (  # nosec B101
+        "Pull request source awaits independent admission" in preview_mode_step["run"]
+    )
     assert preview_preflight_step is not None  # nosec B101
     assert "AWS_ACCOUNT_ID" in preview_preflight_step["run"]  # nosec B101
     assert "AWS_PREVIEW_ROLE_ARN" in preview_preflight_step["run"]  # nosec B101
@@ -293,7 +295,7 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
 
 def test_guardrail_docs_define_required_privileged_check_contract() -> None:
     """Keep required-check guidance tied to concrete workflow job names."""
-    workflow = _workflow("pulumi-pr-guardrails.yml")
+    workflow = _workflow("reviewed-pr-preview.yml")
     guardrails_doc = GUARDRAILS_DOC.read_text(encoding="utf-8")
     normalized_doc = " ".join(guardrails_doc.split())
     jobs = workflow["jobs"]
@@ -303,8 +305,9 @@ def test_guardrail_docs_define_required_privileged_check_contract() -> None:
         assert f"`{check_name}`" in guardrails_doc  # nosec B101
         assert f"`{job_id}`" in guardrails_doc  # nosec B101
 
+    legacy = _workflow("pulumi-pr-guardrails.yml")
     for job_id in ("preview_unprivileged", "iam_validation_unprivileged"):
-        check_name = f"{workflow['name']} / {jobs[job_id]['name']}"
+        check_name = f"{legacy['name']} / {legacy['jobs'][job_id]['name']}"
         assert f"`{check_name}`" in guardrails_doc  # nosec B101
 
     assert "must not be treated as equivalent to same-repo AWS validation" in (  # nosec B101

@@ -145,3 +145,15 @@ Generate the complete dependency closure with
 [`scripts/scaffold_infrastructure_repository.py`](../scripts/scaffold_infrastructure_repository.py).
 See [the governance runbook](governance-stack.md); real workload capability and
 current-head deployment/manual acceptance remain separate prerequisites.
+
+After central bootstrap activation, `AWS_TEST_PR_CI_CONFIG_ROLE_ARN` belongs to
+the trusted main `Reviewed PR Preview` workflow, following independent exact-head
+review admission. Source installation retains legacy PR checks. Retire the generic
+PR OIDC subject from both this reader and the runtime preview role, enroll all
+three distinct reviewed-source statuses pinned to a new dedicated GitHub App while
+preserving existing required checks, and then set
+`REVIEWED_SOURCE_PREVIEW_ACTIVE=true` before declaring activation. The App key must
+exist only in the main-only `reviewed-source-publisher` environment; neither
+`GITHUB_TOKEN` nor the existing promotion App is an allowed publisher fallback. See
+[reviewed-source admission](reviewed-source-admission.md) for rollout and the
+separate downstream-service gap.

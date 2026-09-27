@@ -20,6 +20,13 @@ from test_deployment_controller_runtime import set_request  # noqa: E402
 
 github = _github_fixture
 
+
+@pytest.fixture(autouse=True)
+def approved_source(monkeypatch):
+    """Other worker contracts use a separately tested admission boundary."""
+    monkeypatch.setattr(worker.reviewed_source_admission, "admit", lambda *args: {})
+
+
 ROOT_ENDPOINT = f"repos/{worker.REPOSITORY}/actions/runs/100"
 
 
@@ -315,3 +322,17 @@ def test_undecoded_or_mutated_contract_cannot_recheck(admitted, github):
     with pytest.raises(ValueError, match="Invalid deployment contract"):
         worker.recheck_worker({}, scope="operator", environment="test")
     assert not github.calls
+
+
+def test_worker_propagates_source_admission_denial(admitted, monkeypatch):
+    def reject(number, head, trusted):
+        assert (number, head, trusted) == (
+            admitted.identity.pull_request_number,
+            admitted.identity.head_sha,
+            admitted.identity.controller.sha,
+        )
+        raise ValueError("No independent current-head approval")
+
+    monkeypatch.setattr(worker.reviewed_source_admission, "admit", reject)
+    with pytest.raises(ValueError, match="No independent"):
+        worker.recheck_worker(admitted, scope="operator", environment="test")
