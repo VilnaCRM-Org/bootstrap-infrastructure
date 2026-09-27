@@ -241,6 +241,42 @@ def test_api_failures_do_not_expose_response_body(monkeypatch):
     assert "sensitive" not in str(error.value)
 
 
+def test_api_payload_uses_stdin_and_empty_success_is_object(monkeypatch):
+    def run(command, *, input, check, capture_output, text):
+        assert command == [
+            "gh",
+            "api",
+            "repos/example",
+            "--method",
+            "PUT",
+            "--input",
+            "-",
+        ]
+        assert json.loads(input) == {"name": "main"}
+        assert check is False and capture_output and text
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    assert (
+        setup._gh(["repos/example", "--method", "PUT"], input_payload={"name": "main"})
+        == {}
+    )
+
+
+@pytest.mark.parametrize(
+    "response,allowed",
+    [
+        ({"permissions": {"admin": True}}, True),
+        ({"permissions": {"admin": False}}, False),
+        ({"permissions": []}, False),
+        ([], False),
+    ],
+)
+def test_admin_check_requires_explicit_repo_admin(monkeypatch, response, allowed):
+    monkeypatch.setattr(setup, "_gh", lambda _args: response)
+    assert setup._admin_allowed() is allowed
+
+
 @pytest.mark.parametrize(
     "response", [{}, [], {"total_count": 1, "branch_policies": []}]
 )
