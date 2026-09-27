@@ -1,6 +1,5 @@
 """Initial installer observation uses native read transport and real verification."""
 
-import copy
 import json
 import runpy
 import sys
@@ -23,7 +22,9 @@ class InitialReader(Reader):
         """Keep all three new executor trusts disabled for initial verification."""
         role = super().role_metadata(principal)
         if not principal.existing:
-            role["AssumeRolePolicyDocument"] = copy.deepcopy(registry.DISABLED_TRUST)
+            role["AssumeRolePolicyDocument"] = registry.disabled_trust_policy(
+                self.expected.account_id
+            )
         return role
 
 

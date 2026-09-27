@@ -125,7 +125,9 @@ def test_only_new_disabled_executors_are_owned_without_attachment_cycles(environ
         principal = next(
             p for p in expected.principals if p.arn.endswith("/" + role["RoleName"])
         )
-        assert role["AssumeRolePolicyDocument"] == registry.DISABLED_TRUST
+        assert role["AssumeRolePolicyDocument"] == registry.disabled_trust_policy(
+            expected.account_id
+        )
         assert set(role) == {
             "RoleName",
             "Path",
@@ -401,12 +403,13 @@ def test_activation_preserves_everything_except_three_exact_trusts(environment):
                 environment, purpose, account_id=registry.ACCOUNTS[environment]
             )
         )
-        assert (
-            previous["Properties"]["AssumeRolePolicyDocument"]
-            == registry.DISABLED_TRUST
-        )
+        assert previous["Properties"][
+            "AssumeRolePolicyDocument"
+        ] == registry.disabled_trust_policy(disabled.registry.account_id)
         assert len(registry.canonical_json(trust)) <= 2048
-        resource["Properties"]["AssumeRolePolicyDocument"] = registry.DISABLED_TRUST
+        resource["Properties"]["AssumeRolePolicyDocument"] = (
+            registry.disabled_trust_policy(disabled.registry.account_id)
+        )
     assert len(changed) == 3
     assert after == before
     assert json.loads(active.temporary_stack_policy) == {
@@ -443,7 +446,9 @@ def test_activation_rejects_template_changes_even_with_plausible_summaries(mutat
     resources = template["Resources"]
     role = next(r for r in resources.values() if r["Type"] == "AWS::IAM::Role")
     if mutation == "trust":
-        role["Properties"]["AssumeRolePolicyDocument"] = registry.DISABLED_TRUST
+        role["Properties"]["AssumeRolePolicyDocument"] = registry.disabled_trust_policy(
+            registry.ACCOUNTS["test"]
+        )
     elif mutation == "policy":
         policy = next(
             r for r in resources.values() if r["Type"] == "AWS::IAM::ManagedPolicy"

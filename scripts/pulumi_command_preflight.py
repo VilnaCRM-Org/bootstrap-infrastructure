@@ -21,6 +21,23 @@ from pulumi_pr_comment import parse_command, write_outputs
 INTAKE_PATH = ".github/workflows/pulumi-pr-commands.yml"
 
 
+def decode_array_pages(raw: str) -> list[list[object]]:
+    """Preserve page boundaries from ``gh api --paginate`` JSON output."""
+    decoder = json.JSONDecoder()
+    pages: list[list[object]] = []
+    offset = 0
+    while offset < len(raw):
+        while offset < len(raw) and raw[offset].isspace():
+            offset += 1
+        if offset == len(raw):
+            break
+        page, offset = decoder.raw_decode(raw, offset)
+        if type(page) is not list:
+            raise ValueError("GitHub paginated response must contain arrays")
+        pages.append(page)
+    return pages
+
+
 def require(condition: bool, message: str) -> None:
     """Reject incomplete or contradictory evidence."""
     if not condition:
@@ -29,10 +46,16 @@ def require(condition: bool, message: str) -> None:
 
 def gh(*args: str) -> Any:
     """Read GitHub JSON without interpreting response text as commands."""
+    slurp = "--slurp" in args
+    if slurp:
+        require(
+            args.count("--slurp") == 1 and "--paginate" in args, "Invalid page request"
+        )
+        args = tuple(arg for arg in args if arg != "--slurp")
     result = subprocess.run(  # nosec B603 B607
         ["gh", "api", *args], check=True, capture_output=True, text=True
     )
-    return json.loads(result.stdout)
+    return decode_array_pages(result.stdout) if slurp else json.loads(result.stdout)
 
 
 def authenticate_intake(request: dict, evidence: dict):

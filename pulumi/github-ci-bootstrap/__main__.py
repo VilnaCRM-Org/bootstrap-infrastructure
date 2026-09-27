@@ -133,6 +133,7 @@ platform_control_iam = platform_controls.PlatformControlIam(
     boundary_arns=boundary_arns,
     inline_policy_names=cfg.get_object("platformInlinePolicyNames"),
     automation_retained_policy_arns=automation_retained_policy_arns,
+    external_role_boundaries=external_role_boundaries,
     opts=pulumi.ResourceOptions(depends_on=[boundaries, bootstrap]),
 )
 

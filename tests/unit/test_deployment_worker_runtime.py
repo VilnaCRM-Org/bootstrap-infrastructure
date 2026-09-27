@@ -530,6 +530,10 @@ def test_isolated_process_ignores_hostile_cwd_and_pythonpath(
         "    (destination / 'request.json').write_text(json.dumps(data['request']))\n"
         "elif args[0] == 'api' and args[1].endswith('/zip'):\n"
         f"    sys.stdout.buffer.write(pathlib.Path({str(zip_path)!r}).read_bytes())\n"
+        "elif args[0] == 'api' and '--paginate' in args:\n"
+        "    if '--slurp' in args:\n"
+        "        raise SystemExit('unknown flag: --slurp')\n"
+        "    print('\\n'.join(json.dumps(page) for page in data[args[1]]))\n"
         "else:\n"
         "    print(json.dumps(data[args[1]]))\n"
     )

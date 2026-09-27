@@ -1596,6 +1596,7 @@ def _create_operations_alert_triage_role(
     *,
     depends_on: list[pulumi.Resource],
     adopt_existing: bool = False,
+    permissions_boundary: pulumi.Input[str] | None = None,
 ) -> tuple[aws.iam.Role, aws.iam.RolePolicy]:
     """Create the dedicated GitHub Actions role that drains alert messages."""
     role_name = _operations_alert_triage_role_name(context.settings, context.repo_name)
@@ -1603,6 +1604,7 @@ def _create_operations_alert_triage_role(
     role = aws.iam.Role(
         f"{context.name}-operations-alert-triage-role",
         name=role_name,
+        permissions_boundary=permissions_boundary,
         assume_role_policy=apply_output(
             pulumi.Output.from_input(provider_arn),
             lambda arn: _operations_alert_triage_assume_role_policy(
@@ -1675,6 +1677,7 @@ class GitHubAutomation(pulumi.ComponentResource):
         manage_roles: bool = True,
         manage_repository: bool = True,
         manage_triage: bool = True,
+        triage_permissions_boundary: pulumi.Input[str] | None = None,
         permissions_boundary: pulumi.Input[str] | None = None,
         adopt_existing_policies: bool = False,
         preferred_inline_policy_name: str | None = None,
@@ -1754,6 +1757,7 @@ class GitHubAutomation(pulumi.ComponentResource):
                     provider_arn,
                     depends_on=policy_dependencies,
                     adopt_existing=adopt_existing_policies,
+                    permissions_boundary=triage_permissions_boundary,
                 )
             )
         else:

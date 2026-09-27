@@ -1,5 +1,7 @@
 """Exercise trusted-source admission with hostile and changing API evidence."""
 
+import os
+import subprocess
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -165,12 +167,67 @@ def test_github_transport_uses_argument_vector_and_fails_closed(monkeypatch):
     from types import SimpleNamespace
 
     def run(args, **kwargs):
-        assert args == ["gh", "api", "repos/example", "--paginate", "--slurp"]
         assert kwargs == {"check": True, "capture_output": True, "text": True}
-        return SimpleNamespace(stdout='{"ok": true}')
+        if args == ["gh", "api", "repos/example"]:
+            return SimpleNamespace(stdout='{"id": 1}')
+        assert args == ["gh", "api", "repos/example", "--paginate"]
+        return SimpleNamespace(stdout='[{"id": 1}]\n[{"id": 2}]\n')
 
     monkeypatch.setattr(gate.subprocess, "run", run)
-    assert gate.gh("repos/example", "--paginate", "--slurp") == {"ok": True}
+    assert gate.gh("repos/example") == {"id": 1}
+    assert gate.gh("repos/example", "--paginate", "--slurp") == [
+        [{"id": 1}],
+        [{"id": 2}],
+    ]
+    with pytest.raises(ValueError, match="Invalid page request"):
+        gate.gh("repos/example", "--slurp")
+    with pytest.raises(ValueError, match="Invalid page request"):
+        gate.gh("repos/example", "--paginate", "--slurp", "--slurp")
+
+
+@pytest.mark.parametrize("response", ['{"id": 1}', '[1]\n{"id": 2}', "[1]garbage"])
+def test_paginated_github_transport_rejects_non_array_or_malformed_pages(
+    monkeypatch, response
+):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        gate.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(stdout=response),
+    )
+    with pytest.raises(ValueError):
+        gate.gh("repos/example", "--paginate", "--slurp")
+
+
+def test_isolated_cli_loads_only_installed_pagination_helper(tmp_path):
+    (tmp_path / "pulumi_command_preflight.py").write_text(
+        "raise RuntimeError('untrusted cwd')"
+    )
+    script = Path(gate.__file__).resolve()
+    command = [sys.executable, "-I", str(script)]
+    env = {"PATH": os.environ["PATH"]}
+    help_result = subprocess.run(  # nosec B603
+        [*command, "--help"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert help_result.returncode == 0
+    assert "usage: reviewed_source_admission.py" in help_result.stdout
+    assert "untrusted cwd" not in help_result.stderr
+    missing_context = subprocess.run(  # nosec B603
+        command,
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert missing_context.returncode != 0
+    assert missing_context.stdout == ""
 
 
 @pytest.mark.parametrize("signal", [False, True])

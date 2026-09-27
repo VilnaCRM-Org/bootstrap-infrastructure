@@ -222,6 +222,23 @@ def test_gh_uses_argument_array_and_parses_json(monkeypatch):
     assert calls[0][1]["check"] is True
 
 
+def test_gh_paginated_pages_support_cli_without_slurp(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        preflight.subprocess,
+        "run",
+        lambda args, **kw: (
+            calls.append((args, kw))
+            or SimpleNamespace(stdout='[{"state":"success"}]\n[{"state":"failure"}]')
+        ),
+    )
+    assert preflight.gh("repos/org/repo/statuses", "--paginate", "--slurp") == [
+        [{"state": "success"}],
+        [{"state": "failure"}],
+    ]
+    assert calls[0][0] == ["gh", "api", "repos/org/repo/statuses", "--paginate"]
+
+
 def test_collect_evidence_binds_complete_compare_and_preserves_renamed_paths(
     monkeypatch,
 ):
