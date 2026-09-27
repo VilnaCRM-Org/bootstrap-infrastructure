@@ -138,6 +138,17 @@ def test_amendment_rejects_changed_manifest_and_baseline(monkeypatch):
         capability.build_catalog()
 
 
+@pytest.mark.parametrize(
+    "values",
+    [None, [], [capability.BOUNDARY, capability.POLICY_ARN]],
+)
+def test_amendment_rejects_invalid_policy_resource_list(values):
+    with pytest.raises(ValueError):
+        capability._add_to_exact_list(
+            {"Resource": values}, "Resource", capability.BOUNDARY
+        )
+
+
 def test_packet_changes_only_four_policy_documents_and_keeps_denial():
     source = activation()
     packet = amendment.build_amendment(source)
@@ -226,3 +237,28 @@ def test_change_set_rejects_incomplete_duplicate_and_malformed_rows():
     ):
         with pytest.raises(ValueError):
             amendment.validate_change_set(source, packet, invalid)
+
+
+@pytest.mark.parametrize(
+    "path,value",
+    [
+        ((0,), None),
+        ((0, "ResourceChange"), None),
+        ((0, "ResourceChange", "LogicalResourceId"), None),
+        ((0, "ResourceChange", "LogicalResourceId"), "foreign"),
+        ((0, "ResourceChange", "Details"), None),
+        ((0, "ResourceChange", "Details"), []),
+        ((0, "ResourceChange", "Details", 0), None),
+        ((0, "ResourceChange", "Details", 0, "Target"), None),
+    ],
+)
+def test_change_set_rejects_malformed_row_shapes(path, value):
+    source = activation()
+    packet = amendment.build_amendment(source)
+    invalid = changes()
+    target = invalid
+    for key in path[:-1]:
+        target = target[key]
+    target[path[-1]] = value
+    with pytest.raises(ValueError):
+        amendment.validate_change_set(source, packet, invalid)

@@ -74,9 +74,9 @@ def _replace_document(catalog: dict, arn: str, document: dict) -> None:
 
 def _add_to_exact_list(statement: dict, field: str, required: str) -> None:
     values = statement.get(field)
-    _require(
-        isinstance(values, list) and required in values, "Expected IAM list changed"
-    )
+    if not isinstance(values, list):
+        raise ValueError("Expected IAM list changed")
+    _require(required in values, "Expected IAM list changed")
     _require(POLICY_ARN not in values, "TEST policy already admitted")
     values.append(POLICY_ARN)
 

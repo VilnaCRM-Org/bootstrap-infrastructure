@@ -124,6 +124,72 @@ def build_amendment(activation: ActivationPacket) -> TestPocSeedAmendment:
     )
 
 
+def _validate_policy_detail(details: object) -> None:
+    if not isinstance(details, list) or len(details) != 1:
+        raise ValueError("One policy-document change is required")
+    detail = details[0]
+    if not isinstance(detail, Mapping):
+        raise ValueError("Malformed policy detail")
+    _require(
+        (
+            detail.get("Evaluation"),
+            detail.get("ChangeSource"),
+            detail.get("CausingEntity"),
+        )
+        == ("Static", "DirectModification", None),
+        "Only a direct PolicyDocument edit is permitted",
+    )
+    target = detail.get("Target")
+    if not isinstance(target, Mapping):
+        raise ValueError("Malformed policy target")
+    _require(
+        (
+            target.get("Attribute"),
+            target.get("Name"),
+            target.get("RequiresRecreation"),
+        )
+        == ("Properties", "PolicyDocument", "Never")
+        and target.get("Path") in (None, "/Properties/PolicyDocument")
+        and target.get("AttributeChangeType") in (None, "Modify"),
+        "Only a direct PolicyDocument edit is permitted",
+    )
+
+
+def _validate_policy_change(change: object, expected: set[str]) -> str:
+    if not isinstance(change, Mapping):
+        raise ValueError("Malformed change")
+    resource = change.get("ResourceChange")
+    if change.get("Type") != "Resource" or not isinstance(resource, Mapping):
+        raise ValueError("Malformed resource change")
+    logical_id = resource.get("LogicalResourceId")
+    if not isinstance(logical_id, str) or logical_id not in expected:
+        raise ValueError("Unexpected policy change")
+    arn = next(arn for arn in TARGETS if _logical_id(arn) == logical_id)
+    _require(
+        (
+            resource.get("Action"),
+            resource.get("ResourceType"),
+            resource.get("PhysicalResourceId"),
+            resource.get("Replacement"),
+            resource.get("Scope"),
+            resource.get("ChangeSetId"),
+            resource.get("PolicyAction"),
+        )
+        == (
+            "Modify",
+            "AWS::IAM::ManagedPolicy",
+            arn,
+            "False",
+            ["Properties"],
+            None,
+            None,
+        ),
+        "Only in-place managed-policy modification is permitted",
+    )
+    _validate_policy_detail(resource.get("Details"))
+    return logical_id
+
+
 def validate_change_set(
     activation: ActivationPacket,
     amendment: TestPocSeedAmendment,
@@ -139,51 +205,12 @@ def validate_change_set(
         amendment == build_amendment(activation),
         "Amendment packet differs from reviewed source",
     )
-    _require(isinstance(changes, list), "Complete change list required")
+    if not isinstance(changes, list):
+        raise ValueError("Complete change list required")
     actual = set()
     expected = {_logical_id(arn) for arn in TARGETS}
     for change in changes:
-        _require(isinstance(change, Mapping), "Malformed change")
-        resource = change.get("ResourceChange")
-        _require(
-            change.get("Type") == "Resource" and isinstance(resource, Mapping),
-            "Malformed resource change",
-        )
-        logical_id = resource.get("LogicalResourceId")
-        _require(
-            logical_id in expected and logical_id not in actual,
-            "Unexpected or duplicate policy change",
-        )
-        arn = next(arn for arn in TARGETS if _logical_id(arn) == logical_id)
-        _require(
-            resource.get("Action") == "Modify"
-            and resource.get("ResourceType") == "AWS::IAM::ManagedPolicy"
-            and resource.get("PhysicalResourceId") == arn
-            and resource.get("Replacement") == "False"
-            and resource.get("Scope") == ["Properties"]
-            and resource.get("ChangeSetId") is None
-            and resource.get("PolicyAction") is None,
-            "Only in-place managed-policy modification is permitted",
-        )
-        details = resource.get("Details")
-        _require(
-            isinstance(details, list) and len(details) == 1,
-            "One policy-document change is required",
-        )
-        detail = details[0]
-        _require(isinstance(detail, Mapping), "Malformed policy detail")
-        target = detail.get("Target")
-        _require(
-            detail.get("Evaluation") == "Static"
-            and detail.get("ChangeSource") == "DirectModification"
-            and detail.get("CausingEntity") is None
-            and isinstance(target, Mapping)
-            and target.get("Attribute") == "Properties"
-            and target.get("Name") == "PolicyDocument"
-            and target.get("RequiresRecreation") == "Never"
-            and target.get("Path") in (None, "/Properties/PolicyDocument")
-            and target.get("AttributeChangeType") in (None, "Modify"),
-            "Only a direct PolicyDocument edit is permitted",
-        )
+        logical_id = _validate_policy_change(change, expected)
+        _require(logical_id not in actual, "Duplicate policy change")
         actual.add(logical_id)
     _require(actual == expected, "All four policy changes are required")
