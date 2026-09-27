@@ -196,7 +196,9 @@ def test_paginated_github_transport_rejects_non_array_or_malformed_pages(
 
 
 def test_isolated_cli_loads_only_installed_pagination_helper(tmp_path):
-    (tmp_path / "github_api_pages.py").write_text("raise RuntimeError('untrusted cwd')")
+    (tmp_path / "pulumi_command_preflight.py").write_text(
+        "raise RuntimeError('untrusted cwd')"
+    )
     script = Path(gate.__file__).resolve()
     command = [sys.executable, "-I", str(script)]
     env = {"PATH": os.environ["PATH"]}

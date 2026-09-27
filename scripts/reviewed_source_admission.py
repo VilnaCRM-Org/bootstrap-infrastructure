@@ -18,7 +18,7 @@ from pathlib import Path
 # trusted directory, never the caller's working directory or PYTHONPATH.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from github_api_pages import decode_array_pages
+from pulumi_command_preflight import decode_array_pages
 
 REPOSITORY = "VilnaCRM-Org/bootstrap-infrastructure"
 REPOSITORY_ID = 1098568429

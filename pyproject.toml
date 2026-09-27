@@ -77,7 +77,6 @@ known_first_party = [
     "deployment_worker_receipt",
     "deployment_worker_recheck",
     "deployment_worker_runtime",
-    "github_api_pages",
     "governance_paths",
     "operator_aws_read",
     "operator_enrollment_runtime",

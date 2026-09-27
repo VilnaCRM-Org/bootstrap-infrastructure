@@ -15,11 +15,27 @@ from typing import Any
 
 from _github_environment_controls import complete_branch_policies
 from _github_repository_controls import protected_environment_verification_blockers
-from github_api_pages import decode_array_pages
 from governance_paths import paths_touch_governance
 from pulumi_pr_comment import parse_command, write_outputs
 
 INTAKE_PATH = ".github/workflows/pulumi-pr-commands.yml"
+
+
+def decode_array_pages(raw: str) -> list[list[object]]:
+    """Preserve page boundaries from ``gh api --paginate`` JSON output."""
+    decoder = json.JSONDecoder()
+    pages: list[list[object]] = []
+    offset = 0
+    while offset < len(raw):
+        while offset < len(raw) and raw[offset].isspace():
+            offset += 1
+        if offset == len(raw):
+            break
+        page, offset = decoder.raw_decode(raw, offset)
+        if type(page) is not list:
+            raise ValueError("GitHub paginated response must contain arrays")
+        pages.append(page)
+    return pages
 
 
 def require(condition: bool, message: str) -> None:
