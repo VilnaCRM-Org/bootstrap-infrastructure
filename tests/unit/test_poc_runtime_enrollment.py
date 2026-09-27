@@ -64,24 +64,6 @@ def expected_trust(activate, purpose):
     return runtime.disabled_trust()
 
 
-def test_seed_registers_only_six_protected_fences(pulumi_mocks, monkeypatch):
-    provider, _ = target(monkeypatch, "independent-seed")
-    registered = capture(monkeypatch, "Policy")
-    component = enrollment.PocRuntimeFences(provider=provider)
-    for policy in component.policies.values():
-        _sync_await(future_output(policy.arn))
-    assert len(registered) == 6
-    expected = {
-        record.arn: record.document_json for record in runtime.enrollment_records()[0]
-    }
-    for name, inputs in registered:
-        arn = f"arn:aws:iam::{runtime.ACCOUNT_ID}:policy{inputs['path']}{name}"
-        assert inputs["policy"] == expected[arn]
-        assert inputs["opts"].protect is True
-        assert inputs["opts"].provider is provider
-    assert not any(typ == "aws:iam/role:Role" for typ, _, _ in pulumi_mocks.resources)
-
-
 @pytest.mark.parametrize("activate", [False, True])
 def test_governance_creates_pull_only_execution_and_disabled_task(
     pulumi_mocks, monkeypatch, activate

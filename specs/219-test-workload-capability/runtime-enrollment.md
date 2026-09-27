@@ -1,18 +1,22 @@
 # Central TEST runtime enrollment slice
 
-`infra/poc_runtime_enrollment.py` now contains actual Pulumi resource components,
-not only policy fragments. No current deployment entrypoint imports them. They
-are staged source for independent enrollment, not an installed or fully activated
-capability. Existing immutable catalogs are not silently extended.
+`infra/poc_runtime_enrollment.py` contains the governance-owned Pulumi role
+component. `seed/poc_runtime_fence_stack.py` renders the separate independent
+CloudFormation owner for six managed policies. No current deployment entrypoint
+imports the role component; neither source artifact is an installed or fully
+activated capability. Existing immutable catalogs are not silently extended.
 
 ## Ownership and registration
 
-`PocRuntimeFences` requires the `independent-seed` Pulumi project and an explicit
-AWS provider. Native caller account and provider region must equal TEST
-`891377212104` / `eu-central-1` before registration. It registers six protected
-managed policies, one boundary and one guard for each role. Policy paths are
-`/issue219/test/{boundary,guard}/`; basenames use each exact role name followed by
-`-Boundary` or `-Guard`. It creates no roles or attachments.
+The independent CloudFormation packet owns six retained managed policies, one
+boundary and one guard for each role. Policy paths are
+`/issue219/test/{boundary,guard}/`; basenames use each exact role name followed
+by `-Boundary` or `-Guard`. It creates no roles or attachments. Its offline
+validator requires six exact Add rows. A separately authenticated non-root
+installer must verify absent stack/policy names, exact TEST account and region,
+complete change-set provenance, installed default policy documents, termination
+protection and the permanent deny-update stack policy. The former Pulumi fence
+component was removed so there is one proposed owner.
 
 `PocRuntimeRoles` requires the `governance` project and the same target checks.
 Before role registration, it reads every exact policy ARN and compares the native
@@ -32,8 +36,9 @@ supplied exact customized subject selects the publisher's reviewed trust. No
 environment/config boolean enables task access, PassRole or a seed-catalog bypass.
 
 The disabled trust uses a specific TEST account principal with an explicit Deny
-and no Allow; it avoids an invalid wildcard-principal role trust. These classes
-do not take ownership of existing resource state or suppress create collisions.
+and no Allow; it avoids an invalid wildcard-principal role trust. The role
+component and fence packet do not take ownership of existing resource state or
+suppress create collisions.
 The independent installer must inspect live names and ownership first.
 
 ## Complete publisher grant
