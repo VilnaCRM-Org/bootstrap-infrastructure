@@ -215,7 +215,7 @@ def test_change_set_accepts_only_four_exact_in_place_documents():
         (("ResourceChange", "Details", 0, "Target", "Name"), "Roles"),
     ],
 )
-def test_change_set_rejects_other_operations(path, value):
+def test_change_set_rejects_unrelated_operations(path, value):
     source = activation()
     packet = amendment.build_amendment(source)
     invalid = changes()
