@@ -11,7 +11,14 @@ import json
 import os
 import re
 import subprocess  # nosec B404
+import sys
 from pathlib import Path
+
+# Isolated execution excludes the script directory; admit only this installed
+# trusted directory, never the caller's working directory or PYTHONPATH.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from pulumi_command_preflight import decode_array_pages
 
 REPOSITORY = "VilnaCRM-Org/bootstrap-infrastructure"
 REPOSITORY_ID = 1098568429
@@ -31,10 +38,16 @@ def require(condition: bool, message: str) -> None:
 
 def gh(path: str, *args: str):
     """Read authenticated GitHub evidence without shell evaluation."""
+    slurp = "--slurp" in args
+    if slurp:
+        require(
+            args.count("--slurp") == 1 and "--paginate" in args, "Invalid page request"
+        )
+        args = tuple(arg for arg in args if arg != "--slurp")
     result = subprocess.run(  # nosec B603 B607
         ["gh", "api", path, *args], check=True, capture_output=True, text=True
     )
-    return json.loads(result.stdout)
+    return decode_array_pages(result.stdout) if slurp else json.loads(result.stdout)
 
 
 def validate_pr(pr: dict, number: str, head_sha: str) -> None:
