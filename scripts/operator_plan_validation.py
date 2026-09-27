@@ -259,6 +259,26 @@ _INPUT_FIELDS = {
     OIDC: {"url", "clientIdLists", "thumbprintLists", "tags", "tagsAll"},
 }
 
+# Public diagnostic labels only. Unknown output keys collapse to "other";
+# neither property names supplied by a program nor property values are exposed.
+_OUTPUT_DIAGNOSTIC_FIELDS = frozenset(
+    "arn id assumeRolePolicy description inlinePolicies managedPolicyArns "
+    "permissionsBoundary policy policyArns role roleName tags tagsAll "
+    "clientIdLists thumbprintLists url secretId secretString secretBinary "
+    "versionId versionStages __defaults __meta other".split()
+)
+_OUTPUT_DIAGNOSTIC_FALLBACK = "other"
+_OUTPUT_DIAGNOSTIC_TYPES = frozenset(_INPUT_FIELDS) | {
+    STACK,
+    PROVIDER,
+    _OUTPUT_DIAGNOSTIC_FALLBACK,
+}
+
+
+def _output_diagnostic_type(kind: str) -> str:
+    """Collapse resource types outside the fixed public vocabulary."""
+    return kind if kind in _OUTPUT_DIAGNOSTIC_TYPES else _OUTPUT_DIAGNOSTIC_FALLBACK
+
 
 def _input_fields(row: dict[str, Any]) -> None:
     kind, inputs = row["type"], row.get("inputs", {})
@@ -1334,8 +1354,114 @@ def _preview_steps(
     return result
 
 
+def _record_preview_input_mismatch(
+    row: dict[str, Any],
+    observed: dict[str, Any],
+    expected: dict[str, Any],
+    *,
+    new: bool,
+    operation: str,
+    mismatch: list[dict[str, Any]] | None,
+) -> None:
+    """Retain one schema-allowlisted comparison without property values."""
+    allowed = _INPUT_FIELDS.get(row["type"])
+    if mismatch is None or mismatch or allowed is None:
+        return
+    absent = object()
+    differing = sorted(
+        key
+        for key in observed.keys() | expected.keys()
+        if key in allowed | {"__defaults"}
+        and observed.get(key, absent) != expected.get(key, absent)
+    )
+    mismatch.append(
+        {
+            "urn": row["urn"],
+            "type": row["type"],
+            "side": "new" if new else "old",
+            "operation": operation,
+            "fields": differing,
+        }
+    )
+
+
+def _external_oidc_read_placeholder(
+    row: dict[str, Any],
+    expected: dict[str, Any],
+    *,
+    new: bool,
+    operation: str,
+) -> bool:
+    """Recognize only Pulumi's empty new-side read of a pinned OIDC reference.
+
+    The old side is still checked against the complete checkpoint first. The
+    external provider has no saved-plan goal, and the preview's read newState
+    carries identity/ownership metadata but omitted or empty input/output maps.
+    This accepts a preview representation, not proof of live AWS settings.
+    """
+    return (
+        new
+        and operation == "read"
+        and row["type"] == OIDC
+        and row.get("external") is True
+        and expected.get("external") is True
+        and row.get("inputs", {}) == {}
+        and row.get("outputs", {}) == {}
+        and row.get("id") == expected.get("id")
+    )
+
+
+def _output_mismatch_fields(observed: Any, expected: Any) -> list[str]:
+    """Collapse private output keys and whole-map secret wrappers to fixed labels."""
+    if not isinstance(observed, dict) or not isinstance(expected, dict):
+        return ["other"]
+    absent = object()
+    return sorted(
+        {
+            key if key in _OUTPUT_DIAGNOSTIC_FIELDS else "other"
+            for key in observed.keys() | expected.keys()
+            if observed.get(key, absent) != expected.get(key, absent)
+        }
+    )
+
+
+def _preview_old_outputs(
+    row: dict[str, Any],
+    expected: dict[str, Any],
+    operation: str,
+    mismatch: list[dict[str, Any]] | None,
+) -> None:
+    """Keep exact comparison; retain only fixed labels and a resource digest."""
+    observed_outputs = _project(
+        _property_semantics(row.get("outputs", {}), row["type"], inputs=False)
+    )
+    expected_outputs = _project(
+        _property_semantics(expected.get("outputs", {}), row["type"], inputs=False)
+    )
+    if observed_outputs == expected_outputs:
+        return
+    if mismatch is not None and not mismatch:
+        mismatch.append(
+            {
+                "resource_sha256": hashlib.sha256(
+                    expected["urn"].encode("utf-8", "surrogatepass")
+                ).hexdigest(),
+                "type": _output_diagnostic_type(row["type"]),
+                "operation": operation,
+                "fields": _output_mismatch_fields(observed_outputs, expected_outputs),
+            }
+        )
+    raise ValueError("preview-old-outputs")
+
+
 def _preview_state(
-    value: Any, expected: dict[str, Any], *, new: bool, catalog: Mapping[str, Any]
+    value: Any,
+    expected: dict[str, Any],
+    *,
+    new: bool,
+    catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
+    operation: str = "",
 ) -> None:
     row = _state(
         value,
@@ -1347,26 +1473,27 @@ def _preview_state(
         row["urn"] == expected["urn"] and _ownership(row) == _ownership(expected),
         "preview-ownership",
     )
-    _require(
-        _project(_property_semantics(row.get("inputs", {}), row["type"], inputs=True))
-        == _project(
-            _property_semantics(expected.get("inputs", {}), row["type"], inputs=True)
-        ),
-        "preview-inputs",
+    observed_inputs = _project(
+        _property_semantics(row.get("inputs", {}), row["type"], inputs=True)
     )
+    expected_inputs = _project(
+        _property_semantics(expected.get("inputs", {}), row["type"], inputs=True)
+    )
+    if observed_inputs != expected_inputs and not _external_oidc_read_placeholder(
+        row, expected, new=new, operation=operation
+    ):
+        _record_preview_input_mismatch(
+            row,
+            observed_inputs,
+            expected_inputs,
+            new=new,
+            operation=operation,
+            mismatch=mismatch,
+        )
+        raise ValueError("preview-inputs")
     if not new:
         _require(row.get("id", "") == expected.get("id", ""), "preview-old-id")
-        _require(
-            _project(
-                _property_semantics(row.get("outputs", {}), row["type"], inputs=False)
-            )
-            == _project(
-                _property_semantics(
-                    expected.get("outputs", {}), row["type"], inputs=False
-                )
-            ),
-            "preview-old-outputs",
-        )
+        _preview_old_outputs(row, expected, operation, mismatch)
     if new and row.get("id") and row.get("id") != UNKNOWN:
         _require(row["id"] == expected.get("id"), "preview-new-id")
     if expected.get("external", False):
@@ -1379,6 +1506,7 @@ def _preview_resource(
     desired: dict[str, Any] | None,
     ops: tuple[str, ...],
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> None:
     actual = tuple(row["op"] for row in rows if row["op"] != "refresh")
     _require(actual == ops, "plan-preview-operations")
@@ -1401,10 +1529,10 @@ def _preview_resource(
                 ),
                 "refresh-drift",
             )
-            _preview_states(row, prior, prior, catalog)
+            _preview_states(row, prior, prior, catalog, mismatch=mismatch)
         else:
             new = None if row["op"] in {"delete", "delete-replaced"} else desired
-            _preview_states(row, prior, new, catalog)
+            _preview_states(row, prior, new, catalog, mismatch=mismatch)
 
 
 def _preview_states(
@@ -1412,6 +1540,7 @@ def _preview_states(
     old: dict[str, Any] | None,
     new: dict[str, Any] | None,
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> None:
     if old is not None:
         observed_old = row.get("oldState")
@@ -1423,11 +1552,25 @@ def _preview_states(
                 "replacement-delete-marker",
             )
             observed_old = {**observed_old, "delete": False}
-        _preview_state(observed_old, old, new=False, catalog=catalog)
+        _preview_state(
+            observed_old,
+            old,
+            new=False,
+            catalog=catalog,
+            mismatch=mismatch,
+            operation=row["op"],
+        )
     else:
         _require("oldState" not in row, "unexpected-old-state")
     if new is not None:
-        _preview_state(row.get("newState"), new, new=True, catalog=catalog)
+        _preview_state(
+            row.get("newState"),
+            new,
+            new=True,
+            catalog=catalog,
+            mismatch=mismatch,
+            operation=row["op"],
+        )
     else:
         _require("newState" not in row, "unexpected-new-state")
     _require(
@@ -1500,6 +1643,7 @@ def _validate_resources(
     goals: dict[str, Any],
     preview: dict[str, list[dict[str, Any]]],
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> None:
     desired: dict[str, dict[str, Any] | None] = {}
     for urn, value in goals.items():
@@ -1514,11 +1658,18 @@ def _validate_resources(
         ops = tuple(row["steps"])
         _operation(prior, desired[urn], ops, catalog)
         if not _default_provider(urn):
-            _preview_resource(preview[urn], prior, desired[urn], ops, catalog)
+            _preview_resource(
+                preview[urn], prior, desired[urn], ops, catalog, mismatch=mismatch
+            )
     for urn in resources.keys() - goals.keys():
         _require(resources[urn].get("external") is True, "missing-owned-goal")
         _preview_resource(
-            preview[urn], resources[urn], resources[urn], ("read",), catalog
+            preview[urn],
+            resources[urn],
+            resources[urn],
+            ("read",),
+            catalog,
+            mismatch=mismatch,
         )
     _desired_inventory(resources, desired, catalog)
 
@@ -1529,6 +1680,7 @@ def _validate_operator_plan(
     checkpoint_payload: bytes,
     *,
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> OperatorPlanValidation:
     """Validate a complete saved plan against authenticated caller-supplied facts.
 
@@ -1565,7 +1717,7 @@ def _validate_operator_plan(
         == {urn for urn in set(resources) | set(goals) if not _default_provider(urn)},
         "complete-inventory",
     )
-    _validate_resources(resources, goals, preview, catalog)
+    _validate_resources(resources, goals, preview, catalog, mismatch=mismatch)
     return OperatorPlanValidation(
         hashlib.sha256(plan_payload).hexdigest(),
         hashlib.sha256(preview_payload).hexdigest(),
@@ -1581,6 +1733,7 @@ def validate_operator_plan(
     checkpoint_payload: bytes,
     *,
     catalog: Mapping[str, Any],
+    mismatch: list[dict[str, Any]] | None = None,
 ) -> OperatorPlanValidation:
     """Validate private plan/preview and version-3 stack-export checkpoint bytes.
 
@@ -1591,7 +1744,11 @@ def validate_operator_plan(
     """
     try:
         return _validate_operator_plan(
-            plan_payload, preview_payload, checkpoint_payload, catalog=catalog
+            plan_payload,
+            preview_payload,
+            checkpoint_payload,
+            catalog=catalog,
+            mismatch=mismatch,
         )
     except (TypeError, KeyError, AttributeError, RecursionError, OverflowError):
         raise ValueError("malformed-plan-evidence") from None

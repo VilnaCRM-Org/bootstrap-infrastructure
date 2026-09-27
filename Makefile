@@ -12,6 +12,7 @@ GID ?= $(shell id -g 2>/dev/null || echo 1000)
 USER ?= $(shell id -un 2>/dev/null || echo dev)
 GIT_COMMON_DIR ?= $(shell git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
 GITLEAKS_GIT_MOUNTS = $(if $(GIT_COMMON_DIR),-v $(GIT_COMMON_DIR):$(GIT_COMMON_DIR):ro,)
+GITLEAKS_LOG_OPTS ?= -1
 
 export UID
 export GID
@@ -260,7 +261,7 @@ test-dockerfile: ## Lint the development Dockerfile with hadolint.
 	$(COMPOSE) run --rm $(COMPOSE_SERVICE) hadolint --config .hadolint.yaml Dockerfile
 
 test-secrets: ## Scan tracked Git content for accidentally committed secrets.
-	$(COMPOSE) run --rm $(GITLEAKS_GIT_MOUNTS) $(COMPOSE_SERVICE) gitleaks git . --log-opts="-1" --config .gitleaks.toml --no-banner --redact
+	$(COMPOSE) run --rm $(GITLEAKS_GIT_MOUNTS) $(COMPOSE_SERVICE) gitleaks git . --log-opts="$(GITLEAKS_LOG_OPTS)" --config .gitleaks.toml --no-banner --redact
 
 test-deps-security: ## Audit Python dependencies for known vulnerabilities.
 	$(COMPOSE) run --rm -e XDG_CACHE_HOME=/tmp/xdg-cache $(COMPOSE_SERVICE) bash -lc 'uv export --all-groups --format requirements.txt --no-hashes --no-emit-project --frozen -o /tmp/pip-audit-requirements.txt >/dev/null && uv run pip-audit --strict -r /tmp/pip-audit-requirements.txt'

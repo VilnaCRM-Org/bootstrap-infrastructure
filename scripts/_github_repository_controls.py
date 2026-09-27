@@ -12,6 +12,10 @@ GOVERNANCE_PROMOTION_CONTEXT = "Governance Promotion"
 INFRASTRUCTURE_PROMOTION_CONTEXT = "Infrastructure Promotion"
 CENTRAL_REPOSITORY = "VilnaCRM-Org/bootstrap-infrastructure"
 CENTRAL_PROMOTION_APP_ID = 4840884
+CENTRAL_RETIRED_STATUS_CHECKS = {
+    INFRASTRUCTURE_PROMOTION_CONTEXT,
+    "Test Account Evidence",
+}
 
 REQUIRED_STATUS_CHECKS = (
     GOVERNANCE_PROMOTION_CONTEXT,
@@ -57,7 +61,13 @@ def promotion_context_for_repository(repository: str | None) -> str:
 
 def required_status_checks_for_repository(repository: str | None) -> tuple[str, ...]:
     """Keep generated services on their existing promotion protocol by default."""
-    return (promotion_context_for_repository(repository), *REQUIRED_STATUS_CHECKS[1:])
+    if repository == CENTRAL_REPOSITORY:
+        return tuple(
+            context
+            for context in REQUIRED_STATUS_CHECKS[1:]
+            if context not in CENTRAL_RETIRED_STATUS_CHECKS
+        )
+    return REQUIRED_STATUS_CHECKS
 
 
 def _validate_promotion_issuer(promotion_app_id: int, repository: str | None) -> None:
@@ -136,7 +146,7 @@ def harden_required_status_checks_rule(
     promotion_app_id: int,
     repository: str | None = None,
 ) -> dict[str, Any]:
-    """Keep existing contexts and issuers while adding missing required checks."""
+    """Preserve required checks, except explicitly retired central contexts."""
     _validate_promotion_issuer(promotion_app_id, repository)
     parameters = existing.get("parameters", {})
     if not isinstance(parameters, Mapping):
@@ -151,7 +161,13 @@ def harden_required_status_checks_rule(
         for item in original
     ]
     if repository == CENTRAL_REPOSITORY:
-        checks = _deduplicate_central_checks(checks)
+        checks = _deduplicate_central_checks(
+            [
+                check
+                for check in checks
+                if check["context"] not in CENTRAL_RETIRED_STATUS_CHECKS
+            ]
+        )
     baseline = required_status_checks_rule(
         promotion_app_id=promotion_app_id, repository=repository
     )
@@ -186,7 +202,7 @@ def _deduplicate_central_checks(checks: list[dict[str, Any]]) -> list[dict[str, 
 def _central_deployment_rules(
     existing: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Retire only test/prod requirements now enforced by the strict aggregate gate."""
+    """Retire TEST/PROD merge-deployment requirements; preserve unrelated ones."""
     result = []
     for rule in existing:
         if rule.get("type") != "required_deployments":
@@ -553,7 +569,7 @@ def ruleset_verification_blockers(
             "Active main branch ruleset is missing required status checks: "
             f"{', '.join(missing_contexts)}."
         )
-    if not _ruleset_has_promotion_issuer(
+    if repository != CENTRAL_REPOSITORY and not _ruleset_has_promotion_issuer(
         ruleset, promotion_app_id, repository=repository
     ):
         blockers.append(
@@ -573,12 +589,13 @@ def ruleset_verification_blockers(
 
 
 def _central_ruleset_blockers(ruleset: Mapping[str, Any]) -> list[str]:
-    """Require completed central reconciliation, never both promotion protocols."""
+    """Require completed central reconciliation without retired status checks."""
     blockers = []
-    evidence = _promotion_checks(ruleset, "Test Account Evidence")
-    if not _single_central_issuer(evidence):
+    retired = CENTRAL_RETIRED_STATUS_CHECKS & required_status_contexts(ruleset)
+    if retired:
         blockers.append(
-            "Test Account Evidence must retain the fixed GitHub App issuer."
+            "Central ruleset must retire status check requirements: "
+            f"{', '.join(sorted(retired))}."
         )
     if ruleset.get("bypass_actors") != []:
         blockers.append("Central main ruleset must prove an empty bypass actor list.")
@@ -589,8 +606,7 @@ def _central_ruleset_blockers(ruleset: Mapping[str, Any]) -> list[str]:
     rules = ruleset.get("rules", [])
     if _central_deployment_rules(rules) != rules:
         blockers.append(
-            "Central test/prod deployments must be enforced "
-            "by Infrastructure Promotion."
+            "Central ruleset must not require TEST/PROD deployments for merging."
         )
     if (
         ruleset.get("enforcement") != "active"
@@ -602,15 +618,6 @@ def _central_ruleset_blockers(ruleset: Mapping[str, Any]) -> list[str]:
             "Central main ruleset must remain active on the default branch."
         )
     return blockers
-
-
-def _single_central_issuer(checks: Sequence[Mapping[str, Any]]) -> bool:
-    """Reject absent, duplicated or differently issued central evidence contexts."""
-    return (
-        len(checks) == 1
-        and type(checks[0].get("integration_id")) is int
-        and checks[0].get("integration_id") == CENTRAL_PROMOTION_APP_ID
-    )
 
 
 def environment_reviewer_ids(environment: Mapping[str, Any]) -> set[int]:

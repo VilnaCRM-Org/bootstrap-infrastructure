@@ -535,11 +535,10 @@ def test_central_migration_preserves_actual_main_protections(monkeypatch):
     )
     assert original == untouched
     contexts = {c["context"]: c for c in _central_checks(result)}
-    assert set(contexts) == set(LEGACY_REQUIRED_STATUS_CHECKS) | {
-        "Infrastructure Promotion"
+    assert set(contexts) == set(LEGACY_REQUIRED_STATUS_CHECKS) - {
+        "Test Account Evidence"
     }
-    for name in ("Infrastructure Promotion", "Test Account Evidence"):
-        assert contexts[name] == {"context": name, "integration_id": 4840884}
+    assert len(contexts) == 23
     preserved = [
         r
         for r in original
@@ -667,9 +666,10 @@ def test_central_reconciles_both_protocol_entries_and_preserves_other_checks(
     selected = [
         c for c in _central_checks(result) if c["context"] == "Infrastructure Promotion"
     ]
-    assert selected == [
-        {"context": "Infrastructure Promotion", "integration_id": 4840884}
-    ]
+    assert selected == []
+    assert "Test Account Evidence" not in {
+        c["context"] for c in _central_checks(result)
+    }
     assert checks[-1] in _central_checks(result)
     checks.append({"context": "Independent security approval", "integration_id": 8888})
     with pytest.raises(ValueError, match="Conflicting duplicate"):
@@ -733,9 +733,9 @@ def test_central_malformed_deployment_rules_fail_closed(monkeypatch, parameters)
         "deployment",
         "inactive",
         "branch",
-        "duplicate",
-        "foreign",
+        "promotion",
         "evidence",
+        "missing",
         "bypass",
     ],
 )
@@ -754,7 +754,7 @@ def test_central_readback_rejects_partial_or_weakened_cutover(monkeypatch, kind)
         result["enforcement"] = "evaluate"
     elif kind == "branch":
         result["conditions"]["ref_name"]["exclude"] = ["refs/heads/main"]
-    elif kind == "duplicate":
+    elif kind == "promotion":
         _central_checks(result).append(
             {"context": "Infrastructure Promotion", "integration_id": 4840884}
         )
@@ -763,17 +763,11 @@ def test_central_readback_rejects_partial_or_weakened_cutover(monkeypatch, kind)
             {"actor_type": "RepositoryRole", "actor_id": 5, "bypass_mode": "always"}
         ]
     elif kind == "evidence":
-        next(
-            c
-            for c in _central_checks(result)
-            if c["context"] == "Test Account Evidence"
-        )["integration_id"] = 12345
+        _central_checks(result).append(
+            {"context": "Test Account Evidence", "integration_id": 4840884}
+        )
     else:
-        next(
-            c
-            for c in _central_checks(result)
-            if c["context"] == "Infrastructure Promotion"
-        )["integration_id"] = 12345
+        _central_checks(result).pop()
     assert controls.ruleset_verification_blockers(
         result, promotion_app_id=4840884, repository=controls.CENTRAL_REPOSITORY
     )
@@ -814,7 +808,7 @@ def test_central_verify_only_requires_completed_migration(monkeypatch):
     monkeypatch.setattr(module, "_run_gh_api", lambda args: classic)
     legacy = {"id": 13906584, "rules": _live_central_rules()}
     monkeypatch.setattr(module, "_main_ruleset", lambda repo: legacy)
-    with pytest.raises(RuntimeError, match="Infrastructure Promotion"):
+    with pytest.raises(RuntimeError, match="Test Account Evidence"):
         module._verify_applied_controls(
             "VilnaCRM-Org/bootstrap-infrastructure",
             REVIEWER_ID,
@@ -829,7 +823,9 @@ def test_central_verify_only_requires_completed_migration(monkeypatch):
     result = module._verify_applied_controls(
         "VilnaCRM-Org/bootstrap-infrastructure", REVIEWER_ID, promotion_app_id=4840884
     )
-    assert "Infrastructure Promotion" in result["requiredStatusChecks"]
+    assert "Infrastructure Promotion" not in result["requiredStatusChecks"]
+    assert "Test Account Evidence" not in result["requiredStatusChecks"]
+    assert len(result["requiredStatusChecks"]) == 23
     assert "Governance Promotion" not in result["requiredStatusChecks"]
     classic["data"]["repository"]["ref"]["branchProtectionRule"] = {
         "requiredStatusCheckContexts": ["Governance Promotion"]
@@ -864,7 +860,9 @@ def test_central_configuration_preview_uses_repository_specific_migration(
     )
     result = json.loads(capsys.readouterr().out)
     checks = _central_checks(result["ruleset"])
-    assert "Infrastructure Promotion" in {c["context"] for c in checks}
+    assert "Infrastructure Promotion" not in {c["context"] for c in checks}
+    assert "Test Account Evidence" not in {c["context"] for c in checks}
+    assert len(checks) == 23
     assert "Governance Promotion" not in {c["context"] for c in checks}
     assert result["prodEnvironment"]["prevent_self_review"] is True
     assert result["prodEnvironment"]["can_admins_bypass"] is False

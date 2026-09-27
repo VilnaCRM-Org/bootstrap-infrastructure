@@ -221,7 +221,7 @@ def test_exact_source_checkout_and_saved_plan_execution_preserve_existing_gates(
     text = apply["run"]
     assert text.index("make test-destructive-diff") < text.index("make pulumi-up-plan")
     assert 'test "${found_preview}" = true' in text
-    assert "issues/${PR_NUMBER}/labels" in text
+    assert "issues/${PR_NUMBER}/labels" not in text
     for predicate in (".state", ".merged", ".head.sha", ".base.ref", ".base.sha"):
         assert predicate in text
     assert "git rev-parse HEAD" in text

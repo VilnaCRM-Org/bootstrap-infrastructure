@@ -46,7 +46,13 @@ from operator_execution_transport import (  # noqa: E402
     run,
     safe_exit_code,
 )
-from operator_plan_validation import _goal_inputs, validate_operator_plan  # noqa: E402
+from operator_plan_validation import (  # noqa: E402
+    _INPUT_FIELDS,
+    _OUTPUT_DIAGNOSTIC_FIELDS,
+    _OUTPUT_DIAGNOSTIC_TYPES,
+    _goal_inputs,
+    validate_operator_plan,
+)
 from pulumi_ci_guardrails import find_destructive_steps  # noqa: E402
 from seed import policy_registry as registry  # noqa: E402
 
@@ -77,6 +83,59 @@ STAGES = frozenset(
 )
 
 
+# Public reason codes are literal validator invariants, never private evidence.
+# Keep this list explicit: new or unexpected exception text must stay private.
+_PLAN_VALIDATION_REASONS = frozenset(
+    """
+    autonamed-target aws-provider-account aws-provider-version-region
+    catalog-environment catalog-hash checkpoint-arn checkpoint-pending-or-corrupt
+    checkpoint-pending-shape checkpoint-resources checkpoint-secrets-provider
+    checkpoint-version complete-inventory concrete-identity corrupt-preview
+    delete-goal diff-map diff-origin diff-overlap document-object document-size
+    duplicate-checkpoint-urn duplicate-desired-target duplicate-json-key
+    duplicate-list-item duplicate-operator-config-key duplicate-physical-owner
+    duplicate-preview-step exclusive-guard-retention exclusive-id
+    exclusive-output-binding exclusive-ownership exclusive-policy-inventory
+    exclusive-resource-name exclusive-transition external-id-change
+    external-plan-goal external-target-ownership forbidden-lifecycle
+    foreign-dependency foreign-exclusive-role foreign-iam-target
+    foreign-oidc-target foreign-policy-target foreign-role-target
+    foreign-secret-target foreign-urn frozen-config-inline frozen-config-trust
+    frozen-prior-change frozen-resource-change goal-name goal-replacement-option
+    iam-path inline-id inline-policies input-boolean input-integer input-string
+    internal-provider-preview-step invalid-json-document invalid-urn
+    legacy-provider-name lifecycle-inventory malformed-plan-evidence
+    manifest-magic manifest-plugins missing-operation-resource missing-owned-goal
+    missing-parent nonfinite-json object-fields object-required operator-config
+    operator-config-key ownership-change parent-qualified-type
+    physical-alias-target physical-target-change plan-goals
+    plan-preview-operations plan-seed plan-state plan-steps policy-document
+    policy-statement policy-statements preview-config preview-diagnostics
+    preview-diff preview-diff-kind preview-duration preview-error preview-inputs
+    preview-new-id preview-old-id preview-old-outputs preview-operation
+    preview-ownership preview-provider preview-read-count preview-steps
+    preview-summary preview-summary-counts protected-resource-deletion
+    provider-credential-or-endpoint-option provider-hardening-identity
+    provider-hardening-inputs provider-hardening-inventory
+    provider-hardening-origin provider-internal-metadata provider-owner
+    provider-validation-disabled pulumi-version refresh-absent-resource
+    refresh-drift replacement-delete-marker resource-id role-attachment-ceiling
+    role-boundary role-force-detach role-guard-management-removal
+    role-guard-removal role-id root-stack-identity same-input-change
+    same-input-diff secret-input-shape secret-name-identity
+    secret-output-declassification secret-region secret-replica-fields
+    secret-replicas secret-shape secret-value-required secret-value-shape
+    stack-owner state-boolean state-map state-string string-list tags-all-inputs
+    tags-all-output tags-all-shape tags-shape unexpected-new-state
+    unexpected-old-state unknown-input unprotected-control-resource
+    unsupported-goal-option unsupported-input-change
+    unsupported-property-signature unsupported-provider-input
+    unsupported-resource-type unsupported-state-option urn-type version-id
+    version-secret-id
+    """.split()
+)
+
+
 def _failure_record(exc, stage):
     """Emit only fixed source stages/categories and bounded native exits/signals."""
     stage = stage if type(stage) is str and stage in STAGES else "unknown"
@@ -93,10 +152,23 @@ def _failure_record(exc, stage):
     return {"stage": stage, "category": category, "exit_code": exit_code}
 
 
-def _public_record(exc, stage):
-    """Keep child-selected numeric exits exclusively inside encrypted diagnostics."""
+def _public_record(exc, stage, *, execution_stage=None, mismatch=None):
+    """Publish fixed reason codes; keep process exits and evidence private."""
     record = _failure_record(exc, stage)
-    return {"stage": record["stage"], "category": record["category"]}
+    public = {"stage": record["stage"], "category": record["category"]}
+    if (
+        record["stage"] == "plan-validation"
+        and type(exc) is ValueError
+        and len(exc.args) == 1
+        and type(exc.args[0]) is str
+        and exc.args[0] in _PLAN_VALIDATION_REASONS
+    ):
+        public["reason"] = exc.args[0]
+        if execution_stage == "drift" and exc.args[0] == "preview-old-outputs":
+            metadata = _public_output_mismatch(mismatch)
+            if metadata is not None:
+                public["mismatch"] = metadata
+    return public
 
 
 def _publish_diagnostic(destination, encrypted):
@@ -108,6 +180,131 @@ def _publish_diagnostic(destination, encrypted):
         os.link(pending, destination)
     finally:
         pending.unlink(missing_ok=True)
+
+
+_PREVIEW_OPERATIONS = frozenset(
+    {
+        "same",
+        "read",
+        "create",
+        "update",
+        "delete",
+        "replace",
+        "create-replacement",
+        "delete-replaced",
+        "refresh",
+    }
+)
+
+
+def _public_output_mismatch(value):
+    """Revalidate every public label; never copy private keys or identities."""
+    keys = {"resource_sha256", "type", "operation", "fields"}
+    if type(value) is not dict or set(value) != keys:
+        return None
+    digest, kind, operation, fields = (
+        value[key] for key in ("resource_sha256", "type", "operation", "fields")
+    )
+    if not _public_output_identity(digest, kind, operation):
+        return None
+    if not _public_output_fields(fields):
+        return None
+    return {key: value[key] for key in keys}
+
+
+def _public_output_identity(digest, kind, operation):
+    """Require a digest and fixed type/operation labels before publishing."""
+    return (
+        all(type(item) is str for item in (digest, kind, operation))
+        and re.fullmatch(r"[0-9a-f]{64}", digest) is not None
+        and kind in _OUTPUT_DIAGNOSTIC_TYPES
+        and operation in _PREVIEW_OPERATIONS
+    )
+
+
+def _public_output_fields(fields):
+    """Bound all public field labels to source-controlled vocabulary."""
+    return (
+        type(fields) is list
+        and 0 < len(fields) <= len(_OUTPUT_DIAGNOSTIC_FIELDS)
+        and all(type(field) is str for field in fields)
+        and fields == sorted(set(fields))
+        and set(fields) <= _OUTPUT_DIAGNOSTIC_FIELDS
+    )
+
+
+def _mismatch_fields(fields, kind):
+    """Keep only fixed provider-schema names, never user-controlled keys."""
+    return (
+        type(fields) is list
+        and 0 < len(fields) <= 32
+        and all(type(field) is str for field in fields)
+        and fields == sorted(set(fields))
+        and set(fields) <= _INPUT_FIELDS[kind] | {"__defaults"}
+    )
+
+
+def _mismatch_identity(urn, kind):
+    """Check the validator's provider type against its resource identity."""
+    if type(urn) is not str or type(kind) is not str:
+        return False
+    if kind not in _INPUT_FIELDS:
+        return False
+    parts = urn.split("::")
+    return len(parts) == 4 and parts[-2].split("$")[-1] == kind
+
+
+def _mismatch_coordinate(side, operation):
+    """Require fixed preview coordinates before encoding a private reason."""
+    return (
+        type(side) is str
+        and side in {"old", "new"}
+        and type(operation) is str
+        and operation in _PREVIEW_OPERATIONS
+    )
+
+
+def _mismatch_metadata(value):
+    """Accept only the validator's first bounded resource comparison."""
+    if type(value) is not dict or set(value) != {
+        "urn",
+        "type",
+        "side",
+        "operation",
+        "fields",
+    }:
+        return None
+    urn, kind, side, operation, fields = (
+        value[key] for key in ("urn", "type", "side", "operation", "fields")
+    )
+    if not _mismatch_identity(urn, kind):
+        return None
+    if not _mismatch_coordinate(side, operation):
+        return None
+    if not _mismatch_fields(fields, kind):
+        return None
+    return {
+        "schema": 1,
+        "reason": "preview-inputs",
+        "type": kind,
+        "side": side,
+        "operation": operation,
+        "fields": fields,
+    }
+
+
+def _mismatch_reason(value):
+    """Encode one allowlisted comparison inside the existing private reason."""
+    result = _mismatch_metadata(value)
+    if result is None:
+        return "preview-inputs"
+    urn = value["urn"]
+    if len(urn) <= 1024 and all(33 <= ord(c) <= 126 for c in urn):
+        result["urn"] = urn
+    else:
+        result["identity_omitted"] = True
+    encoded = json.dumps(result, sort_keys=True, separators=(",", ":"))
+    return encoded if len(encoded.encode("utf-8")) <= 4096 else "preview-inputs"
 
 
 def _write_diagnostic(arguments, transport, exc):
@@ -129,6 +326,8 @@ def _write_diagnostic(arguments, transport, exc):
                 .encode("utf-8", "replace")[:4096]
                 .decode("utf-8", "ignore")
             )
+        if reason == "preview-inputs":
+            reason = _mismatch_reason(getattr(arguments, "diagnostic_mismatch", None))
         payload = {
             **_failure_record(exc, arguments.diagnostic_stage),
             "stdout": base64.b64encode(capture.stdout).decode("ascii"),
@@ -336,19 +535,11 @@ def _analyze(document, key, transport):
 
 
 def _destructive(preview, contract):
-    """Apply the existing destructive-change label rule against fresh GitHub labels."""
-    if find_destructive_steps(decode(preview)["steps"]):
-        labels = preflight.gh(
-            f"repos/{contract.identity.repository}/issues/{contract.identity.pull_request_number}/labels?per_page=100"
-        )
-        require(
-            type(labels) is list
-            and len(labels) < 100
-            and any(
-                row.get("name") == "allow-destructive-infra-change" for row in labels
-            ),
-            "destructive-review-required",
-        )
+    """Reject critical destructive steps on preview and saved-plan replay."""
+    require(
+        not find_destructive_steps(decode(preview)["steps"]),
+        "destructive-review-required",
+    )
 
 
 def execute(arguments, transport):
@@ -410,9 +601,14 @@ def execute(arguments, transport):
     arguments.diagnostic_stage = "post-preview-snapshot"
     _same(before, transport.snapshot())
     arguments.diagnostic_stage = "plan-validation"
-    validation = validate_operator_plan(
-        plan, preview, before.checkpoint, catalog=catalog
-    )
+    mismatches: list[dict] = []
+    try:
+        validation = validate_operator_plan(
+            plan, preview, before.checkpoint, catalog=catalog, mismatch=mismatches
+        )
+    finally:
+        if mismatches:
+            arguments.diagnostic_mismatch = mismatches[0]
     if arguments.stage == "drift":
         arguments.diagnostic_stage = "drift-validation"
         require(not validation.changed_urns, "post-apply-drift")
@@ -500,7 +696,15 @@ def main(argv=None):
         return 0
     except Exception as exc:
         print(
-            json.dumps(_public_record(exc, arguments.diagnostic_stage), sort_keys=True),
+            json.dumps(
+                _public_record(
+                    exc,
+                    arguments.diagnostic_stage,
+                    execution_stage=arguments.stage,
+                    mismatch=getattr(arguments, "diagnostic_mismatch", None),
+                ),
+                sort_keys=True,
+            ),
             file=sys.stderr,
         )
         return 1

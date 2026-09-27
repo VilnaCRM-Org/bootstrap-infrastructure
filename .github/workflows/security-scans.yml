@@ -26,11 +26,15 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Start development environment
         run: make start
 
       - name: Run Gitleaks
+        env:
+          GITLEAKS_LOG_OPTS: ${{ github.event_name == 'pull_request' && format('--diff-merges=separate {0}..{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || '-1' }}
         run: make test-secrets
 
   dependency_audit:

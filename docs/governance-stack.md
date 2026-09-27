@@ -438,3 +438,43 @@ cannot publish success. Scope and promotion reporters share a per-PR concurrency
 group, preventing a pending scope update from racing a completed proof. The required
 status retains the name `Governance Promotion`; non-governance scope success alone
 never creates successful test/prod deployment records.
+
+## TEST PoC prerequisite capability
+
+The fixed `VilnaCRM-Org/user-service-infrastructure` identity (repository
+`911736693`, owner `114362548`) has a source-proposed initial prerequisite
+capability only in account `891377212104`, region `eu-central-1`, stack `test`.
+It is **disabled** by the packaged `test-poc-identity.json` gate. No
+`poc-prerequisites` policy or preview/drift grant is emitted in the deployed
+graph. The active TEST seed catalog remains pinned to the installed IAM policy
+versions; it does not yet carry the proposed cap. PROD and other repositories
+retain the backend-only default.
+
+The cap permits creation/tagging of `user-service-test-web` and
+`user-service-test-worker`, one SESv2 identity `user.vilnacrmtest.com`, and only
+Route53 CREATE requests for CNAME records beneath
+`*._domainkey.user.vilnacrmtest.com` in zone `Z04999481RZ4UQK2NANVH`. It does not
+permit repository/identity deletion, DNS DELETE or UPSERT, image publishing,
+mail sending, IAM changes, lifecycle-policy changes or workload resources.
+`GetHostedZone` and `ListResourceRecordSets` reveal metadata for the entire fixed
+zone because Route53 has no record-scoped read authorization. Apply can poll
+`GetChange` on generated change IDs.
+
+IAM cannot constrain record values or bind unknown Easy DKIM tokens to exactly
+three future names. The trusted service plan validator must enforce those facts,
+RSA-2048 Easy DKIM, fixed repository settings, and `allow_overwrite=false`. A later
+update that needs excluded actions fails closed and requires a separate review.
+
+The staged renderer can produce an apply `poc-prerequisites` managed policy and
+preview/drift metadata-read grants only after a separate reviewed change turns
+the packaged gate on. That change must follow independent installation and
+verification of the proposed TEST seed boundary and governor-policy updates;
+merging a new catalog hash alone causes operator enrollment to fail closed.
+This source change is not installation or activation authority. Retain
+`Issue215CutoverSessions` on the service TEST apply role; no policy in this change
+removes or bypasses that deny-all hold. Independently review/enroll the TEST seed
+boundary and governor pin changes, verify the active registry against AWS, then
+enable the gate and deploy the reviewed governance grant via the existing
+protected saved-plan path. Native metadata verification, current-head
+CI/review and same-revision deployment evidence remain required. See
+[`specs/test-poc-prerequisite-capability/`](../specs/test-poc-prerequisite-capability/).

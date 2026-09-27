@@ -121,13 +121,13 @@ def test_apply_reuses_matching_same_run_preview(path: Path, environment: str) ->
     ("case", "operation", "labels", "expected"),
     [
         ("removed", "delete", [], False),
-        ("retained", "delete", [{"name": "allow-destructive-infra-change"}], True),
+        ("retained", "delete", [{"name": "allow-destructive-infra-change"}], False),
         ("nondestructive", "same", [], True),
         (
             "second-page",
             "delete",
             [{"name": "ordinary"}] * 30 + [{"name": "allow-destructive-infra-change"}],
-            True,
+            False,
         ),
         ("closed", "same", [], False),
         ("merged", "same", [], False),
@@ -135,12 +135,12 @@ def test_apply_reuses_matching_same_run_preview(path: Path, environment: str) ->
         ("base-moved", "same", [], False),
         ("retargeted", "same", [], False),
         ("pr-unavailable", "same", [], False),
-        ("labels-unavailable", "same", [], False),
+        ("labels-unavailable", "same", [], True),
         ("missing-preview", "same", [], False),
         ("empty-preview", "same", [], False),
     ],
 )
-def test_rendered_apply_rechecks_current_labels(
+def test_rendered_apply_rejects_destructive_plan_and_rechecks_pr(
     path: Path,
     environment: str,
     case: str,
@@ -174,11 +174,7 @@ def test_rendered_apply_rechecks_current_labels(
     preview_dir = tmp_path / ".artifacts/pulumi-preview"
     preview_dir.mkdir(parents=True)
     event = preview_dir / "pull-request-event.json"
-    event.write_text(
-        json.dumps(
-            {"pull_request": {"labels": [{"name": "allow-destructive-infra-change"}]}}
-        )
-    )
+    event.write_text(json.dumps({"pull_request": {"labels": labels}}))
     preview = preview_dir / "original.json"
     if case != "missing-preview":
         preview.write_text(
@@ -214,14 +210,7 @@ def test_rendered_apply_rechecks_current_labels(
         "                   'sha': 'changed' if case == 'base-moved' "
         "else os.environ['EXPECTED_BASE_SHA']}}\n"
         "    print(json.dumps(pr)); sys.exit(0)\n"
-        "assert sys.argv[2].endswith('/issues/39/labels')\n"
-        "if os.environ['CASE'] == 'labels-unavailable':\n"
-        "    sys.exit(1)\n"
-        "assert '--paginate' in sys.argv and '--slurp' in sys.argv\n"
-        "labels = json.loads(os.environ['LABELS'])\n"
-        "pages = [labels[:30], labels[30:]]\n"
-        "assert '--jq' not in sys.argv\n"
-        "print(json.dumps(pages))\n"
+        "raise AssertionError('destructive label lookup is forbidden')\n"
     )
     compose = binaries / "compose"
     compose.write_text(

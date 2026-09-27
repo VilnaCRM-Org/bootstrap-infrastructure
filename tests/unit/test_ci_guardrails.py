@@ -400,32 +400,6 @@ def test_extract_iam_validation_inputs_covers_identity_resource_and_inline_polic
     )
 
 
-def test_load_destructive_override_reads_github_event_payload(
-    guardrails_module, tmp_path: Path
-) -> None:
-    """Respect the explicit destructive-change override label only."""
-    event_path = tmp_path / "event.json"
-    event_path.write_text(
-        json.dumps(
-            {"pull_request": {"labels": [{"name": "allow-destructive-infra-change"}]}}
-        ),
-        encoding="utf-8",
-    )
-    empty_path = tmp_path / "empty.json"
-    empty_path.write_text("{}", encoding="utf-8")
-    invalid_labels_path = tmp_path / "invalid-labels.json"
-    invalid_labels_path.write_text(
-        json.dumps({"pull_request": {"labels": "invalid"}}), encoding="utf-8"
-    )
-
-    assert guardrails_module.load_destructive_override(str(event_path)) is True
-    assert guardrails_module.load_destructive_override(str(empty_path)) is False
-    assert (
-        guardrails_module.load_destructive_override(str(invalid_labels_path)) is False
-    )
-    assert guardrails_module.load_destructive_override(None) is False
-
-
 def test_validate_iam_inputs_handles_success_and_failing_findings(
     guardrails_module, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -727,8 +701,33 @@ def test_cli_commands_cover_summary_destructive_gate_iam_inputs_and_validation(
                 str(override_event_path),
             ]
         )
-        == 0
+        == 1
     )
+    assert "destructive change blocked" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("operation", "resource_type"),
+    [
+        ("same", "aws:kms/key:Key"),
+        ("replace", "aws:ecs/taskDefinition:TaskDefinition"),
+    ],
+)
+def test_destructive_gate_allows_unchanged_or_stateless_workload_steps(
+    guardrails_module,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    operation: str,
+    resource_type: str,
+) -> None:
+    """Retiring label authority must not block ordinary workload releases."""
+    preview_path = _write_preview(
+        tmp_path / "preview.json",
+        steps=[{"op": operation, "newState": {"type": resource_type}}],
+        summary={operation: 1},
+    )
+    assert guardrails_module.cli(["destructive-gate", str(preview_path)]) == 0
+    assert capsys.readouterr().err == ""
 
 
 def test_validate_iam_cli_short_circuits_when_no_policies_present(

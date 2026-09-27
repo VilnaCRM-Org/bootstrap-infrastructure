@@ -318,15 +318,6 @@ jobs:
           artifact-ids: ${{ needs.preview.outputs.preview_artifact_id }}
           path: source/.artifacts/pulumi-preview
           merge-multiple: true
-      - name: Fetch current destructive-change labels
-        working-directory: source
-        run: |
-          mkdir -p .artifacts
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ needs.resolve.outputs.pull_request_number }}
       - name: Enforce destructive diff gate
         working-directory: source
         run: make test-destructive-diff
@@ -533,7 +524,7 @@ jobs:
             --contract-sha256 "${CONTRACT_SHA256}" \
             --scope governance --environment "${ACCOUNT}" \
             --output "${GITHUB_OUTPUT}"
-      - name: Revalidate current labels and apply the exact saved plan
+      - name: Revalidate the pull request and apply the exact saved plan
         working-directory: source
         run: |
           shopt -s nullglob
@@ -553,8 +544,6 @@ jobs:
           test "$(jq -r '.base.ref' <<< "${pr_json}")" = main
           test "$(jq -r '.base.sha' <<< "${pr_json}")" = "${EXPECTED_BASE_SHA}"
           test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
-          labels="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/labels" --paginate --slurp | jq '[.[][] | {name: .name}]')"
-          printf '{"pull_request":{"labels":%s}}\n' "${labels}" > .artifacts/github-event.json
           rm -f .artifacts/pulumi-preview/pull-request-event.json
           make test-destructive-diff
           make pulumi-up-plan

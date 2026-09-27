@@ -44,8 +44,8 @@ the safe path the easy path for normal day-to-day infrastructure work.
 - Preview, IAM validation, and drift detection use GitHub OIDC and short-lived
   AWS credentials rather than static access keys.
 - Every infrastructure PR now produces a Pulumi preview artifact before merge.
-- Critical deletes and replacements are blocked unless the pull request carries
-  the explicit `allow-destructive-infra-change` label.
+- Critical deletes and replacements are blocked even when the pull request
+  carries the legacy destructive-change label.
 - Gitleaks, `pip-audit`, `actionlint`, and CodeQL are part of the review gate.
 - Release workflows serialize runs with `cancel-in-progress: false` so tag and
   changelog publication cannot be interrupted mid-run.

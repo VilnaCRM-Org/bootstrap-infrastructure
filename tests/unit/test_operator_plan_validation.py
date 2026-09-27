@@ -311,13 +311,31 @@ def change(data, kind, updates, ops=("update",)):
     return new
 
 
-def validate(data):
+def validate(data, *, mismatch=None):
     return validation.validate_operator_plan(
         encoded(data["plan"]),
         encoded(data["preview"]),
         encoded(data["checkpoint"]),
         catalog=data["catalog"],
+        mismatch=mismatch,
     )
+
+
+def external_oidc_read(data):
+    """Match the pinned Pulumi preview shape for an existing OIDC .get()."""
+    oidc = resource(data, validation.OIDC)
+    oidc["external"] = True
+    oidc["protect"] = False
+    del data["plan"]["resourcePlans"][oidc["urn"]]
+    step = next(item for item in data["preview"]["steps"] if item["urn"] == oidc["urn"])
+    step["op"] = "read"
+    step["oldState"] = redact(copy.deepcopy(oidc))
+    step["newState"] = {
+        key: copy.deepcopy(oidc[key])
+        for key in ("urn", "type", "custom", "external", "id", "parent", "provider")
+    }
+    recount(data["preview"])
+    return oidc, step
 
 
 def computed_tags(data):
@@ -443,6 +461,361 @@ def test_preview_new_state_cannot_substitute_computed_tags_all_input():
     step = next(item for item in data["preview"]["steps"] if item["urn"] == role["urn"])
     del step["newState"]["inputs"]["tagsAll"]
 
+    mismatches = []
+    with pytest.raises(ValueError, match="preview-inputs"):
+        validate(data, mismatch=mismatches)
+    assert mismatches == [
+        {
+            "urn": role["urn"],
+            "type": validation.ROLE,
+            "side": "new",
+            "operation": "update",
+            "fields": ["tagsAll"],
+        }
+    ]
+
+
+def test_preview_old_mismatch_records_only_first_allowlisted_field():
+    data = fixture()
+    role = resource(data, validation.ROLE)
+    step = next(item for item in data["preview"]["steps"] if item["urn"] == role["urn"])
+    step["oldState"]["inputs"]["description"] = "different private value"
+    mismatches = []
+    with pytest.raises(ValueError, match="preview-inputs"):
+        validate(data, mismatch=mismatches)
+    assert mismatches == [
+        {
+            "urn": role["urn"],
+            "type": validation.ROLE,
+            "side": "old",
+            "operation": "same",
+            "fields": ["description"],
+        }
+    ]
+    assert "different private value" not in repr(mismatches)
+    with pytest.raises(ValueError, match="preview-inputs"):
+        validate(data)
+
+
+def test_matching_preview_collects_no_mismatch():
+    data = fixture()
+    mismatches = []
+    assert validate(data, mismatch=mismatches).changed_urns == ()
+    assert mismatches == []
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        validation.STACK,
+        validation.ROLE,
+        validation.POLICY,
+        validation.INLINE,
+        validation.ATTACHMENT,
+        validation.SECRET,
+        validation.VERSION,
+        validation.OIDC,
+    ],
+)
+def test_old_output_mismatch_records_only_digest_and_fixed_labels(kind):
+    data = fixture("prod")
+    prior = resource(data, kind)
+    step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == prior["urn"]
+    )
+    private = "PRIVATE_CANARY::untrusted-key-or-value"
+    step["oldState"]["outputs"].update(
+        {"tags": {private: private}, "secretString": private, private: private}
+    )
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=mismatches)
+    assert mismatches == [
+        {
+            "resource_sha256": hashlib.sha256(prior["urn"].encode()).hexdigest(),
+            "type": kind,
+            "operation": "same",
+            "fields": ["other", "secretString", "tags"],
+        }
+    ]
+    assert private not in repr(mismatches)
+    assert prior["urn"] not in repr(mismatches)
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data)
+
+
+def test_output_diagnostic_keeps_first_failure_and_exact_secret_projection():
+    data = fixture("prod")
+    prior = resource(data, validation.VERSION)
+    prior["outputs"]["secretString"] = copy.deepcopy(prior["inputs"]["secretString"])
+    step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == prior["urn"]
+    )
+    step["oldState"]["outputs"]["secretString"] = "[secret]"
+    mismatches = []
+    assert validate(data, mismatch=mismatches).changed_urns == ()
+    assert mismatches == []
+    step["oldState"]["outputs"]["versionId"] = "PRIVATE_CANARY"
+    retained = [{"prior": "already-recorded"}]
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=retained)
+    assert retained == [{"prior": "already-recorded"}]
+
+
+def test_output_diagnostic_identifies_read_and_retained_refresh_mismatch():
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    step["oldState"]["outputs"]["arn"] = "PRIVATE_CANARY"
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=mismatches)
+    assert mismatches[0]["operation"] == "read"
+    assert mismatches[0]["fields"] == ["arn"]
+    assert (
+        mismatches[0]["resource_sha256"]
+        == hashlib.sha256(oidc["urn"].encode()).hexdigest()
+    )
+
+    data = fixture("prod")
+    prior = resource(data, validation.ROLE)
+    append_preview(data["preview"], prior, prior, "refresh")
+    step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == prior["urn"]
+    )
+    step["oldState"]["outputs"]["managedPolicyArns"] = ["PRIVATE_CANARY"]
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=mismatches)
+    assert mismatches[0]["operation"] == "same"
+    assert mismatches[0]["fields"] == ["managedPolicyArns"]
+
+
+@pytest.mark.parametrize("secret_side", ["oldState", "checkpoint"])
+def test_output_diagnostic_preserves_whole_map_secret_mismatch(secret_side):
+    data = fixture("prod")
+    prior = resource(data, validation.STACK)
+    step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == prior["urn"]
+    )
+    selected = prior if secret_side == "checkpoint" else step["oldState"]
+    selected["outputs"] = {
+        validation.SIGNATURE: validation.WIRE_VALUE_TAG,
+        "ciphertext": "PRIVATE_CANARY",
+    }
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validate(data, mismatch=mismatches)
+    assert mismatches[0]["fields"] == ["other"]
+    assert "PRIVATE_CANARY" not in repr(mismatches)
+
+
+def test_output_diagnostic_hashes_unusual_identity_without_replacing_rejection():
+    prior = {"urn": "synthetic-\ud800", "type": validation.ROLE, "outputs": {}}
+    observed = {**prior, "outputs": {"description": "PRIVATE_CANARY"}}
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validation._preview_old_outputs(observed, prior, "same", mismatches)
+    assert len(mismatches[0]["resource_sha256"]) == 64
+    assert mismatches[0]["fields"] == ["description"]
+    assert "PRIVATE_CANARY" not in repr(mismatches)
+
+
+def test_output_diagnostic_collapses_unrecognized_resource_type():
+    kind = "aws:cloudwatch/logGroup:LogGroup"
+    prior = {"urn": "urn:pulumi:prod::operator::unknown", "type": kind, "outputs": {}}
+    observed = {**prior, "outputs": {"PRIVATE_KEY": "PRIVATE_CANARY"}}
+    mismatches = []
+    with pytest.raises(ValueError, match="^preview-old-outputs$"):
+        validation._preview_old_outputs(observed, prior, "same", mismatches)
+    assert mismatches[0]["type"] == "other"
+    assert mismatches[0]["fields"] == ["other"]
+    assert kind not in repr(mismatches)
+    assert "PRIVATE_CANARY" not in repr(mismatches)
+
+
+@pytest.mark.parametrize("environment", ["test", "prod"])
+@pytest.mark.parametrize("maps", [(), ("inputs",), ("outputs",), ("inputs", "outputs")])
+def test_external_oidc_read_accepts_only_empty_new_side_placeholder(environment, maps):
+    data = fixture(environment)
+    _, step = external_oidc_read(data)
+    step["newState"].update({key: {} for key in maps})
+    mismatches = []
+    assert validate(data, mismatch=mismatches).changed_urns == ()
+    assert mismatches == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "failure"),
+    [
+        ("new-input", "preview-inputs"),
+        ("nonempty-outputs", "preview-inputs"),
+        ("null-outputs", "state-map"),
+    ],
+)
+def test_external_oidc_read_rejects_nonplaceholder_inputs_or_outputs(mutation, failure):
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    if mutation == "new-input":
+        step["newState"]["inputs"] = {"url": "https://example.invalid"}
+    elif mutation == "nonempty-outputs":
+        step["newState"]["outputs"] = {"arn": oidc["id"]}
+    elif mutation == "null-outputs":
+        step["newState"]["outputs"] = None
+    with pytest.raises(ValueError, match=failure):
+        validate(data)
+
+
+@pytest.mark.parametrize("field", ["inputs", "outputs"])
+@pytest.mark.parametrize("value", [None, [], "", False, 0, validation.UNKNOWN])
+def test_external_oidc_read_placeholder_rejects_non_map_properties(field, value):
+    data = fixture("prod")
+    _, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    step["newState"][field] = value
+    with pytest.raises(ValueError, match="state-map"):
+        validate(data)
+
+
+@pytest.mark.parametrize("side", ["oldState", "newState"])
+@pytest.mark.parametrize(
+    ("field", "value", "failure"),
+    [
+        (
+            "id",
+            "arn:aws:iam::933245420672:oidc-provider/other.invalid",
+            "preview-(inputs|old-id)",
+        ),
+        ("id", validation.UNKNOWN, "preview-(inputs|old-id)"),
+        ("id", "", "preview-(inputs|old-id)"),
+        (
+            "urn",
+            "urn:pulumi:prod::github-ci-bootstrap::" + validation.OIDC + "::other",
+            "preview-ownership",
+        ),
+        ("provider", "different-provider", "preview-ownership"),
+        ("parent", "different-parent", "preview-ownership"),
+        ("external", False, "preview-ownership"),
+        ("custom", False, "preview-ownership"),
+        ("protect", True, "preview-ownership"),
+    ],
+)
+def test_empty_oidc_maps_preserve_identity_and_ownership(side, field, value, failure):
+    data = fixture("prod")
+    _, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    step[side][field] = value
+    with pytest.raises(ValueError, match=failure):
+        validate(data)
+
+
+@pytest.mark.parametrize("missing", ["checkpoint", "oldState"])
+def test_empty_oidc_maps_require_existing_checkpoint_and_old_state(missing):
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    if missing == "checkpoint":
+        data["checkpoint"]["deployment"]["resources"].remove(oidc)
+    else:
+        del step["oldState"]
+    with pytest.raises(ValueError, match="complete-inventory|object-required"):
+        validate(data)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "failure"),
+    [
+        (
+            "id",
+            "arn:aws:iam::891377212104:oidc-provider/token.actions.githubusercontent.com",
+            "foreign-oidc-target",
+        ),
+        ("outputs", {"arn": "different-arn"}, "checkpoint-arn"),
+        ("external", False, "complete-inventory"),
+    ],
+)
+def test_empty_oidc_maps_do_not_bypass_checkpoint_binding(field, value, failure):
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    oidc[field] = value
+    step["oldState"][field] = copy.deepcopy(value)
+    step["newState"][field] = copy.deepcopy(value)
+    with pytest.raises(ValueError, match=failure):
+        validate(data)
+
+
+@pytest.mark.parametrize("explicit_maps", [False, True])
+@pytest.mark.parametrize(
+    ("mutation", "failure"),
+    [
+        ("wrong-id", "preview-inputs"),
+        ("changed-old", "preview-inputs"),
+        ("placeholder-old", "preview-inputs"),
+        ("changed-old-outputs", "preview-old-outputs"),
+        ("managed-new", "preview-ownership"),
+        ("wrong-provider", "preview-ownership"),
+        ("non-read", "plan-preview-operations"),
+        ("external-goal", "external-plan-goal"),
+    ],
+)
+def test_external_oidc_read_rejects_changed_identity_or_prerequisites(
+    mutation, failure, explicit_maps
+):
+    data = fixture("prod")
+    oidc, step = external_oidc_read(data)
+    if explicit_maps:
+        step["newState"].update(inputs={}, outputs={})
+    if mutation == "wrong-id":
+        step["newState"]["id"] = "arn:aws:iam::933245420672:oidc-provider/other.invalid"
+    elif mutation == "changed-old":
+        step["oldState"]["inputs"]["url"] = "https://example.invalid"
+    elif mutation == "placeholder-old":
+        del step["oldState"]["inputs"]
+        del step["oldState"]["outputs"]
+    elif mutation == "changed-old-outputs":
+        step["oldState"]["outputs"]["arn"] = "different-arn"
+    elif mutation == "managed-new":
+        step["newState"]["external"] = False
+    elif mutation == "wrong-provider":
+        step["newState"]["provider"] = "different-provider"
+    elif mutation == "non-read":
+        step["op"] = "same"
+        recount(data["preview"])
+    else:
+        data["plan"]["resourcePlans"][oidc["urn"]] = {
+            "steps": ["same"],
+            "state": None,
+        }
+    with pytest.raises(ValueError, match=failure):
+        validate(data)
+
+
+@pytest.mark.parametrize("explicit_maps", [False, True])
+def test_external_policy_read_cannot_use_oidc_placeholder_exception(explicit_maps):
+    data = fixture("prod")
+    row = next(
+        item
+        for item in data["checkpoint"]["deployment"]["resources"]
+        if item["type"] == validation.POLICY and item.get("external")
+    )
+    step = next(item for item in data["preview"]["steps"] if item["urn"] == row["urn"])
+    del step["newState"]["inputs"]
+    del step["newState"]["outputs"]
+    if explicit_maps:
+        step["newState"].update(inputs={}, outputs={})
+    with pytest.raises(ValueError, match="preview-inputs"):
+        validate(data)
+
+
+def test_empty_oidc_maps_do_not_mask_other_resource_input_mismatches():
+    data = fixture("prod")
+    _, step = external_oidc_read(data)
+    step["newState"].update(inputs={}, outputs={})
+    role = resource(data, validation.ROLE)
+    role_step = next(
+        item for item in data["preview"]["steps"] if item["urn"] == role["urn"]
+    )
+    role_step["newState"]["inputs"]["description"] = "unexpected change"
     with pytest.raises(ValueError, match="preview-inputs"):
         validate(data)
 

@@ -960,11 +960,12 @@ def test_each_initialization_job_verifies_before_credentials(
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
 @pytest.mark.parametrize("phase", ["preview", "apply"])
+@pytest.mark.parametrize("operation", ["delete", "same"])
 @pytest.mark.parametrize("override", [False, True])
-def test_generated_make_consumes_workflow_event_for_destructive_gate(
-    tmp_path, environment, phase, override
+def test_generated_workflow_rejects_destructive_plan_despite_legacy_label(
+    tmp_path, environment, phase, operation, override
 ):
-    """Execute generated workflow staging, its real Makefile, and the real parser."""
+    """Execute the generated gate and saved-plan recheck with legacy labels."""
     destination = tmp_path / "generated"
     scaffold.generate(ROOT, destination, "billing-infrastructure")
     subprocess.run(["git", "init", "-q", str(destination)], check=True)
@@ -994,7 +995,7 @@ def test_generated_make_consumes_workflow_event_for_destructive_gate(
         {
             "steps": [
                 {
-                    "op": "delete",
+                    "op": operation,
                     "urn": "urn:fixture",
                     "newState": {"type": "aws:kms/key:Key"},
                 }
@@ -1005,7 +1006,13 @@ def test_generated_make_consumes_workflow_event_for_destructive_gate(
     stale = preview / "pull-request-event.json"
     stale.write_text(
         json.dumps(
-            {"pull_request": {"labels": [{"name": "allow-destructive-infra-change"}]}}
+            {
+                "pull_request": {
+                    "labels": (
+                        [{"name": "allow-destructive-infra-change"}] if override else []
+                    )
+                }
+            }
         )
     )
     binaries = tmp_path / "bin"
@@ -1019,9 +1026,7 @@ def test_generated_make_consumes_workflow_event_for_destructive_gate(
         "        'head':{'sha':os.environ['EXPECTED_SHA']},\n"
         "        'base':{'ref':'main','sha':os.environ['EXPECTED_BASE_SHA']}}))\n"
         "else:\n"
-        "    assert sys.argv[2].endswith('/issues/39/labels')\n"
-        "    assert '--paginate' in sys.argv and '--slurp' in sys.argv\n"
-        "    print(json.dumps([json.loads(os.environ['LABELS'])]))\n"
+        "    raise AssertionError('destructive label lookup is forbidden')\n"
     )
     compose = binaries / "compose"
     compose.write_text(
@@ -1040,15 +1045,8 @@ def test_generated_make_consumes_workflow_event_for_destructive_gate(
     )
     if phase == "preview":
         steps = workflow["jobs"][f"{environment}_destructive_diff"]["steps"]
-        stage = next(
-            step for step in steps if step.get("name", "").startswith("Stage pull")
-        )
-        shell = (
-            stage["run"].replace(
-                "${{ needs.preflight.outputs.pull_request_number }}", "39"
-            )
-            + "\nmake test-destructive-diff\n"
-        )
+        assert not any(step.get("name", "").startswith("Stage pull") for step in steps)
+        shell = "make test-destructive-diff"
     else:
         steps = workflow["jobs"][f"{environment}_apply"]["steps"]
         apply = next(
@@ -1066,17 +1064,14 @@ def test_generated_make_consumes_workflow_event_for_destructive_gate(
             "PR_NUMBER": "39",
             "EXPECTED_SHA": head,
             "EXPECTED_BASE_SHA": "b" * 40,
-            "LABELS": json.dumps(
-                [{"name": "allow-destructive-infra-change"}] if override else []
-            ),
         },
         capture_output=True,
         text=True,
         check=False,
     )
-    assert (result.returncode == 0) is override, result.stderr
+    assert (result.returncode == 0) is (operation == "same"), result.stderr
     assert "No such file" not in result.stderr
-    if not override:
+    if operation == "delete":
         assert "destructive change blocked" in result.stderr
     if phase == "apply":
         assert not stale.exists()

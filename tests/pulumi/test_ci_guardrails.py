@@ -217,7 +217,9 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
     assert jobs["iam_validation"]["needs"] == ["preview"]  # nosec B101
     assert jobs["iam_validation_unprivileged"]["needs"] == ["preview_unprivileged"]  # nosec B101
     assert preview_mode_step is not None  # nosec B101
-    assert "Fork pull request detected" in preview_mode_step["run"]  # nosec B101
+    assert (  # nosec B101
+        "Pull request source awaits independent admission" in preview_mode_step["run"]
+    )
     assert preview_preflight_step is not None  # nosec B101
     assert "AWS_ACCOUNT_ID" in preview_preflight_step["run"]  # nosec B101
     assert "AWS_PREVIEW_ROLE_ARN" in preview_preflight_step["run"]  # nosec B101
@@ -293,7 +295,7 @@ def test_preview_guardrail_workflow_requires_preview_diff_and_iam_jobs() -> None
 
 def test_guardrail_docs_define_required_privileged_check_contract() -> None:
     """Keep required-check guidance tied to concrete workflow job names."""
-    workflow = _workflow("pulumi-pr-guardrails.yml")
+    workflow = _workflow("reviewed-pr-preview.yml")
     guardrails_doc = GUARDRAILS_DOC.read_text(encoding="utf-8")
     normalized_doc = " ".join(guardrails_doc.split())
     jobs = workflow["jobs"]
@@ -303,8 +305,9 @@ def test_guardrail_docs_define_required_privileged_check_contract() -> None:
         assert f"`{check_name}`" in guardrails_doc  # nosec B101
         assert f"`{job_id}`" in guardrails_doc  # nosec B101
 
+    legacy = _workflow("pulumi-pr-guardrails.yml")
     for job_id in ("preview_unprivileged", "iam_validation_unprivileged"):
-        check_name = f"{workflow['name']} / {jobs[job_id]['name']}"
+        check_name = f"{legacy['name']} / {legacy['jobs'][job_id]['name']}"
         assert f"`{check_name}`" in guardrails_doc  # nosec B101
 
     assert "must not be treated as equivalent to same-repo AWS validation" in (  # nosec B101
@@ -322,8 +325,23 @@ def test_security_scan_workflow_runs_repo_make_targets() -> None:
     assert jobs["secrets"]["timeout-minutes"] == 10
     assert jobs["dependency_audit"]["timeout-minutes"] == 15
     assert jobs["actionlint"]["timeout-minutes"] == 10
-    assert any(  # nosec B101
-        step.get("run") == "make test-secrets" for step in jobs["secrets"]["steps"]
+    secrets_steps = jobs["secrets"]["steps"]
+    checkout = next(
+        step for step in secrets_steps if "actions/checkout@" in step.get("uses", "")
+    )
+    assert checkout["with"]["persist-credentials"] is False
+    assert checkout["with"]["fetch-depth"] == 0
+    assert checkout["with"]["ref"] == (
+        "${{ github.event.pull_request.head.sha || github.sha }}"
+    )
+    scan = next(
+        step for step in secrets_steps if step.get("run") == "make test-secrets"
+    )
+    assert scan["env"]["GITLEAKS_LOG_OPTS"] == (
+        "${{ github.event_name == 'pull_request' && "
+        "format('--diff-merges=separate {0}..{1}', "
+        "github.event.pull_request.base.sha, "
+        "github.event.pull_request.head.sha) || '-1' }}"
     )
     assert any(
         step.get("run") == "make test-deps-security"
@@ -531,7 +549,7 @@ def test_guardrail_docs_are_indexed_from_root_docs() -> None:
     assert "AWS_PREVIEW_ROLE_ARN" in content  # nosec B101
     assert "prod-preview" in content  # nosec B101
     assert "required reviewers" in content  # nosec B101
-    assert "allow-destructive-infra-change" in content  # nosec B101
+    assert "label cannot authorize an override" in content  # nosec B101
     assert "CodeQL" in content  # nosec B101
     assert "Gitleaks" in content  # nosec B101
 

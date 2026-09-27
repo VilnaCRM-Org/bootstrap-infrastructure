@@ -63,6 +63,13 @@ def completed(argv, value, *, ok=True):
 
 @pytest.fixture
 def policies():
+    rule = controls.required_status_checks_rule(
+        promotion_app_id=controls.CENTRAL_PROMOTION_APP_ID, repository=REPO
+    )
+    # This collector still audits promotion evidence independently of merge gates.
+    rule["parameters"]["required_status_checks"].insert(
+        0, {"context": CONTEXT, "integration_id": controls.CENTRAL_PROMOTION_APP_ID}
+    )
     return {
         "classic": {
             "required_status_checks": {"contexts": ["Unit"]},
@@ -75,11 +82,7 @@ def policies():
             "target": "branch",
             "enforcement": "active",
             "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
-            "rules": [
-                controls.required_status_checks_rule(
-                    promotion_app_id=controls.CENTRAL_PROMOTION_APP_ID, repository=REPO
-                )
-            ],
+            "rules": [rule],
         },
     }
 
@@ -105,7 +108,8 @@ def test_central_defaults_and_bound_gate(policies):
     result = collect(policies)
     assert result["status"] == "passed"
     required = result["evidence"]["expectedRequiredStatusChecks"]
-    assert CONTEXT in required
+    assert CONTEXT not in required
+    assert "Test Account Evidence" not in required
     assert "Governance Promotion" not in required
     assert set(required) == set(controls.required_status_checks_for_repository(REPO))
 

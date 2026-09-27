@@ -25,7 +25,7 @@ These checks are intended to be marked as required in branch protection:
 | `Local Battery` | `make ci-pr` or `make ci-pr-unprivileged` | Dockerized PR battery including image build and local gate composition |
 | `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
 | `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
-| `Secrets Scan` | `make test-secrets` | Runs Gitleaks against tracked Git content |
+| `Secrets Scan` | `make test-secrets` | Scans the full PR commit range, including merge resolutions; main pushes and default local runs scan the latest commit |
 | `Dependency Audit` | `make test-deps-security` | Audits Python dependencies with `pip-audit --strict` |
 | `Bandit` | `make test-bandit` | Lints repository Python code for common security hazards |
 | `Dependency Review` | GitHub-native | Reviews pull-request dependency risk against GitHub advisories |
@@ -50,57 +50,59 @@ keep the real preview path.
 
 ### Same-repo privileged check contract
 
-For same-repo infrastructure pull requests, branch protection should require
-the AWS-backed guardrail checks from `.github/workflows/pulumi-pr-guardrails.yml`
-by exact workflow and job name:
+For source installation, branch protection continues to require the existing
+`Preview`, `Destructive Diff Gate`, and `IAM Validation` contexts. The legacy
+`Pulumi PR Guardrails / Preview`, `Pulumi PR Guardrails / Destructive Diff Gate`,
+and `Pulumi PR Guardrails / IAM Validation` jobs keep their names and behavior
+until the staged activation flag is enabled.
 
-| Required evidence | Workflow / check name | Job ID | Required result |
+The clean publisher in `.github/workflows/reviewed-pr-preview.yml` emits three
+additional contexts after exact-source admission and all real guardrails succeed:
+
+| Required evidence after cutover | Trusted workflow / job | Job ID | Published context |
 | --- | --- | --- | --- |
-| AWS-backed Pulumi preview artifact | `Pulumi PR Guardrails / Preview` | `preview` | Success |
-| Destructive diff review and static cost/quota proxy over the preview artifact | `Pulumi PR Guardrails / Destructive Diff Gate` | `destructive_diff` | Success |
-| AWS IAM Access Analyzer validation | `Pulumi PR Guardrails / IAM Validation` | `iam_validation` | Success |
+| AWS-backed Pulumi preview artifact | `Reviewed PR Preview / Execute reviewed preview` | `preview` | `Reviewed Preview` |
+| Destructive diff review and static cost/quota proxy | `Reviewed PR Preview / Check reviewed destructive diff` | `destructive_diff` | `Reviewed Destructive Diff Gate` |
+| AWS IAM Access Analyzer validation | `Reviewed PR Preview / Validate reviewed IAM` | `iam_validation` | `Reviewed IAM Validation` |
 
-The fork-only checks `Pulumi PR Guardrails / Preview (Unprivileged)` and
-`Pulumi PR Guardrails / IAM Validation (Unprivileged)` are credential-free
-fallback evidence. They must not be treated as equivalent to same-repo AWS
-validation for infrastructure changes that need privileged proof.
-
-A skipped privileged `Preview` or `IAM Validation` check is not an acceptable
-skip for a same-repo infrastructure PR. If a maintainer cannot rerun the change
-from a trusted same-repo branch, a repository branch-protection owner must
-explicitly approve the temporary exception and record the missing check, reason,
-compensating validation, and follow-up before the PR can be treated as merge
-ready. The destructive-diff gate remains governed only by the
-`allow-destructive-infra-change` label described below.
+`Pulumi PR Guardrails / Preview (Unprivileged)` and
+`Pulumi PR Guardrails / IAM Validation (Unprivileged)` are credential-free evidence.
+They must not be treated as equivalent to same-repo AWS validation. A skipped
+privileged check is not an acceptable skip for a same-repo infrastructure PR
+unless its distinct reviewed-source replacement is already required and passing.
+The branch-protection owner adds all three reviewed-source contexts with their
+`integration_id` pinned to the new dedicated reviewed-source App, without removing
+any existing required context or issuer, before enabling
+`REVIEWED_SOURCE_PREVIEW_ACTIVE=true`. Bare names or the shared GitHub Actions
+issuer cannot establish trusted publication. The destructive-diff gate rejects critical
+destructive changes on the PoC route; a pull-request label cannot authorize an override.
 
 ## Preview model
 
 The preview workflow uses the same Docker workspace and policy pack that local
 developers use:
 
-1. a credential-free mode-selection job checks whether the pull request came
-   from a fork
-2. trusted same-repo runs use `make start` and
-   `make publish-pulumi-preview-summary` in the `test` GitHub environment
-3. fork pull requests use `make start` and `make test-preview-unprivileged`
-   without a GitHub environment, OIDC permission, AWS credentials, or
-   environment variables
-4. `make test-destructive-diff`
-5. `make test-iam-validation` for trusted previews, or
-   `make test-iam-validation-unprivileged` for fork previews
+1. Source installation retains existing PR checks. After live trust retirement
+   and additive ruleset cutover, the activation flag makes all ordinary PR runs
+   select the credential-free Make preview/IAM path.
+2. Completion of a PR check or review signal invokes the trusted main workflow.
+3. Fresh GitHub evidence admits an independently approved exact PR head before
+   either the CI config reader or TEST preview role can be assumed.
+4. Real preview, destructive-diff/cost checks and IAM validation consume the same
+   preview artifact. Separate jobs recheck source admission before credentials.
+5. A clean publisher rechecks admission and reports the three required contexts
+   on the PR head. Each admitted signal first marks those contexts pending.
+
+The automatic reviewed-source preview uses main-ref OIDC with the `test-pr` CI
+configuration. It adds no manual environment approval. Existing protected
+comment-driven deployment and production preview environments remain unchanged.
+Forks never receive preview credentials. See
+[reviewed-source admission](reviewed-source-admission.md) for the installed trust
+prerequisites, reviewer policy, revocation limits, and live activation rehearsals.
 
 Preview artifacts are written under `.artifacts/pulumi-preview/` and uploaded to
 GitHub Actions. The preview summary is appended to `GITHUB_STEP_SUMMARY` so
 reviewers can inspect the plan without digging through raw logs first.
-
-For issue 18, privileged previews are environment-scoped:
-
-- trusted same-repo PRs use the `test` GitHub environment and preview the
-  configured test stack
-- production release previews use the `prod-preview` GitHub environment and
-  preview the production stack without apply permissions
-- fork PRs stay on the unprivileged artifact path and never receive AWS
-  credentials or `id-token: write` permission
 
 Test and production deployment workflows use `make pulumi-plan` to save the
 Pulumi update plan and write the corresponding preview JSON artifact in the same
@@ -168,9 +170,10 @@ replacements against critical resource families such as:
 - Route53 records
 - EKS resources
 
-Intentional destructive changes must be reviewed manually and then approved with
-the pull-request label `allow-destructive-infra-change`. The label is the only
-supported override because it leaves an auditable trail in GitHub.
+Critical deletes and replacements fail the destructive-diff gate and are
+checked again before saved-plan replay. The operator route also rejects them
+before sealing its plan. Revise the change to avoid a critical destructive
+operation; the old pull-request label no longer authorizes an override.
 
 ## Cost and Quota Proxy
 
@@ -534,3 +537,10 @@ See [the governance runbook](governance-stack.md); real workload capability and
 current-head deployment/manual acceptance remain separate prerequisites.
 
 The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher retains the complete live collector and the existing required context with its pinned App issuer.
+
+Central PR credential admission is documented in
+[Independently reviewed source admission](reviewed-source-admission.md). Ordinary
+PR guardrails become unprivileged after the staged activation; the trusted main
+workflow admits an independently reviewed exact SHA for AWS-backed preview.
+Installed IAM trust retirement, additive ruleset enrollment, the activation flag
+and live negative/positive rehearsals are required before this boundary is active.

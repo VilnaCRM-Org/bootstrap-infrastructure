@@ -90,6 +90,7 @@ def test_pyproject_declares_quality_tooling_contracts() -> None:
         "pulumi_command_preflight",
         "pulumi_ci_guardrails",
         "pulumi_pr_comment",
+        "reviewed_source_admission",
         "_script_support",
         "_well_architected_alert_route_observation",
         "_well_architected_aws_alert_route",
