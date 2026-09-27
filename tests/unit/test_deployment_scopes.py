@@ -115,7 +115,6 @@ def select_records(records: list[Mapping[str, object]]) -> DeploymentScopes:
         ("scripts/_pulumi_stack_config.py", ALL, True, True, False),
         ("scripts/prepare_docker_context.py", ALL, False, True, False),
         ("scripts/operator_seed_installation.py", ALL, False, True, False),
-        ("scripts/test_poc_seed_amendment.py", ALL, False, True, False),
         ("scripts/run_pulumi_preview.py", ALL, False, True, False),
         ("scripts/run_pulumi_drift_check.py", ALL, False, True, False),
         ("scripts/pulumi_pr_comment.py", ALL, True, True, False),

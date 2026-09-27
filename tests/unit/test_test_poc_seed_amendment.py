@@ -15,11 +15,12 @@ from test_operator_seed_installation import packet_for
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
 import operator_seed_installation as installation  # noqa: E402
-import test_poc_seed_amendment as amendment  # noqa: E402
 from infra.governance import (  # noqa: E402
     _test_poc_capability_statements,
     _TestPocTarget,
 )
+
+amendment = installation
 
 
 def activation(environment="test"):
@@ -189,11 +190,11 @@ def test_packet_changes_only_four_policy_documents_and_keeps_denial():
 def test_change_set_accepts_only_four_exact_in_place_documents():
     source = activation()
     packet = amendment.build_amendment(source)
-    amendment.validate_change_set(source, packet, changes())
+    amendment.validate_test_poc_change_set(source, packet, changes())
     with pytest.raises(ValueError, match="Only TEST"):
         amendment.build_amendment(activation("prod"))
     with pytest.raises(ValueError, match="differs"):
-        amendment.validate_change_set(
+        amendment.validate_test_poc_change_set(
             source,
             dataclasses.replace(packet, temporary_stack_policy="{}"),
             changes(),
@@ -223,7 +224,7 @@ def test_change_set_rejects_other_operations(path, value):
         target = target[key]
     target[path[-1]] = value
     with pytest.raises(ValueError):
-        amendment.validate_change_set(source, packet, invalid)
+        amendment.validate_test_poc_change_set(source, packet, invalid)
 
 
 def test_change_set_rejects_incomplete_duplicate_and_malformed_rows():
@@ -236,7 +237,7 @@ def test_change_set_rejects_incomplete_duplicate_and_malformed_rows():
         [*changes(), {}],
     ):
         with pytest.raises(ValueError):
-            amendment.validate_change_set(source, packet, invalid)
+            amendment.validate_test_poc_change_set(source, packet, invalid)
 
 
 @pytest.mark.parametrize(
@@ -261,4 +262,4 @@ def test_change_set_rejects_malformed_row_shapes(path, value):
         target = target[key]
     target[path[-1]] = value
     with pytest.raises(ValueError):
-        amendment.validate_change_set(source, packet, invalid)
+        amendment.validate_test_poc_change_set(source, packet, invalid)

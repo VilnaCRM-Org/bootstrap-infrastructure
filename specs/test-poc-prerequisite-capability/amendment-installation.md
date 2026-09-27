@@ -12,7 +12,7 @@ governance preview/drift policy-read ceilings, and the TEST governance apply
 guard's two closed resource lists. The service boundary gains only the fixed ECR
 repository, SES identity, DKIM DNS and backend bucket-versioning statements from
 the reviewed staged capability. No role, trust, attachment, PROD policy, policy
-name or resource owner changes. `scripts/test_poc_seed_amendment.build_amendment`
+name or resource owner changes. `scripts/operator_seed_installation.build_amendment`
 renders a candidate CloudFormation template from the active seed template and
 permits only those four in-place `PolicyDocument` modifications in its temporary
 stack policy. The permanent deny-update policy is part of the packet.
@@ -27,7 +27,7 @@ Before live installation, an independently authenticated non-root operator must:
 2. Review the complete old/new template and exact four-policy diff. Create one
    CloudFormation change set under the narrow temporary stack policy. Authenticate
    the account, stack, full paginated change set, proposed template and change-set
-   ID. `validate_change_set` must accept exactly four non-replacing policy-document
+   ID. `validate_test_poc_change_set` must accept exactly four non-replacing policy-document
    changes. The complete template exceeds CloudFormation's inline size limit, so
    use an independently protected S3 `TemplateURL` artifact bound to its digest.
    A missing, extra, dynamic or replacement row stops installation.
