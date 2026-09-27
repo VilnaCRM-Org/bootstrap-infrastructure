@@ -50,6 +50,74 @@ def matches(conditions, claims):
     )
 
 
+@pytest.mark.parametrize("explicit_repo", [False, True])
+@pytest.mark.parametrize("immutable", [False, True])
+def test_service_test_preview_retires_pr_subjects_and_preserves_controller_trust(
+    explicit_repo, immutable
+):
+    repository = "VilnaCRM-Org/user-service-infrastructure"
+    service_ids = {"repository_id": "911736693", "owner_id": "114362548"}
+    config = replace(
+        settings(),
+        repo="bootstrap-infrastructure"
+        if explicit_repo
+        else "user-service-infrastructure",
+        github_repository_id=service_ids["repository_id"],
+        github_repository_owner_id=service_ids["owner_id"],
+    )
+    subjects = ci_bootstrap._deployment_role_subjects(
+        config, "preview", "user-service-infrastructure" if explicit_repo else None
+    )
+    trust = condition(
+        ci_bootstrap._deployment_assume_role_policy(
+            PROVIDER, repository, subjects, **service_ids
+        )
+    )
+    prefix = "token.actions.githubusercontent.com:"
+    subject_repo = (
+        "VilnaCRM-Org@114362548/user-service-infrastructure@911736693"
+        if immutable
+        else repository
+    )
+    claims = {
+        prefix + "aud": "sts.amazonaws.com",
+        prefix + "repository": repository,
+        prefix + "repository_id": "911736693",
+        prefix + "repository_owner_id": "114362548",
+    }
+    for suffix in (
+        "ref:refs/heads/main",
+        "environment:test",
+        "environment:test-preview",
+    ):
+        assert matches(
+            trust, {**claims, prefix + "sub": f"repo:{subject_repo}:{suffix}"}
+        )
+    for suffix in ("pull_request", "ref:refs/pull/18/merge", "ref:refs/heads/feature"):
+        assert not matches(
+            trust, {**claims, prefix + "sub": f"repo:{subject_repo}:{suffix}"}
+        )
+    assert all(
+        not subject.endswith(":pull_request") for subject in trust[prefix + "sub"]
+    )
+
+
+@pytest.mark.parametrize(
+    "organization,repository",
+    [
+        ("VilnaCRM-Org", "other-infrastructure"),
+        ("other-org", "user-service-infrastructure"),
+    ],
+)
+def test_service_preview_cutover_does_not_change_other_repository_subjects(
+    organization, repository
+):
+    config = replace(settings(), org=organization, repo=repository)
+    assert f"repo:{organization}/{repository}:pull_request" in (
+        ci_bootstrap._deployment_role_subjects(config, "preview")
+    )
+
+
 def documents():
     cfg = settings()
     result = {}
