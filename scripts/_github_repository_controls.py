@@ -352,8 +352,8 @@ def governance_environment_payload(reviewer_id: int) -> dict[str, Any]:
     return protected_reviewer_environment_payload(reviewer_id)
 
 
-def unattended_main_environment_payload() -> dict[str, Any]:
-    """Allow unattended execution only from main, without admin bypass."""
+def service_drift_environment_payload() -> dict[str, Any]:
+    """Unattended drift has no approval gate and only the main branch."""
     return {
         "wait_timer": 0,
         "can_admins_bypass": False,
@@ -365,43 +365,29 @@ def unattended_main_environment_payload() -> dict[str, Any]:
     }
 
 
-def service_drift_environment_payload() -> dict[str, Any]:
-    """Preserve the existing unattended scheduled-drift contract."""
-    return unattended_main_environment_payload()
-
-
-def unattended_main_environment_verification_blockers(
-    environment: Mapping[str, Any], *, label: str
+def service_drift_environment_verification_blockers(
+    environment: Mapping[str, Any],
 ) -> list[str]:
-    """Fail closed on weaker main-only unattended environment controls."""
+    """Fail closed on weaker boundaries or additional unattended execution gates."""
     blockers = []
     if not environment_is_main_only(environment):
-        blockers.append(f"{label} environment must allow only main.")
+        blockers.append("Scheduled drift environment must allow only main.")
     if environment.get("can_admins_bypass") is not False:
-        blockers.append(f"{label} environment must disable admin bypass.")
+        blockers.append("Scheduled drift environment must disable admin bypass.")
     if environment.get("reviewers", []) != []:
-        blockers.append(f"{label} environment must not require reviewers.")
+        blockers.append("Scheduled drift environment must not require reviewers.")
     if (
         type(environment.get("wait_timer", 0)) is not int
         or environment.get("wait_timer", 0) != 0
     ):
-        blockers.append(f"{label} environment must not have a wait timer.")
+        blockers.append("Scheduled drift environment must not have a wait timer.")
     rules = environment.get("protection_rules", [])
     if not isinstance(rules, list) or any(
         not isinstance(rule, Mapping) or rule.get("type") != "branch_policy"
         for rule in rules
     ):
-        blockers.append(f"{label} environment has an unknown execution gate.")
+        blockers.append("Scheduled drift environment has an unknown execution gate.")
     return blockers
-
-
-def service_drift_environment_verification_blockers(
-    environment: Mapping[str, Any],
-) -> list[str]:
-    """Preserve the existing scheduled-drift verification contract."""
-    return unattended_main_environment_verification_blockers(
-        environment, label="Scheduled drift"
-    )
 
 
 def required_status_check_items(rule: object) -> Sequence[object]:

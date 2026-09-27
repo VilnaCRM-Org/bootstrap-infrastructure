@@ -3,6 +3,7 @@
 import copy
 import json
 import runpy
+import subprocess
 import sys
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import configure_reviewed_source_environments as setup
-from _github_repository_controls import unattended_main_environment_payload
+from _github_repository_controls import service_drift_environment_payload
 
 
 class GitHub:
@@ -69,7 +70,7 @@ class GitHub:
 
     def install(self, name):
         self.environments[name] = {
-            **unattended_main_environment_payload(),
+            **service_drift_environment_payload(),
             "name": name,
         }
         self.policies[name] = [{"id": 1, "name": "main", "type": "branch"}]
@@ -78,8 +79,8 @@ class GitHub:
 @pytest.fixture
 def github(monkeypatch):
     fake = GitHub()
-    monkeypatch.setattr(setup, "_run_gh_api", fake.run)
-    monkeypatch.setattr(setup, "_repo_admin_allowed", lambda _repo: True)
+    monkeypatch.setattr(setup, "_gh", fake.run)
+    monkeypatch.setattr(setup, "_admin_allowed", lambda: True)
     return fake
 
 
@@ -125,7 +126,7 @@ def test_existing_environment_identity_must_match(github, monkeypatch, observed)
             return observed
         return original(args, input_payload=input_payload)
 
-    monkeypatch.setattr(setup, "_run_gh_api", changed)
+    monkeypatch.setattr(setup, "_gh", changed)
     with pytest.raises(ValueError, match="identity differs"):
         setup.configure(apply=False, verify_only=False)
 
@@ -160,7 +161,7 @@ def test_verify_requires_both_environments_and_apply_requires_admin(
 ):
     with pytest.raises(ValueError, match="is missing"):
         setup.configure(apply=False, verify_only=True)
-    monkeypatch.setattr(setup, "_repo_admin_allowed", lambda _repo: False)
+    monkeypatch.setattr(setup, "_admin_allowed", lambda: False)
     with pytest.raises(RuntimeError, match="admin rights"):
         setup.configure(apply=True, verify_only=False)
     assert all(method == "GET" for method, _ in github.calls)
@@ -212,9 +213,37 @@ def test_cli_reports_dry_run_and_verified_apply(github, monkeypatch, capsys):
 
 
 def test_python_entrypoint_uses_same_closed_dry_run(github, monkeypatch, capsys):
-    import configure_github_repository_controls as controls
+    def run(command, *, input, check, capture_output, text):
+        assert check is False and capture_output and text
+        assert command[:2] == ["gh", "api"]
+        payload = json.loads(input) if input else None
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(github.run(command[2:], input_payload=payload)),
+            "",
+        )
 
-    monkeypatch.setattr(controls, "_run_gh_api", github.run)
+    monkeypatch.setattr(subprocess, "run", run)
     monkeypatch.setattr(sys, "argv", ["configure_reviewed_source_environments.py"])
     runpy.run_module("configure_reviewed_source_environments", run_name="__main__")
     assert json.loads(capsys.readouterr().out)["missing"] == list(setup.ENVIRONMENTS)
+
+
+def test_api_failures_do_not_expose_response_body(monkeypatch):
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 1, "", "sensitive"),
+    )
+    with pytest.raises(RuntimeError, match="GitHub API request failed") as error:
+        setup._gh(["repos/example"])
+    assert "sensitive" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "response", [{}, [], {"total_count": 1, "branch_policies": []}]
+)
+def test_incomplete_branch_policy_pages_are_rejected(response):
+    with pytest.raises(ValueError, match="incomplete"):
+        setup._branch_policies(response)
