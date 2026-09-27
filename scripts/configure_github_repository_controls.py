@@ -95,6 +95,7 @@ ADDITIONAL_PROTECTED_ENVIRONMENTS = (
     "prod-governance-drift",
 )
 SERVICE_PROTECTED_ENVIRONMENTS = ("test", "test-preview", "prod", "prod-preview")
+REVIEWED_SOURCE_ENVIRONMENTS = ("reviewed-source-publisher", "reviewed-pr-preview")
 
 
 def _run_gh_api(
@@ -516,6 +517,73 @@ def _create_service_drift_environment(repo: str, name: str) -> None:
     )
 
 
+def _reviewed_environment_names(repo: str) -> set[str]:
+    """Reject ambiguous aliases before writing either reviewed-source control."""
+    existing = _service_environment_names(repo)
+    for name in REVIEWED_SOURCE_ENVIRONMENTS:
+        if any(
+            other.casefold() == name.casefold() and other != name for other in existing
+        ):
+            raise ValueError(f"GitHub environment {name} has a case variant.")
+    return existing
+
+
+def _verify_reviewed_environment(repo: str, name: str) -> None:
+    """Require exact identity and main-only unattended execution controls."""
+    endpoint = f"repos/{repo}/environments/{name}"
+    environment = _run_gh_api([endpoint])
+    if not isinstance(environment, dict) or environment.get("name") != name:
+        raise ValueError(f"GitHub environment {name} identity differs.")
+    policies = _validated_branch_policies(
+        _run_gh_api([f"{endpoint}/deployment-branch-policies?per_page=100"])
+    )
+    blockers = _repository_controls.service_drift_environment_verification_blockers(
+        {**environment, "deployment_branch_policies": policies}
+    )
+    if blockers:
+        raise ValueError(f"{name}: {' '.join(blockers)}")
+
+
+def _verify_existing_reviewed_environments(
+    repo: str, existing: set[str], *, require_present: bool
+) -> None:
+    for name in REVIEWED_SOURCE_ENVIRONMENTS:
+        if name in existing:
+            _verify_reviewed_environment(repo, name)
+        elif require_present:
+            raise ValueError(f"GitHub environment {name} is missing.")
+
+
+def _apply_missing_reviewed_environments(repo: str, missing: list[str]) -> None:
+    for name in missing:
+        _create_service_drift_environment(repo, name)
+        _verify_reviewed_environment(repo, name)
+
+
+def configure_reviewed_source_environments(
+    repo: str, *, apply: bool, verify_only: bool
+) -> dict[str, Any]:
+    """Create only missing closed reviewed-source environments in the central repo."""
+    if repo != _repository_controls.CENTRAL_REPOSITORY:
+        raise ValueError("Reviewed-source setup requires the central repository.")
+    if apply and not _repo_admin_allowed(repo):
+        raise RuntimeError(
+            "Repository admin rights are required for environment setup."
+        )
+    existing = _reviewed_environment_names(repo)
+    _verify_existing_reviewed_environments(repo, existing, require_present=verify_only)
+    missing = [name for name in REVIEWED_SOURCE_ENVIRONMENTS if name not in existing]
+    if apply:
+        _apply_missing_reviewed_environments(repo, missing)
+        missing = []
+    return {
+        "repository": repo,
+        "environments": list(REVIEWED_SOURCE_ENVIRONMENTS),
+        "missing": missing,
+        "verified": apply or verify_only,
+    }
+
+
 def _apply_ruleset(
     repo: str, existing: dict[str, Any] | None, payload: dict[str, Any]
 ) -> None:
@@ -654,13 +722,19 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         help="Dedicated GitHub App ID allowed to publish promotion proof.",
     )
-    parser.add_argument(
+    controls_mode = parser.add_mutually_exclusive_group()
+    controls_mode.add_argument(
         "--service-drift-only",
         action="store_true",
         help=(
             "Configure only governed-service drift environments; "
             "preserve protected deployments."
         ),
+    )
+    controls_mode.add_argument(
+        "--reviewed-source-only",
+        action="store_true",
+        help="Configure only the central reviewed-source GitHub environments.",
     )
     parser.add_argument(
         "--prod-reviewer",
@@ -693,6 +767,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line interface."""
     args = build_parser().parse_args(argv)
     try:
+        if args.reviewed_source_only:
+            print(
+                json.dumps(
+                    configure_reviewed_source_environments(
+                        args.repo, apply=args.apply, verify_only=args.verify_only
+                    ),
+                    sort_keys=True,
+                )
+            )
+            return 0
         if args.service_drift_only:
             configure_service_drift(
                 args.repo,
