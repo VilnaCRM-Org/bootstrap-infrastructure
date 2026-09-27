@@ -59,8 +59,7 @@ def test_reviewed_environment_cannot_use_stage_one_main_branch_trust():
     """The source-only stage must fail closed before the IAM cutover."""
     settings = _settings()
     reviewed_subject = (
-        "repo:VilnaCRM-Org/bootstrap-infrastructure:"
-        "environment:reviewed-pr-preview"
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:reviewed-pr-preview"
     )
     config_reader = conditions(settings, "test-pr")
     preview_subjects = ci_bootstrap._deployment_role_subjects(settings, "preview")
