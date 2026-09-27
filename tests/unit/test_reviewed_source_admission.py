@@ -178,6 +178,8 @@ def test_github_transport_uses_argument_vector_and_fails_closed(monkeypatch):
     ]
     with pytest.raises(ValueError, match="Invalid page request"):
         gate.gh("repos/example", "--slurp")
+    with pytest.raises(ValueError, match="Invalid page request"):
+        gate.gh("repos/example", "--paginate", "--slurp", "--slurp")
 
 
 @pytest.mark.parametrize("response", ['{"id": 1}', '[1]\n{"id": 2}', "[1]garbage"])
