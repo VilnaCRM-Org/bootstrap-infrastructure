@@ -167,11 +167,14 @@ def test_github_transport_uses_argument_vector_and_fails_closed(monkeypatch):
     from types import SimpleNamespace
 
     def run(args, **kwargs):
-        assert args == ["gh", "api", "repos/example", "--paginate"]
         assert kwargs == {"check": True, "capture_output": True, "text": True}
+        if args == ["gh", "api", "repos/example"]:
+            return SimpleNamespace(stdout='{"id": 1}')
+        assert args == ["gh", "api", "repos/example", "--paginate"]
         return SimpleNamespace(stdout='[{"id": 1}]\n[{"id": 2}]\n')
 
     monkeypatch.setattr(gate.subprocess, "run", run)
+    assert gate.gh("repos/example") == {"id": 1}
     assert gate.gh("repos/example", "--paginate", "--slurp") == [
         [{"id": 1}],
         [{"id": 2}],
