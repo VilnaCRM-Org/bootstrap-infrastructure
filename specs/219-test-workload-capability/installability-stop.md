@@ -4,7 +4,10 @@
 
 The source at `4e49555` cannot install runtime roles through the existing operator
 seed or governor path. This bounded follow-up adds regression evidence and the
-required amendment contract; it does not add an installation or activation route.
+required amendment contract. `seed/poc_runtime_fence_stack.py` renders a separate
+six-policy TEST CloudFormation creation packet and validates a complete Add-only
+change-set summary. It does not add an authenticated installation or activation
+route.
 
 ## Exact stop condition
 
@@ -22,11 +25,10 @@ denies all IAM operations on the three new runtime roles and six new policies.
 Adding identity Allows alone cannot enable installation. Removing those Denies
 globally would weaken the existing enrollment and is forbidden.
 
-The staged `PocRuntimeFences` creates Pulumi-owned resources in `independent-seed`;
-the existing independently owned policy graph uses CloudFormation. Neither the
-project name nor native policy-document equality authenticates an installer or
-establishes exclusive ownership. Do not connect this component to a deployment
-entrypoint until the independent amendment defines that ownership boundary.
+The earlier staged Pulumi `PocRuntimeFences` competed with the independently
+owned CloudFormation policy graph and has been removed. The separate runtime
+fence packet establishes one proposed owner, but policy-document equality alone
+does not authenticate an installer or prove exclusive live ownership.
 
 ## Smallest coherent next amendment
 
@@ -40,6 +42,12 @@ entrypoint until the independent amendment defines that ownership boundary.
    instead requires its reviewed backend/key, installer authority and immutable
    protection contract; the existing seed KMS/backend must not be silently reused.
    Stop on any existing name or other state owner; no automatic adoption/import.
+   The staged `issue219-runtime-fences-test` packet chooses the separate
+   CloudFormation owner. Its installer must authenticate that the stack and all
+   six policy names are absent, create the exact reviewed template, verify the
+   complete change set and installed policy versions, then enable and read back
+   termination protection and the permanent deny-update stack policy. An offline
+   packet is not an installer.
 3. Amend the existing governor boundary and guard documents through their current
    independent CloudFormation owner. Bind exact old/new documents and exact
    reviewed change-set identity. Permit only specified in-place policy updates;
@@ -69,4 +77,6 @@ remain separate capabilities.
 `tests/unit/test_poc_installation_boundary.py` exercises rejection of runtime
 inventory appended to either seed installation or activation, the governor's
 existing unconditional denials, and preservation of the 58-resource executor-only
-activation graph. Synthetic observations do not establish live installation.
+activation graph. `tests/unit/test_poc_runtime_fence_stack.py` checks the exact
+six-policy retained graph and rejects incomplete, foreign, existing or destructive
+change-set rows. Synthetic observations do not establish live installation.

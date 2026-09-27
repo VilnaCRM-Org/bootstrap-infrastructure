@@ -1,8 +1,8 @@
-"""Central TEST runtime resource components for independently staged enrollment.
+"""Central TEST runtime roles for independently staged enrollment.
 
-Not wired into existing entrypoints. The independent seed owns six policies;
-governance consumes their exact native documents and owns three protected roles.
-No boolean config switch or service-owned IAM enrollment is introduced.
+Not wired into existing entrypoints. A separate CloudFormation stack owns the
+six fences; governance consumes their exact native documents and owns three
+protected roles. No boolean config switch or service-owned IAM is introduced.
 """
 
 from __future__ import annotations
@@ -79,34 +79,6 @@ def _role_trust(purpose: str, publisher_document: str) -> str:
     if purpose == "execution":
         return execution_trust()
     return disabled_trust()
-
-
-class PocRuntimeFences(pulumi.ComponentResource):
-    """Register exact policies only under independent seed authority."""
-
-    def __init__(self, *, provider: aws.Provider) -> None:
-        _target(provider, "independent-seed")
-        policies, _ = enrollment_records()
-        super().__init__(
-            "bootstrap:seed:PocRuntimeFences",
-            "poc-test-runtime-fences",
-            None,
-            pulumi.ResourceOptions(provider=provider, protect=True),
-        )
-        self.policies = {}
-        for record in policies:
-            path, name = record.arn.split(":policy/", 1)[1].rsplit("/", 1)
-            self.policies[record.arn] = aws.iam.Policy(
-                name,
-                name=name,
-                path=f"/{path}/",
-                policy=record.document_json,
-                tags={"OwnerProject": "independent-seed", "Environment": "test"},
-                opts=pulumi.ResourceOptions(
-                    parent=self, provider=provider, protect=True
-                ),
-            )
-        self.register_outputs({"policyArns": list(self.policies)})
 
 
 class PocRuntimeRoles(pulumi.ComponentResource):
