@@ -483,3 +483,6 @@ enable the gate and deploy the reviewed governance grant via the existing
 protected saved-plan path. Native metadata verification, current-head
 CI/review and same-revision deployment evidence remain required. See
 [`specs/test-poc-prerequisite-capability/`](../specs/test-poc-prerequisite-capability/).
+The exact four-policy TEST CloudFormation amendment packet and its independent
+installation checks are in
+[`amendment-installation.md`](../specs/test-poc-prerequisite-capability/amendment-installation.md).
