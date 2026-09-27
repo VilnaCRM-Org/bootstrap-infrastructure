@@ -101,6 +101,9 @@ the IAM trust changes or update the ruleset.
 ### Stage 1: install the trusted source
 
 Keep the repository variable `REVIEWED_SOURCE_PREVIEW_ACTIVE` unset or `false`.
+The trusted workflow skips admission and both OIDC jobs while this flag is
+inactive. Its workflow-run concurrency includes the numeric head-repository ID,
+so a fork with the same branch name cannot cancel a same-repository run.
 Provision and verify the dedicated publisher prerequisite before relying on new
 statuses. Missing configuration blocks those new clean jobs and leaves existing
 required checks intact; it does not authorize a shared-token fallback.
@@ -111,25 +114,34 @@ remain mandatory. The new trusted-main workflow publishes different contexts and
 cannot supply its own installation evidence from the PR branch. Record the
 installed main SHA; a waiting runner using an older policy SHA fails closed.
 
-The new main workflow may fail to load CI configuration until Stage 2 installs
-its IAM trust. Those new contexts are not required during installation. Do not
-add them as requirements until the trusted workflow exists on main and can issue
-genuine current-head results. The central comment worker begins enforcing source
+The new main workflow does not request CI configuration or OIDC credentials
+until Stage 2 installs its IAM trust and activates the flag. Both OIDC jobs use
+the distinct `reviewed-pr-preview` environment, so their token subjects cannot
+match the existing main-branch trust. Those new contexts are not required during
+installation. Do not add them as requirements until the trusted workflow exists
+on main and the dedicated publisher and IAM trust prerequisites are installed.
+After activation, it can issue genuine current-head results. The central
+comment worker begins enforcing source
 admission as soon as the source is installed, in addition to its existing protected
 environments and request authentication.
 
 ### Stage 2: retire trust and enroll the reviewed-source contexts
 
-1. Through the independently reviewed operator process, install and read back
-   both bootstrap TEST config-reader and preview-role trust changes from the
-   exact reviewed source. Both must reject the generic
+1. Create the `reviewed-pr-preview` GitHub environment with only `main` allowed,
+   no tags or wildcards, and administrator bypass disabled. Through the
+   independently reviewed operator process, install and read back a dedicated
+   TEST reviewed-preview role and the bootstrap TEST config-reader trust
+   changes from the exact reviewed source. Both must reject the generic
    `repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request` subject, including
-   its configured immutable-ID subject form. The test-pr config-reader admits
-   protected main and `Reviewed PR Preview`; preserve existing main and protected
-   environment routes on the runtime role. Keep `test`/`test-preview` deployment
-   branch policies restricted to main.
-2. Record live negative STS tests for both retired PR subjects and a successful
-   trusted preview of an independently approved exact head. A new submitted,
+   its configured immutable-ID subject form. The dedicated role and test-pr
+   config-reader must accept only the `reviewed-pr-preview` environment subject
+   with the `Reviewed PR Preview` workflow claim for this route. Put the
+   dedicated role ARN in the TEST PR CI configuration before activation. Preserve
+   existing main and protected-environment routes for other workflows on the
+   legacy runtime role; the reviewed workflow's environment subject must not
+   match that role's retained main-branch trust. Keep `test`/`test-preview`
+   deployment branch policies restricted to main.
+2. Record live negative STS tests for both retired PR subjects. A new submitted,
    edited or dismissed review provides a trusted signal even while the legacy
    PR credential attempts fail after trust retirement. Failed or skipped source
    checks cannot substitute for review approval or successful trusted jobs.
@@ -138,16 +150,18 @@ environments and request authentication.
    ruleset, with `integration_id` set to the actual dedicated App ID on each,
    preserving **every existing required context**, its issuer and every review
    rule. Bare names or shared GitHub Actions issuer bindings are rejected. Read
-   back all three issuer-bound requirements and genuine current-head results from
-   that App. Prove that an identically named success from `GITHUB_TOKEN` or another
-   App does not satisfy them. This additive cutover is retained by the repository
-   control reconciler alongside its existing baseline.
-4. Only after those readbacks, set `REVIEWED_SOURCE_PREVIEW_ACTIVE=true`.
-   Ordinary PR guardrails then select the credential-free path; the legacy
-   privileged jobs skip while the distinct reviewed-source contexts remain
-   mandatory. Verify an unreviewed head cannot merge or obtain either TEST role,
-   and an independently approved head completes the real guardrails. No second
-   source PR is needed to activate this installed flag.
+   back all three issuer-bound requirements before activation. This temporarily
+   blocks merges until the new workflow can produce real success. The additive
+   cutover is retained by the repository control reconciler alongside its
+   existing baseline.
+4. Only after the issuer-bound requirements are installed, set
+   `REVIEWED_SOURCE_PREVIEW_ACTIVE=true`. Ordinary PR guardrails then select the
+   credential-free path; the legacy privileged jobs skip while the distinct
+   reviewed-source contexts remain mandatory. Run a newly approved exact head
+   and read back genuine results from the dedicated App. Prove that an
+   identically named success from `GITHUB_TOKEN` or another App does not satisfy
+   those requirements. Verify an unreviewed head cannot merge or obtain either
+   TEST role, and an independently approved head completes the real guardrails.
 
 The activation flag controls workflow availability, not credential authorization.
 A PR can change its own workflow or ignore the flag; only installed IAM trust

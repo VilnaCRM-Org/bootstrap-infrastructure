@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from infra import ci_config
+from infra import ci_bootstrap, ci_config
 from test_secret_read_deny import _settings
 
 PREFIX = "token.actions.githubusercontent.com:"
@@ -53,6 +53,19 @@ def matches(condition, claims):
         claims.get(key) in (value if isinstance(value, list) else [value])
         for key, value in condition.items()
     )
+
+
+def test_reviewed_environment_cannot_use_stage_one_main_branch_trust():
+    """The source-only stage must fail closed before the IAM cutover."""
+    settings = _settings()
+    reviewed_subject = (
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:"
+        "environment:reviewed-pr-preview"
+    )
+    config_reader = conditions(settings, "test-pr")
+    preview_subjects = ci_bootstrap._deployment_role_subjects(settings, "preview")
+    assert reviewed_subject not in config_reader[PREFIX + "sub"]
+    assert reviewed_subject not in preview_subjects
 
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
