@@ -165,12 +165,32 @@ def test_github_transport_uses_argument_vector_and_fails_closed(monkeypatch):
     from types import SimpleNamespace
 
     def run(args, **kwargs):
-        assert args == ["gh", "api", "repos/example", "--paginate", "--slurp"]
+        assert args == ["gh", "api", "repos/example", "--paginate"]
         assert kwargs == {"check": True, "capture_output": True, "text": True}
-        return SimpleNamespace(stdout='{"ok": true}')
+        return SimpleNamespace(stdout='[{"id": 1}]\n[{"id": 2}]\n')
 
     monkeypatch.setattr(gate.subprocess, "run", run)
-    assert gate.gh("repos/example", "--paginate", "--slurp") == {"ok": True}
+    assert gate.gh("repos/example", "--paginate", "--slurp") == [
+        [{"id": 1}],
+        [{"id": 2}],
+    ]
+    with pytest.raises(ValueError, match="Invalid page request"):
+        gate.gh("repos/example", "--slurp")
+
+
+@pytest.mark.parametrize("response", ['{"id": 1}', '[1]\n{"id": 2}', "[1]garbage"])
+def test_paginated_github_transport_rejects_non_array_or_malformed_pages(
+    monkeypatch, response
+):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(
+        gate.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(stdout=response),
+    )
+    with pytest.raises(ValueError):
+        gate.gh("repos/example", "--paginate", "--slurp")
 
 
 @pytest.mark.parametrize("signal", [False, True])

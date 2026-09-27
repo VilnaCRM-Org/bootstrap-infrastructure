@@ -13,6 +13,8 @@ import re
 import subprocess  # nosec B404
 from pathlib import Path
 
+from github_api_pages import decode_array_pages
+
 REPOSITORY = "VilnaCRM-Org/bootstrap-infrastructure"
 REPOSITORY_ID = 1098568429
 # Authorization belongs to reviewed main policy, never a PR file or variable.
@@ -31,10 +33,16 @@ def require(condition: bool, message: str) -> None:
 
 def gh(path: str, *args: str):
     """Read authenticated GitHub evidence without shell evaluation."""
+    slurp = "--slurp" in args
+    if slurp:
+        require(
+            args.count("--slurp") == 1 and "--paginate" in args, "Invalid page request"
+        )
+        args = tuple(arg for arg in args if arg != "--slurp")
     result = subprocess.run(  # nosec B603 B607
         ["gh", "api", path, *args], check=True, capture_output=True, text=True
     )
-    return json.loads(result.stdout)
+    return decode_array_pages(result.stdout) if slurp else json.loads(result.stdout)
 
 
 def validate_pr(pr: dict, number: str, head_sha: str) -> None:

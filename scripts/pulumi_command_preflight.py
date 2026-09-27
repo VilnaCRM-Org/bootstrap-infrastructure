@@ -15,6 +15,7 @@ from typing import Any
 
 from _github_environment_controls import complete_branch_policies
 from _github_repository_controls import protected_environment_verification_blockers
+from github_api_pages import decode_array_pages
 from governance_paths import paths_touch_governance
 from pulumi_pr_comment import parse_command, write_outputs
 
@@ -29,10 +30,16 @@ def require(condition: bool, message: str) -> None:
 
 def gh(*args: str) -> Any:
     """Read GitHub JSON without interpreting response text as commands."""
+    slurp = "--slurp" in args
+    if slurp:
+        require(
+            args.count("--slurp") == 1 and "--paginate" in args, "Invalid page request"
+        )
+        args = tuple(arg for arg in args if arg != "--slurp")
     result = subprocess.run(  # nosec B603 B607
         ["gh", "api", *args], check=True, capture_output=True, text=True
     )
-    return json.loads(result.stdout)
+    return decode_array_pages(result.stdout) if slurp else json.loads(result.stdout)
 
 
 def authenticate_intake(request: dict, evidence: dict):
