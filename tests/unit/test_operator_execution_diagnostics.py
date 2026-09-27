@@ -1,6 +1,8 @@
 """Fixed failure attribution with hostile private output; all execution is offline."""
 
+import ast
 import base64
+import hashlib
 import json
 import os
 import signal
@@ -183,6 +185,123 @@ def test_public_record_revalidates_fields_and_unknown_exceptions():
     assert runtime._failure_record(RuntimeError(Hostile()), CANARY) == expected
 
 
+def _output_mismatch():
+    return {
+        "resource_sha256": "a" * 64,
+        "type": "aws:iam/role:Role",
+        "operation": "same",
+        "fields": ["managedPolicyArns", "other"],
+    }
+
+
+def test_public_output_metadata_accepts_fixed_unknown_type_label():
+    metadata = {**_output_mismatch(), "type": "other", "fields": ["other"]}
+    assert (
+        runtime._public_record(
+            ValueError("preview-old-outputs"),
+            "plan-validation",
+            execution_stage="drift",
+            mismatch=metadata,
+        )["mismatch"]
+        == metadata
+    )
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        None,
+        [],
+        {},
+        {"urn": CANARY},
+        {"resource_sha256": CANARY},
+        {"resource_sha256": "a" * 65},
+        {"resource_sha256": []},
+        {"type": CANARY},
+        {"type": []},
+        {"operation": CANARY},
+        {"operation": []},
+        {"fields": CANARY},
+        {"fields": []},
+        {"fields": [CANARY]},
+        {"fields": [Hostile()]},
+        {"fields": ["other", "managedPolicyArns"]},
+        {"fields": ["other", "other"]},
+        {"fields": ["other"] * 100},
+    ],
+)
+def test_public_output_metadata_rejects_unbounded_or_private_data(invalid):
+    value = {**_output_mismatch(), **invalid} if invalid else invalid
+    result = runtime._public_record(
+        ValueError("preview-old-outputs"),
+        "plan-validation",
+        execution_stage="drift",
+        mismatch=value,
+    )
+    assert result == {
+        "stage": "plan-validation",
+        "category": "validation-rejected",
+        "reason": "preview-old-outputs",
+    }
+    assert CANARY not in json.dumps(result)
+
+
+@pytest.mark.parametrize(
+    "stage,execution_stage,reason",
+    [
+        ("plan-validation", "preview", "preview-old-outputs"),
+        ("plan-validation", "apply", "preview-old-outputs"),
+        ("plan-validation", None, "preview-old-outputs"),
+        ("pulumi-drift", "drift", "preview-old-outputs"),
+        ("plan-validation", "drift", "preview-inputs"),
+    ],
+)
+def test_output_metadata_is_only_public_for_matching_drift_rejection(
+    stage, execution_stage, reason
+):
+    assert "mismatch" not in runtime._public_record(
+        ValueError(reason),
+        stage,
+        execution_stage=execution_stage,
+        mismatch=_output_mismatch(),
+    )
+
+
+def test_real_drift_output_failure_emits_only_bounded_metadata(
+    scenario,  # noqa: F811
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    step = next(
+        row
+        for row in scenario.data["preview"]["steps"]
+        if row["oldState"]["type"] == "aws:iam/role:Role"
+    )
+    step["oldState"]["outputs"].update(managedPolicyArns=[CANARY])
+    step["oldState"]["outputs"][CANARY] = {CANARY: CANARY}
+    # Even an existing private capture cannot enable drift diagnostic artifacts.
+    scenario.transport.diagnostic_capture = _private_capture()
+    monkeypatch.setattr(runtime, "OperatorTransport", lambda *_: scenario.transport)
+    argv = _argv(tmp_path, scenario.args.account)
+    argv[1] = "drift"
+    assert runtime.main(argv) == 1
+    public = capsys.readouterr()
+    metadata = _output_mismatch()
+    metadata["resource_sha256"] = hashlib.sha256(step["urn"].encode()).hexdigest()
+    assert json.loads(public.err) == {
+        "stage": "plan-validation",
+        "category": "validation-rejected",
+        "reason": "preview-old-outputs",
+        "mismatch": metadata,
+    }
+    assert public.out == ""
+    assert CANARY not in public.err and step["urn"] not in public.err
+    assert not list(tmp_path.iterdir())
+    assert "generate-data-key" not in scenario.events
+    assert "apply" not in scenario.events
+
+
 def _argv(tmp_path, account):
     return [
         "--stage",
@@ -234,10 +353,13 @@ def test_main_reports_actual_preview_stage_without_output_or_success(
     assert result == 1
     output = capsys.readouterr()
     assert output.out == ""
-    assert json.loads(output.err) == {
+    expected = {
         "stage": "pulumi-preview" if point == "pulumi" else "plan-validation",
         "category": category,
     }
+    if point == "validator":
+        expected["reason"] = "preview-error"
+    assert json.loads(output.err) == expected
     assert CANARY not in output.err
     assert not (tmp_path / "outputs").exists()
     assert not (scenario.args.public_dir / "saved-plan.encrypted.json").exists()
@@ -343,7 +465,11 @@ def test_large_real_child_preview_failure_retains_complete_encrypted_stdout(
     assert public.out == "" and CANARY not in public.err
     records = [json.loads(line) for line in public.err.splitlines()]
     assert len(records) == 2 and set(records[0]) == {"diagnostic_sha256"}
-    assert records[1] == {"stage": "plan-validation", "category": "validation-rejected"}
+    assert records[1] == {
+        "stage": "plan-validation",
+        "category": "validation-rejected",
+        "reason": "unsupported-input-change",
+    }
     destination = tmp_path / "operator-diagnostic.encrypted.json"
     raw = destination.read_bytes()
     assert CANARY.encode() not in raw
@@ -481,6 +607,7 @@ def test_preview_input_failure_seals_only_allowlisted_comparison_metadata(
     assert json.loads(public.err.splitlines()[-1]) == {
         "stage": "plan-validation",
         "category": "validation-rejected",
+        "reason": "preview-inputs",
     }
     raw = (tmp_path / "operator-diagnostic.encrypted.json").read_bytes()
     payload = runtime.envelope.open_diagnostic(
@@ -611,3 +738,89 @@ def test_public_category_hides_distinct_process_exit_values(exit_code):
         "category": "process-exit",
     }
     assert runtime._failure_record(failure, "pulumi-preview")["exit_code"] == exit_code
+
+
+class HostileString(str):
+    def __hash__(self):
+        pytest.fail("Private string subclass was hashed")
+
+
+def test_public_reason_codes_are_explicit_validator_invariants():
+    source = Path(runtime.__file__).with_name("operator_plan_validation.py")
+    reasons = set()
+    for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+            continue
+        if node.func.id not in {"_require", "ValueError"}:
+            continue
+        value = node.args[1 if node.func.id == "_require" else 0]
+        if isinstance(value, ast.Constant) and type(value.value) is str:
+            reasons.add(value.value)
+    assert runtime._PLAN_VALIDATION_REASONS == reasons
+    for reason in reasons:
+        assert runtime._public_record(ValueError(reason), "plan-validation") == {
+            "stage": "plan-validation",
+            "category": "validation-rejected",
+            "reason": reason,
+        }
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        ValueError(),
+        ValueError("preview-inputs", CANARY),
+        ValueError(CANARY),
+        ValueError("preview-inputs\n::error::" + CANARY),
+        ValueError("preview-inputs " + CANARY),
+        ValueError("preview-inputs" + "x" * 10000),
+        ValueError("preview-inputs\x00"),
+        ValueError("preview-inputs\ud800"),
+        ValueError(b"preview-inputs"),
+        ValueError(Hostile()),
+        ValueError(HostileString("preview-inputs")),
+        PrivateValueError("preview-inputs"),
+        RuntimeError("preview-inputs"),
+    ],
+)
+def test_public_reason_rejects_unsafe_arguments_without_coercion(error):
+    record = runtime._public_record(error, "plan-validation")
+    assert set(record) == {"stage", "category"}
+    assert CANARY not in json.dumps(record)
+
+
+@pytest.mark.parametrize(
+    "stage", ["pulumi-drift", "drift-validation", CANARY, Hostile()]
+)
+def test_public_reason_requires_the_validator_stage(stage):
+    assert "reason" not in runtime._public_record(ValueError("preview-inputs"), stage)
+
+
+def test_real_drift_validator_failure_exposes_only_static_reason(
+    scenario,  # noqa: F811
+    monkeypatch,
+    tmp_path,
+    capsys,
+):
+    role = next(
+        row
+        for row in scenario.data["preview"]["steps"]
+        if row["newState"]["type"] == "aws:iam/role:Role"
+    )
+    role["newState"]["inputs"]["description"] = CANARY
+    monkeypatch.setattr(runtime, "OperatorTransport", lambda *_: scenario.transport)
+    argv = _argv(tmp_path, scenario.args.account)
+    argv[1] = "drift"
+    assert runtime.main(argv) == 1
+    public = capsys.readouterr()
+    assert public.out == ""
+    assert json.loads(public.err) == {
+        "stage": "plan-validation",
+        "category": "validation-rejected",
+        "reason": "preview-inputs",
+    }
+    assert CANARY not in public.err and role["urn"] not in public.err
+    assert "drift" in scenario.events
+    assert "apply" not in scenario.events
+    assert "generate-data-key" not in scenario.events
+    assert not list(tmp_path.iterdir())

@@ -1,9 +1,9 @@
 # Operator preview failure diagnostics
 
-The trusted operator runner reports only a fixed stage and category when execution
-fails. Numeric exit codes remain inside the encrypted diagnostic. Public fields
-contain no exception text,
-child output, credentials or stack data. A failure remains a failure.
+The trusted operator runner reports fixed stage, category and allowlisted reason
+codes when execution fails. Numeric exit codes remain inside the encrypted
+diagnostic. Public fields contain no arbitrary exception text, child output,
+credentials or stack data. A failure remains a failure.
 
 For a failed preview after authenticated contract and checkpoint binding, the
 runner can additionally write `operator-public/operator-diagnostic.encrypted.json`.
@@ -33,12 +33,23 @@ characters, the object records `identity_omitted` instead. If safe attribution
 cannot be built, the reason remains the original plain `preview-inputs` label.
 The reason remains limited to 4 KiB and is never truncated mid-JSON.
 
+For post-apply drift rejected as `preview-old-outputs`, the public failure record
+may include a `mismatch` object for the first differing resource. It contains
+only a SHA-256 of the resource URN, a fixed resource type and preview operation,
+and fixed allowlisted top-level output field labels. Unknown resource types and
+field names collapse to `other`. The runner validates this exact shape before
+publishing it; malformed metadata is omitted. No raw URN, key, value, nested
+path, secret or resource ID
+is published. The comparison still rejects the drift, and no private drift
+diagnostic artifact is captured.
+
 The plaintext diagnostic payload is bounded to 45 MiB and its encrypted envelope
 to 61 MiB, accounting for stream and ciphertext base64 encoding. These are
 diagnostic-only bounds; saved-plan limits, authentication, apply/drift behavior,
 and one-day artifact retention are unchanged. Encryption temporarily creates
 multiple in-memory copies, so the runner must retain memory headroom for the
-bounded worst case. No new plaintext files or public log fields are introduced.
+bounded worst case. No new plaintext files are introduced; the drift-only
+`mismatch` object is the bounded public field described above.
 
 The diagnostic envelope uses the existing account-pinned KMS key and encryption
 context. Its separate authenticated type and schema prevent treating diagnostics
@@ -49,9 +60,12 @@ Do not publish decrypted payloads or attach them to issues, PRs or normal logs.
 ## Investigating a failure
 
 1. Record the failed run, attempt, account, PR head and public failure category.
-   Download only its exact diagnostic artifact and verify its GitHub artifact
-   digest before use. Do not substitute an artifact from another attempt.
-2. Use the reviewed `operator_plan_envelope.open_diagnostic` implementation
+   For a preview failure, download only its exact diagnostic artifact and verify
+   its GitHub artifact digest before use. Do not substitute an artifact from
+   another attempt. A drift failure has no private diagnostic artifact; use
+   only its bounded public metadata for initial triage.
+2. For a preview failure only, use the reviewed
+   `operator_plan_envelope.open_diagnostic` implementation
    with the authentic contract/execution bindings and an authorized native KMS
    reader. Keep ciphertext recovery and any decrypted content in private storage;
    do not print raw payloads to a shared terminal or copy them into public evidence.

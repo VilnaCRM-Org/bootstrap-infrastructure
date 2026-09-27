@@ -1478,8 +1478,8 @@
       "frozen_config": {
         "aws_managed_policy": {
           "arn": "arn:aws:iam::aws:policy/service-role/AWS_ConfigRole",
-          "document_sha256": "800d2de29e1503c081b58465590b2856a601749d1ba9db207f6951f358822ac7",
-          "version_id": "v72"
+          "document_sha256": "74a0a7adc735b32d4af8b8bba82cd59577c9dc89368c1621247fadf36494c7f9",
+          "version_id": "v73"
         },
         "aws_managed_updates_external": true,
         "inline_policies": {
