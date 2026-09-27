@@ -128,7 +128,6 @@ def select_records(records: list[Mapping[str, object]]) -> DeploymentScopes:
         ("docker-compose.yml", ALL, False, True, False),
         ("docker-compose.prod.yml", ALL, False, True, False),
         ("scripts/record_dependabot_exception.py", (), False, True, False),
-        ("scripts/configure_reviewed_source_environments.py", (), False, True, False),
         (".github/workflows/security-scans.yml", (), False, True, False),
         (".github/CODEOWNERS", (), False, True, False),
         ("docs/governance-stack.md", (), False, False, False),

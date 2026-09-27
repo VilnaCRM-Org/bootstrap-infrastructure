@@ -142,7 +142,7 @@ environments and request authentication.
    match that role's retained main-branch trust. Keep `test`/`test-preview`
    deployment branch policies restricted to main.
 
-   The reviewed `scripts/configure_reviewed_source_environments.py --apply`
+   The reviewed `scripts/configure_github_repository_controls.py --repo VilnaCRM-Org/bootstrap-infrastructure --reviewed-source-only --apply`
    creates only missing `reviewed-source-publisher` and `reviewed-pr-preview`
    environments with these main-only, no-bypass controls. It first verifies any
    existing environment and refuses to rewrite a weaker one or another repository

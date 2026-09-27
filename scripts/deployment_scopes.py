@@ -113,7 +113,6 @@ VALIDATION_ONLY_FILES = frozenset(
         ".github/CODEOWNERS",
         ".github/workflows/security-scans.yml",
         "scripts/record_dependabot_exception.py",
-        "scripts/configure_reviewed_source_environments.py",
     }
 )
 PROJECT_READMES = frozenset(
