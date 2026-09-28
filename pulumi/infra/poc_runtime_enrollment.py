@@ -1,8 +1,7 @@
-"""Central TEST runtime roles for independently staged enrollment.
+"""Central TEST ECS roles for independently staged enrollment.
 
-Not wired into existing entrypoints. A separate CloudFormation stack owns the
-six fences; governance consumes their exact native documents and owns three
-protected roles. No boolean config switch or service-owned IAM is introduced.
+Not wired into an entrypoint. The independent seed owns six fences and the
+publisher role; governance may later consume exact fences for two ECS roles.
 """
 
 from __future__ import annotations
@@ -17,8 +16,6 @@ from seed.poc_runtime import (
     enrollment_records,
     execution_policy,
     execution_trust,
-    publisher_policy,
-    publisher_trust,
     runtime_identities,
 )
 from seed.policy_registry import RegistryError, canonical_json
@@ -54,13 +51,7 @@ def _verify_fences(target: pulumi.InvokeOptions) -> None:
 
 
 def _inline_grants(purpose: str) -> list[aws.iam.RoleInlinePolicyArgs]:
-    """Keep the disabled task empty and select only fixed push or pull grants."""
-    if purpose == "publisher":
-        return [
-            aws.iam.RoleInlinePolicyArgs(
-                name="Issue219TestImagePush", policy=publisher_policy()
-            )
-        ]
+    """Keep the disabled task empty and select only fixed pull grants."""
     if purpose == "execution":
         return [
             aws.iam.RoleInlinePolicyArgs(
@@ -72,32 +63,22 @@ def _inline_grants(purpose: str) -> list[aws.iam.RoleInlinePolicyArgs]:
     return [aws.iam.RoleInlinePolicyArgs()]
 
 
-def _role_trust(purpose: str, publisher_document: str) -> str:
-    """Select the only trust document allowed for each fixed runtime role."""
-    if purpose == "publisher":
-        return publisher_document
+def _role_trust(purpose: str) -> str:
+    """Select the only trust document allowed for each ECS role."""
     if purpose == "execution":
         return execution_trust()
     return disabled_trust()
 
 
 class PocRuntimeRoles(pulumi.ComponentResource):
-    """Register protected roles with fixed ECS trust and optional publisher trust.
+    """Register protected ECS roles with fixed trust and closed grants.
 
     Execution can pull only the two ECR repositories; task trust stays disabled.
-    Full native seed/guard enrollment and GitHub subject provenance still belong
-    to the protected installer; matching policy bytes alone do not establish them.
+    This proposal is not wired into the current governor's entrypoint.
     """
 
-    def __init__(
-        self, *, provider: aws.Provider, publisher_subject: str | None = None
-    ) -> None:
+    def __init__(self, *, provider: aws.Provider) -> None:
         target = _target(provider, "governance")
-        trust = (
-            disabled_trust()
-            if publisher_subject is None
-            else publisher_trust(publisher_subject)
-        )
         # Verify before registering any role. The governor never owns or edits
         # these independently installed policies, including in a preview.
         _verify_fences(target)
@@ -109,11 +90,13 @@ class PocRuntimeRoles(pulumi.ComponentResource):
         )
         self.roles = {}
         for identity in runtime_identities():
+            if identity.purpose == "publisher":
+                continue
             self.roles[identity.purpose] = aws.iam.Role(
                 identity.name,
                 name=identity.name,
                 path="/",
-                assume_role_policy=_role_trust(identity.purpose, trust),
+                assume_role_policy=_role_trust(identity.purpose),
                 permissions_boundary=identity.policy_arn("boundary"),
                 managed_policy_arns=[identity.policy_arn("guard")],
                 inline_policies=_inline_grants(identity.purpose),

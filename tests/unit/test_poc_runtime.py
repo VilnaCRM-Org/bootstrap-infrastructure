@@ -72,7 +72,16 @@ def test_enrollment_has_closed_owner_and_attachment_inventory():
     assert len(policies) == 6
     assert len(principals) == 3
     assert len({row.arn for row in policies}) == 6
-    assert {row.owner_project for row in principals} == {"governance"}
+    assert {row.owner_project for row in principals} == {
+        "governance",
+        "independent-seed",
+    }
+    assert (
+        next(
+            row for row in principals if row.arn.endswith("/" + runtime.PUBLISHER_NAME)
+        ).owner_project
+        == "independent-seed"
+    )
     assert {row.ownership for row in policies} == {"independent-seed"}
     for row in principals:
         assert row.existing is False
@@ -122,6 +131,13 @@ def test_publisher_trust_uses_only_supported_iam_keys_and_exact_subject(spelling
         )
     )
     assert reordered in runtime.publisher_trust(reordered)
+
+
+def test_observed_custom_subject_is_fixed_for_independent_publisher():
+    assert runtime.PUBLISHER_SUBJECT == subject()
+    assert runtime.PUBLISHER_SUBJECT in runtime.publisher_trust(
+        runtime.PUBLISHER_SUBJECT
+    )
 
 
 @pytest.mark.parametrize(

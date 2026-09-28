@@ -22,6 +22,15 @@ from .policy_registry import (
 
 PUBLISHER_NAME = "user-service-test-ImagePublisher"
 APPLICATION_REPOSITORY = "VilnaCRM-Org/user-service"
+# This exact order is the observed repository OIDC subject-template order.
+# Recheck GitHub's native template and protected environment before installation.
+PUBLISHER_SUBJECT = (
+    "repo:VilnaCRM-Org/user-service:repository_id:646535009:"
+    "repository_owner_id:114362548:environment:poc-test-images:"
+    "ref:refs/heads/main:workflow_ref:VilnaCRM-Org/user-service/"
+    ".github/workflows/publish-poc-images.yml@refs/heads/main:"
+    "event_name:workflow_dispatch"
+)
 REPOSITORY_ARNS = tuple(
     f"arn:aws:ecr:{REGION}:{ACCOUNT_ID}:repository/user-service-test-{target}"
     for target in ("web", "worker")
@@ -277,7 +286,7 @@ def enrollment_records() -> tuple[
             PrincipalRecord(
                 role.arn,
                 False,
-                "governance",
+                "independent-seed" if role.purpose == "publisher" else "governance",
                 role.policy_arn("boundary"),
                 (role.policy_arn("guard"),),
                 (role.policy_arn("guard"),),

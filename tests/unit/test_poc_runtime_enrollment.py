@@ -12,7 +12,6 @@ from infra.utils.outputs import future_output
 from pulumi.runtime.sync_await import _sync_await
 from seed import poc_runtime as runtime
 from seed.policy_registry import RegistryError
-from test_poc_runtime import subject
 
 
 def target(monkeypatch, project):
@@ -53,44 +52,34 @@ def capture(monkeypatch, resource_class):
     return result
 
 
-def expected_trust(activate, purpose):
-    """Match the fixed runtime trust selection for each enrollment role."""
-    if purpose == "publisher":
-        return (
-            runtime.publisher_trust(subject()) if activate else runtime.disabled_trust()
-        )
+def expected_trust(purpose):
+    """Match the fixed ECS trust selection for each enrollment role."""
     if purpose == "execution":
         return runtime.execution_trust()
     return runtime.disabled_trust()
 
 
-@pytest.mark.parametrize("activate", [False, True])
-def test_governance_creates_pull_only_execution_and_disabled_task(
-    pulumi_mocks, monkeypatch, activate
+def test_governance_proposes_only_ecs_roles_not_independent_publisher(
+    pulumi_mocks, monkeypatch
 ):
     provider, reads = target(monkeypatch, "governance")
     registered = capture(monkeypatch, "Role")
-    component = enrollment.PocRuntimeRoles(
-        provider=provider, publisher_subject=subject() if activate else None
-    )
+    component = enrollment.PocRuntimeRoles(provider=provider)
     for arn in component.role_arns.values():
         _sync_await(future_output(arn))
     assert len(reads) == 6
     assert all(observed_provider is provider for _, observed_provider in reads)
-    assert len(registered) == 3
-    assert set(component.role_arns) == {"execution", "task", "publisher"}
-    for identity, (name, inputs) in zip(runtime.runtime_identities(), registered):
+    assert len(registered) == 2
+    assert set(component.role_arns) == {"execution", "task"}
+    for identity, (name, inputs) in zip(runtime.runtime_identities()[:2], registered):
         assert name == inputs["name"] == identity.name
         assert inputs["permissions_boundary"] == identity.policy_arn("boundary")
         assert inputs["managed_policy_arns"] == [identity.policy_arn("guard")]
         assert inputs["opts"].provider is provider
         assert inputs["opts"].protect is True
-        expected = expected_trust(activate, identity.purpose)
+        expected = expected_trust(identity.purpose)
         assert inputs["assume_role_policy"] == expected
-        if identity.purpose == "publisher":
-            assert len(inputs["inline_policies"]) == 1
-            assert inputs["inline_policies"][0].policy == runtime.publisher_policy()
-        elif identity.purpose == "execution":
+        if identity.purpose == "execution":
             assert len(inputs["inline_policies"]) == 1
             assert inputs["inline_policies"][0].name == "Issue219TestImagePull"
             assert inputs["inline_policies"][0].policy == runtime.execution_policy()
