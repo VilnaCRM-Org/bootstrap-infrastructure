@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import pulumi_aws as aws
+from seed.policy_registry import ACCOUNTS as SEED_ACCOUNTS
 
 import pulumi
 
@@ -22,7 +23,7 @@ CONFIG_RECORDER_MANAGED_POLICY = "service-role/AWS_ConfigRole"
 TEST_COST_CONTROLS_PATH = (
     Path(__file__).resolve().parent / "config" / "cost-controls.test.json"
 )
-APPROVED_TEST_COST_ACCOUNT_ID = "891377212104"
+APPROVED_TEST_COST_ACCOUNT_ID = SEED_ACCOUNTS["test"]
 
 
 def _security_posture_enabled(environment: str, account_id: str) -> bool:
