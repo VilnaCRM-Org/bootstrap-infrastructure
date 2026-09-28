@@ -61,9 +61,49 @@ def build(environment="test", **kwargs):
     )
 
 
+def catalog_before_test_poc_prerequisites(environment):
+    """Reverse only the four reviewed TEST policy documents for historical tests."""
+    catalog = registry.load_catalog(environment)
+    if environment != "test":
+        return catalog
+    amendment = catalog["provenance"].pop("test_poc_prerequisites_amendment")
+    policy_arn = (
+        "arn:aws:iam::891377212104:policy/"
+        "GitHubCiApply-user-service-infrastructure-test-poc-prerequisites"
+    )
+    added_ids = set()
+    for arn in amendment["target_policy_arns"]:
+        policy = catalog["policies"][arn]
+        added_ids.update(policy["statement_ids"])
+        statements = [
+            copy.deepcopy(catalog["statements"][sid]) for sid in policy["statement_ids"]
+        ]
+        if ":policy/GovernanceBoundary-" in arn:
+            assert len(statements) == 11
+            statements = statements[:5]
+        else:
+            for statement in statements:
+                for selector in ("Resource", "NotResource"):
+                    values = statement.get(selector)
+                    if isinstance(values, list) and policy_arn in values:
+                        values.remove(policy_arn)
+        policy["statement_ids"] = [registry.document_hash(s) for s in statements]
+        catalog["statements"].update(
+            zip(policy["statement_ids"], statements, strict=True)
+        )
+        policy["template_sha256"] = registry.document_hash(
+            {"Version": "2012-10-17", "Statement": statements}
+        )
+    used = {sid for p in catalog["policies"].values() for sid in p["statement_ids"]}
+    for sid in added_ids - used:
+        del catalog["statements"][sid]
+    assert registry.document_hash(catalog) == amendment["baseline_catalog_sha256"]
+    return catalog
+
+
 def catalog_before_config_v73(environment):
     """Invert only the managed-policy pin for one main-570fc727 catalog."""
-    catalog = registry.load_catalog(environment)
+    catalog = catalog_before_test_poc_prerequisites(environment)
     frozen = [
         principal["frozen_config"]
         for principal in catalog["principals"]
@@ -883,7 +923,10 @@ def test_current_mutable_grants_can_change_only_inside_each_project_catalog(
     by_arn = {p.arn: p for p in expected.principals}
     for arn, allowed in permitted.items():
         role = by_arn[arn]
-        assert len(allowed) == (2 if role.owner_project == "governance" else 26)
+        service_count = 3 if environment == "test" else 2
+        assert len(allowed) == (
+            service_count if role.owner_project == "governance" else 26
+        )
         for policy in allowed:
             roles = tuple(
                 replace(p, attachment_arns=role.guard_arns + (policy,))

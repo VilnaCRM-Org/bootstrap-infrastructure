@@ -38,8 +38,7 @@ jobs:
             "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
             privileged=false
             echo "::notice::Fork pull request detected; running unprivileged Pulumi guardrails without AWS credentials."
-          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
-            "${REVIEWED_SOURCE_PREVIEW_ACTIVE:-false}" == "true" ]]; then
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             privileged=false
             echo "::notice::Pull request source awaits independent admission; running unprivileged Pulumi guardrails."
           fi

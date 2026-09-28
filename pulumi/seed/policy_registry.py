@@ -16,7 +16,7 @@ from typing import Any, Mapping
 from .operator_trust import operator_trust_policy
 
 CATALOG_HASHES = {
-    "test": "ef419680ab38a437ba2e374839c29437b4ca3243fab665ef29e81c01bed47dd3",
+    "test": "ff2eaf296e5bd6e6bf8b02c7cdc31a2cfbcaef53fdea6173c64f77a3095effe7",
     "prod": "d4b56073a101401ce7c3a23cdad71fa13149a462714481981b937f952d563ee6",
 }
 ACCOUNTS = {"test": "891377212104", "prod": "933245420672"}
@@ -539,6 +539,11 @@ def _mutable_attachment_sets(registry: SeedRegistry) -> dict[str, set[str]]:
         f"user-service-infrastructure-{registry.environment}-{suffix}"
         for suffix in ("pulumi-backend", "secret-read-deny")
     }
+    if registry.environment == "test":
+        service_policies.add(
+            f"arn:aws:iam::{registry.account_id}:policy/"
+            "GitHubCiApply-user-service-infrastructure-test-poc-prerequisites"
+        )
     # Only the service apply role owns these mutable grants. Read, configuration
     # and replication roles retain their exact enrolled attachment sets.
     service_apply = (
