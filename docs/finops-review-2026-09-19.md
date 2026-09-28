@@ -198,6 +198,45 @@ before claiming zero Config/Security Hub cost. To roll back, set
 newly reviewed saved plan to re-enable CSPM and
 Config. Deleted Security Hub findings cannot be recovered by a code rollback.
 
+### Separate TEST GuardDuty S3 Protection exception
+
+The reviewed `pulumi/infra/config/guardduty-s3.test.json` policy targets only
+TEST account `891377212104` in `eu-central-1`. The separately reviewed seed
+identity is checked at plan time, so editable policy cannot retarget the
+exception. Setting `s3ProtectionEnabled=false` manages only GuardDuty's
+`S3_DATA_EVENTS` feature;
+the detector itself stays enabled, and PROD creates no feature resource from
+this exception. Disabling S3 Protection stops object-level S3 threat findings
+for **every bucket in that TEST account and Region**, not just bootstrap
+buckets. Read-only Cost Explorer usage-type data shows USD 0.8522 for the
+complete August 2026 month and USD 2.6708 for September 1–24. A simple
+30-day scaling of September is about USD 3.34 before tax, not the earlier
+USD 5–6 estimate; workload and billing lag can change it. No saving is
+counted until the reviewed plan applies and post-change billing is observed.
+
+The pinned AWS provider's `DetectorFeature` create operation uses
+`UpdateDetector` with only `S3_DATA_EVENTS`, so this is an IaC-managed
+feature update, not a manual AWS edit. This platform resource must pass its
+own saved-plan, IAM, destructive-diff and post-apply drift gates; the separate
+operator validator is not evidence for the platform change. The stack exports
+`guardDutyS3ProtectionManaged` in both accounts and exports
+`guardDutyS3ProtectionEnabled` only for the managed TEST feature; no actual
+PROD S3 status is inferred from this exception. Before approval, verify the live
+TEST account/Region, detector identity and enabled feature; confirm no
+organization administrator will override it. Accept a saved plan only if it
+adds the TEST feature-management resource with `status=DISABLED`, leaves the
+core detector and other features unchanged, and has no PROD GuardDuty change.
+After apply, read back both detector and feature status and check drift.
+
+Rollback must change the **same managed resource** to
+`s3ProtectionEnabled=true` through a new reviewed saved plan. Removing the
+resource declaration does not re-enable S3 Protection: the provider's delete
+operation only removes it from Pulumi state. Do not use deletion as rollback.
+
+[AWS S3 Protection scope](https://docs.aws.amazon.com/guardduty/latest/ug/s3-protection.html)
+and the [pinned provider's create/delete implementation](https://github.com/hashicorp/terraform-provider-aws/blob/4981ec2b44ea4892c1ee4f0c1ed23b761a55f44d/internal/service/guardduty/detector_feature.go)
+describe these behavior boundaries.
+
 After approved changes deploy, compare full-month or normalized daily costs at
 similar workload levels, separately report tax/credits, and inspect month-end
 forecast again. A PR, a green test suite or a budget alert does not prove the

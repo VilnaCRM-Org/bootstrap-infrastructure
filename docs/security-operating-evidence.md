@@ -94,6 +94,13 @@ and post-apply drift on 2026-05-11 UTC.
 | AWS Config | Recorder `bootstrap-test-configuration-recorder`, delivery channel `bootstrap-test-configuration-delivery`, bucket `bootstrap-891377212104-eu-central-1-test-aws-config`, `recording=true`, and `lastStatus=SUCCESS`. | Refresh monthly and after recorder scope, bucket, or delivery changes. |
 | Vulnerable dependencies or workflow code | `pip-audit`, Bandit, CodeQL, actionlint, dependency hygiene checks, and `docs/vulnerability-review-2026-05-09.md`. | Per PR and monthly review | Patch, pin, or record a time-bound exception with owner approval. |
 
+The table records historical May evidence, not the September cost-exception
+posture. The separately approved TEST-only GuardDuty S3 Protection exception
+keeps the detector enabled but removes S3 object-level findings account-wide in
+`eu-central-1` when applied. Refresh live feature, detector and drift evidence
+after the protected plan; do not treat the historical row as proof of current
+S3 finding coverage. PROD GuardDuty coverage is not changed by this exception.
+
 ## Human And Static-Credential Metadata
 
 A non-secret IAM metadata refresh on 2026-05-11 UTC confirmed that the
