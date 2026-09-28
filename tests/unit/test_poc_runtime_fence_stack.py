@@ -82,6 +82,25 @@ def test_complete_synthetic_create_change_set_accepted():
     fences.validate_fence_create_changes(packet, _changes(packet))
 
 
+def test_stack_packet_rejects_incomplete_or_foreign_enrollment(monkeypatch):
+    policies, principals = poc_runtime.enrollment_records()
+    monkeypatch.setattr(
+        fences, "enrollment_records", lambda: (policies[:-1], principals)
+    )
+    with pytest.raises(RegistryError, match="inventory changed"):
+        fences.build_fence_stack_packet()
+    monkeypatch.setattr(
+        fences,
+        "enrollment_records",
+        lambda: (
+            (replace(policies[0], ownership="foreign"), *policies[1:]),
+            principals,
+        ),
+    )
+    with pytest.raises(RegistryError, match="ownership changed"):
+        fences.build_fence_stack_packet()
+
+
 @pytest.mark.parametrize(
     "edit",
     [
@@ -111,3 +130,7 @@ def test_create_change_set_rejects_missing_duplicate_or_malformed_rows():
             fences.validate_fence_create_changes(packet, bad)
     with pytest.raises(RegistryError, match="Complete"):
         fences.validate_fence_create_changes(packet, None)
+    changes = _changes(packet)
+    changes[0].pop("ResourceChange")
+    with pytest.raises(RegistryError, match="Malformed"):
+        fences.validate_fence_create_changes(packet, changes)
