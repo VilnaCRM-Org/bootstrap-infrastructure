@@ -1803,6 +1803,19 @@ def test_security_cost_policy_can_restore_checks(tmp_path, monkeypatch):
     )
 
 
+def test_security_cost_policy_cannot_retarget_another_account(tmp_path, monkeypatch):
+    path = tmp_path / "cost-controls.test.json"
+    path.write_text(
+        json.dumps({"accountId": "123456789012", "securityPostureEnabled": False}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(security_account_controls, "TEST_COST_CONTROLS_PATH", path)
+    for account_id in ("123456789012", "891377212104"):
+        assert security_account_controls._security_posture_enabled(  # nosec B101
+            "test", account_id
+        )
+
+
 @pytest.mark.parametrize(
     "environment,account_id,enabled",
     [

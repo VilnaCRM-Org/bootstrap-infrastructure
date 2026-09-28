@@ -22,6 +22,7 @@ CONFIG_RECORDER_MANAGED_POLICY = "service-role/AWS_ConfigRole"
 TEST_COST_CONTROLS_PATH = (
     Path(__file__).resolve().parent / "config" / "cost-controls.test.json"
 )
+APPROVED_TEST_COST_ACCOUNT_ID = "891377212104"
 
 
 def _security_posture_enabled(environment: str, account_id: str) -> bool:
@@ -46,7 +47,11 @@ def _security_posture_enabled(environment: str, account_id: str) -> bool:
         raise ValueError(
             "Test cost policy requires a 12-digit account ID and a boolean."
         )
-    return account_id != expected_account or enabled
+    return (
+        account_id != APPROVED_TEST_COST_ACCOUNT_ID
+        or expected_account != APPROVED_TEST_COST_ACCOUNT_ID
+        or enabled
+    )
 
 
 def _environment_part(settings: BootstrapSettings) -> str:
