@@ -199,6 +199,44 @@ def test_canonical_selection_order_and_controller_version_are_bound():
         assert changed.contract_digest != baseline.contract_digest
 
 
+def test_reviewed_pr276_governance_scope_survives_contract_reclassification():
+    request, evidence, metadata = input_facts((), command="up", target="test")
+    request["head_sha"] = "3d6645ae95274f4e70ec3037e4c06af96e1f61ec"
+    base = "df1d51a325e0a01ca2d9affc417d8833ed9592f7"
+    evidence["artifact"] = dict(request)
+    evidence["scope_base_sha"] = base
+    evidence["scope_head_sha"] = request["head_sha"]
+    evidence["pr"]["base"]["sha"] = base
+    evidence["pr"]["head"]["sha"] = request["head_sha"]
+    evidence["changed_file_records"] = [
+        {"filename": path, "status": "modified"}
+        for path in (
+            "pulumi/infra/ci_bootstrap.py",
+            "specs/service-test-preview-trust-cutover/runbook.md",
+            "tests/unit/test_governance_parity.py",
+            "tests/unit/test_governance_repo_component.py",
+            "tests/unit/test_oidc_trust_integration.py",
+        )
+    ]
+    evidence["changed_file_count"] = evidence["pr"]["changed_files"] = 5
+    contract = controller.build_deployment_contract(
+        request,
+        evidence,
+        controller=metadata,
+        selector_sha256="d" * 64,
+        complete=True,
+    )
+    assert contract.selection.stacks == ("governance",)
+    assert {step.scope for step in contract.schedule} == {"governance"}
+    controller._validate_contract(contract)
+    forged = replace(
+        contract,
+        selection=replace(contract.selection, stacks=SCOPES),
+    )
+    with pytest.raises(ValueError, match="contradicts installed selector"):
+        controller._validate_contract(forged)
+
+
 @pytest.mark.parametrize("key", tuple(controller.REQUEST_PATTERNS))
 @pytest.mark.parametrize("value", [None, "", "injected\nvalue"])
 def test_request_fields_are_closed_format(key, value):
