@@ -23,7 +23,13 @@ from .poc_runtime import (
     publisher_policy,
     publisher_trust,
 )
-from .policy_registry import RegistryError, canonical_json, document_hash
+from .policy_registry import (
+    PolicyRecord,
+    PrincipalRecord,
+    RegistryError,
+    canonical_json,
+    document_hash,
+)
 
 STACK_NAME = "issue219-runtime-fences-test"
 CONTRACT_VERSION = "issue219-test-runtime-seed/v2"
@@ -49,11 +55,9 @@ def _logical_id(arn: str) -> str:
     return "RuntimeFence" + hashlib.sha256(arn.encode("utf-8")).hexdigest()
 
 
-def build_fence_stack_packet() -> FenceStackPacket:
-    """Render six independent fences and one exact OIDC publisher role."""
-    policies, principals = enrollment_records()
-    if len(policies) != 6 or len(principals) != 3:
-        raise RegistryError("Runtime fence inventory changed")
+def _verified_publisher(
+    policies: tuple[PolicyRecord, ...], principals: tuple[PrincipalRecord, ...]
+) -> PrincipalRecord:
     publisher = next(
         (row for row in principals if row.arn.endswith("/" + PUBLISHER_NAME)), None
     )
@@ -65,6 +69,19 @@ def build_fence_stack_packet() -> FenceStackPacket:
         or publisher.attachment_arns != publisher.guard_arns
     ):
         raise RegistryError("Publisher ownership changed")
+    if not {publisher.boundary_arn, publisher.guard_arns[0]} <= {
+        policy.arn for policy in policies
+    }:
+        raise RegistryError("Publisher fence binding changed")
+    return publisher
+
+
+def build_fence_stack_packet() -> FenceStackPacket:
+    """Render six independent fences and one exact OIDC publisher role."""
+    policies, principals = enrollment_records()
+    if len(policies) != 6 or len(principals) != 3:
+        raise RegistryError("Runtime fence inventory changed")
+    publisher = _verified_publisher(policies, principals)
     resources = {}
     for policy in policies:
         if policy.ownership != "independent-seed" or policy.installed_arn:
@@ -82,11 +99,6 @@ def build_fence_stack_packet() -> FenceStackPacket:
         }
     publisher_logical_id = _logical_id(publisher.arn)
     publisher_guard = publisher.guard_arns[0]
-    if not {
-        publisher.boundary_arn,
-        publisher_guard,
-    } <= {policy.arn for policy in policies}:
-        raise RegistryError("Publisher fence binding changed")
     resources[publisher_logical_id] = {
         "Type": "AWS::IAM::Role",
         "DeletionPolicy": "Retain",
