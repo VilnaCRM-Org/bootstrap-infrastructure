@@ -1,38 +1,39 @@
 # Central TEST runtime enrollment slice
 
-`infra/poc_runtime_enrollment.py` contains the governance-owned Pulumi role
-component. `seed/poc_runtime_fence_stack.py` renders the separate independent
-CloudFormation owner for six managed policies. No current deployment entrypoint
-imports the role component; neither source artifact is an installed or fully
-activated capability. Existing immutable catalogs are not silently extended.
+`infra/poc_runtime_enrollment.py` contains the disconnected governance-owned
+ECS role proposal. `seed/poc_runtime_fence_stack.py` renders a separate
+CloudFormation owner for six managed policies and the exact TEST image-publisher
+role. Neither source packet has been installed; the ECS proposal remains
+disconnected and incomplete for a running workload. Existing immutable catalogs
+are not silently extended.
 
 ## Ownership and registration
 
 The independent CloudFormation packet owns six retained managed policies, one
-boundary and one guard for each role. Policy paths are
-`/issue219/test/{boundary,guard}/`; basenames use each exact role name followed
-by `-Boundary` or `-Guard`. It creates no roles or attachments. Its offline
-validator requires six exact Add rows. A separately authenticated non-root
-installer must verify absent stack/policy names, exact TEST account and region,
-complete change-set provenance, installed default policy documents, termination
-protection and the permanent deny-update stack policy. The former Pulumi fence
-component was removed so there is one proposed owner.
+boundary and one guard per identity, plus the protected
+`user-service-test-ImagePublisher` role. Policy paths are
+`/issue219/test/{boundary,guard}/`. The publisher has the exact customized OIDC
+trust, its boundary, sole guard and finite ECR push inline policy. Its offline
+validator requires seven exact Add rows. A separately authenticated installer
+must verify absent stack/policy/role names, TEST account and region, GitHub OIDC
+template and environment, complete change-set provenance, installed default
+policy documents and attachments, termination protection and the permanent
+deny-update stack policy. The existing staged six-policy change set does not
+match this seven-resource source and must not be executed as its installer.
 
 `PocRuntimeRoles` requires the `governance` project and the same target checks.
 Before role registration, it reads every exact policy ARN and compares the native
 default policy document with the complete expected document. Missing/changed
-policies stop preparation. It registers these three protected roles, each with
+policies stop preparation. It proposes only these two protected ECS roles, each with
 its exact boundary, sole managed guard attachment, explicit inline-policy set,
 one-hour session limit and central ownership tags:
 
 - `user-service-infrastructure-test-EcsExecution`
 - `user-service-infrastructure-test-EcsTask`
-- `user-service-test-ImagePublisher`
 
 Role ARNs are exported by purpose. The task role retains no inline grants,
 deny-all boundary and guard, and disabled trust. The execution role has only the
-closed ECR pull grant below. Publisher trust is disabled by default; a separately
-supplied exact customized subject selects the publisher's reviewed trust. No
+closed ECR pull grant below. The independent packet owns publisher trust. No
 environment/config boolean enables task access, PassRole or a seed-catalog bypass.
 
 The disabled trust uses a specific TEST account principal with an explicit Deny
@@ -94,10 +95,10 @@ This increment deliberately stops before a live installer integration. The
 existing seed catalog/installer admits exactly 55 policies and 24 principals,
 with three new roles interpreted as operator executors. Appending these runtime
 roles would break that security contract. A separate complete registry/governor
-amendment must preserve the installed controls, grant exact central role
-operations without fence mutation, update full-policy quotas, and define a
-reviewed state/ownership transition. Neither that amendment nor a deployable
-installer is claimed by this source increment.
+amendment must preserve installed controls and grant exact ECS role operations
+without fence mutation. The publisher instead belongs to the independent
+CloudFormation owner. Neither ECS amendment nor a deployable installer is
+claimed by this source increment.
 
 The bounded [installer assessment](installability-stop.md) records the exact
 current denials, ownership boundary and minimum independent amendment contract.
@@ -119,21 +120,22 @@ include `repo`, `repository_id=646535009`, `repository_owner_id=114362548`,
 immutable repo spellings are supported; key order is preserved. Missing, extra,
 duplicate, foreign, PR, or reusable-workflow claims reject.
 
-The 2026-09-23 authenticated GitHub metadata read returned `use_default=true`,
-`use_immutable_subject=false`. The environment endpoint returned 404, which is
-not proof that the required protected environment is usable. Current metadata
-therefore does not meet the activation contract. No OIDC setting was changed.
+The 2026-09-28 GitHub API read returned `use_default=false` with exactly the
+seven subject claim keys above, in the order pinned by the packet. The
+`poc-test-images` environment has Kravalg as required reviewer, admin bypass
+disabled and a single `main` branch policy. Recheck all of these immediately
+before installation; metadata is not an authenticated live token.
 [GitHub's subject customization contract](https://docs.github.com/en/actions/reference/security/oidc#customizing-the-subject-claims-for-an-organization-or-repository)
 supports the proposed claims, but source validation is not token authentication.
 
 Before connecting these components to protected deployment entrypoints:
 
-1. Review/install the complete independent registry amendment for the six new
-   policies and three principals, preserving all existing records. The ordinary
+1. Review/install the independent seven-resource CloudFormation packet for six
+   fences and the publisher role, preserving all existing records. The ordinary
    three-executor seed activation validator is not a runtime-enrollment route.
-2. Amend the governor's identity, boundary and immutable guards only for these
-   exact role/policy reads and centrally owned role operations. Current authority
-   intentionally rejects these new roles; no bypass was added here.
+2. Amend the governor's identity, boundary and immutable guards only for the
+   two exact ECS roles and policy reads. Current authority intentionally rejects
+   these roles; no bypass was added here.
 3. Verify real policy documents/default versions, immutability controls, trust,
    complete attachments/inline grants, role/policy name collisions, actual quotas
    and existing OIDC provider ownership. Byte equality alone does not prove these
@@ -141,10 +143,10 @@ Before connecting these components to protected deployment entrypoints:
 4. Verify #185 current-head admission; approved publisher workflow on main;
    protected environment/main-only branch policy, reviewer and no bypass;
    customized subject configuration and authenticated native subject metadata.
-5. Install through reviewed saved plans. Prove native publisher allow/deny cases
-   and repository resource-policy intersection, then actual two-image publication.
-   ECS log/secret and task mail/queue grants, deployment PassRole and workload CRUD remain
-   separate amendments requiring real bindings and evidence.
+5. Install through a reviewed change set and protected saved plans. Prove native
+   publisher allow/deny cases and repository policy intersection, then publish
+   both images. ECS log/secret and task mail/queue grants, deployment PassRole
+   and workload CRUD remain required before the real service can run.
 
 Focused tests exercise real mock resource registrations, ownership/provider
 rejection, changed-fence rejection, disabled task trust, publisher claim rejection,
