@@ -12,7 +12,6 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import cast
 
 from .poc_runtime import ACCOUNT_ID, REGION, enrollment_records
 from .policy_registry import RegistryError, canonical_json, document_hash
@@ -96,6 +95,33 @@ def validate_fence_stack_packet(packet: FenceStackPacket) -> None:
         raise RegistryError("Runtime fence packet differs from reviewed source")
 
 
+def _validate_add_metadata(row: Mapping) -> None:
+    if (
+        row.get("Action") != "Add"
+        or row.get("ResourceType") != "AWS::IAM::ManagedPolicy"
+    ):
+        raise RegistryError("Only exact new runtime fence policies may be added")
+    if row.get("PhysicalResourceId") is not None or row.get("ChangeSetId") is not None:
+        raise RegistryError("Only exact new runtime fence policies may be added")
+    if row.get("Replacement") not in (None, "False"):
+        raise RegistryError("Only exact new runtime fence policies may be added")
+    if row.get("PolicyAction") not in (None, "Retain"):
+        raise RegistryError("Only exact new runtime fence policies may be added")
+
+
+def _validate_add_row(change: object, expected: dict, seen: set[str]) -> str:
+    if not isinstance(change, Mapping) or change.get("Type") != "Resource":
+        raise RegistryError("Unexpected runtime fence change")
+    row = change.get("ResourceChange")
+    if not isinstance(row, Mapping):
+        raise RegistryError("Malformed runtime fence resource change")
+    logical = row.get("LogicalResourceId")
+    if not isinstance(logical, str) or logical not in expected or logical in seen:
+        raise RegistryError("Only exact new runtime fence policies may be added")
+    _validate_add_metadata(row)
+    return logical
+
+
 def validate_fence_create_changes(packet: FenceStackPacket, changes: object) -> None:
     """Require six exact Add rows from an authenticated complete change set.
 
@@ -107,30 +133,8 @@ def validate_fence_create_changes(packet: FenceStackPacket, changes: object) -> 
     if not isinstance(changes, list):
         raise RegistryError("Complete runtime fence change list required")
     expected = json.loads(packet.template_json)["Resources"]
-    actual: dict[str, str] = {}
+    seen: set[str] = set()
     for change in changes:
-        if not isinstance(change, Mapping):
-            raise RegistryError("Unexpected runtime fence change")
-        change = cast(Mapping[str, object], change)
-        if change.get("Type") != "Resource":
-            raise RegistryError("Unexpected runtime fence change")
-        row = change.get("ResourceChange")
-        if not isinstance(row, Mapping):
-            raise RegistryError("Malformed runtime fence resource change")
-        row = cast(Mapping[str, object], row)
-        logical = row.get("LogicalResourceId")
-        if (
-            not isinstance(logical, str)
-            or logical not in expected
-            or logical in actual
-            or row.get("Action") != "Add"
-            or row.get("ResourceType") != "AWS::IAM::ManagedPolicy"
-            or row.get("PhysicalResourceId") is not None
-            or row.get("Replacement") not in (None, "False")
-            or row.get("PolicyAction") not in (None, "Retain")
-            or row.get("ChangeSetId") is not None
-        ):
-            raise RegistryError("Only exact new runtime fence policies may be added")
-        actual[logical] = "AWS::IAM::ManagedPolicy"
-    if actual != {key: value["Type"] for key, value in expected.items()}:
+        seen.add(_validate_add_row(change, expected, seen))
+    if seen != set(expected):
         raise RegistryError("All six runtime fence additions are required")
