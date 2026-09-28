@@ -156,6 +156,9 @@ def test_only_main_bound_clean_jobs_can_mint_dedicated_status_tokens():
             assert "REVIEWED_SOURCE_APP_PRIVATE_KEY" not in str(job)
             continue
         assert job["environment"] == "reviewed-source-publisher"
+        assert job["env"]["REVIEWED_SOURCE_RULESET_UPDATED_AT"] == (
+            "${{ vars.REVIEWED_SOURCE_RULESET_UPDATED_AT }}"
+        )
         assert len(app_steps) == 1
         app = app_steps[0]
         assert app["uses"] == (

@@ -75,17 +75,26 @@ allowing only the `main` branch, no tags/wildcards, and administrator bypass
 disabled. It needs no required reviewer or wait timer. Store
 `REVIEWED_SOURCE_APP_PRIVATE_KEY` **only in that environment**, never at repository
 or organization scope. Set that environment's non-secret variables
-`REVIEWED_SOURCE_APP_ID` and `REVIEWED_SOURCE_APP_SLUG` to the actual new App, and
-`REVIEWED_SOURCE_RULESET_ID` to the existing active default-branch ruleset used for
-cutover. Keep `REVIEWED_SOURCE_PREVIEW_ACTIVE` a repository variable shared by the
-ordinary workflow and clean publisher jobs.
+`REVIEWED_SOURCE_APP_ID` and `REVIEWED_SOURCE_APP_SLUG` to the actual new App.
+After the Stage 2 owner audit, set `REVIEWED_SOURCE_RULESET_ID` to the separate,
+active, no-bypass default-branch ruleset for the three reviewed-source contexts,
+and `REVIEWED_SOURCE_RULESET_UPDATED_AT` to that exact audited ruleset revision.
+The current general `main` ruleset has an administrator bypass and cannot serve
+as the reviewed-source ruleset. Keep `REVIEWED_SOURCE_PREVIEW_ACTIVE` a repository
+variable shared by the ordinary workflow and clean publisher jobs.
 
 Both clean jobs read back the main-only key boundary before minting an App token.
 Publication resolves the App's public numeric identity and organization owner,
 checks the returned status creator's numeric bot identity, and rejects another
 issuer. When activated, it also reads the actual ruleset and requires strict
-checks, default-branch scope, no bypass actors and exactly one entry per
-`Reviewed*` context with `integration_id` equal to the dedicated App ID. Missing
+checks, default-branch scope, a pinned owner-audited revision and exactly one entry
+per `Reviewed*` context with `integration_id` equal to the dedicated App ID. GitHub
+omits `bypass_actors` when the App reads a ruleset with Administration: read. An
+owner with ruleset write access must first read back the complete bypass list and
+confirm it is empty, then pin that ruleset's exact `updated_at` in the protected
+publisher environment. The clean jobs reject any changed revision and also reject
+a nonempty bypass list if GitHub returns one. A read-only response without the
+field is never interpreted as proof that the list is empty. Missing
 App/key/environment configuration, shared issuers and bare-name requirements
 fail closed. Operator enrollment must independently confirm the private key has
 no repository/organization copy; a workflow cannot prove absence of another copy.
@@ -153,15 +162,21 @@ environments and request authentication.
    edited or dismissed review provides a trusted signal even while the legacy
    PR credential attempts fail after trust retirement. Failed or skipped source
    checks cannot substitute for review approval or successful trusted jobs.
-3. The branch-protection owner adds `Reviewed Preview`,
-   `Reviewed Destructive Diff Gate`, and `Reviewed IAM Validation` to the active
-   ruleset, with `integration_id` set to the actual dedicated App ID on each,
-   preserving **every existing required context**, its issuer and every review
-   rule. Bare names or shared GitHub Actions issuer bindings are rejected. Read
-   back all three issuer-bound requirements before activation. This temporarily
-   blocks merges until the new workflow can produce real success. The additive
-   cutover is retained by the repository control reconciler alongside its
-   existing baseline.
+3. The branch-protection owner creates a separate active default-branch ruleset
+   with **no bypass actors** and strict required status checks for `Reviewed
+   Preview`, `Reviewed Destructive Diff Gate`, and `Reviewed IAM Validation`.
+   Each check must have `integration_id` set to the actual dedicated App ID. Do
+   not remove or weaken the existing `main` ruleset, its required contexts,
+   issuers or review rules. GitHub aggregates applicable rulesets, so its existing
+   administrator bypass cannot bypass the new ruleset. With an owner-authorized
+   read, verify the complete empty bypass list, exact issuer bindings, scope and
+   `updated_at`; record the ruleset ID and timestamp in the protected publisher
+   environment. The App's Administration: read response omits the bypass list,
+   so a changed timestamp requires a new owner audit before updating the pin.
+   Bare names, shared GitHub Actions issuer bindings or a read-only-only audit
+   are rejected. This temporarily blocks merges until the new workflow produces
+   real success. The additive cutover is retained alongside the existing
+   repository control baseline.
 4. Only after the issuer-bound requirements are installed, set
    `REVIEWED_SOURCE_PREVIEW_ACTIVE=true`. Ordinary PR guardrails then select the
    credential-free path; the legacy privileged jobs skip while the distinct
