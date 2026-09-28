@@ -30,27 +30,9 @@ POLICY = (
 REAL_READ_TEXT = Path.read_text
 
 
-@pytest.fixture(autouse=True)
-def stage_capability_for_pure_renderer_tests(monkeypatch):
-    """Exercise the proposed grant without activating it in packaged IaC."""
-
-    def staged_read(path, *args, **kwargs):
-        content = REAL_READ_TEXT(path, *args, **kwargs)
-        if path.name == "test-poc-identity.json":
-            identity = json.loads(content)
-            identity["enabled"] = True
-            return json.dumps(identity)
-        return content
-
-    monkeypatch.setattr(Path, "read_text", staged_read)
-
-
 @pytest.mark.parametrize("write", [False, True])
-def test_packaged_capability_remains_disabled_until_seed_installation(
-    monkeypatch, write
-):
-    monkeypatch.setattr(Path, "read_text", REAL_READ_TEXT)
-    assert capability(write=write) == []
+def test_packaged_capability_matches_installed_test_seed(write):
+    assert capability(write=write)
     args = arguments()
     boundary = json.loads(service_boundary_policy(args, REPO))["Statement"]
     catalog = load_catalog("test")
@@ -66,7 +48,28 @@ def test_packaged_capability_remains_disabled_until_seed_installation(
         repo=REPOSITORY,
         project=REPOSITORY,
     )
-    assert all("poc-prerequisites" not in dict(spec.policy_documents) for spec in specs)
+    assert all("poc-prerequisites" in dict(spec.policy_documents) for spec in specs)
+
+
+def test_explicitly_disabled_identity_still_emits_no_capability(monkeypatch):
+    def disabled(path, *args, **kwargs):
+        content = REAL_READ_TEXT(path, *args, **kwargs)
+        if path.name == "test-poc-identity.json":
+            identity = json.loads(content)
+            identity["enabled"] = False
+            return json.dumps(identity)
+        return content
+
+    monkeypatch.setattr(Path, "read_text", disabled)
+    assert capability() == []
+    assert capability(write=False) == []
+
+
+def test_installed_catalog_rejects_replaying_seed_amendment():
+    from seed.test_poc_prerequisite_amendment import build_catalog
+
+    with pytest.raises(ValueError, match="reviewed TEST baseline"):
+        build_catalog()
 
 
 def arguments():
@@ -183,7 +186,7 @@ def test_missing_packaged_identity_fails_closed(monkeypatch):
         capability()
 
 
-def test_staged_identity_boundary_governor_matches_but_seed_remains_closed():
+def test_enabled_identity_boundary_governor_and_attachment_allowlist_match():
     args = arguments()
     full = capability()
     boundary = json.loads(service_boundary_policy(args, REPO))["Statement"]
@@ -192,9 +195,7 @@ def test_staged_identity_boundary_governor_matches_but_seed_remains_closed():
     pin = catalog["policies"][
         f"arn:aws:iam::{ACCOUNT}:policy/GovernanceBoundary-{REPOSITORY}-test"
     ]
-    assert [catalog["statements"][s] for s in pin["statement_ids"]] == boundary[
-        : -len(full)
-    ]
+    assert [catalog["statements"][s] for s in pin["statement_ids"]] == boundary
     specs = _governance_role_specs(
         account_id=ACCOUNT,
         partition="aws",
@@ -211,7 +212,11 @@ def test_staged_identity_boundary_governor_matches_but_seed_remains_closed():
     assert any(POLICY in s["Resource"] for s in governor["Statement"])
     permitted = _mutable_attachment_sets(build("test"))
     role = f"arn:aws:iam::{ACCOUNT}:role/GitHubCiApply-{REPOSITORY}-test"
-    assert POLICY not in permitted[role]
+    assert permitted[role] == {
+        POLICY,
+        POLICY.removesuffix("poc-prerequisites") + "pulumi-backend",
+        POLICY.removesuffix("poc-prerequisites") + "secret-read-deny",
+    }
     assert all(
         POLICY not in policies
         for principal, policies in permitted.items()
@@ -367,7 +372,7 @@ def test_missing_identity_pair_and_prod_have_no_role_capability():
         )
 
 
-def test_active_seed_guard_denies_staged_policy_until_independent_install():
+def test_active_seed_guard_admits_only_exact_prerequisite_policy():
     catalog = load_catalog("test")
     pin = catalog["policies"][
         f"arn:aws:iam::{ACCOUNT}:policy/issue215-seed/test/guard/G-GitHubGovernanceApply"
@@ -385,7 +390,7 @@ def test_active_seed_guard_denies_staged_policy_until_independent_install():
         )
     ]
     assert len(not_resources) == 2
-    assert all(POLICY not in resources for resources in not_resources)
+    assert all(POLICY in resources for resources in not_resources)
     for candidate in (
         POLICY + "-foreign",
         POLICY.replace("891377212104", "933245420672").replace("-test-", "-prod-"),
