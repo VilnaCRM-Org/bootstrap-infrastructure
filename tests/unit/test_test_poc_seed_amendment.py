@@ -1,4 +1,4 @@
-"""TEST PoC seed amendment remains exact, offline and unactivated."""
+"""Historical TEST PoC seed amendment stays exact and cannot be replayed live."""
 
 import copy
 import dataclasses
@@ -11,6 +11,7 @@ from seed import policy_registry as registry
 from seed import test_poc_prerequisite_amendment as capability
 from test_governance_test_poc_capability import arguments
 from test_operator_seed_installation import packet_for
+from test_seed_policy_registry import catalog_before_test_poc_prerequisites
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 
@@ -21,6 +22,26 @@ from infra.governance import (  # noqa: E402
 )
 
 amendment = installation
+
+
+@pytest.fixture(autouse=True)
+def historical_seed_baseline(monkeypatch):
+    """Reproduce the reviewed pre-install packet using a pinned offline fixture."""
+    baseline = catalog_before_test_poc_prerequisites("test")
+    original_load = registry.load_catalog
+
+    def historical_catalog(environment):
+        return (
+            copy.deepcopy(baseline)
+            if environment == "test"
+            else original_load(environment)
+        )
+
+    monkeypatch.setattr(registry, "load_catalog", historical_catalog)
+    monkeypatch.setattr(capability, "load_catalog", historical_catalog)
+    monkeypatch.setitem(
+        registry.CATALOG_HASHES, "test", registry.document_hash(baseline)
+    )
 
 
 def activation(environment="test"):

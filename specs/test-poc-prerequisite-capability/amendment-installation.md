@@ -52,6 +52,10 @@ Before live installation, an independently authenticated non-root operator must:
    through the protected saved-plan path. Preserve `Issue215CutoverSessions` until
    its separately reviewed activation; an identity Allow does not override it.
 
+The source follow-up, its ordered protected deployments and remaining separate
+activation dependencies are in [post-seed-activation.md](post-seed-activation.md).
+That candidate is not evidence that this installation has completed.
+
 The current [TEST plan failure](https://github.com/VilnaCRM-Org/user-service-infrastructure/actions/runs/36324543713)
 stopped during backend bucket-versioning observation before a saved plan existed.
 The fixed public stage output does not disclose the AWS error code, so an IAM deny
