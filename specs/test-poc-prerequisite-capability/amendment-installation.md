@@ -17,6 +17,17 @@ renders a candidate CloudFormation template from the active seed template and
 permits only those four in-place `PolicyDocument` modifications in its temporary
 stack policy. The permanent deny-update policy is part of the packet.
 
+The installed TEST stack still carries catalog `9079c481…` and registry
+`9af7ae78…` metadata from before the AWS-managed `AWS_ConfigRole` v73 repin.
+On 2026-09-27, read-only CloudFormation inspection found that its complete
+58-resource graph has SHA-256 `6b11513a41d10de7fe3f6ba325d11552f9891049e3e1b9cd29e8e3ead25d3ce2`,
+identical to the current rendered source. The complete live template has
+canonical SHA-256 `8b86a7ff6e9d5194908262eb72188907c11457c2caebbc5654ba0fca7089497c`.
+The packet reconstructs and pins that entire installed template as its
+baseline, then advances metadata to the proposed result with the four policy
+edits. Reauthenticate these values at installation time; this read-only
+observation does not authorize an update.
+
 Before live installation, an independently authenticated non-root operator must:
 
 1. Confirm the TEST account, KMS seed key metadata, the complete current seed

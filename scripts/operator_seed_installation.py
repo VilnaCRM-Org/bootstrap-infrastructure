@@ -476,6 +476,20 @@ class TestPocSeedAmendment:
     resulting_registry: registry.SeedRegistry
 
 
+# The installed TEST template predates the AWS_ConfigRole v73 catalog repin.
+# Its complete resource graph is unchanged; pin the entire observed template,
+# not just the two historical metadata values.
+_TEST_POC_LIVE_CATALOG_SHA256 = (
+    "9079c48192d3ebcdbd2dd957cc36138b7f90f80aa7fe22d49a60a56f436a32f7"
+)
+_TEST_POC_LIVE_REGISTRY_SHA256 = (
+    "9af7ae781be66aa64c1bf115e924d4172486834d2e7fa6526169e9f52217b333"
+)
+_TEST_POC_LIVE_TEMPLATE_SHA256 = (
+    "8b86a7ff6e9d5194908262eb72188907c11457c2caebbc5654ba0fca7089497c"
+)
+
+
 def _catalog_document(catalog: dict, arn: str) -> dict:
     return {
         "Version": "2012-10-17",
@@ -493,6 +507,12 @@ def build_amendment(activation: ActivationPacket) -> TestPocSeedAmendment:
     _require(seed_registry.environment == "test", "Only TEST seed may be amended")
     catalog = build_catalog()
     old = json.loads(activation.activation_template)
+    old["Metadata"]["CatalogSha256"] = _TEST_POC_LIVE_CATALOG_SHA256
+    old["Metadata"]["RegistrySha256"] = _TEST_POC_LIVE_REGISTRY_SHA256
+    _require(
+        registry.document_hash(old) == _TEST_POC_LIVE_TEMPLATE_SHA256,
+        "TEST installed template differs from the reviewed live baseline",
+    )
     candidate = copy.deepcopy(old)
     _require(len(candidate["Resources"]) == 58, "Seed resource graph changed")
     new_policies = []
@@ -545,7 +565,7 @@ def build_amendment(activation: ActivationPacket) -> TestPocSeedAmendment:
         ]
     }
     return TestPocSeedAmendment(
-        baseline_template=activation.activation_template,
+        baseline_template=registry.canonical_json(old),
         candidate_template=registry.canonical_json(candidate),
         temporary_stack_policy=registry.canonical_json(temporary),
         final_stack_policy=activation.installation.stack_policy,
