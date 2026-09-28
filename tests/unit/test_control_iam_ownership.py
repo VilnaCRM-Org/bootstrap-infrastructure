@@ -688,3 +688,10 @@ def test_operator_prod_triage_rejects_invalid_boundary_before_registration(
         )
     _sync_await(wait_for_rpcs())
     assert allocations == []
+
+
+def test_platform_catalog_rejects_nonprimary_repository():
+    import infra.platform_control_iam as module
+
+    with pytest.raises(ValueError, match="only the primary bootstrap repository"):
+        module._validate_platform_catalog(inputs("prod").settings, [REPO])

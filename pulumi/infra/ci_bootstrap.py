@@ -356,7 +356,12 @@ def _deployment_role_subjects(
     if purpose == "preview" and settings.environment == "test":
         return [
             branch_subject,
-            _repo_subject(settings, "pull_request", repo),
+            *(
+                []
+                if f"{settings.org}/{repo or settings.repo}"
+                == ("VilnaCRM-Org/bootstrap-infrastructure")
+                else [_repo_subject(settings, "pull_request", repo)]
+            ),
             _repo_subject(settings, "environment:test", repo),
             _repo_subject(settings, "environment:test-preview", repo),
         ]

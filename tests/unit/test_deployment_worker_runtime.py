@@ -488,6 +488,26 @@ def test_isolated_process_ignores_hostile_cwd_and_pythonpath(
         "users/Kravalg": {"id": 44},
         "request": github.artifact,
     }
+    backend[f"{root}/pulls/78"] = {
+        **github.evidence["pr"],
+        "number": 78,
+        "user": {"id": 99},
+    }
+    backend[f"{root}/commits/main"] = {"sha": artifact.contract.identity.controller.sha}
+    backend[f"{root}/pulls/78/reviews?per_page=100"] = [
+        [
+            {
+                "id": 10,
+                "state": "APPROVED",
+                "commit_id": "a" * 40,
+                "user": {"id": 44, "login": "Kravalg", "type": "User"},
+            }
+        ]
+    ]
+    backend[f"{root}/collaborators/Kravalg/permission"] = {
+        "permission": "write",
+        "user": {"id": 44},
+    }
     for name in required_environments(artifact.contract):
         backend[f"{root}/environments/{name}"] = github.protected
         backend[f"{root}/environments/{name}/deployment-branch-policies"] = (
@@ -510,6 +530,10 @@ def test_isolated_process_ignores_hostile_cwd_and_pythonpath(
         "    (destination / 'request.json').write_text(json.dumps(data['request']))\n"
         "elif args[0] == 'api' and args[1].endswith('/zip'):\n"
         f"    sys.stdout.buffer.write(pathlib.Path({str(zip_path)!r}).read_bytes())\n"
+        "elif args[0] == 'api' and '--paginate' in args:\n"
+        "    if '--slurp' in args:\n"
+        "        raise SystemExit('unknown flag: --slurp')\n"
+        "    print('\\n'.join(json.dumps(page) for page in data[args[1]]))\n"
         "else:\n"
         "    print(json.dumps(data[args[1]]))\n"
     )
@@ -549,7 +573,8 @@ def test_isolated_process_ignores_hostile_cwd_and_pythonpath(
         env=environment,
         capture_output=True,
         text=True,
-        timeout=20,
+        # Each fake GitHub call starts an independently covered interpreter.
+        timeout=60,
     )
     assert result.returncode == 0, result.stderr
     assert not marker.exists()

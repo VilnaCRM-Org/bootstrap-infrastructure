@@ -45,9 +45,12 @@ def stage_capability_for_pure_renderer_tests(monkeypatch):
     monkeypatch.setattr(Path, "read_text", staged_read)
 
 
-def test_packaged_capability_remains_disabled_until_seed_installation(monkeypatch):
+@pytest.mark.parametrize("write", [False, True])
+def test_packaged_capability_remains_disabled_until_seed_installation(
+    monkeypatch, write
+):
     monkeypatch.setattr(Path, "read_text", REAL_READ_TEXT)
-    assert capability() == []
+    assert capability(write=write) == []
     args = arguments()
     boundary = json.loads(service_boundary_policy(args, REPO))["Statement"]
     catalog = load_catalog("test")
@@ -239,6 +242,7 @@ def test_only_initial_prerequisite_actions_and_exact_resources():
         "route53:ListResourceRecordSets",
         "route53:GetChange",
         "route53:ChangeResourceRecordSets",
+        "s3:GetBucketVersioning",
     }
     assert statements[0]["Resource"] == [
         f"arn:aws:ecr:eu-central-1:{ACCOUNT}:repository/user-service-test-{kind}"
@@ -255,6 +259,7 @@ def test_only_initial_prerequisite_actions_and_exact_resources():
         "ses:ListTagsForResource",
         "route53:GetHostedZone",
         "route53:ListResourceRecordSets",
+        "s3:GetBucketVersioning",
     }
 
 
@@ -277,6 +282,23 @@ def test_dns_denies_mixed_batches_foreign_scope_and_absent_keys(field, values):
     statement = capability()[-1]
     assert dns_allowed(statement)
     assert not dns_allowed(statement, **{PREFIX + field: values})
+
+
+@pytest.mark.parametrize("write", [False, True])
+def test_backend_observer_only_reads_versioning_on_exact_test_bucket(write):
+    statements = [
+        statement
+        for statement in capability(write=write)
+        if any(action.startswith("s3:") for action in statement["Action"])
+    ]
+    assert statements == [
+        {
+            "Sid": "PocBackendVersioning",
+            "Effect": "Allow",
+            "Action": ["s3:GetBucketVersioning"],
+            "Resource": ["arn:aws:s3:::pulumi-user-service-infrastructure-test-state"],
+        }
+    ]
 
 
 def test_dns_denies_other_zone_and_permits_multiple_valid_tokens():

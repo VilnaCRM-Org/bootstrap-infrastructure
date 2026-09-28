@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-from infra import ci_config
+from infra import ci_bootstrap, ci_config
 from test_secret_read_deny import _settings
 
 PREFIX = "token.actions.githubusercontent.com:"
@@ -53,6 +53,18 @@ def matches(condition, claims):
         claims.get(key) in (value if isinstance(value, list) else [value])
         for key, value in condition.items()
     )
+
+
+def test_reviewed_environment_cannot_use_stage_one_main_branch_trust():
+    """The source-only stage must fail closed before the IAM cutover."""
+    settings = _settings()
+    reviewed_subject = (
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:environment:reviewed-pr-preview"
+    )
+    config_reader = conditions(settings, "test-pr")
+    preview_subjects = ci_bootstrap._deployment_role_subjects(settings, "preview")
+    assert reviewed_subject not in config_reader[PREFIX + "sub"]
+    assert reviewed_subject not in preview_subjects
 
 
 @pytest.mark.parametrize("environment", ["test", "prod"])
@@ -159,6 +171,14 @@ def test_current_loader_workflow_names_are_in_the_fixed_suffix_lists():
         suffix_options = {
             "${{ steps.ci_config_target.outputs.environment }}": ["test-pr", "test"]
         }
+        if path.name == "pulumi-pr-guardrails.yml":
+            suffix_options = {
+                "${{ steps.ci_config_target.outputs.environment }}": ["test"]
+            }
+        if path.name == "reviewed-pr-preview.yml":
+            suffix_options = {
+                "${{ steps.ci_config_target.outputs.environment }}": ["test-pr"]
+            }
         if "workflow_call" in workflow.get("on", {}):
             # Standard OIDC claims identify the caller; job_workflow_ref identifies
             # the reusable worker. Its runtime authenticates this sole coordinator.
@@ -212,3 +232,26 @@ def test_service_workflows_require_explicit_scope_and_preserve_platform_lists(
     del platform[PREFIX + "workflow"]
     assert service == platform
     assert ci_config.CiConfigurationArgs().governed_service_workflows is False
+
+
+def test_bootstrap_pr_reader_retires_generic_pr_subject_only_for_central_repo():
+    central = conditions(_settings(), "test-pr")
+    assert central[PREFIX + "workflow"] == ["Reviewed PR Preview"]
+    assert central[PREFIX + "sub"] == [
+        "repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main"
+    ]
+    claims = {
+        key: value[0] if isinstance(value, list) else value
+        for key, value in central.items()
+    }
+    assert not matches(
+        central,
+        {
+            **claims,
+            PREFIX + "sub": "repo:VilnaCRM-Org/bootstrap-infrastructure:pull_request",
+        },
+    )
+    downstream = conditions(scoped_settings(), "test-pr")
+    assert all(
+        subject.endswith(":pull_request") for subject in downstream[PREFIX + "sub"]
+    )

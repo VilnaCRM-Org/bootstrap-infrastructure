@@ -292,7 +292,7 @@ def _test_poc_capability_statements(
     *,
     write: bool,
 ) -> list[dict[str, object]]:
-    """Grant only the reviewed TEST registry and SES/DKIM prerequisite slice.
+    """Grant only the reviewed TEST backend and workload prerequisite reads/writes.
 
     DNS values and the three generated token names require trusted plan admission.
     IAM caps changes at the dedicated DKIM namespace, type and hosted zone.
@@ -365,6 +365,12 @@ def _test_poc_capability_statements(
             "Effect": "Allow",
             "Action": ["route53:GetHostedZone", "route53:ListResourceRecordSets"],
             "Resource": ["arn:aws:route53:::hostedzone/Z04999481RZ4UQK2NANVH"],
+        },
+        {
+            "Sid": "PocBackendVersioning",
+            "Effect": "Allow",
+            "Action": ["s3:GetBucketVersioning"],
+            "Resource": ["arn:aws:s3:::pulumi-user-service-infrastructure-test-state"],
         },
     ]
     if write:
