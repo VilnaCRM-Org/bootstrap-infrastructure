@@ -155,6 +155,19 @@ def test_publisher_cannot_lose_its_independent_owner_or_exact_guard(monkeypatch)
             fences.build_fence_stack_packet()
 
 
+def test_publisher_cannot_bind_a_foreign_boundary(monkeypatch):
+    policies, principals = poc_runtime.enrollment_records()
+    publisher = replace(
+        principals[-1],
+        boundary_arn=f"arn:aws:iam::{poc_runtime.ACCOUNT_ID}:policy/foreign",
+    )
+    monkeypatch.setattr(
+        fences, "enrollment_records", lambda: (policies, (*principals[:-1], publisher))
+    )
+    with pytest.raises(RegistryError, match="Publisher fence binding changed"):
+        fences.build_fence_stack_packet()
+
+
 @pytest.mark.parametrize(
     "edit",
     [

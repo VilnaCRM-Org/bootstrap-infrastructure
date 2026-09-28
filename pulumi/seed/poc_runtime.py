@@ -240,6 +240,19 @@ def _fence_document(role: RuntimeIdentity, kind: str, deny_all: str) -> str:
     return _ecr_policy(actions) if kind == "boundary" else _ecr_guard(actions)
 
 
+def _principal_record(role: RuntimeIdentity) -> PrincipalRecord:
+    """Keep the publisher's independent owner explicit in the source catalog."""
+    return PrincipalRecord(
+        role.arn,
+        False,
+        "independent-seed" if role.purpose == "publisher" else "governance",
+        role.policy_arn("boundary"),
+        (role.policy_arn("guard"),),
+        (role.policy_arn("guard"),),
+        None,
+    )
+
+
 def enrollment_records() -> tuple[
     tuple[PolicyRecord, ...], tuple[PrincipalRecord, ...]
 ]:
@@ -282,15 +295,5 @@ def enrollment_records() -> tuple[
                     document_hash(json.loads(document)),
                 )
             )
-        principals.append(
-            PrincipalRecord(
-                role.arn,
-                False,
-                "independent-seed" if role.purpose == "publisher" else "governance",
-                role.policy_arn("boundary"),
-                (role.policy_arn("guard"),),
-                (role.policy_arn("guard"),),
-                None,
-            )
-        )
+        principals.append(_principal_record(role))
     return tuple(policies), tuple(principals)
