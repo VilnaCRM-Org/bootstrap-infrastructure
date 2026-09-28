@@ -214,21 +214,37 @@ def verify_publisher_boundary() -> None:
     )
 
 
-def _verify_reviewed_ruleset_scope(ruleset: dict) -> None:
-    """Require the active default-branch rule without bypass authority."""
+def _verify_reviewed_ruleset_scope(ruleset: dict, updated_at: str) -> None:
+    """Bind a no-bypass owner audit to the exact active ruleset revision."""
     require(
         ruleset.get("target") == "branch"
         and ruleset.get("enforcement") == "active"
         and ruleset.get("conditions")
-        == {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}}
-        and ruleset.get("bypass_actors") == [],
-        "Reviewed ruleset must protect main without bypass",
+        == {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+        "Reviewed ruleset must protect main",
     )
+    timestamp_pattern = (
+        r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d"
+        r"(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)"
+    )
+    require(
+        re.fullmatch(timestamp_pattern, updated_at) is not None
+        and ruleset.get("updated_at") == updated_at,
+        "Reviewed ruleset changed since the no-bypass owner audit",
+    )
+    # GitHub omits bypass_actors from a ruleset read with Administration: read.
+    # The protected environment pin comes from an owner who can inspect it;
+    # fail closed on any subsequently changed ruleset revision.
+    if "bypass_actors" in ruleset:
+        require(ruleset["bypass_actors"] == [], "Reviewed ruleset allows bypass")
 
 
-def verify_reviewed_ruleset(ruleset: dict, app_id: int) -> None:
+def verify_reviewed_ruleset(
+    ruleset: dict, app_id: int, ruleset_id: int, updated_at: str
+) -> None:
     """Require actual App issuer bindings on the active default-branch ruleset."""
-    _verify_reviewed_ruleset_scope(ruleset)
+    require(ruleset.get("id") == ruleset_id, "Reviewed ruleset ID differs")
+    _verify_reviewed_ruleset_scope(ruleset, updated_at)
     rules = [
         r for r in ruleset.get("rules", []) if r.get("type") == "required_status_checks"
     ]
@@ -275,7 +291,12 @@ def publisher_identity() -> dict:
             re.fullmatch(r"[1-9][0-9]*", ruleset_id) is not None,
             "Missing reviewed ruleset ID",
         )
-        verify_reviewed_ruleset(gh(f"repos/{REPOSITORY}/rulesets/{ruleset_id}"), app_id)
+        verify_reviewed_ruleset(
+            gh(f"repos/{REPOSITORY}/rulesets/{ruleset_id}"),
+            app_id,
+            int(ruleset_id),
+            os.environ.get("REVIEWED_SOURCE_RULESET_UPDATED_AT", ""),
+        )
     return {key: bot[key] for key in ("id", "login", "type")}
 
 
