@@ -16,15 +16,15 @@ def workflow(name):
 @pytest.mark.parametrize(
     ("event", "repository", "active", "privileged"),
     [
-        ("pull_request", "VilnaCRM-Org/bootstrap-infrastructure", "", True),
-        ("pull_request", "VilnaCRM-Org/bootstrap-infrastructure", "false", True),
+        ("pull_request", "VilnaCRM-Org/bootstrap-infrastructure", "", False),
+        ("pull_request", "VilnaCRM-Org/bootstrap-infrastructure", "false", False),
         ("pull_request", "VilnaCRM-Org/bootstrap-infrastructure", "true", False),
         ("pull_request", "fork/repo", "", False),
         ("pull_request", "fork/repo", "true", False),
         ("push", "VilnaCRM-Org/bootstrap-infrastructure", "true", True),
     ],
 )
-def test_staged_activation_preserves_legacy_checks_until_cutover(
+def test_pull_requests_use_unprivileged_checks_until_independent_admission(
     event, repository, active, privileged, tmp_path
 ):
     mode_job = workflow("pulumi-pr-guardrails.yml")["jobs"]["preview_mode"]
