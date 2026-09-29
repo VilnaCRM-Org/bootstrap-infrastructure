@@ -158,6 +158,8 @@ def test_observed_custom_subject_is_fixed_for_independent_publisher():
         subject().replace("workflow_ref:", "job_workflow_ref:"),
         subject().replace("repository_id:646535009", "repo:VilnaCRM-Org/user-service"),
         subject() + ":actor:someone",
+        subject() + ":dangling",
+        subject() + ":event_name:workflow_dispatch",
     ],
 )
 def test_publisher_trust_rejects_default_foreign_incomplete_or_duplicate_claims(bad):

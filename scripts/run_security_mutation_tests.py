@@ -31,6 +31,12 @@ TARGETS = (
     "tests/unit/test_security_boundary_regressions.py",
     "tests/unit/test_main_only_environments.py",
     "tests/unit/test_reviewed_script_boundaries.py",
+    "tests/unit/test_poc_runtime.py",
+    "tests/unit/test_poc_pass_role.py",
+    "tests/unit/test_poc_runtime_fence_stack.py",
+    "tests/unit/test_poc_publisher_stack_verification.py",
+    "tests/unit/test_poc_runtime_verification.py",
+    "tests/unit/test_poc_runtime_enrollment.py",
 )
 GUARDS = {
     "pulumi/infra/iam/account.py": {"assert_bootstrap_account"},
@@ -44,6 +50,30 @@ GUARDS = {
         "_validate_backend",
         "governance_trust_policy",
         "_allow",
+    },
+    "pulumi/infra/poc_runtime_enrollment.py": {"_target", "_verify_fences"},
+    "pulumi/seed/poc_pass_role.py": {"propose_pass_role"},
+    "pulumi/seed/poc_publisher_stack_verification.py": {
+        "verify_publisher_stack",
+        "_verify_stack",
+        "_verify_inventory",
+        "_verify_policies",
+        "_verify_role",
+        "_verify_role_documents",
+    },
+    "pulumi/seed/poc_runtime.py": {
+        "_document",
+        "publisher_trust",
+        "enrollment_records",
+    },
+    "pulumi/seed/poc_runtime_fence_stack.py": {
+        "_verified_publisher",
+        "_publisher_fences",
+        "build_fence_stack_packet",
+        "validate_fence_stack_packet",
+        "_validate_add_metadata",
+        "_validate_add_row",
+        "validate_fence_create_changes",
     },
 }
 REQUIREMENTS = {
@@ -62,6 +92,12 @@ REQUIREMENTS = {
         "build_proof",
         "publish_proof",
         "main",
+    },
+    "pulumi/seed/poc_runtime_verification.py": {
+        "verify_runtime_enrollment",
+        "_inventory",
+        "_verify_policy",
+        "_verify_role",
     },
 }
 
