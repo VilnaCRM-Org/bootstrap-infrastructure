@@ -47,7 +47,7 @@ class BootstrapSettings:
     github_oidc_provider_arn: str | None
     repository_catalog_path: str | None = None
     managed_repo_overrides: list["ManagedRepository"] | None = None
-    monthly_budget_limit_usd: str = "100"
+    monthly_budget_limit_usd: str | None = None
     cost_anomaly_threshold_usd: str = "10"
     cost_anomaly_monitor_arn: str | None = None
     manage_cost_allocation_tags: bool = False
@@ -59,7 +59,11 @@ class BootstrapSettings:
     platform_backup_vault_arn: str | None = None
 
     def __post_init__(self) -> None:
-        """Normalize pinned GitHub IDs before any trust policy is constructed."""
+        """Resolve environment defaults and normalize pinned GitHub IDs."""
+        if self.monthly_budget_limit_usd is None:
+            self.monthly_budget_limit_usd = self.default_monthly_budget(
+                self.environment
+            )
         self.github_repository_id, self.github_repository_owner_id = normalize_identity(
             self.github_repository_id, self.github_repository_owner_id
         )
@@ -71,10 +75,11 @@ class BootstrapSettings:
     ) -> "BootstrapSettings":
         """Load settings from Pulumi configuration."""
         config = cfg or pulumi.Config()
+        environment = config.get("environment") or pulumi.get_stack()
         return cls(
             org=cls.require_config_value(config, "githubOrg", "test-org"),
             repo=config.get("repoSlug"),
-            environment=config.get("environment") or pulumi.get_stack(),
+            environment=environment,
             owner=config.get("owner") or "platform",
             cost_center=config.get("costCenter") or "core",
             data_classification=config.get("dataClassification") or "internal",
@@ -86,7 +91,7 @@ class BootstrapSettings:
             monthly_budget_limit_usd=cls.positive_decimal_config_value(
                 config,
                 "monthlyBudgetLimitUsd",
-                "100",
+                cls.default_monthly_budget(environment),
             ),
             cost_anomaly_threshold_usd=cls.positive_decimal_config_value(
                 config,
@@ -114,6 +119,11 @@ class BootstrapSettings:
             platform_backup_role_name=config.get("platformBackupRoleName"),
             platform_backup_vault_arn=config.get("platformBackupVaultArn"),
         )
+
+    @staticmethod
+    def default_monthly_budget(environment: str) -> str:
+        """Allocate test/prod budgets below the combined tax-inclusive $100 target."""
+        return {"prod": "65", "test": "30"}.get(environment, "100")
 
     @staticmethod
     def allow_test_defaults() -> bool:

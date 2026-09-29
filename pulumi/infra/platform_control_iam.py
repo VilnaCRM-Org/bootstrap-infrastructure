@@ -75,14 +75,14 @@ def _validate_platform_catalog(settings, repositories):
 
 
 def _triage_permissions_boundary(settings, account_id, partition, external_boundaries):
-    """Retain the catalog boundary only for the PROD-owned triage role."""
+    """Require the catalog boundary for the PROD-owned triage role."""
     if settings.environment != "prod":
         return None
     return _role_permissions_boundary(
         _operations_alert_triage_role_name(settings, settings.repo or ""),
         account_id=account_id,
         partition=partition,
-        external_role_boundaries=external_boundaries,
+        external_role_boundaries=external_boundaries or {},
     )
 
 
@@ -110,6 +110,9 @@ class PlatformControlIam(pulumi.ComponentResource):
             settings,
             repositories,
             {} if inline_policy_names is None else inline_policy_names,
+        )
+        triage_permissions_boundary = _triage_permissions_boundary(
+            settings, account_id, partition, external_role_boundaries
         )
         super().__init__("bootstrap:iam:PlatformControlIam", name, None, opts)
         options = pulumi.ResourceOptions(parent=self, protect=True)
@@ -178,9 +181,7 @@ class PlatformControlIam(pulumi.ComponentResource):
             manage_repository=False,
             manage_roles=True,
             manage_triage=settings.environment == "prod",
-            triage_permissions_boundary=_triage_permissions_boundary(
-                settings, account_id, partition, external_role_boundaries
-            ),
+            triage_permissions_boundary=triage_permissions_boundary,
             permissions_boundary=control_boundary_arn,
             adopt_existing_policies=True,
             role_guard_factory=lambda role: create_guard(None, role),

@@ -126,6 +126,7 @@ def test_reviewed_pr276_exception_fails_back_on_revision_or_file_change(
         ("pulumi/infra/__init__.py", ALL, False, False, False),
         ("pulumi/infra/new_helper.py", ALL, False, False, False),
         ("pulumi/infra/new_runtime_data.json", ALL, False, False, False),
+        ("pulumi/infra/config/cost-controls.test.json", ALL, False, False, False),
         ("pulumi/infra/new_runtime_data.md", ALL, False, False, False),
         ("pulumi/seed/catalogs/test.json", ALL, False, False, False),
         ("pulumi/seed/catalogs/prod.json", ALL, False, False, False),

@@ -131,7 +131,10 @@ def _base_outputs(
             bootstrap.security_account_controls.guardduty_detector.id
         ),
         "securityHubAccountArn": (
-            bootstrap.security_account_controls.security_hub_account.arn
+            bootstrap.security_account_controls.security_hub_account_arn
+        ),
+        "securityPostureEnabled": (
+            bootstrap.security_account_controls.security_posture_enabled
         ),
         "awsConfigRecorderName": (
             bootstrap.security_account_controls.config_recorder.name
