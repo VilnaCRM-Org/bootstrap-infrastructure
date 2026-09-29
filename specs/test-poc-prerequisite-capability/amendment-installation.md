@@ -1,12 +1,17 @@
 # TEST prerequisite seed amendment
 
 This is a one-time, TEST-only installation prerequisite for the user-service
-registry/SES/DKIM plan. The active TEST catalog and the packaged capability flag
-remain unchanged. PROD is outside this amendment. The source generator performs
-no AWS calls and grants no permission by itself.
+registry/SES/DKIM plan. The packet itself changes neither the active TEST catalog
+nor the packaged capability flag. The follow-up PR #280 source advances the TEST
+pin to the amendment result and enables the flag; it merges only after this
+installation's readback, per [post-seed-activation.md](post-seed-activation.md).
+PROD is outside this amendment. The source generator performs no AWS calls and
+grants no permission by itself.
 
 `seed.test_poc_prerequisite_amendment.build_catalog()` binds the proposed result
-to the current active TEST catalog hash and updates exactly four policy documents:
+to the reviewed pre-install baseline (`BASELINE_POLICY_HASHES` of catalog
+`ef419680…`) and fails closed against the post-activation pin. It updates
+exactly four policy documents:
 the `GovernanceBoundary-user-service-infrastructure-test` ceiling, the TEST
 governance preview/drift policy-read ceilings, and the TEST governance apply
 guard's two closed resource lists. The service boundary gains only the fixed ECR
@@ -54,7 +59,7 @@ Before live installation, an independently authenticated non-root operator must:
 
 The source follow-up, its ordered protected deployments and remaining separate
 activation dependencies are in [post-seed-activation.md](post-seed-activation.md).
-That candidate is not evidence that this installation has completed.
+That source change is not evidence that this installation has completed.
 
 The current [TEST plan failure](https://github.com/VilnaCRM-Org/user-service-infrastructure/actions/runs/36324543713)
 stopped during backend bucket-versioning observation before a saved plan existed.

@@ -1,9 +1,11 @@
 # Source impact relationships
 
-Operational correction: the packaged identity now has `enabled: false`, and
-the active TEST seed catalog remains at the previously installed hash. The
-graph below describes the proposed capability **after** independent seed
-installation and a separate gate-enabling review; it is not currently emitted.
+Post-seed activation (PR #280, FR5-FR7): the packaged identity has
+`enabled: true` and the active TEST seed catalog pin is the amendment result
+`ff2eaf29…`. Source now emits the graph below. It becomes live only through
+the ordered protected deployments in [post-seed-activation.md](post-seed-activation.md),
+after the seed installation readback; merging is not installation. The earlier
+`enabled: false` correction describes the superseded PR #255 state.
 
 ```text
 RepoGovernance._repo_settings (immutable catalog identity)
@@ -28,23 +30,24 @@ seed/catalogs/test.json -> policy_registry.load_catalog (canonical integrity pin
 
 Role trust/subjects, generic ci_bootstrap policy generation, state policies,
 service seed guards, platform policies, PROD catalog, workflows and downstream
-resource definitions are unchanged. The active TEST seed catalog and governor
-guard NotResource inventories remain at their previously installed values: they
-do not yet allow management or attachment of the proposed prerequisite policy.
-The staged policy can be installed only through a separately reviewed seed
-amendment. The service cannot modify its boundary, guard or IAM identities.
-The existing inline deny-all hold is outside this change and remains mandatory.
+resource definitions are unchanged. The active TEST seed catalog carries the
+installed amendment: the service boundary, the governance preview/drift read
+ceilings and the governance apply guard's two closed resource lists now admit
+the exact prerequisite policy, and `_mutable_attachment_sets` admits it only on
+the TEST service apply role (FR6, FR7). The service cannot modify its boundary,
+guard or IAM identities. The existing inline deny-all hold is outside this
+change and remains mandatory.
 
 Runtime imports add the governance policy helper to governance automation;
 11 import-linter contracts pass. No new dependency or CLI entrypoint exists.
-The active catalog remains unchanged by this correction. Its complete inventory
-and disabled enrollment are checked by
-`test_complete_deterministic_inventory_and_disabled_enrollment`; the staged
-boundary, policy documents and closed attachment allowlist are checked by
-`test_staged_identity_boundary_governor_matches_but_seed_remains_closed` and
-`test_active_seed_guard_denies_staged_policy_until_independent_install`.
-The removed prerequisite amendment reversal test is not evidence for this
-disabled state.
+The active catalog's complete inventory and disabled seed executors are checked
+by `test_complete_deterministic_inventory_and_disabled_enrollment`. The enabled
+boundary, policy documents and single-role attachment allowlist are checked by
+`test_enabled_identity_boundary_governor_and_attachment_allowlist_match` and
+`test_active_seed_guard_admits_only_exact_prerequisite_policy`;
+`catalog_before_test_poc_prerequisites` proves the catalog delta is exactly the
+four reviewed documents over baseline `ef419680…`. The former disabled-state
+tests were renamed with inverted assertions and are not evidence for this state.
 
 The identity file is a fixed module-relative input, with no stack-config override.
 Missing or invalid input raises before policy statements are returned. Keeping it
