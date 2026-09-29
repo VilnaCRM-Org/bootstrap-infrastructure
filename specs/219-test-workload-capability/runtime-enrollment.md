@@ -1,30 +1,49 @@
 # Central TEST runtime enrollment slice
 
 `infra/poc_runtime_enrollment.py` contains the disconnected governance-owned
-ECS role proposal. `seed/poc_runtime_fence_stack.py` renders a separate
-CloudFormation owner for six managed policies and the exact TEST image-publisher
-role. Neither source packet has been installed; the ECS proposal remains
-disconnected and incomplete for a running workload. Existing immutable catalogs
-are not silently extended.
+ECS role proposal. `seed/poc_runtime_fence_stack.py` renders the **publisher
+stack**, a separate CloudFormation owner for exactly three resources: the
+publisher boundary, the publisher guard and the
+`user-service-test-ImagePublisher` role. Neither source packet has been
+installed; the ECS proposal remains disconnected and incomplete for a running
+workload. Existing immutable catalogs are not silently extended. Requirement
+traceability is in [requirements](requirements.md).
+
+The four ECS boundary and guard policies are deliberately excluded. The stack
+retains its resources and denies every update, so including them would freeze
+the ECS fences before the workload has its log, Secrets Manager (`AWSCURRENT`
+via ECS secrets), KMS decrypt, SQS and SES grants. They move to a later reviewed
+runtime amendment; their builders remain tested, unwired source.
 
 ## Ownership and registration
 
-The independent CloudFormation packet owns six retained managed policies, one
-boundary and one guard per identity, plus the protected
-`user-service-test-ImagePublisher` role. Policy paths are
-`/issue219/test/{boundary,guard}/`. The publisher has the exact customized OIDC
-trust, its boundary, sole guard and finite ECR push inline policy. Its offline
-validator requires seven exact Add rows. A separately authenticated installer
-must verify absent stack/policy/role names, TEST account and region, GitHub OIDC
-template and environment, complete change-set provenance, installed default
-policy documents and attachments, termination protection and the permanent
-deny-update stack policy. The existing staged six-policy change set does not
-match this seven-resource source and must not be executed as its installer.
+The independent CloudFormation packet (stack `issue219-runtime-fences-test`,
+contract `issue219-test-publisher-seed/v3`) owns two retained managed policies,
+`user-service-test-ImagePublisher-{Boundary,Guard}` under
+`/issue219/test/{boundary,guard}/`, plus the protected
+`user-service-test-ImagePublisher` role. The publisher has the exact customized
+OIDC trust, its boundary, sole guard and finite ECR push inline policy. Its
+offline validator requires exactly three Add rows and rejects ECS fence rows. A
+separately authenticated installer must verify absent stack/policy/role names,
+TEST account and region, GitHub OIDC template and environment, complete
+change-set provenance, installed default policy documents and attachments,
+termination protection and the permanent deny-update stack policy.
+
+### Obsolete staged change sets
+
+Change set `poc-runtime-seed-seven-e8930dd-20260928` (six fences plus the
+publisher) and the earlier six-policy change set (six fences, no role) are
+obsolete. Delete them through a reviewed operator `DeleteChangeSet`; never
+execute them. `validate_fence_create_changes` rejects both row sets. A CREATE
+change set leaves the stack in `REVIEW_IN_PROGRESS`: after deleting both, confirm
+the stack has no resources and delete the empty stack record before staging the
+new change set, otherwise the absent-stack precondition fails.
 
 `PocRuntimeRoles` requires the `governance` project and the same target checks.
 Before role registration, it reads every exact policy ARN and compares the native
 default policy document with the complete expected document. Missing/changed
-policies stop preparation. It proposes only these two protected ECS roles, each with
+policies stop preparation. The publisher stack does not install the ECS fences,
+so this preflight fails closed until the later runtime amendment installs them. It proposes only these two protected ECS roles, each with
 its exact boundary, sole managed guard attachment, explicit inline-policy set,
 one-hour session limit and central ownership tags:
 
@@ -83,13 +102,99 @@ required controls. ECR pull belongs to the execution role, not the task role.
 This source component is still disconnected from all live entrypoints; creating
 it later does not supply the log/secret permissions needed by the real workload.
 
-`seed/poc_runtime_verification.py` checks complete observed six-policy and
-three-role inventories, default policy versions/documents, boundaries, attachment
-sets, trust and inline grants. It rejects task-role activation, omitted/extra
-grants, foreign targets and default publisher subjects. Its digest binds the
-expected enrollment including publisher trust. It always returns
-`activation_authorized=False`: caller-provided metadata is not authenticated AWS
-evidence, nor proof of governor authority, immutable ownership or atomicity.
+`seed/poc_runtime_verification.py` verifies the later full six-policy/three-role
+enrollment (not the publisher stack). It checks complete observed inventories,
+default policy versions/documents, boundaries, attachment sets, trust and inline
+grants, and rejects task-role activation, omitted/extra grants and foreign
+targets. The caller must supply the observed publisher subject and it must equal
+`PUBLISHER_SUBJECT` exactly: `None`, default, alternative-spelling and
+extra-claim subjects are rejected. Its digest binds the expected enrollment
+including publisher trust. It always returns `activation_authorized=False`:
+caller-provided metadata is not authenticated AWS evidence, nor proof of
+governor authority, immutable ownership or atomicity.
+
+## Post-create publisher stack verification
+
+`seed/poc_publisher_stack_verification.py::verify_publisher_stack` compares the
+complete post-create state: target account/region, stack name, `CREATE_COMPLETE`,
+canonical template, termination protection, the deny-update stack policy, exactly
+three stack resources with physical IDs, two managed policies at default version
+`v1` with exact documents, and the role ARN, path, permissions boundary, single
+guard attachment, inline policy set, `MaxSessionDuration`, tags and trust. The
+ECS roles and fences are neither required nor accepted. Inputs must be
+authenticated, fully paginated and URL-decoded: DescribeStacks, GetTemplate,
+GetStackPolicy, ListStackResources, GetPolicy/GetPolicyVersion, GetRole,
+ListAttachedRolePolicies, ListRolePolicies/GetRolePolicy and ListRoleTags. It
+returns `activation_authorized=False`.
+
+## Local rendering and optional AWS validation
+
+`make validate-runtime-seed-policies` renders `template.json`, `stack-policy.json`,
+every IAM document and `manifest.json` to `.artifacts/runtime-seed-policies/`;
+the `template.json` SHA-256 equals the packet digest. Only when a credential
+variable (`AWS_ACCESS_KEY_ID`, `AWS_PROFILE`, `AWS_WEB_IDENTITY_TOKEN_FILE` or a
+container-credentials URI) is set does it call read-only IAM Access Analyzer
+`validate-policy` per identity policy (trust documents with `RESOURCE_POLICY` /
+`AWS::IAM::AssumeRolePolicyDocument`) and CloudFormation `validate-template`.
+Exit code 1 means ERROR or SECURITY_WARNING findings; 2 means a missing CLI or
+failed call. `RUNTIME_SEED_POLICY_ARGS=--render-only` renders without AWS.
+Skipped validation does not satisfy the installation precondition. It never
+creates, updates, executes or deletes a stack or change set.
+
+## Pre-execution OIDC subject capture
+
+The pinned subject comes from configuration metadata, not from a real token.
+Before executing any change set:
+
+1. Dispatch the ordinary `publish-poc-images.yml` on `refs/heads/main` through
+   the protected `poc-test-images` environment, with a reviewed diagnostic step
+   (`permissions: id-token: write`) placed before any AWS credential step.
+2. Request a token with audience `sts.amazonaws.com` and print only the decoded
+   `sub`. Never print, upload, cache or store the raw token,
+   `ACTIONS_ID_TOKEN_REQUEST_TOKEN` or the request URL:
+
+   ```bash
+   python3 - <<'PY'
+   import base64, json, os, urllib.request
+   url = os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=sts.amazonaws.com"
+   auth = {"Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]}
+   token = json.load(urllib.request.urlopen(urllib.request.Request(url, headers=auth)))["value"]
+   payload = token.split(".")[1]
+   print(json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))["sub"])
+   PY
+   ```
+
+3. Record the job URL, run ID, head SHA and the printed subject. Compare it byte
+   for byte with `seed.poc_runtime.PUBLISHER_SUBJECT`, and its SHA-256 with the
+   template `Metadata.PublisherSubjectSha256`.
+4. Any difference, including key order or repo spelling, stops execution.
+   Changing the subject needs a reviewed source change and a regenerated packet;
+   never hand-edit the change set or trust.
+
+## Break-glass revocation of publisher trust
+
+Use the audited break-glass identity from `docs/governance-stack.md`, outside
+GitHub CI.
+
+1. **Contain.** Call `iam:UpdateAssumeRolePolicy` to set
+   `seed.poc_runtime.disabled_trust()`. Add the AWS "revoke older sessions"
+   inline deny (`aws:TokenIssueTime` before the revocation time). Optionally
+   disable the workflow or lock the environment. Record CloudTrail event IDs.
+   Stack policies do not restrict direct IAM calls; this step intentionally
+   creates drift.
+2. **Reviewed amendment.** Disable trust in source, regenerate the packet and
+   review the digest. Stage an UPDATE change set that only modifies the publisher
+   role in place (`Modify`, `Replacement: False`). Execute it with a one-time
+   `--stack-policy-during-update-body` that allows `Update:Modify` only on the
+   publisher role logical ID and denies `Update:Replace` and `Update:Delete`. The
+   permanent deny-update policy and termination protection stay; read both back
+   afterwards.
+3. **Reconcile.** After at least `MaxSessionDuration` (3600 s), remove the
+   revocation inline policy. Run `detect-stack-drift` and require `IN_SYNC` for
+   all three resources. Run the post-create verifier against the regenerated
+   packet and retain the evidence.
+4. **Removal** is a separate reviewed amendment: because resources are Retain,
+   stack deletion leaves the role and policies behind.
 
 This increment deliberately stops before a live installer integration. The
 existing seed catalog/installer admits exactly 55 policies and 24 principals,
@@ -130,11 +235,12 @@ supports the proposed claims, but source validation is not token authentication.
 
 Before connecting these components to protected deployment entrypoints:
 
-1. Review/install the independent seven-resource CloudFormation packet for six
-   fences and the publisher role, preserving all existing records. The ordinary
+1. Delete the obsolete change sets, then review/install the three-resource
+   publisher stack, preserving all existing records. The ordinary
    three-executor seed activation validator is not a runtime-enrollment route.
-2. Amend the governor's identity, boundary and immutable guards only for the
-   two exact ECS roles and policy reads. Current authority intentionally rejects
+2. Install the four ECS fences only through the later reviewed runtime
+   amendment, then amend the governor's identity, boundary and immutable guards
+   only for the two exact ECS roles and policy reads. Current authority intentionally rejects
    these roles; no bypass was added here.
 3. Verify real policy documents/default versions, immutability controls, trust,
    complete attachments/inline grants, role/policy name collisions, actual quotas
@@ -142,7 +248,8 @@ Before connecting these components to protected deployment entrypoints:
    controls are installed or that a read is an atomic AWS snapshot.
 4. Verify #185 current-head admission; approved publisher workflow on main;
    protected environment/main-only branch policy, reviewer and no bypass;
-   customized subject configuration and authenticated native subject metadata.
+   customized subject configuration and authenticated native subject metadata,
+   and the real-token `sub` captured above.
 5. Install through a reviewed change set and protected saved plans. Prove native
    publisher allow/deny cases and repository policy intersection, then publish
    both images. ECS log/secret and task mail/queue grants, deployment PassRole
@@ -153,7 +260,10 @@ rejection, changed-fence rejection, disabled task trust, publisher claim rejecti
 quota fit and positive/negative policy cases. They do not establish live IAM,
 OIDC, image publication or workload acceptance.
 
-## Pull increment validation — 2026-09-23
+## Pull increment validation — 2026-09-23 (historical)
+
+Historical record for source `4f7a16e`. It predates the publisher-only
+narrowing and does not validate the current head.
 
 After merging authoritative main `4f7a16e` into the existing branch, 362 focused
 runtime, PassRole, seed-registry and independent-installer tests passed. A separate

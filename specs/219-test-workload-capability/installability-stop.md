@@ -3,9 +3,10 @@
 ## Result
 
 The existing operator seed and governor cannot install runtime roles. This
-follow-up adds a separate TEST CloudFormation proposal for six fences and the
-exact image-publisher role, with a seven-row Add-only change-set validator. The
-two ECS roles remain disconnected governance source. Neither route has an
+follow-up adds a separate TEST CloudFormation proposal, the publisher stack, for
+only the image-publisher boundary, guard and role, with a three-row Add-only
+validator. The four ECS fences and two ECS roles remain disconnected source for
+a later reviewed runtime amendment. Neither route has an
 authenticated live installer or activation receipt yet.
 
 ## Exact stop condition
@@ -26,7 +27,8 @@ globally would weaken the existing enrollment and is forbidden.
 
 The earlier staged Pulumi `PocRuntimeFences` competed with the independently
 owned CloudFormation graph and has been removed. The separate runtime packet
-establishes one proposed owner for six fences and publisher role, but document
+establishes one proposed owner for the publisher's two fences and role (the ECS
+fences have no owner yet), but document
 equality alone does not authenticate an installer or prove live ownership.
 
 ## Smallest coherent next amendment
@@ -36,15 +38,17 @@ equality alone does not authenticate an installer or prove live ownership.
    independently authenticated installer and complete observed stack/template,
    policy versions, boundaries and attachments. Caller-supplied account metadata
    or an `activation_authorized` flag is not authentication.
-2. Choose one independent owner for the six new fence policies and publisher. A separate
+2. Choose one independent owner for the publisher fences and role (the four ECS
+   fences need their own reviewed owner in the later runtime amendment and must
+   not be appended to the publisher stack). A separate
    CloudFormation stack avoids moving the original 55 policies. A Pulumi owner
    instead requires its reviewed backend/key, installer authority and immutable
    protection contract; the existing seed KMS/backend must not be silently reused.
    Stop on any existing name or other state owner; no automatic adoption/import.
    The staged `issue219-runtime-fences-test` packet chooses the separate
-   CloudFormation owner. Its installer must authenticate that the stack, six
-   policy names and publisher role name are absent, recheck GitHub OIDC and the
-   protected environment, create the reviewed seven-resource template, verify
+   CloudFormation owner. Its installer must authenticate that the stack, both
+   publisher policy names and the publisher role name are absent, recheck GitHub
+   OIDC and the protected environment, create the reviewed three-resource template, verify
    the complete change set, policy versions and role bindings, then enable and
    read back termination protection and the permanent deny-update stack policy.
    An offline packet is not an installer.
@@ -80,6 +84,8 @@ remain separate capabilities.
 inventory appended to either seed installation or activation, the governor's
 existing unconditional denials, and preservation of the 58-resource executor-only
 activation graph. `tests/unit/test_poc_runtime_fence_stack.py` checks the exact
-seven-resource retained graph and rejects incomplete, foreign, existing or
-destructive change-set rows. Synthetic observations do not establish live
+three-resource retained graph and rejects incomplete, foreign, obsolete
+seven-row and six-policy, existing or destructive change-set rows.
+`tests/unit/test_poc_publisher_stack_verification.py` checks the post-create
+verifier field by field. Synthetic observations do not establish live
 installation.
