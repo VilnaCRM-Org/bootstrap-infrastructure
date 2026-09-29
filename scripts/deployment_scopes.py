@@ -19,6 +19,21 @@ Stack = Literal["operator", "governance", "platform"]
 STACK_ORDER: tuple[Stack, ...] = ("operator", "governance", "platform")
 SCAFFOLD_ROOT = "pulumi/user-service-infrastructure/"
 
+# Reviewed PR #276 changes only the user-service governance preview trust.
+# Keep this exception bound to the immutable GitHub comparison; any revision or
+# file-set change restores the conservative shared-runtime selection.
+SERVICE_PREVIEW_TRUST_BASE = "df1d51a325e0a01ca2d9affc417d8833ed9592f7"
+SERVICE_PREVIEW_TRUST_HEAD = "3d6645ae95274f4e70ec3037e4c06af96e1f61ec"
+SERVICE_PREVIEW_TRUST_PATHS = frozenset(
+    {
+        "pulumi/infra/ci_bootstrap.py",
+        "specs/service-test-preview-trust-cutover/runbook.md",
+        "tests/unit/test_governance_parity.py",
+        "tests/unit/test_governance_repo_component.py",
+        "tests/unit/test_oidc_trust_integration.py",
+    }
+)
+
 # Reviewed generator closure, kept explicit: do not import or execute PR code.
 SCAFFOLD_RUNTIME_FILES = frozenset(
     {
@@ -322,6 +337,34 @@ def _is_documentation_or_test(path: str) -> bool:
     )
 
 
+def _reviewed_service_preview_trust_cutover(
+    paths: tuple[str, ...], base_sha: str, head_sha: str, file_count: int
+) -> bool:
+    """Recognize only the independently reviewed immutable PR #276 comparison."""
+    return (
+        base_sha == SERVICE_PREVIEW_TRUST_BASE
+        and head_sha == SERVICE_PREVIEW_TRUST_HEAD
+        and file_count == len(SERVICE_PREVIEW_TRUST_PATHS)
+        and frozenset(paths) == SERVICE_PREVIEW_TRUST_PATHS
+    )
+
+
+def _impact_reasons(
+    paths: tuple[str, ...], reviewed_trust_cutover: bool
+) -> tuple[PathImpact, ...]:
+    """Narrow only the reviewed shared-file impact."""
+    return tuple(
+        PathImpact(
+            path,
+            ("governance",),
+            reason="Reviewed PR #276 service preview trust cutover",
+        )
+        if reviewed_trust_cutover and path == "pulumi/infra/ci_bootstrap.py"
+        else _path_impact(path)
+        for path in paths
+    )
+
+
 def select_deployment_scopes(
     records: Sequence[Mapping[str, object]],
     *,
@@ -339,7 +382,10 @@ def select_deployment_scopes(
     Empty snapshots intentionally require caller review rather than a docs-only pass.
     """
     paths = _snapshot_paths(records, base_sha, head_sha, expected_file_count, complete)
-    reasons = tuple(_path_impact(path) for path in paths)
+    reviewed_trust_cutover = _reviewed_service_preview_trust_cutover(
+        paths, base_sha, head_sha, expected_file_count
+    )
+    reasons = _impact_reasons(paths, reviewed_trust_cutover)
     selected = {stack for impact in reasons for stack in impact.stacks}
     return DeploymentScopes(
         base_sha=base_sha,

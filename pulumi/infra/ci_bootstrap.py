@@ -359,7 +359,10 @@ def _deployment_role_subjects(
             *(
                 []
                 if f"{settings.org}/{repo or settings.repo}"
-                == ("VilnaCRM-Org/bootstrap-infrastructure")
+                in {
+                    "VilnaCRM-Org/bootstrap-infrastructure",
+                    "VilnaCRM-Org/user-service-infrastructure",
+                }
                 else [_repo_subject(settings, "pull_request", repo)]
             ),
             _repo_subject(settings, "environment:test", repo),

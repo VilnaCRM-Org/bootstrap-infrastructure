@@ -25,6 +25,15 @@ paths_touch_governance = governance_paths.paths_touch_governance
 BASE = "a" * 40
 HEAD = "b" * 40
 ALL = ("operator", "governance", "platform")
+PR276_BASE = "df1d51a325e0a01ca2d9affc417d8833ed9592f7"
+PR276_HEAD = "3d6645ae95274f4e70ec3037e4c06af96e1f61ec"
+PR276_PATHS = (
+    "pulumi/infra/ci_bootstrap.py",
+    "specs/service-test-preview-trust-cutover/runbook.md",
+    "tests/unit/test_governance_parity.py",
+    "tests/unit/test_governance_repo_component.py",
+    "tests/unit/test_oidc_trust_integration.py",
+)
 
 
 def select(*paths: str) -> DeploymentScopes:
@@ -40,6 +49,63 @@ def select_records(records: list[Mapping[str, object]]) -> DeploymentScopes:
         head_sha=HEAD,
         expected_file_count=len(records),
         complete=True,
+    )
+
+
+def test_exact_reviewed_pr276_comparison_selects_governance_only() -> None:
+    records = [
+        {
+            "filename": path,
+            "status": "added" if path.startswith("specs/") else "modified",
+        }
+        for path in PR276_PATHS
+    ]
+    result = select_deployment_scopes(
+        records,
+        base_sha=PR276_BASE,
+        head_sha=PR276_HEAD,
+        expected_file_count=5,
+        complete=True,
+    )
+    assert result.stacks == ("governance",)
+    assert not result.scaffold_validation
+    assert not result.execution_validation
+    assert not result.catalog_validation
+    assert (
+        next(
+            reason for reason in result.reasons if reason.path == PR276_PATHS[0]
+        ).reason
+        == "Reviewed PR #276 service preview trust cutover"
+    )
+
+
+@pytest.mark.parametrize(
+    "base,head,paths",
+    [
+        ("c" * 40, PR276_HEAD, PR276_PATHS),
+        (PR276_BASE, "c" * 40, PR276_PATHS),
+        (PR276_BASE, PR276_HEAD, PR276_PATHS[:-1]),
+        (PR276_BASE, PR276_HEAD, PR276_PATHS + ("docs/extra.md",)),
+        (PR276_BASE, PR276_HEAD, (PR276_PATHS[0],)),
+    ],
+)
+def test_reviewed_pr276_exception_fails_back_on_revision_or_file_change(
+    base, head, paths
+) -> None:
+    records = [{"filename": path, "status": "modified"} for path in paths]
+    result = select_deployment_scopes(
+        records,
+        base_sha=base,
+        head_sha=head,
+        expected_file_count=len(records),
+        complete=True,
+    )
+    assert result.stacks == ALL
+    assert (
+        next(
+            reason for reason in result.reasons if reason.path == PR276_PATHS[0]
+        ).reason
+        == "Conservative shared runtime impact"
     )
 
 

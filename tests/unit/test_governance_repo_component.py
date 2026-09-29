@@ -594,11 +594,11 @@ def test_repo_governance_prod_apply_role_trust_is_environment_governance_only(
     ]
 
 
-def test_repo_governance_preview_role_keeps_existing_subjects(
+def test_repo_governance_preview_role_retires_generic_pr_subject(
     pulumi_mocks,
     monkeypatch,
 ):  # noqa: ARG001
-    """preview/drift roles keep their existing (non-governance) subjects."""
+    """Service TEST preview keeps trusted branch/environments without PR trust."""
     _no_existing_resources(monkeypatch)
     settings = _governance_settings("test")
     repo = _synthetic_repo("user-service-infrastructure")
@@ -622,7 +622,6 @@ def test_repo_governance_preview_role_keeps_existing_subjects(
     ]
     assert subjects == [  # nosec B101
         "repo:VilnaCRM-Org/user-service-infrastructure:ref:refs/heads/main",
-        "repo:VilnaCRM-Org/user-service-infrastructure:pull_request",
         "repo:VilnaCRM-Org/user-service-infrastructure:environment:test",
         "repo:VilnaCRM-Org/user-service-infrastructure:environment:test-preview",
     ]

@@ -15,6 +15,7 @@ import reviewed_source_admission as gate
 HEAD = "a" * 40
 MAIN = "b" * 40
 BASE = f"repos/{gate.REPOSITORY}"
+RULESET_UPDATED_AT = "2026-09-28T12:00:00Z"
 
 
 @pytest.fixture
@@ -352,6 +353,7 @@ def publisher_evidence(monkeypatch, evidence):
     monkeypatch.setenv("REVIEWED_SOURCE_APP_ID", "777001")
     monkeypatch.setenv("REVIEWED_SOURCE_APP_SLUG", "reviewed-test")
     monkeypatch.setenv("REVIEWED_SOURCE_RULESET_ID", "123")
+    monkeypatch.setenv("REVIEWED_SOURCE_RULESET_UPDATED_AT", RULESET_UPDATED_AT)
     monkeypatch.setenv("REVIEWED_SOURCE_PREVIEW_ACTIVE", "false")
     evidence["apps/reviewed-test"] = {
         "id": 777001,
@@ -376,6 +378,8 @@ def publisher_evidence(monkeypatch, evidence):
         "branch_policies": [{"name": "main", "type": "branch"}],
     }
     evidence[f"{BASE}/rulesets/123"] = {
+        "id": 123,
+        "updated_at": RULESET_UPDATED_AT,
         "enforcement": "active",
         "target": "branch",
         "bypass_actors": [],
@@ -405,6 +409,33 @@ def test_dedicated_publisher_identity_and_activated_ruleset(
     assert gate.publisher_identity()["id"] == 99
 
 
+def test_read_only_app_ruleset_requires_owner_audited_revision(
+    publisher_evidence, monkeypatch
+):
+    rule = publisher_evidence[f"{BASE}/rulesets/123"]
+    del rule["bypass_actors"]  # GitHub redacts this field for Administration: read.
+    monkeypatch.setenv("REVIEWED_SOURCE_PREVIEW_ACTIVE", "true")
+    assert gate.publisher_identity()["id"] == 99
+    monkeypatch.delenv("REVIEWED_SOURCE_RULESET_UPDATED_AT")
+    with pytest.raises(ValueError, match="no-bypass owner audit"):
+        gate.publisher_identity()
+    monkeypatch.setenv("REVIEWED_SOURCE_RULESET_UPDATED_AT", RULESET_UPDATED_AT)
+    rule["updated_at"] = "2026-09-28T12:00:01Z"
+    with pytest.raises(ValueError, match="no-bypass owner audit"):
+        gate.publisher_identity()
+
+
+def test_ruleset_id_and_visible_bypass_fail_even_with_pin(publisher_evidence):
+    rule = publisher_evidence[f"{BASE}/rulesets/123"]
+    rule["id"] = 124
+    with pytest.raises(ValueError, match="ruleset ID differs"):
+        gate.verify_reviewed_ruleset(rule, 777001, 123, RULESET_UPDATED_AT)
+    rule["id"] = 123
+    rule["bypass_actors"] = [{"actor_type": "RepositoryRole", "actor_id": 5}]
+    with pytest.raises(ValueError, match="allows bypass"):
+        gate.verify_reviewed_ruleset(rule, 777001, 123, RULESET_UPDATED_AT)
+
+
 @pytest.mark.parametrize("value", ["", "15368", "4840884", "-1", "abc"])
 def test_missing_or_shared_publisher_is_rejected(monkeypatch, value):
     monkeypatch.setenv("REVIEWED_SOURCE_APP_ID", value)
@@ -419,7 +450,7 @@ def test_ruleset_rejects_unbound_or_alternate_issuer(publisher_evidence, issuer)
         issuer
     )
     with pytest.raises(ValueError, match="dedicated App issuer"):
-        gate.verify_reviewed_ruleset(rule, 777001)
+        gate.verify_reviewed_ruleset(rule, 777001, 123, RULESET_UPDATED_AT)
 
 
 @pytest.mark.parametrize(
@@ -442,7 +473,7 @@ def test_ruleset_rejects_incomplete_or_weak_activation(publisher_evidence, mutat
     else:
         rule["conditions"]["ref_name"]["include"] = ["refs/heads/other"]
     with pytest.raises(ValueError):
-        gate.verify_reviewed_ruleset(rule, 777001)
+        gate.verify_reviewed_ruleset(rule, 777001, 123, RULESET_UPDATED_AT)
 
 
 @pytest.mark.parametrize(

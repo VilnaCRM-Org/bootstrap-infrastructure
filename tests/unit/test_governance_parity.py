@@ -182,7 +182,6 @@ def test_other_repo_render_is_scoped_to_that_repo_not_the_first():
     subjects = ci_bootstrap._deployment_role_subjects(settings, "preview", other)
     assert subjects == [  # nosec B101
         "repo:VilnaCRM-Org/user-service-infrastructure:ref:refs/heads/main",
-        "repo:VilnaCRM-Org/user-service-infrastructure:pull_request",
         "repo:VilnaCRM-Org/user-service-infrastructure:environment:test",
         "repo:VilnaCRM-Org/user-service-infrastructure:environment:test-preview",
     ]

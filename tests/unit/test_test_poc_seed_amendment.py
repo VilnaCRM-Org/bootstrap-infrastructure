@@ -24,6 +24,23 @@ amendment = installation
 
 
 def activation(environment="test"):
+    if environment == "test":
+        # Public key metadata is pinned for the exact installed TEST template.
+        # This fixture still performs no AWS call.
+        key_id = "64db70a2-7c25-420f-85b6-eeae0618897d"
+        account = registry.ACCOUNTS["test"]
+        seed_key = registry.SeedKeyBinding(
+            f"arn:aws:kms:{registry.REGION}:{account}:key/{key_id}",
+            key_id,
+            account,
+            "CUSTOMER",
+            "Enabled",
+            "ENCRYPT_DECRYPT",
+        )
+        packet = installation.build_installation(
+            "test", account_id=account, seed_key=seed_key
+        )
+        return installation.build_activation(packet)
     return installation.build_activation(packet_for(environment))
 
 
@@ -155,6 +172,15 @@ def test_packet_changes_only_four_policy_documents_and_keeps_denial():
     packet = amendment.build_amendment(source)
     baseline = json.loads(packet.baseline_template)
     proposed = json.loads(packet.candidate_template)
+    current_source = json.loads(source.activation_template)
+    assert registry.document_hash(baseline) == amendment._TEST_POC_LIVE_TEMPLATE_SHA256
+    assert baseline["Resources"] == current_source["Resources"]
+    assert set(baseline["Metadata"]) == set(current_source["Metadata"])
+    assert {
+        key
+        for key in baseline["Metadata"]
+        if baseline["Metadata"][key] != current_source["Metadata"][key]
+    } == {"CatalogSha256", "RegistrySha256"}
     assert proposed["Metadata"]["CatalogSha256"] == capability.RESULT_CATALOG_SHA256
     assert proposed["Metadata"]["RegistrySha256"] == packet.resulting_registry.sha256
     assert proposed["Metadata"]["ActivationAuthorized"] is False
@@ -185,6 +211,12 @@ def test_packet_changes_only_four_policy_documents_and_keeps_denial():
             packet.resulting_registry.policies, source.installation.registry.policies
         )
     )
+
+
+def test_amendment_rejects_unreviewed_live_template_baseline(monkeypatch):
+    monkeypatch.setattr(amendment, "_TEST_POC_LIVE_REGISTRY_SHA256", "0" * 64)
+    with pytest.raises(ValueError, match="installed template"):
+        amendment.build_amendment(activation())
 
 
 def test_change_set_accepts_only_four_exact_in_place_documents():
