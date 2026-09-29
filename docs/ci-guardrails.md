@@ -44,17 +44,41 @@ These checks are intended to be marked as required in branch protection:
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
 `make test-guardrails` aggregates real preview generation, destructive diff
 gating, and static cost proxy checks. `make test-guardrails-unprivileged` uses
-an empty preview artifact to exercise the destructive-diff parser, cost proxy,
-and IAM-input extraction for fork pull requests. `make ci-pr` and `make ci`
-keep the real preview path.
+an empty placeholder preview artifact to exercise the destructive-diff parser,
+cost proxy, and IAM-input extraction for pull requests. `make ci-pr` and
+`make ci` keep the real preview path.
 
 ### Same-repo privileged check contract
 
-For source installation, branch protection continues to require the existing
-`Preview`, `Destructive Diff Gate`, and `IAM Validation` contexts. The legacy
-`Pulumi PR Guardrails / Preview`, `Pulumi PR Guardrails / Destructive Diff Gate`,
-and `Pulumi PR Guardrails / IAM Validation` jobs keep their names and behavior
-until the staged activation flag is enabled.
+Branch protection continues to require the existing `Preview`,
+`Destructive Diff Gate`, and `IAM Validation` contexts, but pull requests no
+longer receive AWS credentials from `Pulumi PR Guardrails`. Its privileged path
+first assumes the TEST PR CI configuration reader. As rendered from source, that
+reader trusts only the `main` ref subject with the `Reviewed PR Preview`
+workflow claim for this repository, and the TEST preview role omits the generic
+`pull_request` subject (#244; #276 extended the same retirement to the
+user-service preview role). A `pull_request` run therefore cannot obtain TEST
+credentials, so every pull request, same-repository or fork, selects the
+unprivileged path. `REVIEWED_SOURCE_PREVIEW_ACTIVE` no longer changes that
+selection:
+
+- `Pulumi PR Guardrails / Preview` and `Pulumi PR Guardrails / IAM Validation`
+  skip. GitHub reports a skipped job as passing its required context.
+- `Pulumi PR Guardrails / Preview (Unprivileged)` writes the placeholder
+  artifact `{"changeSummary": {}, "steps": []}` instead of running Pulumi.
+- `Pulumi PR Guardrails / Destructive Diff Gate` and
+  `Pulumi PR Guardrails / IAM Validation (Unprivileged)` read only that
+  placeholder. They pass and emit the notice
+  `unprivileged placeholder - not preview evidence`.
+
+Until the reviewed-source admission cutover is enrolled, meaning the three
+`Reviewed*` contexts below are required with the dedicated App's
+`integration_id` and `REVIEWED_SOURCE_PREVIEW_ACTIVE=true`, no pull-request check
+is preview, destructive-diff or IAM Access Analyzer evidence. Real saved-plan
+evidence comes from the protected `/pulumi <env> plan` comment path. It checks
+out the exact PR head, saves a plan and runs the destructive-diff and IAM
+validation gates against that saved plan's preview before any apply. Pushes to
+`main` keep the credentialed `Preview` and `IAM Validation` jobs.
 
 The clean publisher in `.github/workflows/reviewed-pr-preview.yml` emits three
 additional contexts after exact-source admission and all real guardrails succeed:
@@ -66,10 +90,13 @@ additional contexts after exact-source admission and all real guardrails succeed
 | AWS IAM Access Analyzer validation | `Reviewed PR Preview / Validate reviewed IAM` | `iam_validation` | `Reviewed IAM Validation` |
 
 `Pulumi PR Guardrails / Preview (Unprivileged)` and
-`Pulumi PR Guardrails / IAM Validation (Unprivileged)` are credential-free evidence.
-They must not be treated as equivalent to same-repo AWS validation. A skipped
-privileged check is not an acceptable skip for a same-repo infrastructure PR
-unless its distinct reviewed-source replacement is already required and passing.
+`Pulumi PR Guardrails / IAM Validation (Unprivileged)` are credential-free
+placeholder checks. They must not be treated as equivalent to same-repo AWS
+validation. A skipped privileged check is not an acceptable skip for a same-repo
+infrastructure PR unless its distinct reviewed-source replacement is already
+required and passing. Until then, reviewers need the exact-head
+`/pulumi <env> plan` saved-plan run; branch protection does not enforce that
+substitution.
 The branch-protection owner adds all three reviewed-source contexts with their
 `integration_id` pinned to the new dedicated reviewed-source App, without removing
 any existing required context or issuer, before enabling
@@ -82,9 +109,8 @@ destructive changes on the PoC route; a pull-request label cannot authorize an o
 The preview workflow uses the same Docker workspace and policy pack that local
 developers use:
 
-1. Source installation retains existing PR checks. After live trust retirement
-   and additive ruleset cutover, the activation flag makes all ordinary PR runs
-   select the credential-free Make preview/IAM path.
+1. Every ordinary PR run selects the credential-free Make preview/IAM path. The
+   activation flag gates only the trusted reviewed-source workflow below.
 2. Completion of a PR check or review signal invokes the trusted main workflow.
 3. Fresh GitHub evidence admits an independently approved exact PR head before
    either the CI config reader or TEST preview role can be assumed.
@@ -207,9 +233,10 @@ Current behavior:
   short note
 - IAM policies in the preview with valid AWS credentials: findings of type
   `ERROR` and `SECURITY_WARNING` fail the check
-- Fork pull request previews: the workflow uses
+- Pull request previews, same-repository or fork: the workflow uses
   `make test-iam-validation-unprivileged` to extract IAM validation inputs from
-  the uploaded artifact without calling AWS Access Analyzer
+  the uploaded placeholder artifact without calling AWS Access Analyzer; it
+  emits `unprivileged placeholder - not preview evidence` for that input
 
 This complements the custom Pulumi CrossGuard pack. Direct S3 bucket and KMS
 key policies retain resource-local `Resource: "*"` and matching service-wide

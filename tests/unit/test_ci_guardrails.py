@@ -819,3 +819,71 @@ def test_main_guard_runs_cli_entrypoint(
         sys.argv = original_argv
 
     assert "No IAM policy documents" in capsys.readouterr().out
+
+
+PLACEHOLDER_NOTICE = (
+    "::notice::unprivileged placeholder - not preview evidence (unprivileged.json)"
+)
+
+
+def _write_unprivileged_placeholder(path: Path) -> Path:
+    """Write the exact placeholder emitted by ``make test-preview-unprivileged``."""
+    path.write_text('{"changeSummary": {}, "steps": []}\n', encoding="utf-8")
+    return path
+
+
+def test_unprivileged_placeholder_gates_pass_with_non_evidence_notice(
+    guardrails_module, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Placeholder-input gates must say they carry no preview evidence."""
+    placeholder = _write_unprivileged_placeholder(tmp_path / "unprivileged.json")
+    output_path = tmp_path / "iam-inputs.json"
+
+    assert guardrails_module.cli(["destructive-gate", str(placeholder)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [PLACEHOLDER_NOTICE]
+    assert captured.err == ""
+
+    assert (
+        guardrails_module.cli(
+            ["iam-inputs", str(placeholder), "--output", str(output_path)]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out.splitlines() == [PLACEHOLDER_NOTICE]
+    assert json.loads(output_path.read_text(encoding="utf-8")) == []
+
+
+def test_real_previews_do_not_receive_placeholder_notice(
+    guardrails_module, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Only the exact placeholder object is labelled as non-evidence."""
+    unchanged = _write_preview(tmp_path / "test.json", steps=[], summary={"same": 3})
+    digest = tmp_path / "digest.json"
+    digest.write_text(
+        json.dumps({"changeSummary": {}, "duration": 1, "steps": []}),
+        encoding="utf-8",
+    )
+    previews = [str(unchanged), str(digest)]
+
+    assert guardrails_module.cli(["destructive-gate", *previews]) == 0
+    assert capsys.readouterr().out == ""
+    assert (
+        guardrails_module.cli(
+            ["iam-inputs", *previews, "--output", str(tmp_path / "iam-inputs.json")]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == ""
+
+
+def test_makefile_placeholder_matches_helper_contract(guardrails_module) -> None:
+    """Keep the Make placeholder and the helper's exact detection object aligned."""
+    makefile = (PROJECT_ROOT / "Makefile").read_text(encoding="utf-8")
+    writer = next(
+        line
+        for line in makefile.splitlines()
+        if "> .artifacts/pulumi-preview/unprivileged.json" in line
+    )
+    payload = writer.split("'")[3]
+    assert json.loads(payload) == guardrails_module.UNPRIVILEGED_PLACEHOLDER_PREVIEW

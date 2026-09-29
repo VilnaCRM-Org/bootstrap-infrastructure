@@ -60,6 +60,9 @@ COST_DRIVER_TYPE_PATTERNS = (
 DEFAULT_MAX_COST_PROXY_WEIGHT = 66
 GENERATED_PREVIEW_ARTIFACT_NAMES = frozenset({"iam-inputs.json"})
 COUNT_TABLE_SEPARATOR = "| --- | ---: |"
+# Exact object written by `make test-preview-unprivileged`; it carries no evidence.
+UNPRIVILEGED_PLACEHOLDER_PREVIEW: dict[str, Any] = {"changeSummary": {}, "steps": []}
+UNPRIVILEGED_PLACEHOLDER_NOTICE = "unprivileged placeholder - not preview evidence"
 
 
 def load_preview(path: Path) -> dict[str, Any]:
@@ -73,6 +76,21 @@ def load_preview(path: Path) -> dict[str, Any]:
 def preview_input_files(paths: Sequence[Path]) -> list[Path]:
     """Return Pulumi preview artifacts, excluding generated helper JSON files."""
     return [path for path in paths if path.name not in GENERATED_PREVIEW_ARTIFACT_NAMES]
+
+
+def placeholder_preview_files(paths: Sequence[Path]) -> list[Path]:
+    """Return credential-free placeholder inputs that contain no Pulumi preview."""
+    return [
+        path
+        for path in preview_input_files(paths)
+        if load_preview(path) == UNPRIVILEGED_PLACEHOLDER_PREVIEW
+    ]
+
+
+def emit_placeholder_notices(paths: Sequence[Path]) -> None:
+    """Annotate placeholder inputs so a passing gate is not read as evidence."""
+    for path in placeholder_preview_files(paths):
+        print(f"::notice::{UNPRIVILEGED_PLACEHOLDER_NOTICE} ({path.name})")
 
 
 def preview_steps(preview: dict[str, Any]) -> list[dict[str, Any]]:
@@ -510,6 +528,7 @@ def _run_destructive_gate(
     preview_files: Sequence[Path], *, event_path: str | None
 ) -> int:
     """Reject critical destructive steps; legacy event_path has no authority."""
+    emit_placeholder_notices(preview_files)
     findings: list[str] = []
     for preview_file in preview_input_files(preview_files):
         for step in find_destructive_steps(preview_steps(load_preview(preview_file))):
@@ -613,6 +632,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
         return _run_destructive_gate(args.preview_files, event_path=args.event_path)
 
     if args.command == "iam-inputs":
+        emit_placeholder_notices(args.preview_files)
         write_iam_inputs(args.output, preview_paths=args.preview_files)
         return 0
 
