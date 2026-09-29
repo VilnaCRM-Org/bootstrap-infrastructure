@@ -1,7 +1,8 @@
 """Central TEST ECS roles for independently staged enrollment.
 
-Not wired into an entrypoint. The independent seed owns six fences and the
-publisher role; governance may later consume exact fences for two ECS roles.
+Not wired into an entrypoint. The independent publisher stack owns only the
+publisher role and its two fences; the four ECS fences await a later reviewed
+runtime amendment, so the fence preflight fails closed until they exist.
 """
 
 from __future__ import annotations

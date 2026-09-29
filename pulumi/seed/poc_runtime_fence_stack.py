@@ -1,9 +1,12 @@
-"""Closed CloudFormation packet for TEST fences and the image publisher.
+"""Closed CloudFormation packet for the TEST image publisher only.
 
 This pure module does not authenticate AWS observations or execute a change set.
-An independent installer must verify that the stack, policy and role names
-are absent, authenticate the complete AWS response, and restore the deny-update
-stack policy after creation. ECS role enrollment remains separate.
+The publisher stack owns exactly the publisher boundary, its sole guard and the
+``user-service-test-ImagePublisher`` role. ECS execution/task fences stay outside
+this retained deny-update owner until a later reviewed runtime amendment adds
+their log, secret, KMS, queue and mail grants. An independent installer must
+verify that the stack, policy and role names are absent, authenticate the
+complete AWS response, and restore the deny-update stack policy after creation.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from .poc_runtime import (
     PUBLISHER_NAME,
     PUBLISHER_SUBJECT,
     REGION,
+    RuntimeIdentity,
     enrollment_records,
     publisher_policy,
     publisher_trust,
@@ -32,7 +36,8 @@ from .policy_registry import (
 )
 
 STACK_NAME = "issue219-runtime-fences-test"
-CONTRACT_VERSION = "issue219-test-runtime-seed/v2"
+CONTRACT_VERSION = "issue219-test-publisher-seed/v3"
+PUBLISHER = RuntimeIdentity("publisher", PUBLISHER_NAME)
 
 
 @dataclass(frozen=True)
@@ -57,10 +62,8 @@ def _logical_id(arn: str) -> str:
 
 def _verified_publisher(
     policies: tuple[PolicyRecord, ...], principals: tuple[PrincipalRecord, ...]
-) -> PrincipalRecord:
-    publisher = next(
-        (row for row in principals if row.arn.endswith("/" + PUBLISHER_NAME)), None
-    )
+) -> tuple[PrincipalRecord, tuple[PolicyRecord, ...]]:
+    publisher = next((row for row in principals if row.arn == PUBLISHER.arn), None)
     if (
         publisher is None
         or publisher.owner_project != "independent-seed"
@@ -69,50 +72,53 @@ def _verified_publisher(
         or publisher.attachment_arns != publisher.guard_arns
     ):
         raise RegistryError("Publisher ownership changed")
-    if not {publisher.boundary_arn, publisher.guard_arns[0]} <= {
-        policy.arn for policy in policies
-    }:
+    return publisher, _publisher_fences(policies, publisher)
+
+
+def _publisher_fences(
+    policies: tuple[PolicyRecord, ...], publisher: PrincipalRecord
+) -> tuple[PolicyRecord, ...]:
+    """Select the exact publisher boundary and sole guard, never an ECS fence."""
+    fences = (PUBLISHER.policy_arn("boundary"), PUBLISHER.policy_arn("guard"))
+    owned = tuple(policy for policy in policies if policy.arn in fences)
+    bound = (publisher.boundary_arn, *publisher.guard_arns)
+    if bound != fences or sorted(policy.arn for policy in owned) != sorted(fences):
         raise RegistryError("Publisher fence binding changed")
-    return publisher
-
-
-def build_fence_stack_packet() -> FenceStackPacket:
-    """Render six independent fences and one exact OIDC publisher role."""
-    policies, principals = enrollment_records()
-    if len(policies) != 6 or len(principals) != 3:
-        raise RegistryError("Runtime fence inventory changed")
-    publisher = _verified_publisher(policies, principals)
-    resources = {}
-    for policy in policies:
+    for policy in owned:
         if policy.ownership != "independent-seed" or policy.installed_arn:
             raise RegistryError("Runtime fence ownership changed")
-        path, name = policy.arn.split(":policy/", 1)[1].rsplit("/", 1)
-        resources[_logical_id(policy.arn)] = {
-            "Type": "AWS::IAM::ManagedPolicy",
-            "DeletionPolicy": "Retain",
-            "UpdateReplacePolicy": "Retain",
-            "Properties": {
-                "ManagedPolicyName": name,
-                "Path": f"/{path}/",
-                "PolicyDocument": json.loads(policy.document_json),
-            },
-        }
-    publisher_logical_id = _logical_id(publisher.arn)
-    publisher_guard = publisher.guard_arns[0]
-    resources[publisher_logical_id] = {
+    return owned
+
+
+def _managed_policy(policy: PolicyRecord) -> dict:
+    """Render one retained publisher fence at its reviewed path."""
+    path, name = policy.arn.split(":policy/", 1)[1].rsplit("/", 1)
+    return {
+        "Type": "AWS::IAM::ManagedPolicy",
+        "DeletionPolicy": "Retain",
+        "UpdateReplacePolicy": "Retain",
+        "Properties": {
+            "ManagedPolicyName": name,
+            "Path": f"/{path}/",
+            "PolicyDocument": json.loads(policy.document_json),
+        },
+    }
+
+
+def _publisher_role() -> dict:
+    """Render the exact OIDC publisher with its boundary, sole guard and push."""
+    boundary, guard = PUBLISHER.policy_arn("boundary"), PUBLISHER.policy_arn("guard")
+    return {
         "Type": "AWS::IAM::Role",
         "DeletionPolicy": "Retain",
         "UpdateReplacePolicy": "Retain",
-        "DependsOn": [
-            _logical_id(publisher.boundary_arn),
-            _logical_id(publisher_guard),
-        ],
+        "DependsOn": [_logical_id(boundary), _logical_id(guard)],
         "Properties": {
             "RoleName": PUBLISHER_NAME,
             "Path": "/",
             "AssumeRolePolicyDocument": json.loads(publisher_trust(PUBLISHER_SUBJECT)),
-            "PermissionsBoundary": publisher.boundary_arn,
-            "ManagedPolicyArns": [publisher_guard],
+            "PermissionsBoundary": boundary,
+            "ManagedPolicyArns": [guard],
             "Policies": [
                 {
                     "PolicyName": "Issue219TestImagePush",
@@ -128,6 +134,16 @@ def build_fence_stack_packet() -> FenceStackPacket:
             ],
         },
     }
+
+
+def build_fence_stack_packet() -> FenceStackPacket:
+    """Render only the publisher boundary, sole guard and exact OIDC role."""
+    policies, principals = enrollment_records()
+    if len(policies) != 6 or len(principals) != 3:
+        raise RegistryError("Runtime fence inventory changed")
+    publisher, owned = _verified_publisher(policies, principals)
+    resources = {_logical_id(policy.arn): _managed_policy(policy) for policy in owned}
+    resources[_logical_id(publisher.arn)] = _publisher_role()
     template = {
         "AWSTemplateFormatVersion": "2010-09-09",
         "Metadata": {
@@ -135,7 +151,7 @@ def build_fence_stack_packet() -> FenceStackPacket:
             "AccountId": ACCOUNT_ID,
             "Region": REGION,
             "PolicySetSha256": document_hash(
-                [(policy.arn, policy.sha256) for policy in policies]
+                [(policy.arn, policy.sha256) for policy in owned]
             ),
             "PublisherSubjectSha256": hashlib.sha256(
                 PUBLISHER_SUBJECT.encode("utf-8")
@@ -157,7 +173,7 @@ def build_fence_stack_packet() -> FenceStackPacket:
         STACK_NAME,
         canonical_json(template),
         canonical_json(deny_update),
-        tuple(sorted(policy.arn for policy in policies)),
+        tuple(sorted(policy.arn for policy in owned)),
         (publisher.arn,),
     )
 
@@ -193,11 +209,13 @@ def _validate_add_row(change: object, expected: dict, seen: set[str]) -> str:
 
 
 def validate_fence_create_changes(packet: FenceStackPacket, changes: object) -> None:
-    """Require seven exact Add rows from an authenticated complete change set.
+    """Require exactly three Add rows from an authenticated complete change set.
 
-    The caller must separately prove TEST account/region, absent stack and names,
-    reviewed template digest, change-set ID/type/status and pagination closure.
-    This offline summary validator cannot establish those live facts.
+    Obsolete seven-resource and six-policy change sets fail because ECS fence
+    rows are foreign to the publisher stack. The caller must separately prove
+    TEST account/region, absent stack and names, reviewed template digest,
+    change-set ID/type/status and pagination closure. This offline summary
+    validator cannot establish those live facts.
     """
     validate_fence_stack_packet(packet)
     if not isinstance(changes, list):
@@ -207,4 +225,4 @@ def validate_fence_create_changes(packet: FenceStackPacket, changes: object) -> 
     for change in changes:
         seen.add(_validate_add_row(change, expected, seen))
     if seen != set(expected):
-        raise RegistryError("All seven runtime seed additions are required")
+        raise RegistryError("All three publisher stack additions are required")
