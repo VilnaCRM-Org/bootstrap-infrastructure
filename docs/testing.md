@@ -106,6 +106,7 @@ Coverage:
 - `make test-guardrails` keeps the real preview, destructive-diff, and cost-proxy flow reproducible locally
 - `make test-guardrails-unprivileged` keeps the fallback preview, destructive-diff, cost-proxy, and IAM-input extraction path reproducible locally
 - `make test-iam-validation` validates previewed IAM policies with AWS IAM Access Analyzer when AWS credentials are intentionally configured
+- `make validate-runtime-seed-policies` renders the issue-219 publisher stack template and IAM documents to `.artifacts/runtime-seed-policies/`; it runs Access Analyzer and CloudFormation template validation only when credential variables are set (`RUNTIME_SEED_POLICY_ARGS=--render-only` never calls AWS)
 
 Dependency Review, CodeQL, SBOM attestations, and OpenSSF Scorecard are
 GitHub-native only. The repository keeps those workflow definitions under
