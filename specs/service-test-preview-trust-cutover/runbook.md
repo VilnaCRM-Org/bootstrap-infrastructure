@@ -1,5 +1,8 @@
 # Service TEST preview trust prerequisite (#185 / #219)
 
+> Historical, executed runbook (PR #276 merged and live-verified). Kept as a
+> record; do not re-run it as current procedure.
+
 Retire generic `pull_request` subjects from
 `GitHubCiPreview-user-service-infrastructure-test` before granting new workload
 metadata permissions for the service registry capability. Both conventional and

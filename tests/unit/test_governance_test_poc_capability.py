@@ -1,4 +1,4 @@
-"""TEST prerequisite capability stays closed across grants and seed boundaries."""
+"""TEST prerequisite capability grants are enabled only for the exact installed seed."""
 
 import dataclasses
 import json

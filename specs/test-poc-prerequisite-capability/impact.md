@@ -1,6 +1,6 @@
 # Source impact relationships
 
-Post-seed activation (PR #280, FR5-FR7): the packaged identity has
+Post-seed activation (activation PR #284, superseding #280, FR5-FR7): the packaged identity has
 `enabled: true` and the active TEST seed catalog pin is the amendment result
 `ff2eaf29…`. Source now emits the graph below. It becomes live only through
 the ordered protected deployments in [post-seed-activation.md](post-seed-activation.md),

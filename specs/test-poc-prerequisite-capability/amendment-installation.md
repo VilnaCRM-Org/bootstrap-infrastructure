@@ -2,7 +2,7 @@
 
 This is a one-time, TEST-only installation prerequisite for the user-service
 registry/SES/DKIM plan. The packet itself changes neither the active TEST catalog
-nor the packaged capability flag. The follow-up PR #280 source advances the TEST
+nor the packaged capability flag. The follow-up activation PR (#284, superseding #280) source advances the TEST
 pin to the amendment result and enables the flag; it merges only after this
 installation's readback, per [post-seed-activation.md](post-seed-activation.md).
 PROD is outside this amendment. The source generator performs no AWS calls and
