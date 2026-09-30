@@ -178,6 +178,33 @@ def build_fence_stack_packet() -> FenceStackPacket:
     )
 
 
+def break_glass_during_update_policy_json() -> str:
+    """Render the narrow during-update stack policy for the break-glass amendment.
+
+    Allows only ``Update:Modify`` on the publisher role's logical ID and denies
+    ``Update:Replace`` and ``Update:Delete`` everywhere. It applies to one
+    ``update-stack`` call and never replaces the permanent deny-update policy.
+    """
+    return canonical_json(
+        {
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": "Update:Modify",
+                    "Principal": "*",
+                    "Resource": f"LogicalResourceId/{_logical_id(PUBLISHER.arn)}",
+                },
+                {
+                    "Effect": "Deny",
+                    "Action": ["Update:Replace", "Update:Delete"],
+                    "Principal": "*",
+                    "Resource": "*",
+                },
+            ]
+        }
+    )
+
+
 def validate_fence_stack_packet(packet: FenceStackPacket) -> None:
     """Reject even plausible changes to a reviewed creation packet."""
     if not isinstance(packet, FenceStackPacket) or packet != build_fence_stack_packet():

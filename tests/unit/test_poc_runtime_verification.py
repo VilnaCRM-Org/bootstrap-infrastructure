@@ -69,6 +69,16 @@ def test_enrollment_digest_binds_publisher_trust(monkeypatch):
         subject(repository_id="1"),
         subject(environment="prod"),
         subject() + ":actor:someone",
+        subject(repo="VilnaCRM-Org@114362548/user-service@646535009"),
+        ":".join(
+            sum(
+                [
+                    subject().split(":")[index : index + 2]
+                    for index in reversed(range(0, len(subject().split(":")), 2))
+                ],
+                [],
+            )
+        ),
     ],
 )
 def test_publisher_subject_must_equal_reviewed_subject(publisher_subject):

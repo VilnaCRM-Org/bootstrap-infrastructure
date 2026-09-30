@@ -20,7 +20,11 @@ from pathlib import Path
 from typing import Any
 
 from _script_support import run
-from seed.poc_runtime_fence_stack import build_fence_stack_packet
+from seed.poc_publisher_stack_verification import _amended_packet
+from seed.poc_runtime_fence_stack import (
+    break_glass_during_update_policy_json,
+    build_fence_stack_packet,
+)
 
 DEFAULT_OUTPUT = Path(".artifacts/runtime-seed-policies")
 REGION = "eu-central-1"
@@ -66,6 +70,14 @@ def render(output: Path) -> dict[str, Any]:
     (output / "stack-policy.json").write_text(
         packet.deny_update_policy_json, encoding="utf-8"
     )
+    during_update = break_glass_during_update_policy_json()
+    (output / "break-glass-during-update-policy.json").write_text(
+        during_update, encoding="utf-8"
+    )
+    amended = _amended_packet()
+    (output / "amended-template.json").write_text(
+        amended.template_json, encoding="utf-8"
+    )
     documents = []
     template = json.loads(packet.template_json)
     for relative, policy_type, document in _documents(template):
@@ -80,6 +92,10 @@ def render(output: Path) -> dict[str, Any]:
     manifest = {
         "stack_name": packet.stack_name,
         "template_sha256": packet.template_sha256,
+        "amended_template_sha256": amended.template_sha256,
+        "break_glass_during_update_policy_sha256": hashlib.sha256(
+            during_update.encode("utf-8")
+        ).hexdigest(),
         "documents": documents,
     }
     text = json.dumps(manifest, indent=2) + "\n"

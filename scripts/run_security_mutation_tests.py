@@ -61,10 +61,7 @@ GUARDS = {
     "pulumi/infra/poc_runtime_enrollment.py": {"_target", "_verify_fences"},
     "pulumi/seed/poc_pass_role.py": {"propose_pass_role"},
     "pulumi/seed/poc_publisher_stack_verification.py": {
-        "verify_publisher_stack",
-        "verify_amended_publisher_stack",
         "_verify",
-        "_amended_packet",
         "_verify_stack",
         "_verify_inventory",
         "_verify_policies",
@@ -127,6 +124,12 @@ SEMANTIC_TARGETS = {
         "observe_active_enrollment",
         "_key_binding",
         "main",
+    },
+    # Expected-status and expected-packet selection, not `if ... raise` guards.
+    "pulumi/seed/poc_publisher_stack_verification.py": {
+        "verify_publisher_stack",
+        "verify_amended_publisher_stack",
+        "_amended_packet",
     },
     "pulumi/seed/policy_registry.py": {
         "_verify_catalog_hash",
@@ -297,8 +300,32 @@ def _promotion_candidates(function: str, node: ast.AST):
             yield node.test, value, "misclassify-repository-scope"
 
 
+_STATUS_SWAP = {
+    "CREATE_COMPLETE": "UPDATE_COMPLETE",
+    "UPDATE_COMPLETE": "CREATE_COMPLETE",
+}
+
+
+def _publisher_verifier_candidates(function: str, node: ast.AST):
+    """Swap the required stack status, expected packet or amended trust."""
+    if function in {"verify_publisher_stack", "verify_amended_publisher_stack"}:
+        if isinstance(node, ast.Constant) and node.value in _STATUS_SWAP:
+            yield node, repr(_STATUS_SWAP[node.value]), "swap-required-stack-status"
+    if function == "verify_amended_publisher_stack" and _is_named_call(
+        node, "_amended_packet"
+    ):
+        yield node, "build_fence_stack_packet()", "swap-expected-packet"
+    if function == "verify_publisher_stack" and _is_named_call(
+        node, "build_fence_stack_packet"
+    ):
+        yield node, "_amended_packet()", "swap-expected-packet"
+    if function == "_amended_packet" and _is_named_call(node, "disabled_trust"):
+        yield node, "'{}'", "drop-amended-trust"
+
+
 def semantic_candidates(function: str, node: ast.AST):
     """Dispatch the unchanged semantic operators for each security boundary."""
+    yield from _publisher_verifier_candidates(function, node)
     yield from _promotion_candidates(function, node)
     if function == "identity_conditions":
         yield from _identity_pin_candidates(node)

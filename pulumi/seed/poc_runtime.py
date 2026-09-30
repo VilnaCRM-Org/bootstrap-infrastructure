@@ -109,7 +109,10 @@ def publisher_trust(subject: str) -> str:
 
     The independent installer must observe GitHub configuration and real claims.
     Only aud/sub are IAM keys; immutable identity/workflow claims belong in sub.
-    Preserve the observed key order and either documented repo spelling.
+    Structurally this accepts either documented repo spelling and preserves key
+    order, but production always passes the constant PUBLISHER_SUBJECT and the
+    runtime verifier requires exact equality with it, so only the pinned legacy
+    spelling is accepted at install/verify time.
     """
     expected = {
         "repo": APPLICATION_REPOSITORY,

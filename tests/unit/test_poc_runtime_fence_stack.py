@@ -363,3 +363,30 @@ def test_obsolete_change_sets_rejected():
     for obsolete in (seven, six):
         with pytest.raises(RegistryError, match="Only exact new"):
             fences.validate_fence_create_changes(packet, obsolete)
+
+
+def test_break_glass_during_update_policy_is_narrow():
+    """Only Modify on the publisher role is allowed; replace/delete are denied."""
+    text = fences.break_glass_during_update_policy_json()
+    logical = fences._logical_id(fences.PUBLISHER.arn)
+    assert json.loads(text) == {
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": "Update:Modify",
+                "Principal": "*",
+                "Resource": f"LogicalResourceId/{logical}",
+            },
+            {
+                "Effect": "Deny",
+                "Action": ["Update:Replace", "Update:Delete"],
+                "Principal": "*",
+                "Resource": "*",
+            },
+        ]
+    }
+    assert (
+        logical
+        in json.loads(fences.build_fence_stack_packet().template_json)["Resources"]
+    )
+    assert text != fences.build_fence_stack_packet().deny_update_policy_json

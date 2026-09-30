@@ -110,6 +110,27 @@ def test_governance_proposes_only_ecs_roles_not_independent_publisher(
     )
 
 
+def test_task_inline_policy_empty_block_survives_serialization(
+    pulumi_mocks, monkeypatch
+):
+    """The task role's exclusive inline set must be present and empty, not omitted."""
+    provider, _ = target(monkeypatch, "governance")
+    component = enrollment.PocRuntimeRoles(provider=provider)
+    for grants in component.grants.values():
+        for grant in grants:
+            _sync_await(future_output(grant.urn))
+    exclusive = {
+        name: inputs
+        for typ, name, inputs in pulumi_mocks.resources
+        if typ == "aws:iam/rolePoliciesExclusive:RolePoliciesExclusive"
+    }
+    task = runtime.runtime_identities()[1]
+    assert task.purpose == "task"
+    row = exclusive[f"{task.name}-inline-policies-exclusive"]
+    assert "policyNames" in row
+    assert row["policyNames"] == []
+
+
 @pytest.mark.parametrize("mismatch", ["arn", "policy", "missing", "raises"])
 def test_governance_rejects_changed_seed_documents_before_roles(
     pulumi_mocks, monkeypatch, mismatch

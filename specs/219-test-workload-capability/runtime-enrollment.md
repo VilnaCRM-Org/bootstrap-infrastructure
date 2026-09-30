@@ -141,10 +141,21 @@ against the reviewed amended template (disabled role trust only).
 ## Local rendering and optional AWS validation
 
 `make validate-runtime-seed-policies` renders `template.json`, `stack-policy.json`,
-every IAM document and `manifest.json` to `.artifacts/runtime-seed-policies/`;
-the `template.json` SHA-256 equals the packet digest. Only when a credential
-variable that Compose forwards into the container (`AWS_ACCESS_KEY_ID`,
-`AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` or `AWS_PROFILE`) is set does it call read-only IAM Access Analyzer
+`amended-template.json` (the break-glass template built by `_amended_packet()`),
+`break-glass-during-update-policy.json`, every IAM document and `manifest.json`
+to `.artifacts/runtime-seed-policies/`; the `template.json` SHA-256 equals the
+packet digest and the manifest records the amended template and during-update
+policy digests. AWS validation runs only when at least one of these variables is
+set and non-empty in the renderer's environment
+(`CREDENTIAL_VARIABLES` in `scripts/render_runtime_seed_policies.py`):
+`AWS_ACCESS_KEY_ID`, `AWS_PROFILE`, `AWS_WEB_IDENTITY_TOKEN_FILE`,
+`AWS_CONTAINER_CREDENTIALS_FULL_URI` and
+`AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`. `docker-compose.yml` forwards only
+`PULUMI_BACKEND_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_SESSION_TOKEN`, `AWS_PROFILE` and `AWS_REGION` from the host, and it also
+loads `env_file: .env` (optional), so any trigger variable placed in `.env` starts
+validation even when the host shell is clean. The read-only `~/.aws` bind mount
+is not itself a trigger. When triggered it calls read-only IAM Access Analyzer
 `validate-policy` per identity policy (trust documents with `RESOURCE_POLICY` /
 `AWS::IAM::AssumeRolePolicyDocument`) and CloudFormation `validate-template`.
 Exit code 1 means ERROR or SECURITY_WARNING findings; 2 means a missing CLI or
@@ -184,8 +195,13 @@ Before executing any change set:
 
 ## Break-glass revocation of publisher trust
 
-Use the audited break-glass identity from `docs/governance-stack.md`, outside
-GitHub CI.
+Run this only with an audited break-glass identity outside GitHub CI that holds
+`iam:UpdateAssumeRolePolicy`, `iam:PutRolePolicy`, `cloudformation:CreateChangeSet`,
+`cloudformation:DeleteChangeSet` and `cloudformation:UpdateStack` on the publisher
+role and stack. `docs/governance-stack.md` defines no such publisher-specific
+grant (the seed installer operator identity in that guide is not authorized for
+this stack), so the holder must be named and reviewed before use; do not
+improvise authority during an incident.
 
 1. **Contain.** Call `iam:UpdateAssumeRolePolicy` to set
    `seed.poc_runtime.disabled_trust()`. Add the AWS "revoke older sessions"
@@ -194,24 +210,52 @@ GitHub CI.
    Stack policies do not restrict direct IAM calls; this step intentionally
    creates drift.
 2. **Reviewed amendment.** Disable trust in source, regenerate the packet and
-   review the digest. The amended template must differ from the reviewed one only
-   in the publisher role's `AssumeRolePolicyDocument` (it becomes
-   `disabled_trust()`); the change set must show a single `Modify` row with
-   `Replacement: False` on the publisher logical ID. `ExecuteChangeSet` has no
-   temporary stack-policy parameter and the permanent policy denies `Update:*`,
-   so a change set cannot be executed under it. Use one of these reviewed
-   sequences:
-   - Preferred: `aws cloudformation update-stack --stack-name
-     issue219-runtime-fences-test --template-body file://<reviewed-amended>.json
-     --stack-policy-during-update-body file://<narrow-allow>.json` where the
-     narrow policy allows only `Update:Modify` on
-     `LogicalResourceId/<publisher logical id>` and denies `Update:Replace` and
-     `Update:Delete` on `*`. This override applies to that update only; the
-     permanent deny-update policy is not modified.
-   - Alternative: `SetStackPolicy` to that same temporary narrow allow, execute
-     the reviewed change set, then immediately `SetStackPolicy` back to the
-     permanent deny (`Deny Update:* Principal * Resource *`). Treat an
-     interruption before the restore as an incident.
+   review the digest. Render the files with `make validate-runtime-seed-policies`
+   (or `RUNTIME_SEED_POLICY_ARGS=--render-only`): `amended-template.json` is the
+   template built by `_amended_packet()` and
+   `break-glass-during-update-policy.json` is the narrow during-update policy
+   from `break_glass_during_update_policy_json()`; record both SHA-256 values from
+   `manifest.json` (`amended_template_sha256`,
+   `break_glass_during_update_policy_sha256`). The amended template differs from
+   the reviewed one only in the publisher role's `AssumeRolePolicyDocument` (it
+   becomes `disabled_trust()`). The narrow policy allows only `Update:Modify` on
+   `LogicalResourceId/<publisher logical id>` and denies `Update:Replace` and
+   `Update:Delete` on `*`. `ExecuteChangeSet` has no temporary stack-policy
+   parameter and the permanent policy denies `Update:*`, so a change set cannot
+   be executed under it. Use one of these reviewed sequences:
+   - Preferred: first create a review-only UPDATE change set from the
+     byte-identical `amended-template.json`, confirm exactly one `Modify` row
+     with `Replacement: False` on the publisher logical ID, then delete that
+     change set (it is never executed). Then run the update directly:
+
+     ```bash
+     aws cloudformation create-change-set --stack-name issue219-runtime-fences-test \
+       --change-set-name issue219-review --change-set-type UPDATE \
+       --template-body file://amended-template.json \
+       --capabilities CAPABILITY_NAMED_IAM
+     aws cloudformation describe-change-set --stack-name issue219-runtime-fences-test \
+       --change-set-name issue219-review
+     aws cloudformation delete-change-set --stack-name issue219-runtime-fences-test \
+       --change-set-name issue219-review
+     aws cloudformation update-stack --stack-name issue219-runtime-fences-test \
+       --template-body file://amended-template.json \
+       --capabilities CAPABILITY_NAMED_IAM \
+       --stack-policy-during-update-body file://break-glass-during-update-policy.json
+     aws cloudformation wait stack-update-complete \
+       --stack-name issue219-runtime-fences-test
+     ```
+
+     The override applies to that update only; the permanent deny-update policy
+     is not modified. Do not restore or read back anything until the wait
+     reports the terminal `UPDATE_COMPLETE` status (a failed or rolled-back
+     update is an incident).
+   - Alternative: `SetStackPolicy` to the same
+     `break-glass-during-update-policy.json`, create an UPDATE change set from
+     `amended-template.json` with `--capabilities CAPABILITY_NAMED_IAM`, confirm the
+     single `Modify` row, `ExecuteChangeSet`, run
+     `aws cloudformation wait stack-update-complete`, and only then
+     `SetStackPolicy` back to the permanent deny (`Deny Update:* Principal *
+     Resource *`). Treat an interruption before the restore as an incident.
 
    Afterwards read back `GetStackPolicy` and `DescribeStacks` and record the
    canonical policy digest (it must equal the permanent deny-update policy) and
@@ -253,9 +297,11 @@ native image digests. The proposed role ARN matches that workflow.
 Trust uses only AWS-supported issuer `aud` and `sub` keys. The exact subject must
 include `repo`, `repository_id=646535009`, `repository_owner_id=114362548`,
 `environment=poc-test-images`, `ref=refs/heads/main`, the exact ordinary
-`workflow_ref`, and `event_name=workflow_dispatch`. Only the pinned legacy `repo:` subject spelling is accepted (exact match to
-`PUBLISHER_SUBJECT`); an immutable-form token stops execution pending a reviewed
-amendment. Key order is preserved. Missing, extra,
+`workflow_ref`, and `event_name=workflow_dispatch`. `publisher_trust` structurally accepts either documented repo spelling, but
+production always passes the constant `PUBLISHER_SUBJECT` and the runtime verifier
+requires exact equality with it, so only the pinned legacy `repo:` spelling is
+accepted at install and verify time; an immutable-form or reordered subject is
+rejected and stops execution pending a reviewed amendment. Key order is preserved. Missing, extra,
 duplicate, foreign, PR, or reusable-workflow claims reject.
 
 The 2026-09-28 GitHub API read returned `use_default=false` with exactly the
