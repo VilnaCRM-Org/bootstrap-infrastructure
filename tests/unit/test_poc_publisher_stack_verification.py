@@ -213,8 +213,17 @@ def test_amended_stack_accepted_and_differs_only_in_trust():
         for key, resource in base["Resources"].items()
         if resource != amended["Resources"][key]
     ]
-    assert changed == [fences._logical_id(PUBLISHER.arn)]
+    role_id = fences._logical_id(PUBLISHER.arn)
+    assert changed == [role_id]
     assert base["Metadata"] == amended["Metadata"]
+    role_properties = amended["Resources"][role_id]["Properties"]
+    assert role_properties["AssumeRolePolicyDocument"] == json.loads(
+        runtime.disabled_trust()
+    )
+    role_properties["AssumeRolePolicyDocument"] = base["Resources"][role_id][
+        "Properties"
+    ]["AssumeRolePolicyDocument"]
+    assert amended == base
     assert result.template_sha256 != fences.build_fence_stack_packet().template_sha256
     assert result.activation_authorized is False
 

@@ -152,7 +152,7 @@ set and non-empty in the renderer's environment
 `AWS_CONTAINER_CREDENTIALS_FULL_URI` and
 `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI`. `docker-compose.yml` forwards only
 `PULUMI_BACKEND_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-`AWS_SESSION_TOKEN`, `AWS_PROFILE` and `AWS_REGION` from the host, and it also
+`AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_REGION` and `AWS_DEFAULT_REGION` from the host, and it also
 loads `env_file: .env` (optional), so any trigger variable placed in `.env` starts
 validation even when the host shell is clean. The read-only `~/.aws` bind mount
 is not itself a trigger. When triggered it calls read-only IAM Access Analyzer
@@ -195,10 +195,19 @@ Before executing any change set:
 
 ## Break-glass revocation of publisher trust
 
-Run this only with an audited break-glass identity outside GitHub CI that holds
-`iam:UpdateAssumeRolePolicy`, `iam:PutRolePolicy`, `cloudformation:CreateChangeSet`,
-`cloudformation:DeleteChangeSet` and `cloudformation:UpdateStack` on the publisher
-role and stack. `docs/governance-stack.md` defines no such publisher-specific
+Run this only with an audited break-glass identity outside GitHub CI. Mutating
+permissions on the publisher role and stack: `iam:UpdateAssumeRolePolicy`,
+`iam:PutRolePolicy`, `iam:DeleteRolePolicy` (step 3), `cloudformation:CreateChangeSet`,
+`cloudformation:DeleteChangeSet`, `cloudformation:UpdateStack` and, for the
+alternative path only, `cloudformation:SetStackPolicy` and
+`cloudformation:ExecuteChangeSet`. Read permissions for the wait, readback, drift
+and verifier steps: `cloudformation:DescribeChangeSet`,
+`cloudformation:DescribeStacks`, `cloudformation:GetStackPolicy`,
+`cloudformation:DetectStackDrift`,
+`cloudformation:DescribeStackDriftDetectionStatus`,
+`cloudformation:DescribeStackResourceDrifts`, `cloudformation:GetTemplate`,
+`iam:GetRole`, `iam:GetRolePolicy`, `iam:ListRolePolicies` and
+`iam:ListAttachedRolePolicies`. `docs/governance-stack.md` defines no such publisher-specific
 grant (the seed installer operator identity in that guide is not authorized for
 this stack), so the holder must be named and reviewed before use; do not
 improvise authority during an incident.
@@ -233,6 +242,8 @@ improvise authority during an incident.
        --change-set-name issue219-review --change-set-type UPDATE \
        --template-body file://amended-template.json \
        --capabilities CAPABILITY_NAMED_IAM
+     aws cloudformation wait change-set-create-complete \
+       --stack-name issue219-runtime-fences-test --change-set-name issue219-review
      aws cloudformation describe-change-set --stack-name issue219-runtime-fences-test \
        --change-set-name issue219-review
      aws cloudformation delete-change-set --stack-name issue219-runtime-fences-test \

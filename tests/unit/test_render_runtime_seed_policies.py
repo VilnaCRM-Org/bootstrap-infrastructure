@@ -70,6 +70,22 @@ def test_render_writes_exact_template_and_every_iam_document(tmp_path):
     inline = tmp_path / f"inline/{ROLE}-Issue219TestImagePush.json"
     assert json.loads(inline.read_text()) == json.loads(runtime.publisher_policy())
     assert json.loads((tmp_path / "manifest.json").read_text()) == manifest
+    assert set(manifest) == {
+        "stack_name",
+        "template_sha256",
+        "amended_template_sha256",
+        "break_glass_during_update_policy_sha256",
+        "documents",
+    }
+    amended = (tmp_path / "amended-template.json").read_bytes()
+    assert amended == renderer._amended_packet().template_json.encode()
+    assert hashlib.sha256(amended).hexdigest() == manifest["amended_template_sha256"]
+    during_update = (tmp_path / "break-glass-during-update-policy.json").read_bytes()
+    assert during_update == renderer.break_glass_during_update_policy_json().encode()
+    assert (
+        hashlib.sha256(during_update).hexdigest()
+        == manifest["break_glass_during_update_policy_sha256"]
+    )
 
 
 @pytest.mark.parametrize("argv", [[], ["--render-only"]])
