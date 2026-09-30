@@ -16,7 +16,8 @@ SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 GOVERNANCE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pulumi-governance.yml"
 GOVERNANCE_STATUS_CONTEXT = "Governance Apply"
 # The complete global required-status-check set from the 2026-09-08 live `main`
-# ruleset snapshot (superseded by the reconciled central contract on 2026-09-27). "Governance Apply" is intentionally NOT here: it is an informational
+# ruleset snapshot (superseded by the reconciled central contract on 2026-09-27).
+# "Governance Apply" is intentionally NOT here: it is an informational
 # legacy informational status; central promotion now belongs to the protected
 # aggregate publisher. Retiring the old runner must not weaken repository controls.
 LEGACY_REQUIRED_STATUS_CHECKS = (
