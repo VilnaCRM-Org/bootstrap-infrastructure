@@ -876,6 +876,29 @@ def test_placeholder_cost_proxy_and_summary_are_labelled_non_evidence(
     assert guardrails_module.PLACEHOLDER_BANNER in capsys.readouterr().out
 
 
+def test_placeholder_cost_proxy_json_is_flagged_and_real_json_is_not(
+    guardrails_module, tmp_path: Path
+) -> None:
+    """Machine-readable cost-proxy output labels placeholder input."""
+    placeholder = _write_unprivileged_placeholder(tmp_path / "unprivileged.json")
+    real = _write_preview(tmp_path / "test.json", steps=[], summary={"same": 3})
+    placeholder_json = tmp_path / "placeholder.json"
+    real_json = tmp_path / "real.json"
+
+    assert (
+        guardrails_module.cli(
+            ["cost-proxy", str(placeholder), "--output-json", str(placeholder_json)]
+        )
+        == 0
+    )
+    assert (
+        guardrails_module.cli(["cost-proxy", str(real), "--output-json", str(real_json)])
+        == 0
+    )
+    assert json.loads(placeholder_json.read_text(encoding="utf-8"))[0]["placeholder"]
+    assert "placeholder" not in json.loads(real_json.read_text(encoding="utf-8"))[0]
+
+
 def test_real_preview_cost_proxy_and_summary_have_no_placeholder_banner(
     guardrails_module, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
