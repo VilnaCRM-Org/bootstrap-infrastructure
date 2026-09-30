@@ -3481,7 +3481,8 @@ def test_required_status_check_contract_matches_collector_and_docs(
         not in implementation_readiness_report
     )
     assert (  # nosec B101
-        "The example below is the archived 2026-05-17 record" in guardrails_doc
+        "The example below is derived from the archived 2026-05-17 record"
+        in guardrails_doc
     )
     evidence = (
         "a read-only GitHub API readback of ruleset 13906584 on 2026-09-30 "
@@ -3526,8 +3527,11 @@ def test_test_account_evidence_docs_match_governed_ruleset_contract(
         assert "required context with its pinned App issuer" not in flat  # nosec B101
         assert "evidence context with its pinned App issuer" not in flat  # nosec B101
         assert (  # nosec B101
-            "is a merge requirement only in governed repositories and is retired "
-            "for `bootstrap-infrastructure`" in flat
+            "Because the context is retired for `bootstrap-infrastructure`, the "
+            "publisher currently stops before collecting or publishing" in flat
+        )
+        assert (  # nosec B101
+            "still runs the complete live collector and publishes" not in flat
         )
 
 

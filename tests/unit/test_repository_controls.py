@@ -15,8 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = PROJECT_ROOT / "scripts"
 GOVERNANCE_WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pulumi-governance.yml"
 GOVERNANCE_STATUS_CONTEXT = "Governance Apply"
-# The complete global required-status-check set enforced by the live `main`
-# ruleset. "Governance Apply" is intentionally NOT here: it is an informational
+# The complete global required-status-check set from the 2026-09-08 live `main`
+# ruleset snapshot (superseded by the reconciled central contract on 2026-09-27). "Governance Apply" is intentionally NOT here: it is an informational
 # legacy informational status; central promotion now belongs to the protected
 # aggregate publisher. Retiring the old runner must not weaken repository controls.
 LEGACY_REQUIRED_STATUS_CHECKS = (
@@ -460,7 +460,7 @@ def test_required_promotion_issuer_and_deployment_rules_are_preserved(monkeypatc
 
 
 def _live_central_rules():
-    """Public rule snapshot from main ruleset13906584, read 2026-09-08."""
+    """Public rule snapshot from main ruleset 13906584, read 2026-09-08."""
     return [
         {"type": "deletion"},
         {"type": "non_fast_forward"},

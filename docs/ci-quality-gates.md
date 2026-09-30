@@ -45,7 +45,7 @@ For `VilnaCRM-Org/bootstrap-infrastructure`, the `main` ruleset requires the 23
 standard CI checks. `Infrastructure Promotion` and `Test Account Evidence` are
 not merge requirements; the repository-controls reconciler removes them if
 present. Other repositories retain their existing `Governance Promotion` and
-evidence requirements. The trusted publishers and evidence audits remain unchanged.
+evidence requirements. The trusted publisher code is unchanged, but its `verify_issuer()` check stops it while `Test Account Evidence` is retired here (issue #290).
 
 `make ci-pr-unprivileged` runs without live AWS credentials and mirrors the
 required `Local Battery` check on pull requests: `pulumi-local.yml` runs it
@@ -208,4 +208,4 @@ After pulling these workflows into a downstream repo:
   usefulness of the report, and local worktrees without a resolvable `HEAD`
   write an advisory note instead of failing the scheduled report battery
 
-The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher still runs the complete live collector and publishes `Test Account Evidence`; that context is a merge requirement only in governed repositories and is retired for `bootstrap-infrastructure`.
+The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher is the only producer of `Test Account Evidence` and is hard-wired to `bootstrap-infrastructure`. Before collecting it runs `verify_issuer()`, which stops unless an active `main` ruleset requires that context pinned to the publisher App. Because the context is retired for `bootstrap-infrastructure`, the publisher currently stops before collecting or publishing; issue #290 tracks reconciling the publisher with the retired contract.

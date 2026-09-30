@@ -435,7 +435,7 @@ External-control records are checked per control as well as at the file level:
 - every control, passed or unresolved, must include a non-empty `evidence` string list
 - every non-passed control must also include a non-empty `unresolvedReason`
 
-The accepted shape is intentionally non-secret. The example below is the archived 2026-05-17 record; a read-only GitHub API readback of ruleset 13906584 on 2026-09-30 (ruleset `updated_at` 2026-09-27) shows the active `bootstrap-infrastructure` `main` ruleset requires neither `Governance Promotion` nor `Test Account Evidence` and no required deployments, matching the reconciled contract in `scripts/_github_repository_controls.py`:
+The accepted shape is intentionally non-secret. The example below is derived from the archived 2026-05-17 record; a read-only GitHub API readback of ruleset 13906584 on 2026-09-30 (ruleset `updated_at` 2026-09-27) shows the active `bootstrap-infrastructure` `main` ruleset requires neither `Governance Promotion` nor `Test Account Evidence` and no required deployments, matching the reconciled contract in `scripts/_github_repository_controls.py`:
 
 ```json
 {
@@ -602,7 +602,7 @@ Generate the complete dependency closure with
 See [the governance runbook](governance-stack.md); real workload capability and
 current-head deployment/manual acceptance remain separate prerequisites.
 
-The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher still runs the complete live collector and publishes `Test Account Evidence`; that context is a merge requirement only in governed repositories and is retired for `bootstrap-infrastructure`.
+The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher is the only producer of `Test Account Evidence` and is hard-wired to `bootstrap-infrastructure`. Before collecting it runs `verify_issuer()`, which stops unless an active `main` ruleset requires that context pinned to the publisher App. Because the context is retired for `bootstrap-infrastructure`, the publisher currently stops before collecting or publishing; issue #290 tracks reconciling the publisher with the retired contract.
 
 Central PR credential admission is documented in
 [Independently reviewed source admission](reviewed-source-admission.md). Ordinary
