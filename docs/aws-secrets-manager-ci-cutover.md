@@ -132,7 +132,7 @@ approved short-lived operator credentials for the owning AWS account. The stack 
 - `GitHubCiPreview-*`, `GitHubCiApply-*`, and `GitHubCiDrift-*` roles
 - the test-account `OperationsAlertTriage-*` role
 - least-privilege policies scoped to CI job purpose
-- GitHub OIDC trust limited by exact repository/owner IDs and subject, with `workflow` claims on the config-read and alert-triage roles and `ref` claims on every role type except preview (see the GitHub CI bootstrap stack trust notes)
+- GitHub OIDC trust limited by exact repository/owner IDs and subject, with `workflow` claims on the config-read and alert-triage roles, `ref` claims on the config-read roles except `test-pr` and on the apply and drift roles, and neither claim on the preview role (see the GitHub CI bootstrap stack trust notes)
 - encrypted AWS Secrets Manager CI JSON payloads by default
 
 Review that operator project's provisioning, permissions, saved-plan and rollback

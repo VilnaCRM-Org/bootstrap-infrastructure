@@ -239,15 +239,18 @@ wiring it into them is a tracked follow-up.
 
 The proxy is intentionally static. It does not estimate monthly spend and it
 does not replace the repo-managed AWS Budget, Cost Anomaly Detection resources,
-Service Quotas, or a FinOps review. It gives reviewers an early signal that a
-pull request is adding or replacing unusually many durable resources before the
-change reaches the test account.
+Service Quotas, or a FinOps review. When it reads a real preview (the push-to-`main` run of
+`Pulumi PR Guardrails`), it flags a change that adds or replaces unusually many
+durable resources. Pull requests get no cost signal while PR guardrails are
+unprivileged, and the proxy does not gate the `Pulumi Test Deploy` apply.
 
 The default weighted threshold is `66`, which matches the expected full
 first-time bootstrap footprint after automation, management CloudTrail, backup,
 cost, security detection, configuration inventory, and operations controls are
-included. Pull requests that exceed that threshold need an explicit guardrail
-change or a reduction in durable-resource fanout.
+included. A real preview that exceeds that threshold fails the push-to-`main` guardrail
+run; because that run does not block the Test Deploy apply, treat the failure
+as a signal that needs an explicit guardrail change or a reduction in
+durable-resource fanout.
 
 ## IAM validation
 

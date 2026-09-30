@@ -252,8 +252,10 @@ activation rather than claiming the live revocation rehearsal succeeded.
 
 ## Downstream boundary
 
-IAM generator changes deliberately retire generic PR subjects only for
-`VilnaCRM-Org/bootstrap-infrastructure`. Generated/installed service PR preview
+IAM generator changes deliberately retire generic PR subjects from the
+`VilnaCRM-Org/bootstrap-infrastructure` config reader and preview role, and #276
+removed them from the `user-service-infrastructure` preview role; that
+repository's `test-pr` config reader still accepts `pull_request` subjects. Generated/installed service PR preview
 paths still require equivalent trusted admission and a coordinated trust change
 before issue #219 grants workload access. Do not treat central admission or green
 central tests as service admission evidence. A service implementation must pin its

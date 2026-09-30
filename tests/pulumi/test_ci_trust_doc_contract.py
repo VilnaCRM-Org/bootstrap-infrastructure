@@ -451,7 +451,8 @@ def test_make_ci_pr_is_a_credentialed_variant_not_a_superset() -> None:
     assert "no IAM-input extraction" in makefile  # nosec B101
     assert "ci: ## Run make ci-pr (needs AWS credentials)" in makefile  # nosec B101
     for name in ("testing.md", "sre-operations.md", "ci-quality-gates.md"):
-        assert "omits" in _doc(name), name  # nosec B101
+        flat = " ".join(_doc(name).split())
+        assert re.search(r"omits (the )?IAM-input extraction", flat), name  # nosec B101
     for name, text in _all_docs().items():
         assert "superset" not in text.lower(), name  # nosec B101
         assert not re.search(  # nosec B101
@@ -762,3 +763,27 @@ def test_per_role_claim_docs_match_rendered_claims() -> None:
         "aws-secrets-manager-ci-cutover.md",
     ):
         assert "GitHubCiPreview-*-test` read role" not in _doc(name), name  # nosec B101
+
+
+def test_audit_round_doc_claims_match_source():
+    """Pin the sentences corrected by the attempt-5 pre-gate audit to source."""
+    cutover = " ".join(_doc("aws-secrets-manager-ci-cutover.md").split())
+    assert PREFIX + "ref" not in _reader_condition("test-pr")  # nosec B101
+    assert "`ref` claims on the config-read roles except `test-pr`" in cutover  # nosec B101
+    assert "`ref` claims on every role type except preview" not in cutover  # nosec B101
+    guardrails = " ".join(_doc("ci-guardrails.md").split())
+    for stale in (
+        "early signal that a pull request",
+        "Pull requests that exceed that threshold",
+    ):
+        assert stale not in guardrails, stale  # nosec B101
+    assert "Pull requests get no cost signal" in guardrails  # nosec B101
+    deploy = _raw(ROOT / ".github/workflows/pulumi-test-deploy.yml")
+    assert "test-cost-proxy" not in deploy  # nosec B101
+    admission = " ".join(_doc("reviewed-source-admission.md").split())
+    assert "retire generic PR subjects only for" not in admission  # nosec B101
+    evidence = _doc("well-architected-operating-evidence.md")
+    assert "bounded by policy-pack" not in evidence  # nosec B101
+    assert "make test-repository-fanout" in evidence  # nosec B101
+    structural = _raw(ROOT / ".github/workflows/pulumi-structural.yml")
+    assert "make test-repository-fanout" in structural  # nosec B101
