@@ -14,7 +14,7 @@ These checks are intended to be marked as required in branch protection:
 
 | Check | Local command | Purpose |
 | --- | --- | --- |
-| `Governance Promotion` | Trusted main controller and dedicated App | Same-head test/prod deployment proof; enroll after controller installation and real live validation |
+| `Governance Promotion` | Trusted main controller and dedicated App | Same-head test/prod deployment proof; required in other repositories only, retired for `bootstrap-infrastructure` |
 | `Ruff` | `make test-ruff` | Lint, import-order, formatting drift, and McCabe complexity |
 | `Ty` | `make test-ty` | Fast static typing diagnostics |
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
@@ -38,7 +38,7 @@ These checks are intended to be marked as required in branch protection:
 | `Policy` | `make test-policy` | Enforces the custom Pulumi CrossGuard policy pack |
 | `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
 | `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |
-| `Test Account Evidence` | Protected trusted publisher; complete live collector | App-pinned exact-head acceptance; unresolved readiness remains failure |
+| `Test Account Evidence` | Protected trusted publisher; complete live collector | App-pinned exact-head acceptance in other repositories; retired as a merge requirement for `bootstrap-infrastructure` |
 
 `make test-security` aggregates Gitleaks, dependency audit, and Bandit.
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
@@ -57,10 +57,11 @@ first assumes the TEST PR CI configuration reader. As rendered from source, that
 reader trusts only the `main` ref subject with the `Reviewed PR Preview`
 workflow claim for this repository, and the TEST preview role omits the generic
 `pull_request` subject (#244; #276 extended the same retirement to the
-user-service preview role). A `pull_request` run therefore cannot obtain TEST
-credentials, so every pull request, same-repository or fork, selects the
-unprivileged path. `REVIEWED_SOURCE_PREVIEW_ACTIVE` no longer changes that
-selection:
+user-service preview role). Once that rendered trust is installed (see the installation steps in
+[reviewed-source-admission.md](reviewed-source-admission.md)), a `pull_request`
+run cannot obtain TEST credentials. Independently of installation, the workflow
+selects the unprivileged path for every pull request, same-repository or fork.
+`REVIEWED_SOURCE_PREVIEW_ACTIVE` no longer changes that selection:
 
 - `Pulumi PR Guardrails / Preview` and `Pulumi PR Guardrails / IAM Validation`
   skip. GitHub reports a skipped job as passing its required context.
@@ -210,6 +211,12 @@ buckets, KMS keys, IAM roles, AWS Backup resources, ECR repositories, SNS
 topics, EventBridge rules, CloudTrail trails, S3 replication configuration,
 GuardDuty, Security Hub, and AWS Config recorder resources.
 
+Interim contract: the cost proxy is not enforced before apply. On pull requests
+it reads only the unprivileged placeholder, so its output carries the notice
+`unprivileged placeholder - not preview evidence` and a non-evidence banner, and
+its `0` weight is not a measurement. No apply workflow runs the cost proxy yet;
+wiring it into them is a tracked follow-up.
+
 The proxy is intentionally static. It does not estimate monthly spend and it
 does not replace the repo-managed AWS Budget, Cost Anomaly Detection resources,
 Service Quotas, or a FinOps review. It gives reviewers an early signal that a
@@ -271,10 +278,11 @@ The loader fails closed when a required role is missing. OIDC subject, audience,
 workflow and ref constraints remain those reviewed in the installed IAM source.
 
 Fork pull requests always run the unprivileged artifact path and the
-destructive diff gate. Same-repo pull requests fail fast when required
-AWS-backed configuration values are missing instead of silently bypassing
-privileged guardrails. The AWS-backed preview and Access Analyzer validation
-paths remain same-repo only because they require OIDC-issued AWS credentials.
+destructive diff gate, and so do same-repository pull requests: every
+`pull_request` run is unprivileged. The AWS-backed preview and Access Analyzer
+validation paths run only on push to `main` (the credentialed `Preview` and
+`IAM Validation` jobs and Test Deploy), in the ChatOps saved-plan path, and in
+the future Reviewed PR Preview once its cutover is enrolled.
 
 Privileged jobs should emit sanitized evidence in the job summary or logs:
 
@@ -567,7 +575,8 @@ The Well-Architected Data Validation (Advisory) job checks selected committed ev
 
 Central PR credential admission is documented in
 [Independently reviewed source admission](reviewed-source-admission.md). Ordinary
-PR guardrails become unprivileged after the staged activation; the trusted main
-workflow admits an independently reviewed exact SHA for AWS-backed preview.
+PR guardrails are always unprivileged; the trusted main workflow admits an
+independently reviewed exact SHA for AWS-backed preview once the cutover is
+enrolled.
 Installed IAM trust retirement, additive ruleset enrollment, the activation flag
 and live negative/positive rehearsals are required before this boundary is active.

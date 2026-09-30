@@ -28,9 +28,8 @@ def test_pull_requests_use_unprivileged_checks_until_independent_admission(
     event, repository, active, privileged, tmp_path
 ):
     mode_job = workflow("pulumi-pr-guardrails.yml")["jobs"]["preview_mode"]
-    assert mode_job["env"]["REVIEWED_SOURCE_PREVIEW_ACTIVE"] == (
-        "${{ vars.REVIEWED_SOURCE_PREVIEW_ACTIVE }}"
-    )
+    # The mode step must not depend on the activation flag or the head repository.
+    assert set(mode_job["env"]) == {"GITHUB_EVENT_NAME"}
     mode = mode_job["steps"][0]["run"]
     output = tmp_path / "output"
     subprocess.run(

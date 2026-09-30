@@ -15,7 +15,7 @@ These checks should be required in branch protection:
 
 | Check | Local command | Purpose |
 | --- | --- | --- |
-| `Governance Promotion` | Trusted main controller and dedicated App | Same-head test/prod deployment proof; enroll after controller installation and real live validation |
+| `Governance Promotion` | Trusted main controller and dedicated App | Same-head test/prod deployment proof; required in other repositories only, retired for `bootstrap-infrastructure` |
 | `Ruff` | `make test-ruff` | Lint, import-order, formatting drift, and McCabe complexity |
 | `Ty` | `make test-ty` | Fast static typing diagnostics |
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
@@ -33,13 +33,13 @@ These checks should be required in branch protection:
 | `Actionlint` | `make test-actionlint` | Workflow syntax and common GitHub Actions mistakes |
 | `Yamllint` | `make test-yaml` | GitHub workflow YAML, Pulumi stack YAML, and operational YAML hygiene |
 | `Hadolint` | `make test-dockerfile` | Dockerfile quality and safety linting |
-| `Preview` | `make test-preview` or `make test-preview-unprivileged` | Non-destructive Pulumi preview artifact generation, with an unprivileged artifact fallback when AWS variables are absent |
+| `Preview` | `make test-preview` or `make test-preview-unprivileged` | Non-destructive Pulumi preview artifact generation, selected by event type: pull requests always use the unprivileged placeholder, push to `main` uses AWS credentials |
 | `Destructive Diff Gate` | `make test-destructive-diff` | Blocks risky deletes and replacements |
-| `IAM Validation` | `make test-iam-validation` or `make test-iam-validation-unprivileged` | AWS IAM Access Analyzer validation when credentials are configured; offline IAM-input extraction otherwise |
+| `IAM Validation` | `make test-iam-validation` or `make test-iam-validation-unprivileged` | AWS IAM Access Analyzer validation on push to `main`; pull requests run offline IAM-input extraction on the placeholder only |
 | `Policy` | `make test-policy` | Custom Pulumi CrossGuard policy pack enforcement |
 | `CodeQL (python)` | GitHub-native | Static security/code scanning for Python |
 | `CodeQL (actions)` | GitHub-native | Static security/code scanning for workflows |
-| `Test Account Evidence` | Protected trusted publisher; complete live collector | App-pinned exact-head acceptance, separate from advisory PR data checks |
+| `Test Account Evidence` | Protected trusted publisher; complete live collector | App-pinned exact-head acceptance in other repositories; retired as a merge requirement for `bootstrap-infrastructure`, separate from advisory PR data checks |
 
 For `VilnaCRM-Org/bootstrap-infrastructure`, the `main` ruleset requires the 23
 standard CI checks. `Infrastructure Promotion` and `Test Account Evidence` are
