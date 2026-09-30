@@ -38,7 +38,7 @@ These checks are intended to be marked as required in branch protection:
 | `Policy` | `make test-policy` | Enforces the custom Pulumi CrossGuard policy pack |
 | `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
 | `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |
-| `Test Account Evidence` | Protected trusted publisher; complete live collector | App-pinned exact-head acceptance in other repositories; retired as a merge requirement for `bootstrap-infrastructure` |
+| `Test Account Evidence` | Protected trusted publisher; complete live collector | Required by name in governed repositories (only `Governance Promotion` is App-bound there); retired as a merge requirement for `bootstrap-infrastructure` |
 
 `make test-security` aggregates Gitleaks, dependency audit, and Bandit.
 `make test-repo-hygiene` aggregates Actionlint, Yamllint, and Hadolint.
@@ -435,7 +435,7 @@ External-control records are checked per control as well as at the file level:
 - every control, passed or unresolved, must include a non-empty `evidence` string list
 - every non-passed control must also include a non-empty `unresolvedReason`
 
-The accepted shape is intentionally non-secret:
+The accepted shape is intentionally non-secret. The example below is the archived 2026-05-17 record; the current `bootstrap-infrastructure` `main` ruleset no longer requires `Test Account Evidence`:
 
 ```json
 {

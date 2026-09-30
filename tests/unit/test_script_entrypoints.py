@@ -3430,13 +3430,37 @@ def test_required_status_check_contract_matches_collector_and_docs(
     assert (  # nosec B101
         f"GitHub ruleset 13906584 requires {required_check_text}." in guardrails_doc
     )
+    all_checks = controls_module.REQUIRED_STATUS_CHECKS
+    all_check_text = ", ".join(all_checks[:-1]) + f", and {all_checks[-1]}"
+    central_module = load_script_module(monkeypatch, "_github_repository_controls")
+    central_checks = central_module.required_status_checks_for_repository(
+        central_module.CENTRAL_REPOSITORY
+    )
+    assert central_checks == tuple(  # nosec B101
+        context
+        for context in all_checks
+        if context not in {"Governance Promotion", "Test Account Evidence"}
+    )
+    assert central_module.CENTRAL_RETIRED_STATUS_CHECKS == {  # nosec B101
+        "Infrastructure Promotion",
+        "Test Account Evidence",
+    }
+    normalized_operating_evidence = " ".join(operating_evidence_doc.split())
     assert (  # nosec B101
         "The shared required-check contract (`REQUIRED_STATUS_CHECKS`) lists "
-        f"{required_check_text}." in operating_evidence_doc
+        f"{all_check_text}." in normalized_operating_evidence
+    )
+    assert (  # nosec B101
+        "The shared required-check contract (`REQUIRED_STATUS_CHECKS`) lists Ruff,"
+        not in normalized_operating_evidence
     )
     assert (  # nosec B101
         "The active `bootstrap-infrastructure` `main` ruleset requires that list "
-        "without `Test Account Evidence`" in operating_evidence_doc
+        "without `Governance Promotion` and `Test Account Evidence`"
+        in normalized_operating_evidence
+    )
+    assert "governed repositories keep the full list" in (  # nosec B101
+        normalized_operating_evidence
     )
     assert "Test Account Evidence" in required_check_text  # nosec B101
     assert (  # nosec B101
@@ -3445,9 +3469,46 @@ def test_required_status_check_contract_matches_collector_and_docs(
     )
     normalized_readiness_report = " ".join(implementation_readiness_report.split())
     assert (  # nosec B101
+        "Archived 2026-05-17 record (superseded for `bootstrap-infrastructure`"
+        in normalized_readiness_report
+    )
+    assert (  # nosec B101
         f"active `main` ruleset requires {required_check_text}."
         in normalized_readiness_report
     )
+    assert (  # nosec B101
+        "- Repository-admin proof that the active `main` ruleset requires"
+        not in implementation_readiness_report
+    )
+    assert (  # nosec B101
+        "The example below is the archived 2026-05-17 record" in guardrails_doc
+    )
+
+
+def test_test_account_evidence_docs_match_governed_ruleset_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep the TAE issuer wording tied to the generated governed-repo rule."""
+    controls_module = load_script_module(monkeypatch, "_github_repository_controls")
+    governed = "VilnaCRM-Org/user-service-infrastructure"
+    rule = controls_module.required_status_checks_rule(
+        promotion_app_id=12345, repository=governed
+    )
+    checks = {
+        item["context"]: item
+        for item in rule["parameters"]["required_status_checks"]
+    }
+    assert "integration_id" not in checks["Test Account Evidence"]  # nosec B101
+    bound = {c for c, item in checks.items() if "integration_id" in item}
+    assert bound == {"Governance Promotion"}  # nosec B101
+    expected = (
+        "Required by name in governed repositories (only `Governance Promotion` "
+        "is App-bound there)"
+    )
+    for doc in ("ci-guardrails.md", "ci-quality-gates.md"):
+        text = (PROJECT_ROOT / "docs" / doc).read_text(encoding="utf-8")
+        assert expected in text  # nosec B101
+        assert "App-pinned exact-head acceptance in other repositories" not in text  # nosec B101
 
 
 def test_well_architected_question_source_contract_matches_docs(

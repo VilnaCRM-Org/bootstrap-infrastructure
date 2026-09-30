@@ -83,7 +83,10 @@ evidence remain open.
 The current branch implements meaningful repo-owned controls, but a final 5/5
 claim is blocked until all of the following are current and non-secret:
 
-- Repository-admin proof that the active `main` ruleset requires Ruff, Ty,
+- Archived 2026-05-17 record (superseded for `bootstrap-infrastructure`, whose
+  current `main` ruleset does not require `Governance Promotion` or
+  `Test Account Evidence`; see `docs/well-architected-operating-evidence.md`):
+  repository-admin proof that the active `main` ruleset requires Ruff, Ty,
   Maintainability, Architecture, Structural, Dependency Hygiene, Coverage,
   Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit,
   Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview,
