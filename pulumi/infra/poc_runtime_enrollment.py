@@ -1,8 +1,8 @@
-"""Central TEST runtime resource components for independently staged enrollment.
+"""Central TEST ECS roles for independently staged enrollment.
 
-Not wired into existing entrypoints. The independent seed owns six policies;
-governance consumes their exact native documents and owns three protected roles.
-No boolean config switch or service-owned IAM enrollment is introduced.
+Not wired into an entrypoint. The independent publisher stack owns only the
+publisher role and its two fences; the four ECS fences await a later reviewed
+runtime amendment, so the fence preflight fails closed until they exist.
 """
 
 from __future__ import annotations
@@ -17,8 +17,6 @@ from seed.poc_runtime import (
     enrollment_records,
     execution_policy,
     execution_trust,
-    publisher_policy,
-    publisher_trust,
     runtime_identities,
 )
 from seed.policy_registry import RegistryError, canonical_json
@@ -45,87 +43,76 @@ def _verify_fences(target: pulumi.InvokeOptions) -> None:
     """Read every independent fence before registering any runtime role."""
     policies, _ = enrollment_records()
     for record in policies:
-        observed = aws.iam.get_policy(arn=record.arn, opts=target)
+        try:
+            observed = aws.iam.get_policy(arn=record.arn, opts=target)
+        except Exception as error:
+            raise RegistryError(
+                "Independently installed runtime fence missing"
+            ) from error
         if (
-            observed.arn != record.arn
+            observed is None
+            or observed.arn != record.arn
             or canonical_json(json.loads(observed.policy)) != record.document_json
         ):
             raise RegistryError("Independently installed runtime fence differs")
 
 
-def _inline_grants(purpose: str) -> list[aws.iam.RoleInlinePolicyArgs]:
-    """Keep the disabled task empty and select only fixed push or pull grants."""
-    if purpose == "publisher":
-        return [
-            aws.iam.RoleInlinePolicyArgs(
-                name="Issue219TestImagePush", policy=publisher_policy()
-            )
-        ]
+def _inline_grants(purpose: str) -> dict[str, str]:
+    """Select only fixed pull grants; the disabled task has none."""
     if purpose == "execution":
-        return [
-            aws.iam.RoleInlinePolicyArgs(
-                name="Issue219TestImagePull", policy=execution_policy()
-            )
-        ]
-    # One empty block enforces an exclusive empty set; an empty list leaves
-    # inline policies unmanaged by the provider.
-    return [aws.iam.RoleInlinePolicyArgs()]
+        return {"Issue219TestImagePull": execution_policy()}
+    return {}
 
 
-def _role_trust(purpose: str, publisher_document: str) -> str:
-    """Select the only trust document allowed for each fixed runtime role."""
-    if purpose == "publisher":
-        return publisher_document
+def _role_trust(purpose: str) -> str:
+    """Select the only trust document allowed for each ECS role."""
     if purpose == "execution":
         return execution_trust()
     return disabled_trust()
 
 
-class PocRuntimeFences(pulumi.ComponentResource):
-    """Register exact policies only under independent seed authority."""
-
-    def __init__(self, *, provider: aws.Provider) -> None:
-        _target(provider, "independent-seed")
-        policies, _ = enrollment_records()
-        super().__init__(
-            "bootstrap:seed:PocRuntimeFences",
-            "poc-test-runtime-fences",
-            None,
-            pulumi.ResourceOptions(provider=provider, protect=True),
-        )
-        self.policies = {}
-        for record in policies:
-            path, name = record.arn.split(":policy/", 1)[1].rsplit("/", 1)
-            self.policies[record.arn] = aws.iam.Policy(
-                name,
-                name=name,
-                path=f"/{path}/",
-                policy=record.document_json,
-                tags={"OwnerProject": "independent-seed", "Environment": "test"},
-                opts=pulumi.ResourceOptions(
-                    parent=self, provider=provider, protect=True
-                ),
-            )
-        self.register_outputs({"policyArns": list(self.policies)})
-
-
 class PocRuntimeRoles(pulumi.ComponentResource):
-    """Register protected roles with fixed ECS trust and optional publisher trust.
+    """Register protected ECS roles with fixed trust and closed grants.
 
     Execution can pull only the two ECR repositories; task trust stays disabled.
-    Full native seed/guard enrollment and GitHub subject provenance still belong
-    to the protected installer; matching policy bytes alone do not establish them.
+    This proposal is not wired into the current governor's entrypoint.
     """
 
-    def __init__(
-        self, *, provider: aws.Provider, publisher_subject: str | None = None
-    ) -> None:
-        target = _target(provider, "governance")
-        trust = (
-            disabled_trust()
-            if publisher_subject is None
-            else publisher_trust(publisher_subject)
+    def _close_grants(self, identity, provider: aws.Provider) -> None:
+        """Manage exactly the sole guard attachment and fixed inline policies."""
+        role = self.roles[identity.purpose]
+        opts = pulumi.ResourceOptions(parent=self, provider=provider, protect=True)
+        inline = _inline_grants(identity.purpose)
+        policies = [
+            aws.iam.RolePolicy(
+                f"{identity.name}-{name}",
+                role=role.name,
+                name=name,
+                policy=text,
+                opts=opts,
+            )
+            for name, text in inline.items()
+        ]
+        self.grants[identity.purpose] = [*policies]
+        attachments = aws.iam.RolePolicyAttachmentsExclusive(
+            f"{identity.name}-managed-policy-attachments-exclusive",
+            role_name=role.name,
+            policy_arns=[identity.policy_arn("guard")],
+            opts=opts,
         )
+        # An empty name set still enforces that no inline policy exists.
+        exclusive = aws.iam.RolePoliciesExclusive(
+            f"{identity.name}-inline-policies-exclusive",
+            role_name=role.name,
+            policy_names=list(inline),
+            opts=pulumi.ResourceOptions(
+                parent=self, provider=provider, protect=True, depends_on=policies
+            ),
+        )
+        self.grants[identity.purpose] += [attachments, exclusive]
+
+    def __init__(self, *, provider: aws.Provider) -> None:
+        target = _target(provider, "governance")
         # Verify before registering any role. The governor never owns or edits
         # these independently installed policies, including in a preview.
         _verify_fences(target)
@@ -136,15 +123,16 @@ class PocRuntimeRoles(pulumi.ComponentResource):
             pulumi.ResourceOptions(provider=provider, protect=True),
         )
         self.roles = {}
+        self.grants = {}
         for identity in runtime_identities():
+            if identity.purpose == "publisher":
+                continue
             self.roles[identity.purpose] = aws.iam.Role(
                 identity.name,
                 name=identity.name,
                 path="/",
-                assume_role_policy=_role_trust(identity.purpose, trust),
+                assume_role_policy=_role_trust(identity.purpose),
                 permissions_boundary=identity.policy_arn("boundary"),
-                managed_policy_arns=[identity.policy_arn("guard")],
-                inline_policies=_inline_grants(identity.purpose),
                 max_session_duration=3600,
                 tags={
                     "OwnerProject": "governance",
@@ -156,5 +144,6 @@ class PocRuntimeRoles(pulumi.ComponentResource):
                     parent=self, provider=provider, protect=True
                 ),
             )
+            self._close_grants(identity, provider)
         self.role_arns = {purpose: role.arn for purpose, role in self.roles.items()}
         self.register_outputs({"roleArns": self.role_arns})

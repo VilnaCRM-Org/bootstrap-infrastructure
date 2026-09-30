@@ -29,7 +29,15 @@ def test_inventory_produces_valid_single_expression_security_mutants():
         "drop-promotion-status-predicate",
         "remove-checkpoint-deny",
     } <= {item.operator for item in mutants}
-    assert len(mutants) == 118
+    assert len(mutants) == 173
+    for module in (
+        "pulumi/seed/poc_publisher_stack_verification.py",
+        "pulumi/seed/poc_runtime_fence_stack.py",
+        "pulumi/seed/poc_runtime_verification.py",
+        "pulumi/seed/poc_runtime.py",
+    ):
+        assert any(item.path == module for item in mutants)
+    assert "tests/unit/test_poc_runtime_fence_stack.py" in gate.TARGETS
     assert (
         sum(item.path == "pulumi/infra/governance_automation.py" for item in mutants)
         == 16

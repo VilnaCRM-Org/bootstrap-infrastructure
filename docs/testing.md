@@ -110,6 +110,7 @@ Coverage:
 - `make test-guardrails` keeps the real preview, destructive-diff, and cost-proxy flow reproducible locally
 - `make test-guardrails-unprivileged` keeps the fallback preview, destructive-diff, cost-proxy, and IAM-input extraction path reproducible locally
 - `make test-iam-validation` validates previewed IAM policies with AWS IAM Access Analyzer when AWS credentials are intentionally configured
+- `make validate-runtime-seed-policies` renders the issue-219 publisher stack template, the `amended-template.json` and `break-glass-during-update-policy.json` outputs, and IAM documents to `.artifacts/runtime-seed-policies/`; it runs Access Analyzer and CloudFormation template validation only when one of `AWS_ACCESS_KEY_ID`, `AWS_PROFILE`, `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_CONTAINER_CREDENTIALS_FULL_URI` or `AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` is set in the container environment; Compose forwards `PULUMI_BACKEND_URL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`, `AWS_REGION` and `AWS_DEFAULT_REGION` from the host and also loads `env_file: .env`, so trigger variables in `.env` count (`RUNTIME_SEED_POLICY_ARGS=--render-only` never calls AWS)
 
 Dependency Review, CodeQL, SBOM attestations, and OpenSSF Scorecard are
 GitHub-native only. The repository keeps those workflow definitions under

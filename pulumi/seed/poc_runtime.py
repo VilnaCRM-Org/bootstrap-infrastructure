@@ -22,6 +22,15 @@ from .policy_registry import (
 
 PUBLISHER_NAME = "user-service-test-ImagePublisher"
 APPLICATION_REPOSITORY = "VilnaCRM-Org/user-service"
+# This exact order is the observed repository OIDC subject-template order.
+# Recheck GitHub's native template and protected environment before installation.
+PUBLISHER_SUBJECT = (
+    "repo:VilnaCRM-Org/user-service:repository_id:646535009:"
+    "repository_owner_id:114362548:environment:poc-test-images:"
+    "ref:refs/heads/main:workflow_ref:VilnaCRM-Org/user-service/"
+    ".github/workflows/publish-poc-images.yml@refs/heads/main:"
+    "event_name:workflow_dispatch"
+)
 REPOSITORY_ARNS = tuple(
     f"arn:aws:ecr:{REGION}:{ACCOUNT_ID}:repository/user-service-test-{target}"
     for target in ("web", "worker")
@@ -100,7 +109,10 @@ def publisher_trust(subject: str) -> str:
 
     The independent installer must observe GitHub configuration and real claims.
     Only aud/sub are IAM keys; immutable identity/workflow claims belong in sub.
-    Preserve the observed key order and either documented repo spelling.
+    Structurally this accepts either documented repo spelling and preserves key
+    order, but production always passes the constant PUBLISHER_SUBJECT and the
+    runtime verifier requires exact equality with it, so only the pinned legacy
+    spelling is accepted at install/verify time.
     """
     expected = {
         "repo": APPLICATION_REPOSITORY,
@@ -231,6 +243,19 @@ def _fence_document(role: RuntimeIdentity, kind: str, deny_all: str) -> str:
     return _ecr_policy(actions) if kind == "boundary" else _ecr_guard(actions)
 
 
+def _principal_record(role: RuntimeIdentity) -> PrincipalRecord:
+    """Keep the publisher's independent owner explicit in the source catalog."""
+    return PrincipalRecord(
+        role.arn,
+        False,
+        "independent-seed" if role.purpose == "publisher" else "governance",
+        role.policy_arn("boundary"),
+        (role.policy_arn("guard"),),
+        (role.policy_arn("guard"),),
+        None,
+    )
+
+
 def enrollment_records() -> tuple[
     tuple[PolicyRecord, ...], tuple[PrincipalRecord, ...]
 ]:
@@ -273,15 +298,5 @@ def enrollment_records() -> tuple[
                     document_hash(json.loads(document)),
                 )
             )
-        principals.append(
-            PrincipalRecord(
-                role.arn,
-                False,
-                "governance",
-                role.policy_arn("boundary"),
-                (role.policy_arn("guard"),),
-                (role.policy_arn("guard"),),
-                None,
-            )
-        )
+        principals.append(_principal_record(role))
     return tuple(policies), tuple(principals)

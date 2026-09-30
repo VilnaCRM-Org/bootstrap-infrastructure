@@ -32,6 +32,12 @@ TARGETS = (
     "tests/unit/test_security_boundary_regressions.py",
     "tests/unit/test_main_only_environments.py",
     "tests/unit/test_reviewed_script_boundaries.py",
+    "tests/unit/test_poc_runtime.py",
+    "tests/unit/test_poc_pass_role.py",
+    "tests/unit/test_poc_runtime_fence_stack.py",
+    "tests/unit/test_poc_publisher_stack_verification.py",
+    "tests/unit/test_poc_runtime_verification.py",
+    "tests/unit/test_poc_runtime_enrollment.py",
 )
 # Enrollment mutants run only their own behavioral suites, keeping the campaign
 # inside its job budget; the baseline still requires every suite to pass.
@@ -52,6 +58,30 @@ GUARDS = {
         "governance_trust_policy",
         "_allow",
     },
+    "pulumi/infra/poc_runtime_enrollment.py": {"_target", "_verify_fences"},
+    "pulumi/seed/poc_pass_role.py": {"propose_pass_role"},
+    "pulumi/seed/poc_publisher_stack_verification.py": {
+        "_verify",
+        "_verify_stack",
+        "_verify_inventory",
+        "_verify_policies",
+        "_verify_role",
+        "_verify_role_documents",
+    },
+    "pulumi/seed/poc_runtime.py": {
+        "_document",
+        "publisher_trust",
+        "enrollment_records",
+    },
+    "pulumi/seed/poc_runtime_fence_stack.py": {
+        "_verified_publisher",
+        "_publisher_fences",
+        "build_fence_stack_packet",
+        "validate_fence_stack_packet",
+        "_validate_add_metadata",
+        "_validate_add_row",
+        "validate_fence_create_changes",
+    },
 }
 REQUIREMENTS = {
     "scripts/pulumi_command_preflight.py": {
@@ -69,6 +99,12 @@ REQUIREMENTS = {
         "build_proof",
         "publish_proof",
         "main",
+    },
+    "pulumi/seed/poc_runtime_verification.py": {
+        "verify_runtime_enrollment",
+        "_inventory",
+        "_verify_policy",
+        "_verify_role",
     },
 }
 
@@ -88,6 +124,12 @@ SEMANTIC_TARGETS = {
         "observe_active_enrollment",
         "_key_binding",
         "main",
+    },
+    # Expected-status and expected-packet selection, not `if ... raise` guards.
+    "pulumi/seed/poc_publisher_stack_verification.py": {
+        "verify_publisher_stack",
+        "verify_amended_publisher_stack",
+        "_amended_packet",
     },
     "pulumi/seed/policy_registry.py": {
         "_verify_catalog_hash",
@@ -258,8 +300,32 @@ def _promotion_candidates(function: str, node: ast.AST):
             yield node.test, value, "misclassify-repository-scope"
 
 
+_STATUS_SWAP = {
+    "CREATE_COMPLETE": "UPDATE_COMPLETE",
+    "UPDATE_COMPLETE": "CREATE_COMPLETE",
+}
+
+
+def _publisher_verifier_candidates(function: str, node: ast.AST):
+    """Swap the required stack status, expected packet or amended trust."""
+    if function in {"verify_publisher_stack", "verify_amended_publisher_stack"}:
+        if isinstance(node, ast.Constant) and node.value in _STATUS_SWAP:
+            yield node, repr(_STATUS_SWAP[node.value]), "swap-required-stack-status"
+    if function == "verify_amended_publisher_stack" and _is_named_call(
+        node, "_amended_packet"
+    ):
+        yield node, "build_fence_stack_packet()", "swap-expected-packet"
+    if function == "verify_publisher_stack" and _is_named_call(
+        node, "build_fence_stack_packet"
+    ):
+        yield node, "_amended_packet()", "swap-expected-packet"
+    if function == "_amended_packet" and _is_named_call(node, "disabled_trust"):
+        yield node, "'{}'", "drop-amended-trust"
+
+
 def semantic_candidates(function: str, node: ast.AST):
     """Dispatch the unchanged semantic operators for each security boundary."""
+    yield from _publisher_verifier_candidates(function, node)
     yield from _promotion_candidates(function, node)
     if function == "identity_conditions":
         yield from _identity_pin_candidates(node)

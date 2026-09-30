@@ -5,13 +5,18 @@ under the [#18 PoC plan](https://github.com/VilnaCRM-Org/user-service-infrastruc
 It is **not approved, installed, or sufficient to deploy a workload**. The new
 central resource components are not called by any live entrypoint. Installed seed
 catalogs and PROD application authority remain unchanged. See the
-[central enrollment slice](runtime-enrollment.md) and [provider audit](provider-audit.md).
+[central enrollment slice](runtime-enrollment.md), [provider audit](provider-audit.md)
+and [requirements traceability](requirements.md).
 
 ## Pinned evidence and ownership
 
 - Bootstrap main incorporated: `570fc727014d78d3a3e7d67f923e37f8873f6707`.
-- The refresh preserves main's TEST seed enrollment, disabled prerequisite
-  capability gate, and PROD catalog. It does not refresh native AWS observations
+- The refresh preserves main's TEST seed enrollment and PROD catalog. At this
+  head `pulumi/infra/test-poc-identity.json` declares `"state": "enabled"` (the
+  tri-state lifecycle from #284, see `pulumi/infra/governance.py`), so the
+  earlier "disabled prerequisite capability gate" wording is stale. This change
+  does not alter that state; the value is a source declaration, not evidence of an
+  installed or exercised capability. It does not refresh native AWS observations
   or activate the runtime components.
 - Current service contract checked: PR #19 `ed290e48cc0df74f3201337bc68162e632d9725b`.
 - Current application contract checked: PR #492 `7ead3b390c331f6813f2e12d540c8b10db68af85`.

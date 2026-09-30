@@ -12,7 +12,6 @@ from infra.utils.outputs import future_output
 from pulumi.runtime.sync_await import _sync_await
 from seed import poc_runtime as runtime
 from seed.policy_registry import RegistryError
-from test_poc_runtime import subject
 
 
 def target(monkeypatch, project):
@@ -53,69 +52,59 @@ def capture(monkeypatch, resource_class):
     return result
 
 
-def expected_trust(activate, purpose):
-    """Match the fixed runtime trust selection for each enrollment role."""
-    if purpose == "publisher":
-        return (
-            runtime.publisher_trust(subject()) if activate else runtime.disabled_trust()
-        )
+def expected_trust(purpose):
+    """Match the fixed ECS trust selection for each enrollment role."""
     if purpose == "execution":
         return runtime.execution_trust()
     return runtime.disabled_trust()
 
 
-def test_seed_registers_only_six_protected_fences(pulumi_mocks, monkeypatch):
-    provider, _ = target(monkeypatch, "independent-seed")
-    registered = capture(monkeypatch, "Policy")
-    component = enrollment.PocRuntimeFences(provider=provider)
-    for policy in component.policies.values():
-        _sync_await(future_output(policy.arn))
-    assert len(registered) == 6
-    expected = {
-        record.arn: record.document_json for record in runtime.enrollment_records()[0]
-    }
-    for name, inputs in registered:
-        arn = f"arn:aws:iam::{runtime.ACCOUNT_ID}:policy{inputs['path']}{name}"
-        assert inputs["policy"] == expected[arn]
-        assert inputs["opts"].protect is True
-        assert inputs["opts"].provider is provider
-    assert not any(typ == "aws:iam/role:Role" for typ, _, _ in pulumi_mocks.resources)
-
-
-@pytest.mark.parametrize("activate", [False, True])
-def test_governance_creates_pull_only_execution_and_disabled_task(
-    pulumi_mocks, monkeypatch, activate
+def test_governance_proposes_only_ecs_roles_not_independent_publisher(
+    pulumi_mocks, monkeypatch
 ):
     provider, reads = target(monkeypatch, "governance")
     registered = capture(monkeypatch, "Role")
-    component = enrollment.PocRuntimeRoles(
-        provider=provider, publisher_subject=subject() if activate else None
-    )
+    component = enrollment.PocRuntimeRoles(provider=provider)
     for arn in component.role_arns.values():
         _sync_await(future_output(arn))
     assert len(reads) == 6
     assert all(observed_provider is provider for _, observed_provider in reads)
-    assert len(registered) == 3
-    assert set(component.role_arns) == {"execution", "task", "publisher"}
-    for identity, (name, inputs) in zip(runtime.runtime_identities(), registered):
+    assert len(registered) == 2
+    assert set(component.role_arns) == {"execution", "task"}
+    for identity, (name, inputs) in zip(runtime.runtime_identities()[:2], registered):
         assert name == inputs["name"] == identity.name
         assert inputs["permissions_boundary"] == identity.policy_arn("boundary")
-        assert inputs["managed_policy_arns"] == [identity.policy_arn("guard")]
+        assert "managed_policy_arns" not in inputs
+        assert "inline_policies" not in inputs
         assert inputs["opts"].provider is provider
         assert inputs["opts"].protect is True
-        expected = expected_trust(activate, identity.purpose)
+        expected = expected_trust(identity.purpose)
         assert inputs["assume_role_policy"] == expected
-        if identity.purpose == "publisher":
-            assert len(inputs["inline_policies"]) == 1
-            assert inputs["inline_policies"][0].policy == runtime.publisher_policy()
-        elif identity.purpose == "execution":
-            assert len(inputs["inline_policies"]) == 1
-            assert inputs["inline_policies"][0].name == "Issue219TestImagePull"
-            assert inputs["inline_policies"][0].policy == runtime.execution_policy()
-        else:
-            assert len(inputs["inline_policies"]) == 1
-            assert inputs["inline_policies"][0].name is None
-            assert inputs["inline_policies"][0].policy is None
+    for grants in component.grants.values():
+        for grant in grants:
+            _sync_await(future_output(grant.urn))
+    by_type = {}
+    for typ, name, inputs in pulumi_mocks.resources:
+        by_type.setdefault(typ, {})[name] = inputs
+    attach = by_type[
+        "aws:iam/rolePolicyAttachmentsExclusive:RolePolicyAttachmentsExclusive"
+    ]
+    exclusive = by_type["aws:iam/rolePoliciesExclusive:RolePoliciesExclusive"]
+    inline = by_type["aws:iam/rolePolicy:RolePolicy"]
+    for identity in runtime.runtime_identities()[:2]:
+        assert attach[f"{identity.name}-managed-policy-attachments-exclusive"][
+            "policyArns"
+        ] == [identity.policy_arn("guard")]
+        names = exclusive[f"{identity.name}-inline-policies-exclusive"].get(
+            "policyNames", []
+        )
+        assert names == (
+            ["Issue219TestImagePull"] if identity.purpose == "execution" else []
+        )
+    assert len(inline) == 1
+    (row,) = inline.values()
+    assert row["name"] == "Issue219TestImagePull"
+    assert row["policy"] == runtime.execution_policy()
     assert not any(
         typ == "aws:iam/policy:Policy" for typ, _, _ in pulumi_mocks.resources
     )
@@ -124,32 +113,48 @@ def test_governance_creates_pull_only_execution_and_disabled_task(
 def test_task_inline_policy_empty_block_survives_serialization(
     pulumi_mocks, monkeypatch
 ):
+    """The task role's exclusive inline set must be present and empty, not omitted."""
     provider, _ = target(monkeypatch, "governance")
     component = enrollment.PocRuntimeRoles(provider=provider)
-    _sync_await(future_output(component.roles["task"].urn))
-    task = next(
-        inputs
-        for typ, _, inputs in pulumi_mocks.resources
-        if typ == "aws:iam/role:Role" and inputs["tags"]["Purpose"] == "task"
-    )
-    assert task["inlinePolicies"] == [{}]
+    for grants in component.grants.values():
+        for grant in grants:
+            _sync_await(future_output(grant.urn))
+    exclusive = {
+        name: inputs
+        for typ, name, inputs in pulumi_mocks.resources
+        if typ == "aws:iam/rolePoliciesExclusive:RolePoliciesExclusive"
+    }
+    task = runtime.runtime_identities()[1]
+    assert task.purpose == "task"
+    row = exclusive[f"{task.name}-inline-policies-exclusive"]
+    assert "policyNames" in row
+    assert row["policyNames"] == []
 
 
-@pytest.mark.parametrize("mismatch", ["arn", "policy"])
+@pytest.mark.parametrize("mismatch", ["arn", "policy", "missing", "raises"])
 def test_governance_rejects_changed_seed_documents_before_roles(
     pulumi_mocks, monkeypatch, mismatch
 ):
     provider, _ = target(monkeypatch, "governance")
     registered = capture(monkeypatch, "Role")
-    monkeypatch.setattr(
-        aws.iam,
-        "get_policy",
-        lambda **kwargs: SimpleNamespace(
-            arn=kwargs["arn"] if mismatch == "policy" else "wrong",
+    policies, _ = runtime.enrollment_records()
+    first = policies[0]
+
+    def observed(**kwargs):
+        if mismatch == "raises":
+            raise RuntimeError("no such policy")
+        if mismatch == "missing":
+            return None
+        if mismatch == "arn":
+            # Document equal to the expected fence, ARN different.
+            return SimpleNamespace(arn="wrong", policy=first.document_json)
+        return SimpleNamespace(
+            arn=kwargs["arn"],
             policy=json.dumps({"Version": "2012-10-17", "Statement": []}),
-        ),
-    )
-    with pytest.raises(RegistryError, match="fence differs"):
+        )
+
+    monkeypatch.setattr(aws.iam, "get_policy", observed)
+    with pytest.raises(RegistryError, match="fence (differs|missing)"):
         enrollment.PocRuntimeRoles(provider=provider)
     assert registered == []
 

@@ -2,9 +2,12 @@
 
 ## Result
 
-The source at `4e49555` cannot install runtime roles through the existing operator
-seed or governor path. This bounded follow-up adds regression evidence and the
-required amendment contract; it does not add an installation or activation route.
+The existing operator seed and governor cannot install runtime roles. This
+follow-up adds a separate TEST CloudFormation proposal, the publisher stack, for
+only the image-publisher boundary, guard and role, with a three-row Add-only
+validator. The four ECS fences and two ECS roles remain disconnected source for
+a later reviewed runtime amendment. Neither route has an
+authenticated live installer or activation receipt yet.
 
 ## Exact stop condition
 
@@ -22,11 +25,11 @@ denies all IAM operations on the three new runtime roles and six new policies.
 Adding identity Allows alone cannot enable installation. Removing those Denies
 globally would weaken the existing enrollment and is forbidden.
 
-The staged `PocRuntimeFences` creates Pulumi-owned resources in `independent-seed`;
-the existing independently owned policy graph uses CloudFormation. Neither the
-project name nor native policy-document equality authenticates an installer or
-establishes exclusive ownership. Do not connect this component to a deployment
-entrypoint until the independent amendment defines that ownership boundary.
+The earlier staged Pulumi `PocRuntimeFences` competed with the independently
+owned CloudFormation graph and has been removed. The separate runtime packet
+establishes one proposed owner for the publisher's two fences and role (the ECS
+fences have no owner yet), but document
+equality alone does not authenticate an installer or prove live ownership.
 
 ## Smallest coherent next amendment
 
@@ -35,29 +38,40 @@ entrypoint until the independent amendment defines that ownership boundary.
    independently authenticated installer and complete observed stack/template,
    policy versions, boundaries and attachments. Caller-supplied account metadata
    or an `activation_authorized` flag is not authentication.
-2. Choose one independent owner for the six new fence policies. A separate
+2. Choose one independent owner for the publisher fences and role (the four ECS
+   fences need their own reviewed owner in the later runtime amendment and must
+   not be appended to the publisher stack). A separate
    CloudFormation stack avoids moving the original 55 policies. A Pulumi owner
    instead requires its reviewed backend/key, installer authority and immutable
    protection contract; the existing seed KMS/backend must not be silently reused.
    Stop on any existing name or other state owner; no automatic adoption/import.
+   The staged `issue219-runtime-fences-test` packet chooses the separate
+   CloudFormation owner. Its installer must authenticate that the stack, both
+   publisher policy names and the publisher role name are absent, recheck GitHub
+   OIDC and the protected environment, create the reviewed three-resource template, verify
+   the complete change set, policy versions and role bindings, then enable and
+   read back termination protection and the permanent deny-update stack policy.
+   An offline packet is not an installer.
 3. Amend the existing governor boundary and guard documents through their current
    independent CloudFormation owner. Bind exact old/new documents and exact
    reviewed change-set identity. Permit only specified in-place policy updates;
    forbid replacement/deletion and restore the deny-update stack policy on both
    success and failure. Preserve every unrelated statement and principal binding.
 4. Add corresponding operator-owned governor identity grants. Preview/drift need
-   reads of the exact runtime roles and six fences only. Apply needs the reviewed
-   provider operation set on the exact three roles, with each role bound to its
+   reads of the exact ECS roles and six fences only. Apply needs the reviewed
+   provider operation set on the exact two ECS roles, with each role bound to its
    own boundary and sole guard. Explicitly protect guard detachment, boundary
    removal/rebinding, all fence writes, foreign role creation, self-management and
    PassRole. Never solve this by widening the existing wildcard denial exceptions
    to an entire role/policy prefix. Verify the full resulting policy/attachment
    quotas and effective identity/boundary/guard intersection before installation.
-5. Reconcile the governor-owned runtime role state separately from fence state.
+5. Reconcile the governor-owned ECS role state separately from fence and
+   publisher state.
    Require native fence/ownership readback before the reviewed saved-plan apply.
-   Keep task trust disabled and task grants empty. Publisher activation additionally
-   requires the existing exact repo IDs, workflow, environment, main ref and
-   dispatch claims, with authenticated protected-environment/OIDC evidence.
+   Keep task trust disabled and task grants empty until the runtime contract is
+   reviewed. Publisher creation requires the exact repo IDs, workflow,
+   environment, main ref and dispatch claims, with authenticated
+   protected-environment/OIDC evidence.
 
 These are missing implementation contracts, not authorization to make a live
 change. The next source amendment can remain TEST-only; PROD application rollout
@@ -69,4 +83,9 @@ remain separate capabilities.
 `tests/unit/test_poc_installation_boundary.py` exercises rejection of runtime
 inventory appended to either seed installation or activation, the governor's
 existing unconditional denials, and preservation of the 58-resource executor-only
-activation graph. Synthetic observations do not establish live installation.
+activation graph. `tests/unit/test_poc_runtime_fence_stack.py` checks the exact
+three-resource retained graph and rejects incomplete, foreign, obsolete
+seven-row and six-policy, existing or destructive change-set rows.
+`tests/unit/test_poc_publisher_stack_verification.py` checks the post-create
+verifier field by field. Synthetic observations do not establish live
+installation.

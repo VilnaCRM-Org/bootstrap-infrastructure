@@ -71,6 +71,7 @@ WILY_TARGETS             ?= pulumi policy scripts
 YAML_LINT_PATHS          ?= docs/examples/operations-alert-triage-v2.yml .github/workflows .github/actionlint.yaml docker-compose.yml policy pulumi .hadolint.yaml .yamllint.yml
 MUTATION_TEST_TARGETS    ?= tests/unit/test_environment_component.py tests/unit/test_guardrails.py
 MUTATION_TESTS_DIR       ?= tests/unit
+RUNTIME_SEED_POLICY_ARGS ?=
 INTEGRATION_COVERAGE_ENV  = -e COVERAGE_FILE=/workspace/.coverage.integration \
 	-e COVERAGE_PROCESS_START=/workspace/.coveragerc \
 	-e COVERAGE_RCFILE=/workspace/.coveragerc
@@ -98,7 +99,8 @@ TOTAL_COVERAGE_ENV        = -e COVERAGE_FILE=/workspace/.coverage.total \
         test-bandit test-actionlint test-yaml test-dockerfile \
         test-deps-security test-destructive-diff test-cost-proxy test-drift test-guardrails \
         test-guardrails-unprivileged test-iam-validation \
-        test-iam-validation-unprivileged test-preview test-preview-unprivileged \
+        test-iam-validation-unprivileged validate-runtime-seed-policies \
+        test-preview test-preview-unprivileged \
         test-security test-secrets test-repo-hygiene test-repository-catalogs \
         test-repository-fanout \
         test-unit test-integration test-integration-unprivileged test-pulumi test-policy \
@@ -317,6 +319,9 @@ test-iam-validation-unprivileged: ## Extract preview IAM inputs without AWS cred
 	fi'
 	$(REPO_PYTHON) ./scripts/pulumi_ci_guardrails.py iam-inputs \
 		.artifacts/pulumi-preview/*.json --output .artifacts/pulumi-preview/iam-inputs.json
+
+validate-runtime-seed-policies: ## Render publisher-stack IAM documents; AWS-validate only with credential variables.
+	$(COMPOSE) run --rm $(COMPOSE_SERVICE) uv run python ./scripts/render_runtime_seed_policies.py $(RUNTIME_SEED_POLICY_ARGS)
 
 test-security: ## Run secret, dependency, and workflow security checks.
 	$(MAKE) test-secrets
