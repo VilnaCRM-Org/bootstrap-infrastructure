@@ -3481,6 +3481,13 @@ def test_required_status_check_contract_matches_collector_and_docs(
         not in implementation_readiness_report
     )
     assert (  # nosec B101
+        "- Archived 2026-05-17 record" not in implementation_readiness_report
+    )
+    assert (  # nosec B101
+        "This item is kept for history only and is not a remaining blocker."
+        in normalized_readiness_report
+    )
+    assert (  # nosec B101
         "The example below is derived from the archived 2026-05-17 record"
         in guardrails_doc
     )
