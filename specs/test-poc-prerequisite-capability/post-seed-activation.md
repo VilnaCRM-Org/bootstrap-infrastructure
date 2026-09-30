@@ -28,7 +28,7 @@ disabled PR #255 state.
 
 | ID | Where |
 | --- | --- |
-| FR5 | Enabled packaged identity; [scope and offline proof](#scope-and-offline-proof-fr5-fr6-fr7-nfr5) |
+| FR5 | Packaged identity lifecycle `state: "enabled"`; [scope and offline proof](#scope-and-offline-proof-fr5-fr6-fr7-nfr5) |
 | FR6 | Boundary, governor and attachment parity; [scope and offline proof](#scope-and-offline-proof-fr5-fr6-fr7-nfr5) |
 | FR7 | TEST pin `ff2eaf29…`; the amendment cannot be replayed |
 | NFR5 | TEST-only scope, PROD unchanged, merge deploys none of this capability |
@@ -45,8 +45,9 @@ disabled PR #255 state.
    its provenance keeps `activation_authorized: false` because catalog metadata
    never authorizes an apply. It admits the single mutable attachment
    `arn:aws:iam::891377212104:policy/GitHubCiApply-user-service-infrastructure-test-poc-prerequisites`
-   only on `GitHubCiApply-user-service-infrastructure-test`, then enables the
-   packaged exact TEST repository identity.
+   only on `GitHubCiApply-user-service-infrastructure-test`, then sets the
+   packaged exact TEST repository identity to `"state": "enabled"`
+   (`pulumi/infra/test-poc-identity.json`).
 2. Preserve the separately installed PR #276 TEST trust cutover. Recheck the
    complete preview role trust immediately before the expanded identity grant;
    no generic `pull_request` subject may return. The trust removal and permission
@@ -63,13 +64,15 @@ disabled PR #255 state.
    it through normal branch protection and close the freeze window as described
    below.
 5. Install any required TEST governor identity policy update through the existing
-   protected operator saved-plan path. The seed amendment changes immutable
+   protected operator saved-plan path, on follow-up PR-B (see below). The seed
+   amendment changes immutable
    ceilings and guards; it does not install the mutable governor identity Allow
    needed to manage the new service policy. Inspect the exact saved plan and
    stop on unreviewed scope. Do not substitute a direct local apply.
-6. Use the protected governance PR-comment saved-plan path to install the service
-   apply managed policy and preview/drift read grants. A current write-permission
-   maintainer requests `/pulumi test up`; `@Kravalg` approves `governance`.
+6. Use the protected governance PR-comment saved-plan path, on follow-up PR-C
+   (see below), to install the service apply managed policy and preview/drift
+   read grants. A current write-permission maintainer requests
+   `/pulumi test up`; `@Kravalg` approves `governance`.
    Preserve the repository's test-then-prod promotion contract: TEST apply/drift
    and PROD apply/drift at the same revision remain required for promotion,
    even though this capability is TEST-only and PROD has no new capability.
@@ -79,6 +82,27 @@ disabled PR #255 state.
    prerequisite to any downstream service apply; this change cannot bypass the
    deny-all hold. Then rerun the exact-head service PR comment plan and the
    separately authorized apply/drift sequence.
+
+**Post-merge commands need a follow-up PR.** `/pulumi` is refused on closed or
+merged pull requests (`pulumi-pr-commands.yml`, "Reject closed or merged pull
+requests"), so steps 5-7 and the freeze-closing operator TEST plan cannot run on
+this PR after it merges. They run on reviewed follow-up PRs opened from the
+merged main. `scripts/deployment_scopes.py` selects stacks only from changed
+paths:
+
+- **PR-B (operator, step 5 and freeze close).** Its only runtime change is under
+  `pulumi/github-ci-bootstrap/` (for example a reviewed comment in
+  `pulumi/github-ci-bootstrap/__main__.py`), which selects only `("operator",)`.
+  `/pulumi test plan` is the first post-merge operator TEST plan; its enrollment
+  check runs at the start of every stage. `/pulumi test up` then installs the
+  governor identity update (step 5).
+- **PR-C (governance, step 6).** Its only runtime change is under
+  `pulumi/governance/`, which selects only `("governance",)`. Run
+  `/pulumi test plan`, then `/pulumi test up`.
+
+A change under `pulumi/infra/` or `pulumi/seed/` instead selects all three stacks
+in `operator`, `governance`, `platform` order. Documentation, `specs/` and
+`tests/` changes select no stack and cannot run these steps.
 
 ## Freeze window and merge sequence (NFR7)
 
@@ -102,7 +126,8 @@ gap short and explicit:
 1. Complete ordered step 1 first. Do not start installation while review,
    required checks or rebases are outstanding.
 2. Announce the freeze: no `/pulumi` commands whose scope includes the operator
-   stack, and no other merges to main, until the window closes. A new main
+   stack, other than the PR-B commands below, and no other merges to main
+   (other than PR-B), until the window closes. A new main
    commit would require a rebase and fresh checks inside the window.
 3. Install the seed amendment (ordered step 3). If installation fails or leaves a
    partial result, follow [rollback and fail-forward](#rollback-and-fail-forward-nfr6)
@@ -110,8 +135,13 @@ gap short and explicit:
 4. Record the merge preconditions, then merge this PR immediately with normal
    branch protection. If the seed is installed but the merge is blocked, follow
    [the seed-installed decision](#rollback-and-fail-forward-nfr6).
-5. Close the window only after the first post-merge operator TEST plan passes its
-   enrollment checks against the installed seed.
+5. Open PR-B (see the follow-up PR note above), merge nothing else, and run
+   `/pulumi test plan` then `/pulumi test up` on it. Close the window only after
+   both hold: the first post-merge operator TEST plan passed its enrollment
+   checks against the installed seed, and the step 5 governor identity policy
+   was applied and read back as reviewed. A passing plan alone does not close the
+   window. If step 5 fails, the window stays open (see the step 5 failure branch
+   in [rollback and fail-forward](#rollback-and-fail-forward-nfr6)).
 
 An administrator bypass merge is forbidden, including to shorten the window or
 to work around a failing, pending or missing required check. Fix the cause, or
@@ -147,7 +177,18 @@ comment, never an edit of the PR body) before merging. Do not record credentials
       independently authenticated, non-root, read-only observation of the
       installed account, run as the installer with the checked-out candidate
       source (see [active verification command](#active-verification-command)).
-      Record the registry SHA-256 and verified counts.
+      `--active` trusts the code and catalog on disk, so also record:
+  - `git rev-parse HEAD` in that checkout, equal to this PR's merge head SHA;
+  - empty output from
+    `git status --porcelain --ignored --untracked-files=all` (or state that the
+    checkout is a fresh clone of that SHA with nothing added);
+  - the public seed KMS key ARN from the `--seed-key-binding` input;
+  - the absolute `--aws-executable` path and that it is a trusted AWS CLI
+    install outside the checkout;
+  - the printed registry SHA-256 and verified counts; and
+  - a reviewer's independent offline recomputation of
+    `build_registry("test", ...).sha256` from the same head and binding (see
+    below), equal to the printed registry SHA-256.
 - [ ] This PR's exact head still has current approvals, green required checks and
       no unresolved threads.
 
@@ -167,6 +208,21 @@ python3 -I scripts/operator_seed_observation.py --active \
   --aws-executable <absolute aws CLI path>
 ```
 
+`--seed-key-binding` is one JSON object of at most 4096 bytes with exactly six
+snake_case keys, every value a JSON string: `arn`, `key_id`, `aws_account_id`,
+`key_manager`, `key_state` and `key_usage`. Copy them from the public
+`aws kms describe-key` `KeyMetadata` fields `Arn`, `KeyId`, `AWSAccountId`,
+`KeyManager`, `KeyState` and `KeyUsage`. The ARN must be in `eu-central-1` and
+account `891377212104`, with `CUSTOMER`, `Enabled` and `ENCRYPT_DECRYPT`.
+Missing, extra, duplicate or non-string fields are rejected
+(`operator_seed_observation._key_binding`). Live `DescribeKey` must also equal
+this binding.
+
+`--aws-executable` is checked only for being absolute, executable and named
+`aws` (`operator_aws_read.py`). The operator must point it at a trusted AWS CLI
+installation outside the checkout, for example the system package, never a
+path inside the PR tree or a user-writable directory.
+
 It authenticates the installer by STS identity and immutable RoleId, reads only
 STS/IAM/KMS metadata (never `GetSecretValue`), builds the registry and catalog
 from the checked-out source, and calls `verify_active_enrollment`. It prints
@@ -175,6 +231,23 @@ only the registry SHA-256 and verified counts; expected output is 55 policies,
 pins, extra attachments, missing guards and trust mismatches exit non-zero. The
 same command without `--active` remains the disabled-trust initial check and
 rejects active executor trust.
+
+A reviewer recomputes the registry digest offline, with no credentials, from a
+clean checkout of the same head and the same binding JSON:
+
+```text
+python3 -I -c 'import json, sys; sys.path.insert(0, "pulumi"); \
+from seed import policy_registry as r; \
+print(r.build_registry("test", account_id="891377212104", \
+seed_key=r.SeedKeyBinding(**json.loads(sys.argv[1]))).sha256)' \
+  '<same public DescribeKey binding JSON>'
+```
+
+The printed value must equal the `registry_sha256` from the installer run.
+`scripts/run_security_mutation_tests.py` (`make test-mutation`) mutates the
+catalog hash check, installer authentication, key-binding bounds, the
+`verify_active_enrollment` checks and the `--active` routing. The tests must
+kill every one of those mutants.
 
 ## Rollback and fail-forward (NFR6)
 
@@ -193,17 +266,23 @@ separately reviewed change set and never replay the executed one.
 
 **Seed installed, merge blocked.** AWS holds the `ff2eaf29…` documents while
 main pins `ef419680…`, so operator TEST runs fail closed. The only exits are:
-fix forward and merge this PR, or author, review and merge a reversal generator
-and restore the `ef419680…` seed (see withdrawal below). The freeze stays open
+fix forward and merge this PR, or author, review and merge a reversal packet
+bound to `ff2eaf29…` that produces the `ef419680…` documents, with a change-set
+validator for exactly those four reverse modifications, and restore the
+`ef419680…` seed with it. No capability policy or attachment exists yet in this
+case, so the governance deletion limits under withdrawal below do not apply.
+The freeze stays open
 until one of them completes. Do not edit the catalog to match live state, and do
 not bypass branch protection.
 
 **Operator governor identity update fails (ordered step 5).** The seed and merged
-source stay. Record the run ID, failed stage, saved-plan manifest hash and
+source stay. The freeze window stays open; this is the same rule as
+window-closing step 5. Record the run ID, failed stage, saved-plan manifest hash and
 sanitized diagnostics, and read back the governor identity policy. Do not apply
 directly or retry the failed saved plan. Repair the cause through a reviewed
-change, then run a fresh exact-head saved plan, inspect it and apply it through
-the same protected path. Step 6 must not start, and the freeze stays open, until
+change, then run a fresh exact-head saved plan on PR-B (or its reviewed
+successor), inspect it and apply it through the same protected path. Step 6 must
+not start, and the freeze stays open, until
 the governor identity policy is read back as reviewed.
 
 **Governance TEST apply fails (ordered step 6).** Stop before PROD. Keep the seed
@@ -224,44 +303,73 @@ blocked until TEST apply/drift and PROD apply/drift pass at the same revision.
   catalog state through a reviewed CloudFormation change set under the
   deny-update policy. Never change the catalog to match live AWS.
 
-**Capability must be withdrawn.** Setting `enabled: false` alone leaves the
-installed seed ceilings wider than the source identity and fails the
-boundary-parity tests against the `ff2eaf29…` pin. Complete withdrawal therefore
-also reverses the seed catalog through a new CloudFormation change set under the
-deny-update policy, in this order:
+**Capability must be withdrawn.** The packaged identity
+(`pulumi/infra/test-poc-identity.json`) carries an explicit lifecycle `state`
+that `infra.governance._TEST_POC_LIFECYCLE` maps to four consumers:
 
-1. Delete through governance first, while the seed guard still admits the exact
-   policy ARN. A reviewed PR sets `enabled: false` and updates the parity tests to
-   the withdrawn-identity/installed-ceiling state. Apply it through the protected
-   governance saved-plan path. The plan may only delete the `poc-prerequisites`
-   policy, its apply-role attachment and the preview/drift read grants. If the
-   runner lacks a required delete or detach action, stop for review and do not
-   use break-glass implicitly. Read back the service apply role attachments
-   (`pulumi-backend`, `secret-read-deny` and guards only) and the absence of the
-   policy before continuing.
-2. Only after that readback, narrow the operator-stack governor identity policy.
-   Its allowance for the exact policy ARN depends on the same flag
-   (`governance_automation.py`), and it must remain until the governance delete
-   has completed, because the governor needs it to perform that delete. Apply the
-   narrowing through the protected operator saved-plan path and read it back.
-3. Then reverse the seed. Doing it earlier can leave an orphaned attachment: the
-   seed guard would no longer admit an attachment that still exists
-   (`policy_registry.py` mutable-attachment check), failing every active
-   enrollment. Source contains no reversal generator today:
-   `build_catalog()` binds only to the pre-install baseline. A reviewed change
-   must first add a reversal packet bound to `ff2eaf29…` that produces the
-   `ef419680…` documents, plus a change-set validator for exactly those four
-   reverse modifications. In one freeze window, create and validate that change
-   set under a narrow temporary stack policy, execute only its ID, restore the
-   permanent deny-update policy and read back the four documents against the
-   `ef419680…` catalog. Then merge the reviewed source that restores the
-   `ef419680…` pin and removes the TEST attachment allowlist entry.
-4. Health checks: the post-merge operator TEST plan passes its enrollment checks,
-   governance TEST drift is clean, and the service apply role still carries
-   `Issue215CutoverSessions`.
-5. Evidence: both PR SHAs, governance run IDs, change-set ID, template digest,
-   four document hashes, stack-policy digest, enrollment result and sanitized
-   readbacks.
+| `state` | Service documents (governance) | Governor exact-policy grant (operator) | Seed boundary ceiling |
+| --- | --- | --- | --- |
+| `enabled` | Allow capability | rendered | rendered |
+| `withdrawn` | explicit Deny of the same actions and resources | rendered | rendered |
+| `disabled` | absent | absent | absent |
+
+Any other value, or a missing `state`, fails every render closed.
+
+Withdrawal cannot delete the capability through the protected route. The
+destructive-diff gate (`scripts/pulumi_ci_guardrails.py`, `aws:iam/` is a
+critical type) rejects every IAM `delete` or `replace` on plan and again before
+saved-plan replay, with no override (`docs/ci-guardrails.md`). The governance
+stack also sets `protectResources: "true"`
+(`pulumi/governance/Pulumi.test.yaml`), so Pulumi refuses to delete the
+`poc-prerequisites` policy, its attachment and the preview/drift inline grants.
+`withdrawn` therefore keeps the same three policy identities and replaces their
+documents in place with explicit Deny statements for exactly the withdrawn
+actions and resources (`_withdrawn_test_poc_statements`). No other service grant
+allows those actions, so this restores the pre-capability effective access and
+stays fail-closed. The governor keeps its exact-policy read/update grant, so the
+operator stack, which `/pulumi test up` runs before governance whenever the
+identity file changes, changes nothing. The ceiling keeps matching the
+`ff2eaf29…` pin, and the attachment stays inside the seed guard's allowlist, so
+active enrollment keeps passing.
+
+1. **Withdrawal PR: `"state": "withdrawn"`.** A reviewed PR changes only the
+   identity state plus tests and this runbook. On the open PR, run
+   `/pulumi test plan`, review it, then `/pulumi test up` (`@Kravalg` approves
+   `governance`). The operator plan must show no change. The governance plan may
+   only update the `poc-prerequisites` apply policy (a new default version) and
+   the preview/drift inline `poc-prerequisites` grants. Any `delete` or
+   `replace`, or any other change, stops the run for review.
+2. Read back the new default policy version and both inline documents (Deny
+   only, same actions and resources), and confirm the apply role attachments are
+   still `pulumi-backend`, `secret-read-deny`, `poc-prerequisites` and guards.
+   Record them on the PR, then merge it.
+3. Service stack: once the Deny is live, the `user-service-infrastructure`
+   TEST preview, drift and apply roles can no longer read or change any ECR
+   repositories, SES identity or DKIM records created under the capability, so
+   that stack's refresh and drift fail while it still tracks them. Before the
+   withdrawal PR, list those resources in its TEST state. Resolve them only
+   through that repository's own reviewed change and protected path; its
+   destructive-diff gate applies there too, so Route53 record deletes stay
+   blocked. Record the result, or record that none were created. Never edit its
+   state directly.
+4. Health checks: the next operator TEST plan passes its enrollment checks,
+   governance TEST drift is clean, the service apply role still carries
+   `Issue215CutoverSessions`, and step 3 is recorded.
+5. Evidence: PR SHA, governance and operator run IDs, saved-plan manifest
+   hashes, the three document digests and sanitized readbacks.
+
+Re-enabling sets `"state": "enabled"` through the same reviewed path, which
+updates the same documents back to the Allow capability.
+
+Deleting the policy and attachment, narrowing the governor, and reversing the
+seed to the `ef419680…` catalog (`"state": "disabled"`) are not available. They
+need separately reviewed changes to the destructive-diff control and the
+resource protection, plus a reversal packet bound to `ff2eaf29…` with a
+change-set validator for exactly the four reverse modifications. Reversing the
+seed while the attachment exists would fail every active enrollment, because
+the seed guard would no longer admit it (`policy_registry.py` mutable-attachment
+check). Never do any of this through a direct apply, a Pulumi state edit such
+as `pulumi state unprotect`, or implicit break-glass.
 
 ## Scope and offline proof (FR5, FR6, FR7, NFR5)
 
