@@ -212,12 +212,26 @@ drift and verifier steps: `cloudformation:DescribeChangeSet`,
 `cloudformation:DescribeStackResourceDrifts`,
 `cloudformation:BatchDescribeTypeConfigurations`, `iam:GetRole`,
 `iam:GetRolePolicy`, `iam:ListRolePolicies`, `iam:ListAttachedRolePolicies`,
-`iam:ListRoleTags`, `iam:GetPolicy` and `iam:GetPolicyVersion`. Sources: AWS
+`iam:ListRoleTags`, `iam:GetPolicy`, `iam:GetPolicyVersion` and
+`iam:ListEntitiesForPolicy`. Sources: AWS
 CloudFormation User Guide, "Detect unmanaged configuration changes to stacks and
 resources with drift detection" (`using-cfn-stack-drift.html`, which requires
 `DetectStackDrift`, `DetectStackResourceDrift`, `BatchDescribeTypeConfigurations`
-and read permission for each resource, here the role and managed-policy reads
-above) and "Prevent updates to stack resources" (`protect-stack-resources.html`).
+and read permission for each resource) and "Prevent updates to stack resources" (`protect-stack-resources.html`).
+The per-resource read permissions are the `handlers.read.permissions` of the
+CloudFormation registry schemas. `AWS::IAM::Role`: `iam:GetRole`,
+`iam:ListAttachedRolePolicies`, `iam:ListRolePolicies`, `iam:GetRolePolicy`.
+`AWS::IAM::ManagedPolicy`: `iam:GetPolicy`, `iam:ListEntitiesForPolicy`,
+`iam:GetPolicyVersion`. Source: the published schemas as mirrored in
+`aws-cloudformation/cloudformation-languageserver`
+(`tst/resources/schemas/aws-iam-role.json`) and
+`pulumi/pulumi-aws-native` (`aws-cloudformation-schema/aws-iam-role.json`,
+`aws-iam-managedpolicy.json`), checked 2026-09-30. Residual: the AWS-hosted schema
+bundle and `describe-type` were not reachable in this review, so the mirrors are the
+evidence; the repo-reviewed managed-policy read set
+(`pulumi/infra/governance_automation.py`, `_POLICY_READ`) is a superset and also
+adds `iam:ListPolicyVersions` and `iam:ListPolicyTags`, which the schema does not
+require. Re-check with `describe-type` before an incident if the schema changes.
 `docs/governance-stack.md` defines no such publisher-specific
 grant (the seed installer operator identity in that guide is not authorized for
 this stack), so the holder must be named and reviewed before use; do not

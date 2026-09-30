@@ -24,8 +24,12 @@ DOCS = (
 
 def test_documented_credential_triggers_match_renderer():
     """Every trigger variable is named, and no undocumented AWS trigger is."""
-    compose = (ROOT / "docker-compose.yml").read_text()
-    assert "env_file:" in compose and "path: .env" in compose
+    service = yaml.safe_load((ROOT / "docker-compose.yml").read_text())["services"]
+    paths = [
+        entry["path"] if isinstance(entry, dict) else entry
+        for entry in service["pulumi"]["env_file"]
+    ]
+    assert ".env" in paths
     for doc in DOCS:
         text = doc.read_text()
         assert ".env" in text
@@ -64,15 +68,35 @@ CLI_PERMISSIONS = {
     "delete-change-set": {"cloudformation:DeleteChangeSet"},
     "update-stack": {"cloudformation:UpdateStack"},
     "wait stack-update-complete": {"cloudformation:DescribeStacks"},
-    "detect-stack-drift": {
+}
+# Runbook step -> APIs it uses that the bash block does not show (prose only).
+STEP_PERMISSIONS = {
+    "1 contain": {"iam:UpdateAssumeRolePolicy", "iam:PutRolePolicy"},
+    "2 amend": {
+        "cloudformation:SetStackPolicy",
+        "cloudformation:ExecuteChangeSet",
+        "cloudformation:GetStackPolicy",
+        "cloudformation:DescribeStacks",
+    },
+    "3 reconcile": {
+        "iam:DeleteRolePolicy",
         "cloudformation:DetectStackDrift",
         "cloudformation:DetectStackResourceDrift",
         "cloudformation:BatchDescribeTypeConfigurations",
+        "cloudformation:DescribeStackDriftDetectionStatus",
+        "cloudformation:DescribeStackResourceDrifts",
     },
-    "describe-stack-drift-detection-status": {
-        "cloudformation:DescribeStackDriftDetectionStatus"
-    },
-    "describe-stack-resource-drifts": {"cloudformation:DescribeStackResourceDrifts"},
+}
+# handlers.read.permissions of AWS::IAM::Role and AWS::IAM::ManagedPolicy (AWS
+# drift detection needs read permission for each resource).
+DRIFT_READ_PERMISSIONS = {
+    "iam:GetRole",
+    "iam:ListAttachedRolePolicies",
+    "iam:ListRolePolicies",
+    "iam:GetRolePolicy",
+    "iam:GetPolicy",
+    "iam:ListEntitiesForPolicy",
+    "iam:GetPolicyVersion",
 }
 # Extra permissions implied by a flag (AWS "Prevent updates to stack resources").
 FLAG_PERMISSIONS = {
@@ -89,7 +113,7 @@ def _break_glass_section():
 
 def _holder_permissions():
     section = _break_glass_section()
-    holder = section.split("Mutating")[1].split("`docs/governance-stack.md`")[0]
+    holder = section.split("Mutating")[1].split("Sources:")[0]
     return set(re.findall(r"`((?:cloudformation|iam):[A-Za-z]+)`", holder))
 
 
@@ -133,7 +157,16 @@ def test_break_glass_commands_map_to_listed_permissions():
     for flag, perms in FLAG_PERMISSIONS.items():
         assert flag in block and perms <= holder
     # Drift and executable alternatives are documented in prose, not the block.
-    for command in ("detect-stack-drift", "wait stack-update-complete"):
-        assert command.split()[-1] in section
-        assert CLI_PERMISSIONS[command] <= holder
+    assert "detect-stack-drift" in section and "wait stack-update-complete" in section
     assert "cloudformation:ExecuteChangeSet" in holder
+
+
+def test_break_glass_step_apis_and_drift_reads_are_granted():
+    """Every API a runbook step uses, and each drift read, is in the holder list."""
+    holder = _holder_permissions()
+    for step, perms in STEP_PERMISSIONS.items():
+        assert perms <= holder, (step, perms - holder)
+    assert DRIFT_READ_PERMISSIONS <= holder, DRIFT_READ_PERMISSIONS - holder
+    section = _break_glass_section()
+    for phrase in ("UpdateAssumeRolePolicy", "detect-stack-drift", "SetStackPolicy"):
+        assert phrase in section, phrase
