@@ -129,7 +129,7 @@ def test_proposed_boundary_equals_staged_service_capability(monkeypatch):
         value = read_text(path, *args, **kwargs)
         if path.name == "test-poc-identity.json":
             identity = json.loads(value)
-            identity["enabled"] = True
+            identity["state"] = "enabled"
             return json.dumps(identity)
         return value
 
@@ -145,6 +145,7 @@ def test_proposed_boundary_equals_staged_service_capability(monkeypatch):
         ),
         args.settings,
         write=True,
+        use="ceiling",
     )
     assert (
         proposed

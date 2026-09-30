@@ -1,7 +1,7 @@
 # Source impact relationships
 
 Post-seed activation (activation PR #284, superseding #280, FR5-FR7): the packaged identity has
-`enabled: true` and the active TEST seed catalog pin is the amendment result
+lifecycle `"state": "enabled"` and the active TEST seed catalog pin is the amendment result
 `ff2eaf29…`. Source now emits the graph below. It becomes live only through
 the ordered protected deployments in [post-seed-activation.md](post-seed-activation.md),
 after the seed installation readback; merging is not installation. The earlier

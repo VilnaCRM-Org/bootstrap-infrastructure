@@ -51,18 +51,114 @@ def test_packaged_capability_matches_installed_test_seed(write):
     assert all("poc-prerequisites" in dict(spec.policy_documents) for spec in specs)
 
 
-def test_explicitly_disabled_identity_still_emits_no_capability(monkeypatch):
-    def disabled(path, *args, **kwargs):
+def lifecycle(monkeypatch, state):
+    """Serve the packaged identity with one reviewed lifecycle state."""
+
+    def staged(path, *args, **kwargs):
         content = REAL_READ_TEXT(path, *args, **kwargs)
         if path.name == "test-poc-identity.json":
             identity = json.loads(content)
-            identity["enabled"] = False
+            if state is None:
+                identity.pop("state")
+            else:
+                identity["state"] = state
             return json.dumps(identity)
         return content
 
-    monkeypatch.setattr(Path, "read_text", disabled)
+    monkeypatch.setattr(Path, "read_text", staged)
+
+
+def rendered(args):
+    """Render the three consumers exactly as the operator and governance stacks do."""
+    boundary = json.loads(service_boundary_policy(args, REPO))["Statement"]
+    governors = [
+        json.loads(governance_repo_iam_policy(args, REPO, apply=apply))["Statement"]
+        for apply in (False, True)
+    ]
+    specs = _governance_role_specs(
+        account_id=ACCOUNT,
+        partition="aws",
+        settings=args.settings,
+        region="eu-central-1",
+        repo=REPOSITORY,
+        project=REPOSITORY,
+    )
+    return boundary, governors, specs
+
+
+def installed_boundary():
+    """Return the active TEST seed boundary pin's rendered statements."""
+    catalog = load_catalog("test")
+    pin = catalog["policies"][
+        f"arn:aws:iam::{ACCOUNT}:policy/GovernanceBoundary-{REPOSITORY}-test"
+    ]
+    return [catalog["statements"][s] for s in pin["statement_ids"]]
+
+
+def governs_policy(statements, actions):
+    """Report whether the governor may perform every action on the exact ARN."""
+    return all(
+        any(POLICY in s["Resource"] and action in s["Action"] for s in statements)
+        for action in actions
+    )
+
+
+def test_explicitly_disabled_identity_still_emits_no_capability(monkeypatch):
+    lifecycle(monkeypatch, "disabled")
     assert capability() == []
     assert capability(write=False) == []
+    boundary, governors, specs = rendered(arguments())
+    assert boundary == installed_boundary()[:5]
+    assert not any(POLICY in json.dumps(governor) for governor in governors)
+    assert all("poc-prerequisites" not in dict(s.policy_documents) for s in specs)
+
+
+GOVERNOR_READ = [
+    "iam:GetPolicy",
+    "iam:GetPolicyVersion",
+    "iam:ListPolicyVersions",
+    "iam:ListEntitiesForPolicy",
+]
+GOVERNOR_UPDATE = ["iam:CreatePolicyVersion", "iam:DeletePolicyVersion"]
+
+
+def test_withdrawn_state_denies_capability_in_place_and_keeps_governor(
+    monkeypatch,
+):
+    enabled = {
+        spec.purpose: dict(spec.policy_documents) for spec in rendered(arguments())[2]
+    }
+    lifecycle(monkeypatch, "withdrawn")
+    assert capability() == []
+    assert capability(write=False) == []
+    boundary, (preview, apply), specs = rendered(arguments())
+    for spec in specs:
+        documents = dict(spec.policy_documents)
+        # Same policy identities: the governance plan updates in place and has
+        # no IAM delete for the destructive-diff gate or protect to reject.
+        assert documents.keys() == enabled[spec.purpose].keys()
+        withdrawn = json.loads(documents["poc-prerequisites"])["Statement"]
+        granted = json.loads(enabled[spec.purpose]["poc-prerequisites"])["Statement"]
+        assert {s["Effect"] for s in withdrawn} == {"Deny"}
+        assert [(s["Action"], s["Resource"]) for s in withdrawn] == [
+            (s["Action"], s["Resource"]) for s in granted
+        ]
+        assert all("Condition" not in s for s in withdrawn)
+        assert len(documents["poc-prerequisites"].replace(" ", "")) < 6144
+    # The operator stack runs first and must keep managing the exact policy.
+    assert governs_policy(preview, GOVERNOR_READ)
+    assert governs_policy(apply, GOVERNOR_READ + GOVERNOR_UPDATE)
+    assert boundary == installed_boundary()
+
+
+@pytest.mark.parametrize("state", [None, "", "Enabled", True, "active", "withdrawing"])
+def test_unknown_lifecycle_state_fails_closed_for_every_consumer(monkeypatch, state):
+    lifecycle(monkeypatch, state)
+    for use in ("grant", "tombstone", "governor", "ceiling"):
+        with pytest.raises(ValueError, match="lifecycle state"):
+            capability(use=use)
+    with pytest.raises(ValueError, match="lifecycle state"):
+        rendered(arguments())
 
 
 def test_installed_catalog_rejects_replaying_seed_amendment():
@@ -95,12 +191,14 @@ def capability(*, write=True, **changes):
         region=args.region,
         project=REPOSITORY,
         write=write,
+        use="grant",
     )
     values.update(changes)
     settings = values.pop("settings")
     write = values.pop("write")
+    use = values.pop("use")
     return _test_poc_capability_statements(
-        _TestPocTarget(**values), settings, write=write
+        _TestPocTarget(**values), settings, write=write, use=use
     )
 
 
@@ -210,6 +308,7 @@ def test_enabled_identity_boundary_governor_and_attachment_allowlist_match():
         assert json.loads(doc)["Statement"] == capability(write=spec.purpose == "apply")
     governor = json.loads(governance_repo_iam_policy(args, REPO, apply=True))
     assert any(POLICY in s["Resource"] for s in governor["Statement"])
+    assert governs_policy(governor["Statement"], GOVERNOR_READ + GOVERNOR_UPDATE)
     permitted = _mutable_attachment_sets(build("test"))
     role = f"arn:aws:iam::{ACCOUNT}:role/GitHubCiApply-{REPOSITORY}-test"
     assert permitted[role] == {

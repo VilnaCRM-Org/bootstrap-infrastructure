@@ -19,6 +19,7 @@ import tempfile
 import xml.etree.ElementTree as ET  # nosec B405
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TypeGuard
 
 from _script_support import repo_root
 
@@ -37,6 +38,12 @@ TARGETS = (
     "tests/unit/test_poc_publisher_stack_verification.py",
     "tests/unit/test_poc_runtime_verification.py",
     "tests/unit/test_poc_runtime_enrollment.py",
+)
+# Enrollment mutants run only their own behavioral suites, keeping the campaign
+# inside its job budget; the baseline still requires every suite to pass.
+ENROLLMENT_TARGETS = (
+    "tests/unit/test_operator_seed_observation.py",
+    "tests/unit/test_seed_policy_registry.py",
 )
 GUARDS = {
     "pulumi/infra/iam/account.py": {"assert_bootstrap_account"},
@@ -110,7 +117,26 @@ SEMANTIC_TARGETS = {
         "scope_promotion_kind",
     },
     "scripts/pulumi_command_preflight.py": {"main"},
+    "scripts/operator_seed_observation.py": {
+        "_installer_name",
+        "_authenticate_installer",
+        "_observe",
+        "observe_active_enrollment",
+        "_key_binding",
+        "main",
+    },
+    "pulumi/seed/policy_registry.py": {
+        "_verify_catalog_hash",
+        "_verify_observation",
+        "_verify_active_executor",
+        "_verify_mutable_role",
+        "verify_active_enrollment",
+    },
 }
+# Installer-authenticated active enrollment must reject every changed input.
+ENROLLMENT_PATHS = frozenset(
+    {"scripts/operator_seed_observation.py", "pulumi/seed/policy_registry.py"}
+)
 
 
 @dataclass(frozen=True)
@@ -142,7 +168,67 @@ def candidates(path: str, function: ast.FunctionDef):
             and function.name in REQUIREMENTS.get(path, set())
         ):
             yield node.args[0], "True", "bypass-required-evidence"
+        yield from _enrollment_candidates(path, function.name, node)
         yield from semantic_candidates(function.name, node)
+
+
+def _is_named_call(node: ast.AST, name: str) -> TypeGuard[ast.Call]:
+    """Match a direct call to one module-level helper by name."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == name
+    )
+
+
+def _skip_authentication(node: ast.AST):
+    """Observe enrollment metadata without authenticating the installer."""
+    if _is_named_call(node, "_authenticate_installer"):
+        yield node, "None", "skip-installer-authentication"
+
+
+def _skip_active_verification(node: ast.AST):
+    """Report active success without comparing observed IAM to the registry."""
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "verify_active_enrollment"
+    ):
+        yield (
+            node,
+            "registry.ActiveEnrollmentVerification(expected.sha256, 55, 24, 3)",
+            "skip-active-verification",
+        )
+
+
+def _misroute(kind: type, operator: str):
+    """Force each branch of one routing decision."""
+
+    def candidates(node: ast.AST):
+        if isinstance(node, (ast.If, ast.IfExp)) and type(node) is kind:
+            for value in ("True", "False"):
+                yield node.test, value, operator
+
+    return candidates
+
+
+_ENROLLMENT_FLOW = {
+    "_observe": _skip_authentication,
+    "observe_active_enrollment": _skip_active_verification,
+    "main": _misroute(ast.IfExp, "misroute-active-mode"),
+    "verify_active_enrollment": _misroute(ast.If, "misroute-principal-check"),
+}
+
+
+def _enrollment_candidates(path: str, function: str, node: ast.AST):
+    """Skip installer authentication, verifier checks, or active-mode routing."""
+    if path not in ENROLLMENT_PATHS or function not in SEMANTIC_TARGETS[path]:
+        return
+    if _is_named_call(node, "_require"):
+        yield node.args[0], "True", "bypass-enrollment-check"
+    flow = _ENROLLMENT_FLOW.get(function)
+    if flow is not None:
+        yield from flow(node)
 
 
 def _identity_pin_candidates(node):
@@ -314,7 +400,7 @@ def classify(returncode: int, report: Path) -> str:
     return "error"
 
 
-def execute(root: Path, report: Path) -> str:
+def execute(root: Path, report: Path, targets: tuple[str, ...] = TARGETS) -> str:
     """Run the existing behavioral tests with independent reports and no cache."""
     environment = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     environment.pop("PYTEST_ADDOPTS", None)
@@ -333,7 +419,7 @@ def execute(root: Path, report: Path) -> str:
                 "-p",
                 "tests.security_mutation_guard",
                 f"--junitxml={report}",
-                *TARGETS,
+                *targets,
             ],
             cwd=root,
             env=environment,
@@ -346,6 +432,11 @@ def execute(root: Path, report: Path) -> str:
         return "timeout"
     report.with_suffix(".log").write_text(result.stdout + result.stderr)
     return classify(result.returncode, report)
+
+
+def _targets(mutant: Mutant) -> tuple[str, ...]:
+    """Select the behavioral suites that exercise the mutated module."""
+    return ENROLLMENT_TARGETS if mutant.path in ENROLLMENT_PATHS else TARGETS
 
 
 def run_campaign(root: Path, output: Path) -> int:
@@ -372,7 +463,9 @@ def run_campaign(root: Path, output: Path) -> int:
                 "node_modules",
             ),
         )
-        baseline = execute(isolated, output / "baseline.xml")
+        baseline = execute(
+            isolated, output / "baseline.xml", TARGETS + ENROLLMENT_TARGETS
+        )
         (output / "baseline-status.json").write_text(json.dumps({"baseline": baseline}))
         if baseline != "survived":
             raise ValueError(f"Security mutation baseline failed: {baseline}")
@@ -381,7 +474,9 @@ def run_campaign(root: Path, output: Path) -> int:
             original = path.read_text()
             try:
                 path.write_text(mutate(original, mutant))
-                outcome = execute(isolated, output / f"mutant-{index:03d}.xml")
+                outcome = execute(
+                    isolated, output / f"mutant-{index:03d}.xml", _targets(mutant)
+                )
             finally:
                 path.write_text(original)
             results.append(

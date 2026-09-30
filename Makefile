@@ -603,14 +603,14 @@ test: ## Run the faster developer battery without the image build or mutation su
 	$(MAKE) doctor
 	$(MAKE) test-battery
 
-ci-pr: ## Run the GitHub PR battery except the dedicated mutation workflow.
+ci-pr: ## Run the credentialed local superset of the PR battery (real AWS-backed preview), without mutation.
 	$(MAKE) doctor
 	$(MAKE) build
 	$(MAKE) test-battery
 	$(MAKE) test-security
 	$(MAKE) test-guardrails
 
-ci-pr-unprivileged: ## Run the PR battery without AWS-backed Pulumi credentials.
+ci-pr-unprivileged: ## Mirror the GitHub PR Local Battery without AWS-backed Pulumi credentials.
 	$(MAKE) doctor
 	$(MAKE) build
 	$(MAKE) test-pulumi

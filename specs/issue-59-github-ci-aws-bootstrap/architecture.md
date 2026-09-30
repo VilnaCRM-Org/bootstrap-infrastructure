@@ -1,5 +1,16 @@
 # Architecture: Issue 59 GitHub CI AWS Bootstrap
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today `bootstrap-infrastructure` pull requests receive no AWS
+> credentials; its real preview and IAM Access Analyzer validation run on push
+> to `main`, in the `main`-dispatched `Pulumi Production` preview and in
+> exact-head `/pulumi <env> plan` saved-plan runs. Governed repositories'
+> `test-pr` config readers still accept their `pull_request` subject (see
+> [CI config trust contract](../../docs/ci-config-trust-contract.md)). See
+> [CI guardrails](../../docs/ci-guardrails.md) and
+> [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 ## PR60 successor amendment — 2026-09-06
 
 The sections below retain historical requirements, stories and evidence. Their
@@ -104,6 +115,13 @@ they explicitly cannot read arbitrary Secrets Manager secret values. Apply roles
 receive only the account-local mutation permissions needed by the Pulumi stack.
 
 ## AWS-Using CI Permission Inventory
+
+Historical inventory: the three pull-request rows and the
+`well-architected-evidence.yml` main/schedule row below no longer run. Every
+`pull_request` guardrail run is now unprivileged, `well-architected-evidence.yml`
+is credential-free, live Well-Architected evidence comes from
+`trusted-well-architected.yml` with the approved `GitHubCiPreview-*-test` role, and the `test-pr` reader for this repository trusts only the
+`main` ref subject with the `Reviewed PR Preview` workflow claim.
 
 Each platform workflow in the inventory below first assumes a config-read role
 that can read exactly

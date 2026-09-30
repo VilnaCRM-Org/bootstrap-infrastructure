@@ -36,8 +36,9 @@ state initialization, real TEST/PROD comment deployment and service acceptance.
 
 | Workflow job | CI suffix | Runtime role | Permission set |
 | --- | --- | --- | --- |
-| PR guardrails preview | `test-pr` | `AWS_PREVIEW_ROLE_ARN` | preview |
-| PR guardrails IAM validation | `test-pr` | `AWS_PREVIEW_ROLE_ARN` | preview plus IAM validation |
+| PR guardrails preview / IAM validation (`pull_request`) | none (unprivileged) | none | no OIDC token or AWS role; placeholder preview only |
+| PR guardrails preview / IAM validation (push to `main`) | `test` | `AWS_PREVIEW_ROLE_ARN` | preview plus IAM validation; presents `repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main` with the `Pulumi PR Guardrails` workflow claim |
+| Reviewed PR Preview (`reviewed-pr-preview` environment) | `test-pr` | `AWS_PREVIEW_ROLE_ARN` from the `test-pr` payload (the shared TEST preview role; unreachable in Stage 1); Stage 2: dedicated TEST reviewed-preview role | Stage 1 fails closed: its jobs present `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:reviewed-pr-preview`. The `test-pr` config reader trusts only `repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main` with the `Reviewed PR Preview` workflow claim, and the shared TEST `AWS_PREVIEW_ROLE_ARN` trusts only `repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main`, `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test` and `repo:VilnaCRM-Org/bootstrap-infrastructure:environment:test-preview` with no workflow claim (each subject is also accepted in its immutable-ID form repo:VilnaCRM-Org@&lt;owner-id&gt;/bootstrap-infrastructure@&lt;repository-id&gt;:...), so neither accepts the route. It stays inactive until Stage 2 enrollment installs a dedicated role and makes that role and the `test-pr` reader accept only `environment:reviewed-pr-preview` with the `Reviewed PR Preview` workflow claim, never `pull_request` |
 | Test deploy preview | `test` | `AWS_PREVIEW_ROLE_ARN` | preview |
 | Test deploy apply | `test` | `AWS_APPLY_ROLE_ARN` | apply |
 | Test deploy drift | `test` | `AWS_DRIFT_ROLE_ARN` | drift |
@@ -45,8 +46,9 @@ state initialization, real TEST/PROD comment deployment and service acceptance.
 | Prod apply | `prod` | `AWS_APPLY_ROLE_ARN` | apply through GitHub `prod` environment |
 | Prod drift | `prod-preview` | `AWS_DRIFT_ROLE_ARN` | drift |
 | Nightly drift | `test`, `prod-preview` | `AWS_DRIFT_ROLE_ARN` | drift |
-| PR command runner | `test`, `prod-preview`, `prod` | preview/apply/drift role by command | matching command role |
-| Well-Architected evidence | `test-pr` or `test` | `AWS_PREVIEW_ROLE_ARN` | preview plus account evidence reads |
+| PR command runner platform jobs (`/pulumi <env> plan` or `up`) | `test`; `prod-preview` and `prod` for production | preview/apply/drift role by command | preview and drift present `environment:test-preview` or `environment:prod-preview`; apply presents `environment:test` or `environment:prod`; all carry the `Pulumi PR Command Runner` workflow claim |
+| Well-Architected Data Validation (`well-architected-evidence.yml`) | none | none | credential-free committed evidence and receipt checks on pull requests, pushes to `main` and schedules |
+| Trusted Well-Architected Publisher collector (`trusted-well-architected.yml`, main-only `workflow_dispatch`) | none (no CI config reader) | approved `GitHubCiPreview-*-test` read role | account evidence reads through the main-ref subject; never a pull-request subject |
 | Operations alert triage | `test` | `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` | SQS triage |
 
 ## Permission shape and trust

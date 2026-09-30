@@ -444,8 +444,8 @@ never creates successful test/prod deployment records.
 The fixed `VilnaCRM-Org/user-service-infrastructure` identity (repository
 `911736693`, owner `114362548`) has an initial prerequisite capability only in
 account `891377212104`, region `eu-central-1`, stack `test`. The packaged
-`test-poc-identity.json` gate is **enabled**, and the active TEST seed catalog
-pin is the four-policy amendment result `ff2eaf29…`, so source renders the
+`test-poc-identity.json` lifecycle `state` is **enabled**, and the active TEST
+seed catalog pin is the four-policy amendment result `ff2eaf29…`, so source renders the
 `poc-prerequisites` apply policy and preview/drift read grants. Merging that
 source deploys nothing: it must merge only after the seed amendment is installed
 and read back, and the grants become live only through the protected deployments
@@ -472,8 +472,12 @@ RSA-2048 Easy DKIM, fixed repository settings, and `allow_overwrite=false`. A la
 update that needs excluded actions fails closed and requires a separate review.
 
 The renderer emits the apply `poc-prerequisites` managed policy and
-preview/drift metadata-read grants because the packaged gate is on. Seed
-installation and the source merge must happen in one freeze window: a merged
+preview/drift metadata-read grants because the packaged lifecycle state is
+`enabled`. Withdrawal sets it to `withdrawn`. The PoC route rejects IAM deletes
+and these resources are protected, so the same documents become explicit Deny
+in place. The governor's exact-policy grant and the seed ceiling stay, as the
+activation runbook describes.
+Seed installation and the source merge must happen in one freeze window: a merged
 but uninstalled catalog pin makes every operator TEST run fail closed at
 enrollment, and an installed amendment makes the previous pin fail the same way
 until the merge. An administrator bypass merge is forbidden. This source change
