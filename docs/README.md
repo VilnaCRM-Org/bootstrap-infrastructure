@@ -56,7 +56,8 @@ That is all you need to begin iterating on the sample AWS instance or adapting t
 all               Display help (default goal).
 build             Build the Pulumi development image used by local and CI checks.
 ci                Run the full local equivalent of all GitHub checks, including mutation.
-ci-pr             Run the non-mutation GitHub pull-request battery locally.
+ci-pr             Run the credentialed local superset of the PR battery (real AWS-backed preview), without mutation.
+ci-pr-unprivileged  Mirror the GitHub PR Local Battery without AWS-backed Pulumi credentials.
 doctor            Check local prerequisites and effective paths without printing secrets.
 help              Print the available make targets.
 nightly-quality   Run the scheduled quality-report battery locally.
@@ -176,8 +177,9 @@ maintainability monitoring.
 
 ## CI Guardrails
 
-Use the [CI guardrails guide](ci-guardrails.md) for the PR-blocking preview,
-destructive diff, IAM validation, secret scanning, dependency audit, CodeQL,
+Use the [CI guardrails guide](ci-guardrails.md) for the required preview,
+destructive diff and IAM validation contexts (credentialed on push to `main`,
+unprivileged placeholders on pull requests), secret scanning, dependency audit, CodeQL,
 nightly drift/Scorecard contracts, production approval boundaries, sanitized
 evidence, and OIDC role expectations.
 

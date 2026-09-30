@@ -91,8 +91,12 @@ Run with:
 
 ```bash
 make test-security
-make test-guardrails
+make test-guardrails-unprivileged
 ```
+
+`make test-guardrails` runs a real `make test-preview`, then the
+destructive-diff and cost-proxy gates (no IAM step), and therefore needs AWS
+credentials.
 
 Coverage:
 
@@ -100,7 +104,7 @@ Coverage:
 - `make test-deps-security` runs `pip-audit --strict`
 - `make test-bandit` runs Bandit against repository Python code
 - `make test-preview` generates the Pulumi preview artifact consumed by later checks
-- `make test-preview-unprivileged` generates the placeholder artifact that every pull request uses (pull requests never run `make test-preview`)
+- `make test-preview-unprivileged` generates the placeholder artifact that every pull request uses (`Pulumi PR Guardrails` never runs `make test-preview` on pull requests; `Local Battery` reaches it through `make ci-pr` only when `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true`, and then needs AWS credentials that job does not request, so leave that variable unset for pull-request CI)
 - `make test-destructive-diff` blocks deletes and replacements of critical infrastructure regardless of PR labels
 - `make test-cost-proxy` flags unusual durable-resource fanout from preview JSON
 - `make test-guardrails` keeps the real preview, destructive-diff, and cost-proxy flow reproducible locally
@@ -250,21 +254,23 @@ Run the standard local validation battery with:
 
 ```bash
 make test
-make ci-pr
+make ci-pr-unprivileged
+make ci-pr   # credentialed local superset
 make ci
 ```
 
 Run `make test` during normal iteration when you want the fast structural,
 policy, quality, repo-hygiene, unit, integration, coverage, and CLI suites after
-a prerequisite sanity check. For the real non-mutation battery, run
-`make ci-pr`; when AWS-backed Pulumi variables are not configured, run
-`make ci-pr-unprivileged`, which mirrors the default pull-request fallback path.
+a prerequisite sanity check. To mirror the pull-request `Local Battery`, run
+`make ci-pr-unprivileged`; `make ci-pr` is the credentialed local superset that
+adds a real AWS-backed preview through `make test-guardrails`.
 Before pushing, execute `make ci` to run the full local equivalent of every
 GitHub check, including the prerequisite check, Docker build, and mutation
 suite.
 
-GitHub Actions now runs either `make ci-pr` or `make ci-pr-unprivileged`
-through the `Pulumi Local Test Battery` workflow, while `Pulumi Mutation Tests`
+GitHub Actions runs `make ci-pr-unprivileged` through the
+`Pulumi Local Test Battery` workflow (`make ci-pr` only when the
+`PULUMI_ENABLE_AUTOMATION_STACK_TESTS` repository variable is `true`), while `Pulumi Mutation Tests`
 keeps mutation analysis isolated as a separate check.
 The `Pulumi Policy Tests` workflow runs the policy-pack coverage suite, and the
 `Python Quality Checks` workflow runs Ruff, Ty, maintainability, architecture,

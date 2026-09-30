@@ -332,9 +332,12 @@ def test_docs_map_reviewed_pr_preview_to_its_own_environment() -> None:
     doc = _doc("sre-operations.md")
     assert "`reviewed-pr-preview`" in doc  # nosec B101
     assert "`reviewed-source-publisher`" in doc  # nosec B101
-    assert not re.search(  # nosec B101
-        r"`test-preview`[^-]{0,80}Reviewed PR Preview", doc
-    )
+    for pattern in (
+        r"`test-preview`[^.;|]{0,200}Reviewed PR Preview",
+        r"Reviewed PR Preview[^.;|]{0,200}`test-preview`",
+        r"`reviewed-pr-preview`[^.;]{0,80}assumes the `test-pr` CI configuration",
+    ):
+        assert not re.search(pattern, doc), pattern  # nosec B101
 
 
 def test_docs_do_not_grant_pull_request_guardrails_aws_roles_or_policy_previews() -> (
