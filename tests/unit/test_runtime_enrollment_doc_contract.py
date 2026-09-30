@@ -53,7 +53,7 @@ def test_documented_forwarded_variables_match_compose_environment():
         (DOCS[1], "Compose forwards", "from the host"),
     ):
         sentence = doc.read_text().split(marker)[1].split(end)[0]
-        assert re.findall(r"`([A-Za-z0-9_]+)`", sentence) == forwarded, doc
+        assert re.findall(r"`(\w+)`", sentence) == forwarded, doc
 
 
 # Break-glass CLI subcommand -> IAM actions its documented use requires.
