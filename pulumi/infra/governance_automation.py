@@ -398,9 +398,13 @@ def governance_trust_policy(
 
 
 def _test_poc_statements(
-    args: GovernanceAutomationArgs, repo: ManagedRepository
+    args: GovernanceAutomationArgs, repo: ManagedRepository, use: str
 ) -> list[dict[str, object]]:
-    """Use the same exact identity predicate for grants and the independent cap."""
+    """Use the same exact identity predicate for the cap and governor inventory.
+
+    The packaged lifecycle keeps the governor's exact-policy management while
+    the withdrawn service documents still exist, so they are never orphaned.
+    """
     settings = dataclasses.replace(
         args.settings,
         github_repository_id=repo.repository_id,
@@ -416,6 +420,7 @@ def _test_poc_statements(
         ),
         settings,
         write=True,
+        use=use,
     )
 
 
@@ -450,7 +455,7 @@ def service_boundary_policy(
                 },
             ),
             _allow(_SECRET_READ, _repo_secrets(args, repo)),
-            *_test_poc_statements(args, repo),
+            *_test_poc_statements(args, repo, "ceiling"),
         ]
     )
 
@@ -484,7 +489,7 @@ def _managed_policy_resources(
     project = _ci_config_project(args.settings, repo.name)
     apply_name = _ci_role_name(args.settings, "apply", project)
     suffixes = ["pulumi-backend", "secret-read-deny"]
-    if _test_poc_statements(args, repo):
+    if _test_poc_statements(args, repo, "governor"):
         suffixes.append("poc-prerequisites")
     return [_iam_arn(args, "policy", f"{apply_name}-{suffix}") for suffix in suffixes]
 

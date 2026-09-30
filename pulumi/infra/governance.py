@@ -275,6 +275,20 @@ def _governance_read_only_policy_document(
     )
 
 
+# Packaged lifecycle of the fixed TEST capability. Each state names the
+# consumers that render it: ``grant`` (service role Allow policies),
+# ``tombstone`` (the same service documents as explicit Deny), ``governor``
+# (the governance runner's exact prerequisite-policy management) and
+# ``ceiling`` (the seed-owned service boundary). The PoC route rejects every
+# IAM delete and these resources are protected, so withdrawal updates the
+# documents in place and keeps the governor and ceiling that manage them.
+_TEST_POC_LIFECYCLE: dict[str, frozenset[str]] = {
+    "disabled": frozenset(),
+    "enabled": frozenset({"grant", "governor", "ceiling"}),
+    "withdrawn": frozenset({"tombstone", "governor", "ceiling"}),
+}
+
+
 @dataclass(frozen=True)
 class _TestPocTarget:
     """Resource identity checked before granting the fixed TEST capability."""
@@ -291,12 +305,15 @@ def _test_poc_capability_statements(
     settings: BootstrapSettings,
     *,
     write: bool,
+    use: str,
 ) -> list[dict[str, object]]:
     """Grant only the reviewed TEST backend and workload prerequisite reads/writes.
 
     DNS values and the three generated token names require trusted plan admission.
     IAM caps changes at the dedicated DKIM namespace, type and hosted zone.
     This capability does not alter trust or retire the live cutover session hold.
+    ``use`` selects the consumer; the packaged lifecycle state decides whether
+    that consumer renders the capability. Unknown states fail closed.
     """
     actual = (
         target.account_id,
@@ -324,9 +341,12 @@ def _test_poc_capability_statements(
         identity["repository_id"],
         identity["repository_owner_id"],
     )
+    consumers = _TEST_POC_LIFECYCLE.get(identity.get("state"))
+    if consumers is None:
+        raise ValueError("Unknown TEST PoC capability lifecycle state")
     # The staged capability must not enter an operator plan before its
     # independently owned seed boundary and guards are installed and verified.
-    if actual != expected or identity.get("enabled") is not True:
+    if actual != expected or use not in consumers:
         return []
     account_id, partition, region = target.account_id, target.partition, target.region
     registry_actions = ["ecr:DescribeRepositories", "ecr:ListTagsForResource"]
@@ -411,6 +431,25 @@ def _test_poc_capability_statements(
     return statements
 
 
+def _withdrawn_test_poc_statements(
+    statements: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Explicitly deny the exact withdrawn actions/resources, without conditions.
+
+    Keeping the same policy identities turns withdrawal into in-place updates;
+    no other service grant allows these actions, so nothing else is removed.
+    """
+    return [
+        {
+            "Sid": f"{statement['Sid']}Withdrawn",
+            "Effect": "Deny",
+            "Action": statement["Action"],
+            "Resource": statement["Resource"],
+        }
+        for statement in statements
+    ]
+
+
 def _governance_policy_documents(
     *,
     purpose: str,
@@ -454,10 +493,13 @@ def _governance_policy_documents(
                 ),
             )
         )
+    target = _TestPocTarget(account_id, partition, repo, region, project)
     capability = _test_poc_capability_statements(
-        _TestPocTarget(account_id, partition, repo, region, project),
-        settings,
-        write=purpose == "apply",
+        target, settings, write=purpose == "apply", use="grant"
+    ) or _withdrawn_test_poc_statements(
+        _test_poc_capability_statements(
+            target, settings, write=purpose == "apply", use="tombstone"
+        )
     )
     if capability:
         documents.append(
