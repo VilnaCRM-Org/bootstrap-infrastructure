@@ -208,4 +208,4 @@ After pulling these workflows into a downstream repo:
   usefulness of the report, and local worktrees without a resolvable `HEAD`
   write an advisory note instead of failing the scheduled report battery
 
-The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher retains the complete live collector and the evidence context with its pinned App issuer.
+The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher still runs the complete live collector and publishes `Test Account Evidence`; that context is a merge requirement only in governed repositories and is retired for `bootstrap-infrastructure`.

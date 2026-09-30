@@ -3483,6 +3483,20 @@ def test_required_status_check_contract_matches_collector_and_docs(
     assert (  # nosec B101
         "The example below is the archived 2026-05-17 record" in guardrails_doc
     )
+    evidence = (
+        "a read-only GitHub API readback of ruleset 13906584 on 2026-09-30 "
+        "(ruleset `updated_at` 2026-09-27) shows the active "
+        "`bootstrap-infrastructure` `main` ruleset requires neither "
+        "`Governance Promotion` nor `Test Account Evidence`"
+    )
+    for text in (guardrails_doc, implementation_readiness_report):
+        flat = " ".join(text.split())
+        assert evidence in flat  # nosec B101
+        for unsupported in (
+            "the current `bootstrap-infrastructure` `main` ruleset no longer requires",
+            "whose current `main` ruleset does not require",
+        ):
+            assert unsupported not in flat  # nosec B101
 
 
 def test_test_account_evidence_docs_match_governed_ruleset_contract(
@@ -3506,8 +3520,15 @@ def test_test_account_evidence_docs_match_governed_ruleset_contract(
     )
     for doc in ("ci-guardrails.md", "ci-quality-gates.md"):
         text = (PROJECT_ROOT / "docs" / doc).read_text(encoding="utf-8")
-        assert expected in text  # nosec B101
-        assert "App-pinned exact-head acceptance in other repositories" not in text  # nosec B101
+        flat = " ".join(text.split())
+        assert expected in flat  # nosec B101
+        assert "App-pinned exact-head acceptance in other repositories" not in flat  # nosec B101
+        assert "required context with its pinned App issuer" not in flat  # nosec B101
+        assert "evidence context with its pinned App issuer" not in flat  # nosec B101
+        assert (  # nosec B101
+            "is a merge requirement only in governed repositories and is retired "
+            "for `bootstrap-infrastructure`" in flat
+        )
 
 
 def test_well_architected_question_source_contract_matches_docs(
