@@ -23,7 +23,7 @@ These checks should be required in branch protection:
 | `Structural` | `make test-pulumi && make test-repository-catalogs && make test-repository-fanout` | Pulumi project, workflow, catalog, and static fanout checks |
 | `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
 | `Coverage` | `make test-coverage` after unit, policy, and integration suites | Combined branch-coverage gate; uses `make test-integration-unprivileged` when AWS-backed automation tests are not enabled |
-| `Local Battery` | `make ci-pr-unprivileged`; `make ci-pr` only when `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true` | Dockerized PR battery including image build and local gate composition; `make ci-pr` is the credentialed local superset with a real AWS-backed preview |
+| `Local Battery` | `make ci-pr-unprivileged`; `make ci-pr` only when `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true` | Dockerized PR battery including image build and local gate composition; `make ci-pr` is the credentialed local variant (runs a real AWS-backed preview; omits IAM-input extraction) |
 | `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
 | `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
 | `Secrets Scan` | `make test-secrets` | Gitleaks against tracked Git content |
@@ -53,11 +53,12 @@ unless the `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` repository variable is
 `true`, and it swaps in `make test-integration-unprivileged` and
 `make test-guardrails-unprivileged` (placeholder preview plus
 `make test-iam-validation-unprivileged`). `make ci-pr` is the credentialed
-local superset: it runs `make test-guardrails`, which generates a real
-AWS-backed preview, so it needs AWS credentials. `make test-iam-validation`
+local variant: it runs `make test-guardrails`, which generates a real
+AWS-backed preview, so it needs AWS credentials, but it does not run
+`make test-iam-validation-unprivileged`. `make test-iam-validation`
 remains a separate privileged step, excluded from `make ci-pr` and from
-`make ci-pr-unprivileged`; `make ci` adds the slower required mutation layer on
-top of `make ci-pr`.
+`make ci-pr-unprivileged`; `make ci` adds the mutation suite on top of
+`make ci-pr` and needs AWS credentials.
 
 ## Scheduled quality monitoring
 

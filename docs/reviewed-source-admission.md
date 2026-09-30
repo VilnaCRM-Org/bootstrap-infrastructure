@@ -147,6 +147,10 @@ environments and request authentication.
 
 ### Stage 2: retire trust and enroll the reviewed-source contexts
 
+Stage 2 requires a separate reviewed source change to the bootstrap trust and
+configuration (tracked in issue #289); this documentation change does not
+implement it.
+
 1. Create the `reviewed-pr-preview` GitHub environment with only `main` allowed,
    no tags or wildcards, and administrator bypass disabled. Through the
    independently reviewed operator process, install and read back a dedicated
@@ -201,8 +205,9 @@ environments and request authentication.
 
 The activation flag controls trusted workflow availability, not credential
 authorization; it no longer changes ordinary PR guardrail selection. A PR can
-change its own workflow or ignore the flag; only installed IAM trust retirement
-blocks that bypass. Never enable the flag before enrolling the new required
+change its own workflow or ignore the flag; installed IAM trust retirement and
+the GitHub main-only deployment-branch policies on the protected environments
+are both required to block that bypass. Never enable the flag before enrolling the new required
 contexts: skipped legacy checks and placeholder-input results do not prove a
 real AWS preview. Until enrollment, same-repository PR `Preview`,
 `Destructive Diff Gate` and `IAM Validation` results are not preview,
@@ -247,8 +252,10 @@ activation rather than claiming the live revocation rehearsal succeeded.
 
 ## Downstream boundary
 
-IAM generator changes deliberately retire generic PR subjects only for
-`VilnaCRM-Org/bootstrap-infrastructure`. Generated/installed service PR preview
+IAM generator changes deliberately retire generic PR subjects from the
+`VilnaCRM-Org/bootstrap-infrastructure` config reader and preview role, and #276
+removed them from the `user-service-infrastructure` preview role; that
+repository's `test-pr` config reader still accepts `pull_request` subjects. Generated/installed service PR preview
 paths still require equivalent trusted admission and a coordinated trust change
 before issue #219 grants workload access. Do not treat central admission or green
 central tests as service admission evidence. A service implementation must pin its

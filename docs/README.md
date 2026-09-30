@@ -55,8 +55,8 @@ That is all you need to begin iterating on the sample AWS instance or adapting t
 ```text
 all               Display help (default goal).
 build             Build the Pulumi development image used by local and CI checks.
-ci                Run the full local equivalent of all GitHub checks, including mutation.
-ci-pr             Run the credentialed local superset of the PR battery (real AWS-backed preview), without mutation.
+ci                Run make ci-pr (needs AWS credentials) then the mutation suite; not every GitHub check.
+ci-pr             Run the credentialed local variant of the PR battery (real AWS-backed preview, no IAM-input extraction), without mutation.
 ci-pr-unprivileged  Mirror the GitHub PR Local Battery without AWS-backed Pulumi credentials.
 doctor            Check local prerequisites and effective paths without printing secrets.
 help              Print the available make targets.
@@ -256,7 +256,7 @@ Continuous integration runs automatically on every pull request. You can also va
 - `make pulumi-preview` and `make pulumi-up-plan` sync the shared `uv` environment if needed, refresh `policy/.venv`, and then run Pulumi with the repository policy pack enabled.
 - Run `make test` to execute the faster structural, policy, quality, repo-hygiene, unit, integration, coverage, and CLI checks together after a prerequisite sanity check.
 - Use `make ci-pr-unprivileged` to mirror the non-mutation GitHub pull-request battery (prerequisite check, image build, security scans, placeholder preview, and policy suite); `make ci-pr` is the AWS-backed variant and does not mirror it.
-- Execute `make ci` to run the full local equivalent of all GitHub checks, including the prerequisite check, image build, and mutation suite.
+- Execute `make ci` to run `make ci-pr` (which needs AWS credentials) and then the mutation suite. It is not every GitHub check: `make ci-pr-unprivileged` mirrors the pull-request `Local Battery`.
 - Run `make report-quality` or `make nightly-quality` when you want the scheduled maintainability, dead-code, docstring, and SBOM reports locally.
 - If Pulumi plugin downloads hit GitHub rate limits locally, pass
   `GITHUB_TOKEN="$(gh auth token)"` explicitly to the preview-oriented target

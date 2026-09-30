@@ -46,7 +46,7 @@ the safe path the easy path for normal day-to-day infrastructure work.
 - Pull requests receive no AWS credentials and produce only the unprivileged
   placeholder preview artifact, which is not preview evidence. Real preview
   artifacts come from push-to-`main` runs (`Pulumi PR Guardrails` and
-  `Pulumi Test Deploy`), the `main`-dispatched `Pulumi Production` preview and
+  `Pulumi Test Deploy`), manually dispatched `Pulumi Test Deploy` runs, the `main`-dispatched `Pulumi Production` preview and
   exact-head `/pulumi <env> plan` saved-plan runs. The TEST preview role trusts
   the `main` ref, `environment:test` and `environment:test-preview` subjects
   without a workflow or ref condition, so keeping pull-request-authored

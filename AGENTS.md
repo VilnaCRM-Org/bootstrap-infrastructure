@@ -11,7 +11,7 @@ This repository is a Pulumi-based infrastructure template. Agents should keep ch
 5. Use `uv run ...` for Python CLI commands instead of invoking tools directly from the global environment.
 6. Seed local `uv` environments with `export UV_PROJECT_ENVIRONMENT="${HOME}/.venvs/bootstrap-infrastructure"; uv venv --seed "${UV_PROJECT_ENVIRONMENT}"` before syncing if you need to run Pulumi Automation outside Docker.
 7. Keep the structural, policy, quality, unit, integration, mutation, CLI, and aggregate local-battery suites runnable without live AWS credentials.
-8. Use `make ci-pr-unprivileged` to mirror the credential-free GitHub PR `Local Battery`, `make ci-pr` for the credentialed local superset that adds a real AWS-backed `make test-guardrails` preview, `make ci` for that superset plus mutation, and `make test` for the faster non-mutation developer battery.
+8. Use `make ci-pr-unprivileged` to mirror the credential-free GitHub PR `Local Battery`, `make ci-pr` for the credentialed local variant (runs a real AWS-backed preview; omits IAM-input extraction) through `make test-guardrails`, `make ci` for `make ci-pr` plus mutation (needs AWS credentials), and `make test` for the faster non-mutation developer battery.
 9. Use `make doctor` before debugging local Docker or Compose issues.
 10. Run `make start` when changing Docker-backed CI jobs so workspace preparation stays consistent across workflows and local runs.
 11. Keep `./scripts/prepare_policy_pack.py`, `policy/PulumiPolicy.yaml`, `policy/.venv`, and the shared `uv` environment contract aligned when changing Pulumi policy-pack behavior.

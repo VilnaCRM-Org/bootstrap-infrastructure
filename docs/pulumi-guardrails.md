@@ -92,13 +92,14 @@ To mirror the credential-free PR `Local Battery`:
 make ci-pr-unprivileged
 ```
 
-For the credentialed local superset with a real AWS-backed preview:
+For the credentialed local variant with a real AWS-backed preview (it omits
+IAM-input extraction):
 
 ```bash
 make ci-pr
 ```
 
-For the full local superset, including mutation:
+For `make ci-pr` plus the mutation suite (needs AWS credentials):
 
 ```bash
 make ci

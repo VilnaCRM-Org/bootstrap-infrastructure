@@ -791,14 +791,14 @@ EOF
   [[ "$output" == *"make test-battery"* ]]
 }
 
-@test "make ci runs the full local equivalent of the pull-request CI battery" {
+@test "make ci runs make ci-pr then the mutation suite" {
   run make -n ci
   [ "$status" -eq 0 ]
   [[ "$output" == *"make ci-pr"* ]]
   [[ "$output" == *"make test-mutation"* ]]
 }
 
-@test "make ci-pr runs the credentialed non-mutation local superset" {
+@test "make ci-pr runs the credentialed non-mutation local variant" {
   run make -n ci-pr
   [ "$status" -eq 0 ]
   [[ "$output" == *"make doctor"* ]]
