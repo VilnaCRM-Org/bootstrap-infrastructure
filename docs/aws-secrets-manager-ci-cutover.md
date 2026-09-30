@@ -198,12 +198,16 @@ for account-local CI configuration.
 
 Re-run these checks after the variables and AWS secrets are present:
 
-- `Pulumi PR Guardrails`
+- `Pulumi PR Guardrails` on push to `main` (loads the `test` configuration;
+  pull-request runs are unprivileged and load no CI configuration)
 - `Pulumi Test Deploy`
 - `Pulumi Production` preview and protected apply
 - `Nightly Guardrails`
-- `Operations Alert Triage`
-- `Well-Architected Evidence`
+- `Operations Alert Issue Triage`
+
+`Well-Architected Data Validation` is credential-free, and the main-only
+`Trusted Well-Architected Publisher` assumes its approved TEST read role
+directly, so neither exercises the CI configuration loader.
 
 Expected loader summary:
 

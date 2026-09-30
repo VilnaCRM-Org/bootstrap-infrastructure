@@ -22,7 +22,7 @@ These checks are intended to be marked as required in branch protection:
 | `Structural` | `make test-pulumi && make test-repository-catalogs && make test-repository-fanout` | Pulumi project, workflow, catalog, and static fanout checks |
 | `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
 | `Coverage` | `make test-coverage` | Combined branch-coverage gate after unit, policy, and integration suites |
-| `Local Battery` | `make ci-pr` or `make ci-pr-unprivileged` | Dockerized PR battery including image build and local gate composition |
+| `Local Battery` | `make ci-pr-unprivileged`; `make ci-pr` only when `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true` | Dockerized PR battery including image build and local gate composition; `make ci-pr` is the credentialed local superset with a real AWS-backed preview |
 | `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
 | `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
 | `Secrets Scan` | `make test-secrets` | Scans the full PR commit range, including merge resolutions; main pushes and default local runs scan the latest commit |
@@ -52,16 +52,21 @@ cost proxy, and IAM-input extraction for pull requests. `make ci-pr` and
 
 Branch protection continues to require the existing `Preview`,
 `Destructive Diff Gate`, and `IAM Validation` contexts, but pull requests no
-longer receive AWS credentials from `Pulumi PR Guardrails`. Its privileged path
-first assumes the TEST PR CI configuration reader. As rendered from source, that
-reader trusts only the `main` ref subject with the `Reviewed PR Preview`
+longer receive AWS credentials from `Pulumi PR Guardrails`. The workflow selects
+the unprivileged path for every pull request, same-repository or fork, and
+`REVIEWED_SOURCE_PREVIEW_ACTIVE` does not change that selection. The only
+reachable privileged path is push to `main`: the `Preview` and `IAM Validation`
+jobs present `repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main`
+with the `Pulumi PR Guardrails` workflow claim and assume the TEST (`test`) CI
+configuration reader, then the TEST preview role. The workflow's `pull_request`
+selection of `test-pr` inside those jobs is unreachable defensive code. As
+rendered from source, the `test-pr` reader trusts only the `main` ref subject with the `Reviewed PR Preview`
 workflow claim for this repository, and the TEST preview role omits the generic
 `pull_request` subject (#244; #276 extended the same retirement to the
-user-service preview role). Once that rendered trust is installed (see the installation steps in
-[reviewed-source-admission.md](reviewed-source-admission.md)), a `pull_request`
-run cannot obtain TEST credentials. Independently of installation, the workflow
-selects the unprivileged path for every pull request, same-repository or fork.
-`REVIEWED_SOURCE_PREVIEW_ACTIVE` no longer changes that selection:
+user-service preview role). Once that rendered trust is installed (see the
+installation steps in [reviewed-source-admission.md](reviewed-source-admission.md)),
+a `pull_request` run could not obtain TEST credentials even if it reached that
+branch. For pull requests:
 
 - `Pulumi PR Guardrails / Preview` and `Pulumi PR Guardrails / IAM Validation`
   skip. GitHub reports a skipped job as passing its required context.
@@ -111,7 +116,8 @@ The preview workflow uses the same Docker workspace and policy pack that local
 developers use:
 
 1. Every ordinary PR run selects the credential-free Make preview/IAM path. The
-   activation flag gates only the trusted reviewed-source workflow below.
+   activation flag gates only the trusted reviewed-source workflow below, whose
+   remaining steps apply only after its Stage 2 cutover is enrolled.
 2. Completion of a PR check or review signal invokes the trusted main workflow.
 3. Fresh GitHub evidence admits an independently approved exact PR head before
    either the CI config reader or TEST preview role can be assumed.
@@ -120,8 +126,15 @@ developers use:
 5. A clean publisher rechecks admission and reports the three required contexts
    on the PR head. Each admitted signal first marks those contexts pending.
 
-The automatic reviewed-source preview uses main-ref OIDC with the `test-pr` CI
-configuration. It adds no manual environment approval. Existing protected
+The automatic reviewed-source preview runs its OIDC jobs in the
+`reviewed-pr-preview` environment, so they present
+`repo:VilnaCRM-Org/bootstrap-infrastructure:environment:reviewed-pr-preview`,
+and select the `test-pr` CI configuration. In Stage 1 neither the rendered
+`test-pr` reader (main ref subject only) nor the TEST preview role (main ref,
+`environment:test` and `environment:test-preview` only) accepts that subject, so
+the route fails closed; Stage 2 installs a dedicated role and reader trust that
+accept only that subject with the `Reviewed PR Preview` workflow claim. It adds
+no manual environment approval. Existing protected
 comment-driven deployment and production preview environments remain unchanged.
 Forks never receive preview credentials. See
 [reviewed-source admission](reviewed-source-admission.md) for the installed trust
@@ -280,9 +293,11 @@ workflow and ref constraints remain those reviewed in the installed IAM source.
 Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate, and so do same-repository pull requests: every
 `pull_request` run is unprivileged. The AWS-backed preview and Access Analyzer
-validation paths run only on push to `main` (the credentialed `Preview` and
-`IAM Validation` jobs and Test Deploy), in the ChatOps saved-plan path, and in
-the future Reviewed PR Preview once its cutover is enrolled.
+validation paths run today only on push to `main` (the credentialed `Preview`
+and `IAM Validation` jobs and Test Deploy) and in the exact-head
+`/pulumi <env> plan` ChatOps saved-plan path. Reviewed PR Preview joins them only
+once its Stage 2 cutover is enrolled; until then its OIDC subject matches no
+source-rendered trust and the workflow stays gated off.
 
 Privileged jobs should emit sanitized evidence in the job summary or logs:
 
@@ -304,12 +319,17 @@ repository fanout. The report is written to
 `.artifacts/well-architected/evidence.md`; missing external evidence is reported
 as a blocker rather than treated as success. IAM account-access evidence is
 aggregate only: do not emit user names or access key IDs.
-The `Well-Architected Evidence` workflow runs the same collector against the
-real test-account OIDC role for trusted PRs and pushes, uploads the JSON and
-Markdown artifacts, and appends the Markdown summary to the GitHub job summary.
-The trusted PR and push path is enforced: non-scheduled runs fail when the
-collector exits non-zero. Fork PRs do not receive AWS credentials and record an
-unprivileged skip summary instead.
+No pull-request workflow runs this collector with AWS credentials. The
+`Well-Architected Data Validation` workflow (`well-architected-evidence.yml`)
+runs on pull requests, pushes to `main`, schedules and manual dispatch with
+`contents: read` only: it validates committed evidence schema and receipt hashes
+and requests no OIDC token. The live collector runs only in the main-only
+`Trusted Well-Architected Publisher` workflow (`trusted-well-architected.yml`):
+after its `governance-evidence` prepare job verifies the approved manifest, it
+assumes the approved
+`GitHubCiPreview-*-test` read role through the `main` ref OIDC subject, collects
+evidence for the approved exact PR head's committed data, and publishes the
+`Test Account Evidence` context from that complete result.
 The Make target only creates the output artifact paths; the Python collector
 reads the standard environment variables directly when the matching CLI flags
 are omitted. When set, `PR_NUMBER`, `AWS_ACCOUNT_ID`, `OPERATIONS_TOPIC_ARN`,
@@ -389,10 +409,10 @@ against the AWS public Framework TOC; the verification artifact records its own
 validated framework-source metadata. By default the Make target writes this
 artifact to `.artifacts/well-architected/question-verification.json`; set
 `AWS_WA_QUESTION_VERIFY_OUTPUT` only when a different path is needed.
-The hosted Well-Architected Evidence workflow runs the verifier after the
-collector, renders `.artifacts/well-architected/owner-closeout-bundle.md` with
-`make report-well-architected-closeout`, appends the closeout audit to the job
-summary, and uploads the full `.artifacts/well-architected` directory.
+No GitHub workflow runs `make verify-well-architected-questions` or
+`make report-well-architected-closeout`; run both locally to produce
+`.artifacts/well-architected/question-verification.json` and
+`.artifacts/well-architected/owner-closeout-bundle.md`.
 Non-passed `questionScores` entries must also retain non-empty `evidenceRefs`
 so each remaining blocker maps to a concrete issue, collector check, script, workflow,
 or evidence artifact.

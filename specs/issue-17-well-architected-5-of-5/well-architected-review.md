@@ -1,5 +1,12 @@
 # AWS Well-Architected Planning Scorecard
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today pull requests receive no AWS credentials; real preview and
+> IAM Access Analyzer validation run on push to `main` and in exact-head
+> `/pulumi <env> plan` saved-plan runs. See [CI guardrails](../../docs/ci-guardrails.md)
+> and [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 Scope: issue #17 planning package and current implementation evidence for
 improving the bootstrap infrastructure repository to an evidence-backed 5/5 AWS
 Well-Architected posture.

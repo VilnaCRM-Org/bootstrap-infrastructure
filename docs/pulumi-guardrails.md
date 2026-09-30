@@ -68,8 +68,11 @@ under the same 100% line-coverage contract, so both runtime guardrails and
 policy guardrails fail fast when tests drift.
 
 On pull requests `make test-preview` never runs, and the `Policy` check runs only
-the policy pack's unit tests (`make test-policy`). The pack evaluates real
-changes only at saved-plan time (`make pulumi-plan` and `make pulumi-up-plan`).
+the policy pack's unit tests (`make test-policy`). For pull requests the pack
+evaluates real changes only at saved-plan time (`make pulumi-plan` and
+`make pulumi-up-plan` in the `/pulumi <env> plan` and apply paths). On push to
+`main`, the credentialed `Preview` job's `make test-preview` also passes
+`--policy-pack` (`scripts/run_pulumi_preview.py`).
 
 `make pulumi-preview`, `make pulumi-plan`, and `make pulumi-up-plan` also
 enable the policy pack by default. Before Pulumi starts, the repository checks
@@ -78,7 +81,13 @@ that the shared container-managed `uv` environment contains both `pulumi` and
 the environment from `uv.lock` and repoints `policy/.venv` at that shared
 interpreter.
 
-For the full non-mutation PR battery:
+To mirror the credential-free PR `Local Battery`:
+
+```bash
+make ci-pr-unprivileged
+```
+
+For the credentialed local superset with a real AWS-backed preview:
 
 ```bash
 make ci-pr
@@ -93,9 +102,13 @@ make ci
 ## CI mapping
 
 GitHub Actions runs `make test-policy` in `pulumi-policy.yml` and also exercises
-the policy suite through `make ci-pr` in the local-battery workflow. This keeps
-the focused policy check and the aggregate PR battery aligned.
+the policy suite through `make ci-pr-unprivileged` (or `make ci-pr` when
+`PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true`) in the local-battery workflow.
+This keeps the focused policy check and the aggregate PR battery aligned.
 
-The integration suite also runs a real `pulumi preview --policy-pack ...`
-against a local backend, so policy startup failures and public-ACL violations
-are caught before merge.
+The full integration suite (`make test-integration`) also runs a real
+`pulumi preview --policy-pack ...` against a local backend. Pull requests run it,
+and so catch policy startup failures and public-ACL violations before merge,
+only when the `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` repository variable is
+`true` (`pulumi-integration.yml`); otherwise they run
+`make test-integration-unprivileged`, which skips that preview.

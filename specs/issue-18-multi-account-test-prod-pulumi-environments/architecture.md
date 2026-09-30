@@ -1,5 +1,12 @@
 # Architecture: Multi-Account Pulumi Environments
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today pull requests receive no AWS credentials; real preview and
+> IAM Access Analyzer validation run on push to `main` and in exact-head
+> `/pulumi <env> plan` saved-plan runs. See [CI guardrails](../../docs/ci-guardrails.md)
+> and [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 ## Context
 The repository currently runs guardrails from repository-wide variables. Issue 18 requires account-scoped configuration and deployment paths for `test`, `prod-preview`, and `prod` GitHub environments.
 

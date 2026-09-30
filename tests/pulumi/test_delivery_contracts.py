@@ -1645,7 +1645,13 @@ def test_operator_runbook_keeps_reviewed_plan_and_output_scope():
     assert "up --stack test --yes" not in guide
     assert "up --stack prod --yes" not in guide
     assert (
-        "| PR guardrails preview / IAM validation | none (unprivileged) | none" in guide
+        "| PR guardrails preview / IAM validation (`pull_request`) |"
+        " none (unprivileged) | none |"
+        " no OIDC token or AWS role; placeholder preview only |" in guide
+    )
+    assert (
+        "| PR guardrails preview / IAM validation (push to `main`) | `test` |"
+        " `AWS_PREVIEW_ROLE_ARN` |" in guide
     )
     assert (
         "| Reviewed PR Preview (`reviewed-pr-preview` environment) | `test-pr` |"

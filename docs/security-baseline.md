@@ -43,7 +43,10 @@ the safe path the easy path for normal day-to-day infrastructure work.
   `cancel-in-progress: true` so stale runs do not compete for runners.
 - Preview, IAM validation, and drift detection use GitHub OIDC and short-lived
   AWS credentials rather than static access keys.
-- Every infrastructure PR now produces a Pulumi preview artifact before merge.
+- Pull requests receive no AWS credentials and produce only the unprivileged
+  placeholder preview artifact, which is not preview evidence. Real preview
+  artifacts come from push-to-`main` runs (`Pulumi PR Guardrails` and
+  `Pulumi Test Deploy`) and from exact-head `/pulumi <env> plan` saved-plan runs.
 - Critical deletes and replacements are blocked even when the pull request
   carries the legacy destructive-change label.
 - Gitleaks, `pip-audit`, `actionlint`, and CodeQL are part of the review gate.
@@ -64,10 +67,12 @@ the safe path the easy path for normal day-to-day infrastructure work.
 - Mandatory tags include `DataClassification`, `Criticality`, and
   `RetentionClass` so reviewers can separate ownership, protection, and
   retention decisions from resource names.
-- The same preview artifact is reused for destructive-change gating and AWS IAM
-  Access Analyzer validation.
-- The preview artifact is also used for a static cost and quota proxy that
-  highlights durable resource fanout before apply.
+- On push to `main` and in saved-plan runs, the same real preview artifact is
+  reused for destructive-change gating and AWS IAM Access Analyzer validation;
+  pull requests feed those gates only the placeholder.
+- The push-to-`main` preview artifact also feeds a static cost and quota proxy
+  that highlights durable resource fanout; pull requests run the proxy only on
+  the placeholder, and apply workflows do not run it.
 - Policy validation has a dedicated CI workflow and a focused local command:
   `make test-policy`.
 

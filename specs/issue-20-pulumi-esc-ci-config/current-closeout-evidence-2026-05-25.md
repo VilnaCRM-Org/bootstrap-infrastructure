@@ -1,5 +1,12 @@
 # Current Closeout Evidence: Issue 20 AWS Secrets Manager CI Configuration
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today pull requests receive no AWS credentials; real preview and
+> IAM Access Analyzer validation run on push to `main` and in exact-head
+> `/pulumi <env> plan` saved-plan runs. See [CI guardrails](../../docs/ci-guardrails.md)
+> and [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 > **Archived May 25 evidence.** Profile availability, issue state and errors below
 > are dated observations, not current status. See the
 > [successor verification](pr57-successor-verification.md) for current scope.

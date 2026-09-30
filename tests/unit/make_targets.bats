@@ -798,12 +798,14 @@ EOF
   [[ "$output" == *"make test-mutation"* ]]
 }
 
-@test "make ci-pr runs the non-mutation PR battery" {
+@test "make ci-pr runs the credentialed non-mutation local superset" {
   run make -n ci-pr
   [ "$status" -eq 0 ]
   [[ "$output" == *"make doctor"* ]]
   [[ "$output" == *"make build"* ]]
   [[ "$output" == *"make test-battery"* ]]
+  grep -Fxq "make test-guardrails" <<<"$output"
+  [[ "$output" != *"make test-guardrails-unprivileged"* ]]
   [[ "$output" != *"make test-mutation"* ]]
 }
 

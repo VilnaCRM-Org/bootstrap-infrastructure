@@ -1,5 +1,12 @@
 # Research — Multi-Repo IAM/OIDC Governance Stack (GitHub issue #77)
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today pull requests receive no AWS credentials; real preview and
+> IAM Access Analyzer validation run on push to `main` and in exact-head
+> `/pulumi <env> plan` saved-plan runs. See [CI guardrails](../../docs/ci-guardrails.md)
+> and [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 ## PR78 successor amendment — 2026-09-06
 
 This document retains historical requirements and evidence. The active

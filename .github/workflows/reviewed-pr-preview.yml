@@ -1,4 +1,7 @@
-# Activation requires installed retirement of generic PR OIDC subjects.
+# Stage 1: gated off by REVIEWED_SOURCE_PREVIEW_ACTIVE. The OIDC jobs present
+# environment:reviewed-pr-preview, which the source-rendered test-pr reader and
+# TEST preview role trusts do not accept; activation waits for Stage 2 to install the
+# dedicated reviewed-preview role and reader trust for that subject only.
 name: Reviewed PR Preview
 'on':
   workflow_run:

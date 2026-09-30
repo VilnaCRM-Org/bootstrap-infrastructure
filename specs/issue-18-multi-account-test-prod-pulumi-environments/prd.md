@@ -1,5 +1,12 @@
 # PRD: Multi-Account Pulumi Environments
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today pull requests receive no AWS credentials; real preview and
+> IAM Access Analyzer validation run on push to `main` and in exact-head
+> `/pulumi <env> plan` saved-plan runs. See [CI guardrails](../../docs/ci-guardrails.md)
+> and [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 > **Configuration source superseded by issue 20.** Account configuration now uses
 > fixed AWS Secrets Manager suffixes with independent repository account pins.
 > Protected `test`, `test-preview`, `prod-preview`, `prod` and the installed

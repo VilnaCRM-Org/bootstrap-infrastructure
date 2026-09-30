@@ -1,5 +1,12 @@
 # Implementation Readiness Report: Issue 59 GitHub CI AWS Bootstrap
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today pull requests receive no AWS credentials; real preview and
+> IAM Access Analyzer validation run on push to `main` and in exact-head
+> `/pulumi <env> plan` saved-plan runs. See [CI guardrails](../../docs/ci-guardrails.md)
+> and [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 ## PR60 successor amendment — 2026-09-06
 
 The sections below retain historical requirements, stories and evidence. Their

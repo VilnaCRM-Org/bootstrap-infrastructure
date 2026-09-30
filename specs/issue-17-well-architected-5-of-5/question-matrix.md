@@ -1,5 +1,12 @@
 # AWS Well-Architected Question Matrix
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today pull requests receive no AWS credentials; real preview and
+> IAM Access Analyzer validation run on push to `main` and in exact-head
+> `/pulumi <env> plan` saved-plan runs. See [CI guardrails](../../docs/ci-guardrails.md)
+> and [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 The planning rows and historical May claims below are retained. The [current technical review](../../docs/well-architected-current-review-2026-09-06.md) and `question-matrix-evidence-2026-09-06.json` supersede historical all-5 scores for current enforcement, with 47 passed / 10 unresolved and actual reviewer attribution.
 
 Scope: issue #17 planning for the bootstrap infrastructure repository. This matrix uses the current AWS Well-Architected Framework question set re-checked against the AWS public documentation on 2026-05-09 and maps every question to current repository evidence, the gap to an evidence-backed 5/5, and the future evidence that must exist before any score increase is claimed.

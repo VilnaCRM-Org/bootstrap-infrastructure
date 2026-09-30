@@ -17,7 +17,7 @@ Docker-backed pull request checks use the same Docker workspace and the same
 | --- | --- | --- |
 | `pulumi-structural.yml` | `make test-pulumi`, `make test-repository-catalogs`, `make test-repository-fanout` | Validates Pulumi metadata, workflow contracts, repository catalogs, static fanout, and Dockerfile safeguards |
 | `pulumi-policy.yml` | `make test-policy` | Validates the Pulumi policy pack and AWS guardrail coverage |
-| `pulumi-pr-guardrails.yml` | `make publish-pulumi-preview-summary`, `make test-preview-unprivileged`, `make test-destructive-diff`, `make test-iam-validation-unprivileged` | Every pull request, including same-repository ones, gets no AWS credentials: it generates the placeholder preview artifact and runs offline destructive/IAM-input checks; real preview and IAM Access Analyzer enforcement run on push to `main` and in the protected Reviewed PR Preview |
+| `pulumi-pr-guardrails.yml` | Push to `main`: `make publish-pulumi-preview-summary` (runs `make test-preview`), `make test-destructive-diff`, `make test-cost-proxy`, `make test-iam-validation`. Pull requests: `make test-preview-unprivileged`, `make test-destructive-diff`, `make test-cost-proxy`, `make test-iam-validation-unprivileged` | Every pull request, including same-repository ones, gets no AWS credentials: it generates the placeholder preview artifact and runs offline destructive/IAM-input checks. Real preview and IAM Access Analyzer enforcement run today on push to `main` (TEST `test` config reader, main-ref OIDC subject) and in exact-head `/pulumi <env> plan` saved-plan runs; the protected Reviewed PR Preview adds them only once its Stage 2 cutover is enrolled |
 | `pulumi-pr-commands.yml` | `scripts/pulumi_pr_comment.py`, `repository_dispatch` | Parses trusted PR comments, rejects forked PRs, and queues exact-SHA Pulumi operations |
 | `pulumi-pr-command-runner.yml` | `make pulumi-plan`, destructive diff, IAM validation, apply, drift | Executes PR-comment Pulumi commands with test-first production promotion gates |
 | `pulumi-test-deploy.yml` | `make pulumi-plan`, destructive diff, IAM validation, apply, drift | Applies the `test` stack after main merges or manual dispatch |
@@ -26,7 +26,7 @@ Docker-backed pull request checks use the same Docker workspace and the same
 | `codeql.yml` | GitHub-native | Scans Python code and workflow code with CodeQL |
 | `python-quality.yml` | `make test-ruff`, `make test-ty`, `make test-maintainability`, `make test-architecture`, `make test-dependency-hygiene`, `make test-coverage` | Blocking Python quality, maintainability, architecture, dependency, and coverage gates |
 | `pulumi-unit.yml` | `make test-unit` | Mock-based Pulumi component tests with full coverage |
-| `pulumi-integration.yml` | `make test-integration` | Automation API lifecycle tests against a local file backend |
+| `pulumi-integration.yml` | `make test-integration` when `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true`, otherwise `make test-integration-unprivileged` | Automation API lifecycle and policy-pack preview tests against a local file backend; the unprivileged fallback runs only the credential-free contracts |
 | `pulumi-mutation.yml` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
 | `bats-tests.yml` | `make test-cli` | CLI contract tests for the Makefile interface |
 | `pulumi-local.yml` | `make ci-pr-unprivileged` (or `make ci-pr` when AWS-backed automation tests are enabled) | Non-mutation PR-equivalent battery inside Docker |

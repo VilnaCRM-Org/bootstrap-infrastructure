@@ -1,5 +1,12 @@
 # Implementation Readiness: Multi-Account Pulumi Environments
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today pull requests receive no AWS credentials; real preview and
+> IAM Access Analyzer validation run on push to `main` and in exact-head
+> `/pulumi <env> plan` saved-plan runs. See [CI guardrails](../../docs/ci-guardrails.md)
+> and [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 ## Readiness Summary
 The issue is ready for implementation. The repository already has Docker-backed CI entrypoints, Pulumi preview artifacts, destructive-diff checks, IAM Access Analyzer validation, and KMS-backed stack initialization patterns. The implementation should keep these local contracts and move account-specific configuration from repository variables to GitHub environment variables.
 
