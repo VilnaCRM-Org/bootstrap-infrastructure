@@ -140,10 +140,19 @@ def test_withdrawn_state_denies_capability_in_place_and_keeps_governor(
         withdrawn = json.loads(documents["poc-prerequisites"])["Statement"]
         granted = json.loads(enabled[spec.purpose]["poc-prerequisites"])["Statement"]
         assert {s["Effect"] for s in withdrawn} == {"Deny"}
-        assert [(s["Action"], s["Resource"]) for s in withdrawn] == [
-            (s["Action"], s["Resource"]) for s in granted
+        # Statement for statement: same actions, resources and exact Conditions,
+        # so the Deny blocks precisely what the replaced Allow granted.
+        assert [
+            (s["Sid"], s["Action"], s["Resource"], s.get("Condition"))
+            for s in withdrawn
+        ] == [
+            (f"{s['Sid']}Withdrawn", s["Action"], s["Resource"], s.get("Condition"))
+            for s in granted
         ]
-        assert all("Condition" not in s for s in withdrawn)
+        conditioned = [s for s in withdrawn if "Condition" in s]
+        assert [s["Sid"] for s in conditioned] == (
+            ["PocDkimRecordsWithdrawn"] if spec.purpose == "apply" else []
+        )
         assert len(documents["poc-prerequisites"].replace(" ", "")) < 6144
     # The operator stack runs first and must keep managing the exact policy.
     assert governs_policy(preview, GOVERNOR_READ)

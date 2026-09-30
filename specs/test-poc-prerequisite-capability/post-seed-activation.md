@@ -181,7 +181,10 @@ comment, never an edit of the PR body) before merging. Do not record credentials
   - `git rev-parse HEAD` in that checkout, equal to this PR's merge head SHA;
   - empty output from
     `git status --porcelain --ignored --untracked-files=all` (or state that the
-    checkout is a fresh clone of that SHA with nothing added);
+    checkout is a fresh clone of that SHA with nothing added). Record this
+    status BEFORE running either command below; both use `python3 -B -I` so they
+    create no `__pycache__` or other files, and the status must still be empty
+    afterwards;
   - the public seed KMS key ARN from the `--seed-key-binding` input;
   - the absolute `--aws-executable` path and that it is a trusted AWS CLI
     install outside the checkout;
@@ -201,7 +204,7 @@ a clean checkout of the exact PR head, with an already-issued nonroot installer
 session and no other credentials:
 
 ```text
-python3 -I scripts/operator_seed_observation.py --active \
+python3 -B -I scripts/operator_seed_observation.py --active \
   --environment test --account-id 891377212104 \
   --seed-key-binding '<public DescribeKey binding JSON>' \
   --installer-role-arn <reviewed installer role ARN> \
@@ -236,7 +239,7 @@ A reviewer recomputes the registry digest offline, with no credentials, from a
 clean checkout of the same head and the same binding JSON:
 
 ```text
-python3 -I -c 'import json, sys; sys.path.insert(0, "pulumi"); \
+python3 -B -I -c 'import json, sys; sys.path.insert(0, "pulumi"); \
 from seed import policy_registry as r; \
 print(r.build_registry("test", account_id="891377212104", \
 seed_key=r.SeedKeyBinding(**json.loads(sys.argv[1]))).sha256)' \
@@ -338,12 +341,22 @@ active enrollment keeps passing.
    `governance`). The operator plan must show no change. The governance plan may
    only update the `poc-prerequisites` apply policy (a new default version) and
    the preview/drift inline `poc-prerequisites` grants. Any `delete` or
-   `replace`, or any other change, stops the run for review.
+   `replace`, or any other change, stops the run for review. Each Deny keeps the
+   Action, Resource and Condition of the Allow it replaces, so it blocks exactly
+   what was granted (for example only DKIM CNAME CREATE in the fixed zone, not
+   every record change).
 2. Read back the new default policy version and both inline documents (Deny
    only, same actions and resources), and confirm the apply role attachments are
    still `pulumi-backend`, `secret-read-deny`, `poc-prerequisites` and guards.
    Record them on the PR, then merge it.
-3. Service stack: once the Deny is live, the `user-service-infrastructure`
+3. Service stack: the Deny includes `s3:GetBucketVersioning` on
+   `pulumi-user-service-infrastructure-test-state`, which no other service
+   grant allows (`pulumi-backend` grants only ListBucket/GetObject/GetObjectVersion
+   and write actions). The recorded TEST plan failure stopped at that backend
+   observation, so a withdrawal halts `user-service-infrastructure` TEST plans,
+   drift and applies at backend observation, before any resource refresh, until
+   the capability is re-enabled. That service repository's runner code is not in
+   this repository, so this needs confirmation there. Once the Deny is live, the `user-service-infrastructure`
    TEST preview, drift and apply roles can no longer read or change any ECR
    repositories, SES identity or DKIM records created under the capability, so
    that stack's refresh and drift fail while it still tracks them. Before the
@@ -366,9 +379,15 @@ seed to the `ef419680…` catalog (`"state": "disabled"`) are not available. The
 need separately reviewed changes to the destructive-diff control and the
 resource protection, plus a reversal packet bound to `ff2eaf29…` with a
 change-set validator for exactly the four reverse modifications. Reversing the
-seed while the attachment exists would fail every active enrollment, because
-the seed guard would no longer admit it (`policy_registry.py` mutable-attachment
-check). Never do any of this through a direct apply, a Pulumi state edit such
+seed while the policy and attachment exist is unsafe. The mutable-attachment
+check in `policy_registry.py` hard-codes the TEST `poc-prerequisites` ARN for
+every catalog, so it would still admit the attachment. The failure comes from
+the catalog itself: the four policy documents (including the governor apply
+policy and the apply guard's two closed lists that reference that ARN) would
+revert to their `ef419680…` versions, so the installed documents no longer match
+and active enrollment fails on the document hash comparison until the reverse
+change set is installed, while the attached policy loses its guard and
+governor coverage. Never do any of this through a direct apply, a Pulumi state edit such
 as `pulumi state unprotect`, or implicit break-glass.
 
 ## Scope and offline proof (FR5, FR6, FR7, NFR5)
