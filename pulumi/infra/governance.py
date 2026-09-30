@@ -25,6 +25,7 @@ regions, repositories and immutable GitHub IDs receive no workload capability.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import json
 from collections.abc import Mapping
@@ -344,8 +345,9 @@ def _test_poc_capability_statements(
     consumers = _TEST_POC_LIFECYCLE.get(identity.get("state"))
     if consumers is None:
         raise ValueError("Unknown TEST PoC capability lifecycle state")
-    # The staged capability must not enter an operator plan before its
-    # independently owned seed boundary and guards are installed and verified.
+    # Consumers are selected by the packaged lifecycle state: enabled renders the
+    # Allow capability, withdrawn renders the Deny tombstone plus the governor
+    # and ceiling, and disabled (or a non-matching identity) renders nothing.
     if actual != expected or use not in consumers:
         return []
     account_id, partition, region = target.account_id, target.partition, target.region
@@ -434,20 +436,25 @@ def _test_poc_capability_statements(
 def _withdrawn_test_poc_statements(
     statements: list[dict[str, object]],
 ) -> list[dict[str, object]]:
-    """Explicitly deny the exact withdrawn actions/resources, without conditions.
+    """Explicitly deny exactly what each withdrawn capability statement granted.
 
-    Keeping the same policy identities turns withdrawal into in-place updates;
-    no other service grant allows these actions, so nothing else is removed.
+    Every statement keeps its Action, Resource and Condition, so the Deny matches
+    the Allow it replaces and no wider. Keeping the same policy identities turns
+    withdrawal into in-place updates; no other service grant allows these
+    actions, so nothing else is removed.
     """
-    return [
-        {
+    withdrawn: list[dict[str, object]] = []
+    for statement in statements:
+        denied: dict[str, object] = {
             "Sid": f"{statement['Sid']}Withdrawn",
             "Effect": "Deny",
             "Action": statement["Action"],
             "Resource": statement["Resource"],
         }
-        for statement in statements
-    ]
+        if "Condition" in statement:
+            denied["Condition"] = copy.deepcopy(statement["Condition"])
+        withdrawn.append(denied)
+    return withdrawn
 
 
 def _governance_policy_documents(

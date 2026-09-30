@@ -52,10 +52,12 @@ Before live installation, an independently authenticated non-root operator must:
    documents, attachments, boundaries and guards. Any partial result requires
    reconciliation before another attempt; do not blindly replay a change set.
 4. Only after exact live readback, update the active TEST catalog hash and the
-   service apply-role mutable attachment allowlist in a separate reviewed change.
-   Then enable `test-poc-identity.json` and deploy the governance identity grant
-   through the protected saved-plan path. Preserve `Issue215CutoverSessions` until
-   its separately reviewed activation; an identity Allow does not override it.
+   service apply-role mutable attachment allowlist, and set `test-poc-identity.json`
+   to `"state": "enabled"`, all in one reviewed PR. The ordered protected
+   deployments then follow [post-seed-activation.md](post-seed-activation.md):
+   the PR-B operator governor update runs before the PR-C governance grant.
+   Preserve `Issue215CutoverSessions` until its separately reviewed activation;
+   an identity Allow does not override it.
 
 The source follow-up, its ordered protected deployments and remaining separate
 activation dependencies are in [post-seed-activation.md](post-seed-activation.md).
