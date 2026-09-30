@@ -83,9 +83,10 @@ evidence remain open.
 The current branch implements meaningful repo-owned controls, but a final 5/5
 claim is blocked until all of the following are current and non-secret:
 
-- Archived 2026-05-17 record (superseded for `bootstrap-infrastructure`, whose
-  current `main` ruleset does not require `Governance Promotion` or
-  `Test Account Evidence`; see `docs/well-architected-operating-evidence.md`):
+- Archived 2026-05-17 record (superseded for `bootstrap-infrastructure`:
+  a read-only GitHub API readback of ruleset 13906584 on 2026-09-30 (ruleset `updated_at` 2026-09-27) shows the active `bootstrap-infrastructure` `main` ruleset requires neither `Governance Promotion` nor `Test Account Evidence` and no required deployments,
+  matching the reconciled contract in `scripts/_github_repository_controls.py`; see
+  `docs/well-architected-operating-evidence.md`):
   repository-admin proof that the active `main` ruleset requires Ruff, Ty,
   Maintainability, Architecture, Structural, Dependency Hygiene, Coverage,
   Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit,

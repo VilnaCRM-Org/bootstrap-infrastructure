@@ -335,6 +335,20 @@ def test_issuer_must_be_required_exact_app(monkeypatch):
         host.verify_issuer()
 
 
+def test_publisher_stops_on_the_reconciled_central_ruleset(monkeypatch):
+    """The retired central contract leaves no App-pinned evidence context."""
+    import _github_repository_controls as controls
+
+    payload = controls.ruleset_payload(
+        promotion_app_id=host.APP_ID, repository=controls.CENTRAL_REPOSITORY
+    )
+    assert host.REPOSITORY == controls.CENTRAL_REPOSITORY  # nosec B101
+    monkeypatch.setattr(host, "command", lambda argv: '[{"id":1}]')
+    monkeypatch.setattr(host, "gh", lambda path: payload)
+    with pytest.raises(ValueError, match="not installed"):
+        host.verify_issuer()
+
+
 def test_self_migration_rechecks_requirements_and_keeps_other_ci_failures(
     monkeypatch, approved
 ):
