@@ -598,7 +598,7 @@ test: ## Run the faster developer battery without the image build or mutation su
 	$(MAKE) doctor
 	$(MAKE) test-battery
 
-ci-pr: ## Run the credentialed local superset of the PR battery (real AWS-backed preview), without mutation.
+ci-pr: ## Run the credentialed local variant of the PR battery (real AWS-backed preview, no IAM-input extraction), without mutation.
 	$(MAKE) doctor
 	$(MAKE) build
 	$(MAKE) test-battery
@@ -621,7 +621,7 @@ ci-pr-unprivileged: ## Mirror the GitHub PR Local Battery without AWS-backed Pul
 	$(MAKE) test-security
 	$(MAKE) test-guardrails-unprivileged
 
-ci: ## Run the full local equivalent of all GitHub checks, including mutation.
+ci: ## Run make ci-pr (needs AWS credentials) then the mutation suite; not every GitHub check.
 	$(MAKE) ci-pr
 	$(MAKE) test-mutation
 

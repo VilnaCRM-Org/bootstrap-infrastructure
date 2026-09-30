@@ -46,9 +46,9 @@ state initialization, real TEST/PROD comment deployment and service acceptance.
 | Prod apply | `prod` | `AWS_APPLY_ROLE_ARN` | apply through GitHub `prod` environment |
 | Prod drift | `prod-preview` | `AWS_DRIFT_ROLE_ARN` | drift |
 | Nightly drift | `test`, `prod-preview` | `AWS_DRIFT_ROLE_ARN` | drift |
-| PR command runner platform jobs (`/pulumi <env> plan` or `up`) | `test`; `prod-preview` and `prod` for production | preview/apply/drift role by command | preview and drift present `environment:test-preview` or `environment:prod-preview`; apply presents `environment:test` or `environment:prod`; all carry the `Pulumi PR Command Runner` workflow claim |
-| Well-Architected Data Validation (`well-architected-evidence.yml`) | none | none | credential-free committed evidence and receipt checks on pull requests, pushes to `main` and schedules |
-| Trusted Well-Architected Publisher collector (`trusted-well-architected.yml`, main-only `workflow_dispatch`) | none (no CI config reader) | approved `GitHubCiPreview-*-test` read role | account evidence reads through the main-ref subject; never a pull-request subject |
+| PR command runner platform jobs (`/pulumi <env> plan` or `up`) | `test`; `prod-preview` and `prod` for production | preview/apply/drift role by command | preview and drift present `environment:test-preview` or `environment:prod-preview`; apply presents `environment:test` or `environment:prod`; the tokens carry the `Pulumi PR Command Runner` workflow claim, which only the CI config reader binds, not these runtime roles |
+| Well-Architected Data Validation (`well-architected-evidence.yml`) | none | none | credential-free committed evidence and receipt checks on pull requests, pushes to `main`, schedules and manual `workflow_dispatch` |
+| Trusted Well-Architected Publisher collector (`trusted-well-architected.yml`, main-only `workflow_dispatch`) | none (no CI config reader) | approved `GitHubCiPreview-*-test` preview role (it can write backend lock objects) | account evidence reads through the main-ref subject; never a pull-request subject |
 | Operations alert triage | `test` | `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN` | SQS triage |
 
 ## Permission shape and trust
@@ -63,8 +63,12 @@ Governor apply can update its dedicated backend checkpoint and only the exact
 catalog resource inventory; it cannot widen its own roles or service boundaries.
 
 Trust pins audience, immutable repository/owner IDs, exact repository subject,
-branch and purpose. Ordinary workflows bind the `workflow` claim;
-`job_workflow_ref` is for reusable workflows. Workflow names alone do not attest
+branch and purpose. The claims differ by role type: the CI config-read roles
+and the operations alert triage role bind the `workflow` claim (the config
+readers bind the `main` ref except `test-pr`); the apply and drift roles bind
+the `main` ref but no `workflow` claim; the preview role binds neither a
+`workflow` nor a `ref` claim. `job_workflow_ref` is for reusable workflows.
+Workflow names alone do not attest
 code. Command preview/drift use protected `test-preview`/`prod-preview`, apply
 uses `test`/`prod`, and governor preview/drift and apply use
 `governance-preview` and `governance`. The `test-pr` suffix does not authorize

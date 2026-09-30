@@ -132,7 +132,7 @@ approved short-lived operator credentials for the owning AWS account. The stack 
 - `GitHubCiPreview-*`, `GitHubCiApply-*`, and `GitHubCiDrift-*` roles
 - the test-account `OperationsAlertTriage-*` role
 - least-privilege policies scoped to CI job purpose
-- GitHub OIDC trust limited by exact repository/owner IDs, subject, workflow and ref
+- GitHub OIDC trust limited by exact repository/owner IDs and subject, with `workflow` claims on the config-read and alert-triage roles and `ref` claims on every role type except preview (see the GitHub CI bootstrap stack trust notes)
 - encrypted AWS Secrets Manager CI JSON payloads by default
 
 Review that operator project's provisioning, permissions, saved-plan and rollback
@@ -206,7 +206,7 @@ Re-run these checks after the variables and AWS secrets are present:
 - `Operations Alert Issue Triage`
 
 `Well-Architected Data Validation` is credential-free, and the main-only
-`Trusted Well-Architected Publisher` assumes its approved TEST read role
+`Trusted Well-Architected Publisher` assumes its approved TEST preview role
 directly, so neither exercises the CI configuration loader.
 
 Expected loader summary:
@@ -254,7 +254,7 @@ main-only evidence environment. Fixed secret suffixes are configuration selector
 not permission to remove these approval and branch boundaries. Cleanup deletes
 only the listed legacy environment variables, never independent repository
 account pins or environment protections. Verify no stale AWS trust subjects
-remain using current immutable-ID, exact workflow and ref contracts.
+remain using the current immutable-ID contracts and the per-role workflow and ref claims documented in the GitHub CI bootstrap stack.
 
 Run `make pulumi-plan`, review exact account/backend/project/stack/source and
 policy evidence, then `make pulumi-up-plan`. Shared state uses the existing

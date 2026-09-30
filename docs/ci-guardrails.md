@@ -22,7 +22,7 @@ These checks are intended to be marked as required in branch protection:
 | `Structural` | `make test-pulumi && make test-repository-catalogs && make test-repository-fanout` | Pulumi project, workflow, catalog, and static fanout checks |
 | `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
 | `Coverage` | `make test-coverage` | Combined branch-coverage gate after unit, policy, and integration suites |
-| `Local Battery` | `make ci-pr-unprivileged`; `make ci-pr` only when `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true` | Dockerized PR battery including image build and local gate composition; `make ci-pr` is the credentialed local superset with a real AWS-backed preview |
+| `Local Battery` | `make ci-pr-unprivileged`; `make ci-pr` only when `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true` | Dockerized PR battery including image build and local gate composition; `make ci-pr` is the credentialed local variant (runs a real AWS-backed preview; omits IAM-input extraction) |
 | `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
 | `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
 | `Secrets Scan` | `make test-secrets` | Scans the full PR commit range, including merge resolutions; main pushes and default local runs scan the latest commit |
@@ -46,7 +46,7 @@ These checks are intended to be marked as required in branch protection:
 gating, and static cost proxy checks. `make test-guardrails-unprivileged` uses
 an empty placeholder preview artifact to exercise the destructive-diff parser,
 cost proxy, and IAM-input extraction for pull requests. `make ci-pr` and
-`make ci` keep the real preview path.
+`make ci` keep the real preview path and do not run IAM-input extraction.
 
 ### Same-repo privileged check contract
 
@@ -295,13 +295,13 @@ payload and loader inputs. Required payload fields include `AWS_ACCOUNT_ID`,
 `AWS_PREVIEW_ROLE_ARN`, `AWS_APPLY_ROLE_ARN`, `AWS_DRIFT_ROLE_ARN`,
 `PULUMI_BACKEND_URL` and `PULUMI_SECRETS_PROVIDER` as appropriate to the job.
 The loader fails closed when a required role is missing. OIDC subject, audience, immutable repository IDs,
-workflow and ref constraints remain those reviewed in the installed IAM source.
+workflow and ref constraints, which differ by role type, remain those reviewed in the installed IAM source.
 
 Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate, and so do same-repository pull requests: every
 `pull_request` run is unprivileged. The AWS-backed preview and Access Analyzer
 validation paths run today only on push to `main` (the credentialed `Preview`
-and `IAM Validation` jobs and Test Deploy), in the `main`-dispatched
+and `IAM Validation` jobs and Test Deploy, which can also be manually dispatched), in the `main`-dispatched
 `Pulumi Production` preview and in the exact-head `/pulumi <env> plan` ChatOps
 saved-plan path. Reviewed PR Preview joins them only
 once its Stage 2 cutover is enrolled; until then its OIDC subject matches no
@@ -335,7 +335,7 @@ and requests no OIDC token. The live collector runs only in the main-only
 `Trusted Well-Architected Publisher` workflow (`trusted-well-architected.yml`):
 after its `governance-evidence` prepare job verifies the approved manifest, it
 assumes the approved
-`GitHubCiPreview-*-test` read role through the `main` ref OIDC subject, collects
+`GitHubCiPreview-*-test` preview role through the `main` ref OIDC subject, collects
 evidence for the approved exact PR head's committed data, and publishes the
 `Test Account Evidence` context from that complete result.
 The Make target only creates the output artifact paths; the Python collector
@@ -606,5 +606,6 @@ Central PR credential admission is documented in
 PR guardrails are always unprivileged; the trusted main workflow admits an
 independently reviewed exact SHA for AWS-backed preview once the cutover is
 enrolled.
-Installed IAM trust retirement, additive ruleset enrollment, the activation flag
-and live negative/positive rehearsals are required before this boundary is active.
+The installed Stage 2 dedicated role and `test-pr` reader trust (which needs a
+separate reviewed source change), IAM trust retirement, additive ruleset
+enrollment, the activation flag and live negative/positive rehearsals are required before this boundary is active.

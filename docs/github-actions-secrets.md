@@ -153,7 +153,8 @@ rendered reader and TEST preview role already omit the generic PR OIDC subject.
 Today the reader trusts only the `main` ref subject with the `Reviewed PR Preview`
 workflow claim, so the workflow's `environment:reviewed-pr-preview` jobs fail
 closed. Install the Stage 2 trust (a dedicated TEST reviewed-preview role, with
-it and this reader accepting only that environment subject), enroll all
+it and this reader accepting only that environment subject; this needs a
+separate reviewed source change, tracked in issue #289), enroll all
 three distinct reviewed-source statuses pinned to a new dedicated GitHub App while
 preserving existing required checks, and then set
 `REVIEWED_SOURCE_PREVIEW_ACTIVE=true` (read only by the trusted Reviewed PR Preview workflow) before declaring activation. The App key must

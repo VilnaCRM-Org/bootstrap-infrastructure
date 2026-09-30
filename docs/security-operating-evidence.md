@@ -56,7 +56,7 @@ self-managed by the same bootstrap automation role it is meant to constrain.
 
 Current compensating controls are:
 
-- environment-scoped GitHub OIDC trust
+- environment-scoped GitHub OIDC trust (`workflow` and `ref` claims are bound per role type, see the GitHub CI bootstrap stack trust notes)
 - account allow-listing in privileged jobs
 - deterministic AWS resource names and ARN scopes
 - request and resource tag conditions where AWS supports them

@@ -117,7 +117,7 @@ battery.
 
 - `make test` is the fast inner-loop command for the prerequisite sanity check, Pulumi structural tests, repository catalog validation, policy, quality, repo hygiene, unit, integration, coverage, and CLI checks.
 - `make ci-pr-unprivileged` matches the non-mutation GitHub pull-request battery; `make ci-pr` is the AWS-backed variant and does not mirror it.
-- `make ci` is the full local superset, including the dedicated mutation suite.
+- `make ci` runs `make ci-pr` (needs AWS credentials) and then the dedicated mutation suite; it is not every GitHub check.
 - `make report-quality` mirrors the scheduled quality-report workflow locally.
 - `make start` prepares the Docker-backed workspace before CI-style checks or manual Docker sessions.
 - `make doctor` provides a quick prerequisite check before developers start
