@@ -45,5 +45,5 @@ jobs:
             echo 'Selected evidence schema and receipt integrity only.'
             echo 'Unresolved questions and owner decisions remain visible in the records.'
             echo 'This advisory job does not grant Well-Architected acceptance.'
-            echo 'Only the protected trusted publisher can emit Test Account Evidence, and only where an active main ruleset pins that context to its App.'
+            echo 'The protected trusted publisher alone emits App-pinned Test Account Evidence after the complete live collector.'
           } >> "$GITHUB_STEP_SUMMARY"
