@@ -39,7 +39,7 @@ These checks should be required in branch protection:
 | `Policy` | `make test-policy` | Custom Pulumi CrossGuard policy pack enforcement |
 | `CodeQL (python)` | GitHub-native | Static security/code scanning for Python |
 | `CodeQL (actions)` | GitHub-native | Static security/code scanning for workflows |
-| `Test Account Evidence` | Protected trusted publisher; complete live collector | App-pinned exact-head acceptance in other repositories; retired as a merge requirement for `bootstrap-infrastructure`, separate from advisory PR data checks |
+| `Test Account Evidence` | Protected trusted publisher; complete live collector | Required by name in governed repositories (only `Governance Promotion` is App-bound there); retired as a merge requirement for `bootstrap-infrastructure`, separate from advisory PR data checks |
 
 For `VilnaCRM-Org/bootstrap-infrastructure`, the `main` ruleset requires the 23
 standard CI checks. `Infrastructure Promotion` and `Test Account Evidence` are
