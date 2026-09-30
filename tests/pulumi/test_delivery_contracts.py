@@ -1644,7 +1644,8 @@ def test_operator_runbook_keeps_reviewed_plan_and_output_scope():
         assert phrase in guide
     assert "up --stack test --yes" not in guide
     assert "up --stack prod --yes" not in guide
-    assert "| PR guardrails preview | `test-pr` | `AWS_PREVIEW_ROLE_ARN`" in guide
+    assert "| PR guardrails preview / IAM validation | none (unprivileged) | none" in guide
+    assert "| Reviewed PR Preview (`reviewed-pr-preview` environment) | `test-pr` |" in guide
     assert (
         "| Operations alert triage | `test` | `AWS_OPERATIONS_ALERT_TRIAGE_ROLE_ARN`"
         in guide
