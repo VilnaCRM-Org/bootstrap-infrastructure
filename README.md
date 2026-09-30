@@ -119,7 +119,7 @@ Use the local batteries that match the scope of your change:
 
 - `make test` runs the faster structural, repository-catalog, policy, quality, repo-hygiene, unit, integration, coverage, and CLI battery.
 - `make test-security`, `make test-repository-fanout`, and `make test-guardrails-unprivileged` focus on infrastructure safety controls without AWS credentials; `make test-guardrails` adds a real AWS-backed preview.
-- `make ci-pr-unprivileged` mirrors the non-mutation GitHub pull-request `Local Battery`; `make ci-pr` is the credentialed local superset with a real AWS-backed preview.
+- `make ci-pr-unprivileged` mirrors the non-mutation GitHub pull-request `Local Battery`; `make ci-pr` is the credentialed local variant (runs a real AWS-backed preview; omits IAM-input extraction).
 - `make ci` runs `make ci-pr` plus the mutation suite, including the prerequisite check, image build, real preview guardrails, and security scans.
 - `make report-quality` generates the scheduled Wily, Vulture, docstring-coverage, and SBOM reports locally.
 

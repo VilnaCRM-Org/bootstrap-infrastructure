@@ -256,18 +256,20 @@ Run the standard local validation battery with:
 ```bash
 make test
 make ci-pr-unprivileged
-make ci-pr   # credentialed local superset
+make ci-pr   # credentialed local variant
 make ci
 ```
 
 Run `make test` during normal iteration when you want the fast structural,
 policy, quality, repo-hygiene, unit, integration, coverage, and CLI suites after
 a prerequisite sanity check. To mirror the pull-request `Local Battery`, run
-`make ci-pr-unprivileged`; `make ci-pr` is the credentialed local superset that
-adds a real AWS-backed preview through `make test-guardrails`.
-Before pushing, execute `make ci` to run the full local equivalent of every
-GitHub check, including the prerequisite check, Docker build, and mutation
-suite.
+`make ci-pr-unprivileged`; `make ci-pr` is the credentialed local variant that
+runs a real AWS-backed preview through `make test-guardrails` and omits the
+IAM-input extraction step that `make ci-pr-unprivileged` runs.
+Before pushing, execute `make ci-pr-unprivileged` for the pull-request
+`Local Battery` mirror and `make test-mutation` for the mutation suite. `make ci`
+runs `make ci-pr` (which needs AWS credentials) and then the mutation suite; it
+is not every GitHub check.
 
 GitHub Actions runs `make ci-pr-unprivileged` through the
 `Pulumi Local Test Battery` workflow (`make ci-pr` only when the

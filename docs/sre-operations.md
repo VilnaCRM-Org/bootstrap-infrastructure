@@ -33,7 +33,8 @@ make ci-pr-unprivileged
 ```
 
 With AWS credentials configured, `make ci-pr` is the credentialed local
-superset: it adds a real AWS-backed preview through `make test-guardrails`.
+variant: it runs a real AWS-backed preview through `make test-guardrails` and
+omits the IAM-input extraction step that `make ci-pr-unprivileged` runs.
 
 When you also want the dedicated mutation suite locally:
 
@@ -164,8 +165,8 @@ The deployment boundary is the GitHub environment:
 - `reviewed-pr-preview` is reserved for the Reviewed PR Preview jobs. In
   Stage 1 they fail closed: neither the `test-pr` CI configuration reader nor
   the TEST preview role trusts `environment:reviewed-pr-preview`, and the
-  workflow stays gated off until Stage 2 installs a dedicated role that, like
-  the reader, accepts only that subject
+  workflow stays gated off until the Stage 2 target is installed: a dedicated
+  role that, like the reader, accepts only that subject
 - `reviewed-source-publisher` handles reviewed-source publication and admission
 - `test` handles test applies (`Pulumi Test Deploy` and `/pulumi test up`)
 - `prod-preview` handles `/pulumi prod` command previews and drift without
