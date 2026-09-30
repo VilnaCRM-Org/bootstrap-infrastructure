@@ -29,7 +29,7 @@ def test_inventory_produces_valid_single_expression_security_mutants():
         "drop-promotion-status-predicate",
         "remove-checkpoint-deny",
     } <= {item.operator for item in mutants}
-    assert len(mutants) == 85
+    assert len(mutants) == 118
     assert (
         sum(item.path == "pulumi/infra/governance_automation.py" for item in mutants)
         == 16
@@ -94,7 +94,10 @@ def test_test_execution_uses_private_report_and_disables_cache(monkeypatch, tmp_
     report = tmp_path / "result.xml"
     monkeypatch.setenv("PYTEST_ADDOPTS", "--cov=unrelated")
 
+    calls = []
+
     def command(arguments, **options):
+        calls.append(arguments)
         assert options["cwd"] == tmp_path
         assert options["timeout"] == 90
         assert "PYTEST_ADDOPTS" not in options["env"]
@@ -106,6 +109,10 @@ def test_test_execution_uses_private_report_and_disables_cache(monkeypatch, tmp_
 
     monkeypatch.setattr(gate.subprocess, "run", command)
     assert gate.execute(tmp_path, report) == "survived"
+    assert calls[-1][-len(gate.TARGETS) :] == list(gate.TARGETS)
+    assert gate.execute(tmp_path, report, gate.ENROLLMENT_TARGETS) == "survived"
+    assert calls[-1][-2:] == list(gate.ENROLLMENT_TARGETS)
+    assert not set(gate.TARGETS) & set(calls[-1])
     assert report.with_suffix(".log").read_text() == "passed"
 
 
@@ -130,10 +137,12 @@ def test_campaign_preserves_source_and_requires_every_mutant_killed(
     mutant = gate.Mutant("sample.py", "f", 2, 7, "Name", "False", "bypass")
     monkeypatch.setattr(gate, "inventory", lambda _: [mutant])
     runs = []
+    suites = []
 
-    def execute(isolated, report):
+    def execute(isolated, report, targets):
         assert isolated != root
         runs.append((isolated / "sample.py").read_text())
+        suites.append(targets)
         return "survived" if len(runs) == 1 else outcome
 
     monkeypatch.setattr(gate, "execute", execute)
@@ -141,6 +150,7 @@ def test_campaign_preserves_source_and_requires_every_mutant_killed(
     assert gate.run_campaign(root, output) == code
     assert runs[0] == source
     assert runs[1] != source
+    assert suites == [gate.TARGETS + gate.ENROLLMENT_TARGETS, gate.TARGETS]
     assert (root / "sample.py").read_text() == source
     assert json.loads((output / "results.json").read_text())[0]["outcome"] == outcome
 
@@ -222,6 +232,40 @@ def test_feedback_predicates_stay_targeted():
         "expose-feedback-as-execution",
         "misclassify-repository-scope",
     } <= {item.operator for item in mutants}
+
+
+def test_active_enrollment_predicates_stay_targeted():
+    """The installer-authenticated --active path keeps real rejection mutants."""
+    mutants = [
+        item for item in gate.inventory(ROOT) if item.path in gate.ENROLLMENT_PATHS
+    ]
+    counts = {}
+    for item in mutants:
+        key = (item.path, item.function, item.operator)
+        counts[key] = counts.get(key, 0) + 1
+    observation = "scripts/operator_seed_observation.py"
+    verifier = "pulumi/seed/policy_registry.py"
+    assert counts == {
+        (observation, "_installer_name", "bypass-enrollment-check"): 4,
+        (observation, "_authenticate_installer", "bypass-enrollment-check"): 3,
+        (observation, "_observe", "skip-installer-authentication"): 1,
+        (observation, "observe_active_enrollment", "skip-active-verification"): 1,
+        (observation, "_key_binding", "bypass-enrollment-check"): 2,
+        (observation, "main", "misroute-active-mode"): 2,
+        (verifier, "_verify_catalog_hash", "bypass-enrollment-check"): 1,
+        (verifier, "_verify_observation", "bypass-enrollment-check"): 7,
+        (verifier, "_verify_active_executor", "bypass-enrollment-check"): 4,
+        (verifier, "_verify_mutable_role", "bypass-enrollment-check"): 4,
+        (verifier, "verify_active_enrollment", "misroute-principal-check"): 4,
+    }
+    assert gate.ENROLLMENT_TARGETS == (
+        "tests/unit/test_operator_seed_observation.py",
+        "tests/unit/test_seed_policy_registry.py",
+    )
+    assert {gate._targets(item) for item in mutants} == {gate.ENROLLMENT_TARGETS}
+    assert gate._targets(
+        gate.Mutant("scripts/x.py", "f", 1, 0, "Name", "True", "t")
+    ) == (gate.TARGETS)
 
 
 def test_missing_semantic_target_is_error(monkeypatch, tmp_path):

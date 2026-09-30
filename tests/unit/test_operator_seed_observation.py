@@ -284,6 +284,13 @@ def test_malformed_binding_rejected_without_aws(native, payload):
     assert native[-1] == []
 
 
+def test_oversized_well_formed_binding_rejected_without_aws(native):
+    binding = asdict(native[0].seed_key) | {"key_usage": "E" * 4096}
+    with pytest.raises(ValueError, match="exceeds bound"):
+        observation._key_binding(json.dumps(binding))
+    assert native[-1] == []
+
+
 def test_wrong_binding_field_type_and_unknown_field_rejected(native):
     binding = asdict(native[0].seed_key)
     binding["key_id"] = True
@@ -396,7 +403,8 @@ MESSAGES = {
     "extra_attachment": "attachment set changed",
     "missing_guard": "Required active guard missing",
     "trust": "Active executor trust changed",
-    "pin": "key",
+    "key_binding": "Observed seed key mismatch",
+    "key_state": "key",
 }
 
 
@@ -428,10 +436,41 @@ def test_active_mode_rejects_changed_iam_or_wrong_registry_pin(active, kind):
             return value
 
         reader.role_metadata = changed
+    elif kind == "key_binding":
+        # Live DescribeKey names a different valid key than the reviewed binding.
+        other = "mrk-" + "a1b2c3d4" * 4
+        reader.key["Arn"] = reader.key["Arn"].rsplit("/", 1)[0] + "/" + other
+        reader.key["KeyId"] = other
     else:
         reader.key["KeyState"] = "Disabled"
     with pytest.raises(ValueError, match=MESSAGES[kind]):
         invoke_active(active)
+
+
+@pytest.mark.parametrize("tamper", ["pin", "catalog"])
+def test_active_mode_rejects_changed_catalog_pin_before_reading_aws(
+    active, monkeypatch, tamper
+):
+    expected = active[0]
+    if tamper == "pin":
+        monkeypatch.setitem(registry.CATALOG_HASHES, expected.environment, "0" * 64)
+    else:
+        read_text = Path.read_text
+
+        def tampered(path, *args, **kwargs):
+            """Serve the checked-out catalog with one widened statement."""
+            value = read_text(path, *args, **kwargs)
+            if path.name == f"{expected.environment}.json" and "catalogs" in str(path):
+                catalog = json.loads(value)
+                statement = next(iter(catalog["statements"].values()))
+                statement["Resource"] = "*"
+                return json.dumps(catalog)
+            return value
+
+        monkeypatch.setattr(Path, "read_text", tampered)
+    with pytest.raises(ValueError, match="Catalog changed"):
+        invoke_active(active)
+    assert active[-1] == []
 
 
 def test_active_mode_rejects_wrong_account_pin_without_reading_aws(native):
