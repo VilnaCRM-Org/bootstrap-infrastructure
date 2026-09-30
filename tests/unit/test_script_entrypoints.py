@@ -3431,8 +3431,17 @@ def test_required_status_check_contract_matches_collector_and_docs(
         f"GitHub ruleset 13906584 requires {required_check_text}." in guardrails_doc
     )
     assert (  # nosec B101
+        "The shared required-check contract (`REQUIRED_STATUS_CHECKS`) lists "
+        f"{required_check_text}." in operating_evidence_doc
+    )
+    assert (  # nosec B101
+        "The active `bootstrap-infrastructure` `main` ruleset requires that list "
+        "without `Test Account Evidence`" in operating_evidence_doc
+    )
+    assert "Test Account Evidence" in required_check_text  # nosec B101
+    assert (  # nosec B101
         f"Active `main` ruleset requires {required_check_text}."
-        in operating_evidence_doc
+        not in operating_evidence_doc
     )
     normalized_readiness_report = " ".join(implementation_readiness_report.split())
     assert (  # nosec B101

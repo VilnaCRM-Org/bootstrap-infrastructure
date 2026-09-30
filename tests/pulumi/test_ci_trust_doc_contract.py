@@ -765,7 +765,7 @@ def test_per_role_claim_docs_match_rendered_claims() -> None:
         assert "GitHubCiPreview-*-test` read role" not in _doc(name), name  # nosec B101
 
 
-def test_audit_round_doc_claims_match_source():
+def test_pregate_audit_claims_follow_source():
     """Pin the sentences corrected by the attempt-5 pre-gate audit to source."""
     cutover = " ".join(_doc("aws-secrets-manager-ci-cutover.md").split())
     assert PREFIX + "ref" not in _reader_condition("test-pr")  # nosec B101
