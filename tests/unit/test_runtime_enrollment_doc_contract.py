@@ -40,7 +40,7 @@ def test_documented_forwarded_variables_match_compose_environment():
     block = compose.split("  pulumi:")[1].split("    environment:\n")[1]
     keys = []
     for line in block.splitlines():
-        match = re.match(r"      - ([A-Z_]+)(?:=.*)?$", line)
+        match = re.match(r" {6}- ([A-Z_]+)(?:=.*)?$", line)
         if not match:
             break
         keys.append(match.group(1))

@@ -171,7 +171,7 @@ def test_complete_publisher_stack_verified_without_ecs_roles():
 
 
 @pytest.mark.parametrize("field", sorted(EDITS))
-def test_each_post_create_field_fails_closed(field):
+def test_every_post_create_field_fails_closed(field):
     edit, message = EDITS[field]
     with pytest.raises(RegistryError, match=message):
         verification.verify_publisher_stack(edit(observed_stack()))
