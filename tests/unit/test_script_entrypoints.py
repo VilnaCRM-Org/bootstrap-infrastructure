@@ -3495,8 +3495,7 @@ def test_test_account_evidence_docs_match_governed_ruleset_contract(
         promotion_app_id=12345, repository=governed
     )
     checks = {
-        item["context"]: item
-        for item in rule["parameters"]["required_status_checks"]
+        item["context"]: item for item in rule["parameters"]["required_status_checks"]
     }
     assert "integration_id" not in checks["Test Account Evidence"]  # nosec B101
     bound = {c for c, item in checks.items() if "integration_id" in item}
