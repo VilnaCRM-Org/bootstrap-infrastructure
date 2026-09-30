@@ -10,6 +10,12 @@ enrollment metadata operations are read. No role assumption, secret retrieval,
 credential creation, IAM mutation or trust activation occurs. Successful output
 contains public digests/counts for disabled enrollment; it is not a deployment
 authorization or proof that IAM stayed unchanged after these non-atomic reads.
+
+The explicit ``--active`` mode uses the identical installer authentication and
+reads but compares them with the checked-out source's candidate registry and
+catalog through ``verify_active_enrollment``. It exists so the pre-merge active
+executor-trust check does not depend on the main-only operator workflow session
+or its registry pin. It never calls GetSecretValue and mutates nothing.
 """
 
 from __future__ import annotations
@@ -122,6 +128,25 @@ def _authenticate_installer(
     )
 
 
+def _observe(
+    environment: str,
+    *,
+    account_id: str,
+    seed_key: registry.SeedKeyBinding,
+    installer_role_arn: str,
+    aws_executable: str,
+) -> tuple[registry.SeedRegistry, registry.EnrollmentObservation]:
+    """Authenticate the installer, then read complete metadata for this source."""
+    expected = registry.build_registry(
+        environment, account_id=account_id, seed_key=seed_key
+    )
+    call = aws_read.AwsCliRead(expected, aws_executable=aws_executable)
+    _authenticate_installer(
+        expected, installer_role_arn, call=call, aws_executable=aws_executable
+    )
+    return expected, enrollment._collect_metadata(expected, call=call)
+
+
 def observe_initial_enrollment(
     environment: str,
     *,
@@ -131,15 +156,33 @@ def observe_initial_enrollment(
     aws_executable: str,
 ) -> registry.EnrollmentVerification:
     """Use actual ambient session credentials and verify complete disabled IAM."""
-    expected = registry.build_registry(
-        environment, account_id=account_id, seed_key=seed_key
+    expected, observed = _observe(
+        environment,
+        account_id=account_id,
+        seed_key=seed_key,
+        installer_role_arn=installer_role_arn,
+        aws_executable=aws_executable,
     )
-    call = aws_read.AwsCliRead(expected, aws_executable=aws_executable)
-    _authenticate_installer(
-        expected, installer_role_arn, call=call, aws_executable=aws_executable
-    )
-    observed = enrollment._collect_metadata(expected, call=call)
     return registry.verify_enrollment(expected, observed)
+
+
+def observe_active_enrollment(
+    environment: str,
+    *,
+    account_id: str,
+    seed_key: registry.SeedKeyBinding,
+    installer_role_arn: str,
+    aws_executable: str,
+) -> registry.ActiveEnrollmentVerification:
+    """Verify exact active executor trust against this checked-out candidate."""
+    expected, observed = _observe(
+        environment,
+        account_id=account_id,
+        seed_key=seed_key,
+        installer_role_arn=installer_role_arn,
+        aws_executable=aws_executable,
+    )
+    return registry.verify_active_enrollment(expected, observed)
 
 
 def _key_binding(payload: str) -> registry.SeedKeyBinding:
@@ -173,9 +216,15 @@ def main(argv: list[str] | None = None) -> int:
         "aws-executable",
     ):
         parser.add_argument(f"--{name}", required=True)
+    parser.add_argument("--active", action="store_true")
     try:
         arguments = parser.parse_args(argv)
-        result = observe_initial_enrollment(
+        observe = (
+            observe_active_enrollment
+            if arguments.active
+            else observe_initial_enrollment
+        )
+        result = observe(
             arguments.environment,
             account_id=arguments.account_id,
             seed_key=_key_binding(arguments.seed_key_binding),

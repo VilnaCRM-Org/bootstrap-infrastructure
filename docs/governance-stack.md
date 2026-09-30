@@ -442,18 +442,19 @@ never creates successful test/prod deployment records.
 ## TEST PoC prerequisite capability
 
 The fixed `VilnaCRM-Org/user-service-infrastructure` identity (repository
-`911736693`, owner `114362548`) has a source-proposed initial prerequisite
-capability only in account `891377212104`, region `eu-central-1`, stack `test`.
-It is **disabled** by the packaged `test-poc-identity.json` gate. No
-`poc-prerequisites` policy or preview/drift grant is emitted in the deployed
-graph. The active TEST seed catalog remains pinned to the installed IAM policy
-versions; it does not yet carry the proposed cap. PROD and other repositories
-retain the backend-only default.
+`911736693`, owner `114362548`) has an initial prerequisite capability only in
+account `891377212104`, region `eu-central-1`, stack `test`. The packaged
+`test-poc-identity.json` lifecycle `state` is **enabled**, and the active TEST
+seed catalog pin is the four-policy amendment result `ff2eaf29…`, so source renders the
+`poc-prerequisites` apply policy and preview/drift read grants. Merging that
+source deploys nothing: it must merge only after the seed amendment is installed
+and read back, and the grants become live only through the protected deployments
+in [`post-seed-activation.md`](../specs/test-poc-prerequisite-capability/post-seed-activation.md).
+PROD and other repositories retain the backend-only default.
 
-The same disabled capability stages `s3:GetBucketVersioning` only for
+The same capability grants `s3:GetBucketVersioning` only for
 `arn:aws:s3:::pulumi-user-service-infrastructure-test-state`. This backend
-observation grant also requires independent seed installation and verification
-before activation; it does not change the active TEST catalog or pin.
+observation grant is part of the same installed amendment and TEST pin.
 
 The cap permits creation/tagging of `user-service-test-web` and
 `user-service-test-worker`, one SESv2 identity `user.vilnacrmtest.com`, and only
@@ -470,17 +471,22 @@ three future names. The trusted service plan validator must enforce those facts,
 RSA-2048 Easy DKIM, fixed repository settings, and `allow_overwrite=false`. A later
 update that needs excluded actions fails closed and requires a separate review.
 
-The staged renderer can produce an apply `poc-prerequisites` managed policy and
-preview/drift metadata-read grants only after a separate reviewed change turns
-the packaged gate on. That change must follow independent installation and
-verification of the proposed TEST seed boundary and governor-policy updates;
-merging a new catalog hash alone causes operator enrollment to fail closed.
-This source change is not installation or activation authority. Retain
+The renderer emits the apply `poc-prerequisites` managed policy and
+preview/drift metadata-read grants because the packaged lifecycle state is
+`enabled`. Withdrawal sets it to `withdrawn`. The PoC route rejects IAM deletes
+and these resources are protected, so the same documents become explicit Deny
+in place. The governor's exact-policy grant and the seed ceiling stay, as the
+activation runbook describes.
+Seed installation and the source merge must happen in one freeze window: a merged
+but uninstalled catalog pin makes every operator TEST run fail closed at
+enrollment, and an installed amendment makes the previous pin fail the same way
+until the merge. An administrator bypass merge is forbidden. This source change
+is not installation or activation authority. Retain
 `Issue215CutoverSessions` on the service TEST apply role; no policy in this change
-removes or bypasses that deny-all hold. Independently review/enroll the TEST seed
-boundary and governor pin changes, verify the active registry against AWS, then
-enable the gate and deploy the reviewed governance grant via the existing
-protected saved-plan path. Native metadata verification, current-head
+removes or bypasses that deny-all hold. Record the seed readback and
+`verify_active_enrollment` result before merging, then deploy the reviewed
+governor identity update and governance grant through the existing protected
+saved-plan paths. Native metadata verification, current-head
 CI/review and same-revision deployment evidence remain required. See
 [`specs/test-poc-prerequisite-capability/`](../specs/test-poc-prerequisite-capability/).
 The exact four-policy TEST CloudFormation amendment packet and its independent

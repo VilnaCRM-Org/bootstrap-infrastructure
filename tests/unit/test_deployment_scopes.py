@@ -578,3 +578,19 @@ def test_disabled_seed_trust_change_scope():
     assert not result.catalog_validation
     assert {reason.path for reason in result.reasons} == set(paths)
     assert len(result.reasons) == 7
+
+
+def test_test_poc_withdrawal_pr_selects_operator_before_governance():
+    # The withdrawal PR changes only the packaged lifecycle state beside tests
+    # and the runbook. `/pulumi test up` runs the operator stack before
+    # governance, so the withdrawn state must keep the governor's grant.
+    docs = (
+        "tests/unit/test_governance_test_poc_capability.py",
+        "specs/test-poc-prerequisite-capability/post-seed-activation.md",
+    )
+    result = select("pulumi/infra/test-poc-identity.json", *docs)
+    assert result.stacks == ALL
+    assert result.stacks.index("operator") < result.stacks.index("governance")
+    impacts = {reason.path: reason.stacks for reason in result.reasons}
+    assert impacts["pulumi/infra/test-poc-identity.json"] == ALL
+    assert all(impacts[path] == () for path in docs)
