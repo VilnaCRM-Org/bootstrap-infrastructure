@@ -26,19 +26,12 @@ jobs:
       privileged: ${{ steps.preview_mode.outputs.privileged }}
     env:
       GITHUB_EVENT_NAME: ${{ github.event_name }}
-      GITHUB_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-      GITHUB_REPOSITORY_NAME: ${{ github.repository }}
-      REVIEWED_SOURCE_PREVIEW_ACTIVE: ${{ vars.REVIEWED_SOURCE_PREVIEW_ACTIVE }}
     steps:
       - name: Select preview mode
         id: preview_mode
         run: |
           privileged=true
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
-            "${GITHUB_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]]; then
-            privileged=false
-            echo "::notice::Fork pull request detected; running unprivileged Pulumi guardrails without AWS credentials."
-          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             privileged=false
             echo "::notice::Pull request source awaits independent admission; running unprivileged Pulumi guardrails."
           fi
@@ -90,7 +83,8 @@ jobs:
 
       - name: Load test PR AWS CI configuration
         id: ci_config
-        # Reviewed immutable loader; PR program still receives bounded preview credentials.
+        # Reviewed immutable loader. Privileged jobs run only on push to main; the pull_request
+        # branch above is unreachable defensive code retained for the pinned contract tests.
         uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@d1297f1f00658c351dd6b94e510b394835b13ede
         with:
           environment: ${{ steps.ci_config_target.outputs.environment }}
@@ -280,7 +274,8 @@ jobs:
 
       - name: Load test PR AWS CI configuration
         id: ci_config
-        # Reviewed immutable loader; PR program still receives bounded preview credentials.
+        # Reviewed immutable loader. Privileged jobs run only on push to main; the pull_request
+        # branch above is unreachable defensive code retained for the pinned contract tests.
         uses: VilnaCRM-Org/bootstrap-infrastructure/.github/actions/load-aws-ci-env@d1297f1f00658c351dd6b94e510b394835b13ede
         with:
           environment: ${{ steps.ci_config_target.outputs.environment }}

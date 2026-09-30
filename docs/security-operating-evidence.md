@@ -24,7 +24,7 @@ Current vulnerability-review evidence is retained in
 
 | Role or policy surface | Scope | Boundary | Validation |
 | --- | --- | --- | --- |
-| Preview role | Reads stack state, generates Pulumi previews, runs destructive diff and IAM Access Analyzer validation. | GitHub environment OIDC subject and account allow-listing. | Same-repo PR guardrail workflow and `make test-guardrails`. |
+| Preview role | Reads stack state, generates Pulumi previews, runs destructive diff and IAM Access Analyzer validation. | GitHub environment OIDC subject and account allow-listing. | Push-to-`main` guardrail jobs, the ChatOps saved-plan path and `make test-guardrails`; pull-request guardrails are unprivileged and do not exercise this role. |
 | Apply role | Applies saved plans only in `test` or protected `prod`. | GitHub environment approval, commit SHA checks, saved-plan manifest, backend match, and plan hash verification. | `make pulumi-plan`, `make pulumi-up-plan`, workflow tests, and unit coverage. |
 | Bootstrap automation policy | Manages repository-prefixed S3, KMS, IAM, Backup, ECR, EventBridge, CloudTrail, SNS/SQS, Budgets, Cost Anomaly, GuardDuty, Security Hub, and AWS Config resources. | Resource ARNs, deterministic name prefixes, request/resource tags, service constraints, and policy-pack wildcard checks. | `tests/unit/test_components.py`, `tests/policies/test_policy_pack.py`, `make test-iam-validation` when AWS credentials are available. |
 | AWS Config recorder role | Allows AWS Config to describe supported resources and write delivery objects to the dedicated Config bucket. | Service principal trust for `config.amazonaws.com` and bucket-prefix policy. | Pulumi unit tests and real preview policy-pack validation. |
