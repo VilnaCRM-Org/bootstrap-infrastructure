@@ -83,12 +83,6 @@ evidence remain open.
 The current branch implements meaningful repo-owned controls, but a final 5/5
 claim is blocked until all of the following are current and non-secret:
 
-- Repository-admin proof that the active `main` ruleset requires Ruff, Ty,
-  Maintainability, Architecture, Structural, Dependency Hygiene, Coverage,
-  Local Battery, Mutation, Run Bats Tests, Secrets Scan, Dependency Audit,
-  Bandit, Dependency Review, Actionlint, Yamllint, Hadolint, Preview,
-  Destructive Diff Gate, IAM Validation, Policy, CodeQL (python), CodeQL
-  (actions), and Test Account Evidence.
 - Repository-admin proof that the protected `prod` environment exists, requires
   reviewer approval, prevents self-review, and limits deployments to protected
   branches.
@@ -98,6 +92,20 @@ claim is blocked until all of the following are current and non-secret:
   approval, and administrator-owned permissions boundary or exemption.
 - Production apply approval evidence tied to the reviewed commit SHA, saved-plan
   manifest, destructive-diff result, IAM validation result, and approver.
+
+Archived 2026-05-17 record (superseded for `bootstrap-infrastructure`: a
+read-only GitHub API readback of ruleset 13906584 on 2026-09-30 (ruleset
+`updated_at` 2026-09-27) shows the active `bootstrap-infrastructure` `main`
+ruleset requires neither `Governance Promotion` nor `Test Account Evidence`
+and no required deployments, matching the reconciled contract in
+`scripts/_github_repository_controls.py`; see
+`docs/well-architected-operating-evidence.md`). This item is kept for history
+only and is not a remaining blocker. It asked for repository-admin proof that
+the active `main` ruleset requires Ruff, Ty, Maintainability, Architecture,
+Structural, Dependency Hygiene, Coverage, Local Battery, Mutation, Run Bats
+Tests, Secrets Scan, Dependency Audit, Bandit, Dependency Review, Actionlint,
+Yamllint, Hadolint, Preview, Destructive Diff Gate, IAM Validation, Policy,
+CodeQL (python), CodeQL (actions), and Test Account Evidence.
 
 Repository admins can apply the GitHub-owned controls with:
 

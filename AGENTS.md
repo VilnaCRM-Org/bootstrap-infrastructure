@@ -11,11 +11,11 @@ This repository is a Pulumi-based infrastructure template. Agents should keep ch
 5. Use `uv run ...` for Python CLI commands instead of invoking tools directly from the global environment.
 6. Seed local `uv` environments with `export UV_PROJECT_ENVIRONMENT="${HOME}/.venvs/bootstrap-infrastructure"; uv venv --seed "${UV_PROJECT_ENVIRONMENT}"` before syncing if you need to run Pulumi Automation outside Docker.
 7. Keep the structural, policy, quality, unit, integration, mutation, CLI, and aggregate local-battery suites runnable without live AWS credentials.
-8. Use `make ci-pr` when you want the non-mutation GitHub PR battery, `make ci` for the full local superset including mutation, and `make test` for the faster non-mutation developer battery.
+8. Use `make ci-pr-unprivileged` to mirror the credential-free GitHub PR `Local Battery`, `make ci-pr` for the credentialed local variant (runs a real AWS-backed preview; omits IAM-input extraction) through `make test-guardrails`, `make ci` for `make ci-pr` plus mutation (needs AWS credentials), and `make test` for the faster non-mutation developer battery.
 9. Use `make doctor` before debugging local Docker or Compose issues.
 10. Run `make start` when changing Docker-backed CI jobs so workspace preparation stays consistent across workflows and local runs.
 11. Keep `./scripts/prepare_policy_pack.py`, `policy/PulumiPolicy.yaml`, `policy/.venv`, and the shared `uv` environment contract aligned when changing Pulumi policy-pack behavior.
-12. Reproduce PR safety checks with `make test-security`, `make test-repo-hygiene`, `make test-guardrails`, or `make ci-pr` before pushing infra-related workflow or policy changes.
+12. Reproduce PR safety checks with `make test-security`, `make test-repo-hygiene`, `make test-guardrails-unprivileged`, or `make ci-pr-unprivileged` before pushing infra-related workflow or policy changes; `make test-guardrails` and `make ci-pr` additionally need AWS credentials for a real preview.
 13. Do not add long-lived static AWS credentials to workflows; use the documented OIDC role variables instead.
 14. Reject critical destructive Pulumi diffs in the PoC route; labels do not authorize overrides.
 15. Keep `make test-coverage` green when changing Python code; the repo expects 100% branch coverage across the covered Pulumi, policy, and helper modules, with the unit, integration, and policy suites each held to 100% line coverage.

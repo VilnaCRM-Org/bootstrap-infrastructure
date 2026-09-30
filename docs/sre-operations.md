@@ -25,12 +25,16 @@ make test
 ```
 
 Before pushing a branch that changes infrastructure logic, Docker wiring, or CI
-contracts, use the same non-mutation battery that GitHub runs in
-`pulumi-local.yml`:
+contracts, use the same credential-free non-mutation battery that GitHub runs
+on pull requests in `pulumi-local.yml`:
 
 ```bash
-make ci-pr
+make ci-pr-unprivileged
 ```
+
+With AWS credentials configured, `make ci-pr` is the credentialed local
+variant: it runs a real AWS-backed preview through `make test-guardrails` and
+omits the IAM-input extraction step that `make ci-pr-unprivileged` runs.
 
 When you also want the dedicated mutation suite locally:
 
@@ -38,10 +42,11 @@ When you also want the dedicated mutation suite locally:
 make ci
 ```
 
-Use `make ci-pr` to catch the same structural, policy, quality, unit,
-integration, CLI, security-scan, and preview guardrails that GitHub runs before
-merge. Use `make ci` when you also want the mutation suite before the branch
-reaches GitHub Actions.
+Use `make ci-pr-unprivileged` to catch the same structural, policy, quality,
+unit, integration, CLI, security-scan, and placeholder-preview guardrails that
+the GitHub `Local Battery` runs on pull requests. Use `make ci` (which runs the
+credentialed `make ci-pr` plus mutation) when you also want a real preview and
+the mutation suite before the branch reaches GitHub Actions.
 
 ## Preview and Apply
 
@@ -58,11 +63,13 @@ the Pulumi plan is shown.
 When you want to reproduce the credential-free PR preview flow locally, use:
 
 ```bash
-make test-guardrails
+make test-guardrails-unprivileged
 ```
 
-That target generates the preview artifact and blocks destructive changes to
-critical resources without requiring live AWS credentials. Keep
+That target writes the placeholder preview artifact and runs the
+destructive-diff parser, static cost proxy and IAM-input extraction without
+live AWS credentials; it is not preview evidence. `make test-guardrails` runs a
+real `make test-preview` first and therefore needs AWS credentials. Keep
 `make test-iam-validation` for the separate Access Analyzer check when you
 intentionally have AWS credentials configured.
 
@@ -153,11 +160,20 @@ keeps the logging and state replica changes ordered together.
 
 The deployment boundary is the GitHub environment:
 
-- `test-preview` handles protected command previews; eligible same-repo PR
-  guardrails use their bounded PR role
-- `test` handles main-branch test applies and test drift
-- `prod-preview` handles production preview and drift without production apply
-  permissions
+- `test-preview` handles protected `/pulumi test` command previews and drift;
+  ordinary pull-request guardrails are unprivileged and use no AWS role
+- `reviewed-pr-preview` is reserved for the Reviewed PR Preview jobs. In
+  Stage 1 they fail closed: neither the `test-pr` CI configuration reader nor
+  the TEST preview role trusts `environment:reviewed-pr-preview`, and the
+  workflow stays gated off until the Stage 2 target is installed: a dedicated
+  role that, like the reader, accepts only that subject
+- `reviewed-source-publisher` handles reviewed-source publication and admission
+- `test` handles test applies (`Pulumi Test Deploy` and `/pulumi test up`)
+- `prod-preview` handles `/pulumi prod` command previews and drift without
+  production apply permissions
+- push-to-`main` and `main`-dispatched previews and drift in `Pulumi PR Guardrails`,
+  `Pulumi Test Deploy`, `Pulumi Production` and `Nightly Guardrails` run
+  without a GitHub environment and present the `main` ref OIDC subject
 - `prod` handles production apply and must require reviewers plus deployment
   branch restrictions
 
@@ -418,10 +434,10 @@ Map failures back to their local commands:
 - `Mutation` -> `make test-mutation`
 - `Run Bats Tests` -> `make test-cli`
 - `Local Battery` -> `make ci-pr-unprivileged` by default, or `make ci-pr` when AWS-backed automation tests are enabled
-- `Preview` -> `make test-preview-unprivileged` by default, or `make test-preview` when AWS-backed preview variables are configured
+- `Preview` -> `make test-preview` on push to `main`; on pull requests this required context is skipped and `make test-preview-unprivileged` runs under `Preview (Unprivileged)`
 - `Destructive Diff Gate` -> `make test-destructive-diff`
-- `Cost Proxy` -> `make test-cost-proxy`
-- `IAM Validation` -> `make test-iam-validation-unprivileged` by default, or `make test-iam-validation` when AWS credentials are configured
+- `Cost Proxy` -> `make test-cost-proxy` (placeholder input on pull requests; not run by apply workflows)
+- `IAM Validation` -> `make test-iam-validation` on push to `main`; on pull requests this required context is skipped and `make test-iam-validation-unprivileged` runs under `IAM Validation (Unprivileged)`
 - `Secrets Scan` -> `make test-secrets`
 - `Dependency Audit` -> `make test-deps-security`
 - `Bandit` -> `make test-bandit`

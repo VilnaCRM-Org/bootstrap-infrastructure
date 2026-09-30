@@ -173,15 +173,19 @@ volatile observation metadata:
 
 The visible queue depth is useful operating evidence when it shows why a
 maintainer issue route is required, but it is volatile. It is not sufficient
-OPS8 evidence by itself: SRE still needs to retain the scheduled workflow
-history, generated GitHub issues, or a current fallback observation record.
+OPS8 evidence by itself: SRE still needs to retain the operations alert triage
+workflow history, generated GitHub issues, or a current fallback observation record.
 
 ## Monthly Observation Record
 
-The `Well-Architected Evidence` workflow now runs on pull requests, pushes to
-`main`, manual dispatch, and a monthly schedule on the ninth day of the month.
-Scheduled runs remain advisory even if evidence enforcement is enabled, upload
-the metadata-only evidence bundle, and retain the artifact for 90 days. The
+The `Well-Architected Data Validation` workflow
+(`well-architected-evidence.yml`) runs on pull requests, pushes to `main`,
+manual dispatch, and a monthly schedule on the ninth day of the month. It only
+runs the committed evidence-data pytest checks without cloud credentials and
+uploads no artifact, so its scheduled runs do not produce an evidence bundle.
+No workflow runs `make report-well-architected-evidence`; the main-only
+`Trusted Well-Architected Publisher` (`workflow_dispatch`) runs its own
+collector and uploads its result artifact for 90 days. The
 separate operations alert triage workflow creates GitHub issues from queued
 alert metadata every 30 minutes. Mixed SQS batches are split by stable alert
 stream before GitHub issue search/create/comment operations, so unrelated
@@ -189,7 +193,9 @@ streams do not collapse into one duplicate marker. Legacy issues without the
 `operations-alert:fingerprint=` marker still require SRE confirmation and an
 HTTPS `sre_confirmation_reference` before backfill or closure.
 
-After a scheduled or manual collector run, SRE can render a dated observation
+After running `make report-well-architected-evidence` with approved AWS
+credentials (or obtaining an equivalent `evidence.json` through a reviewed
+process), SRE can render a dated observation
 record from `.artifacts/well-architected/evidence.json`:
 
 ```bash

@@ -15,7 +15,7 @@ These checks should be required in branch protection:
 
 | Check | Local command | Purpose |
 | --- | --- | --- |
-| `Governance Promotion` | Trusted main controller and dedicated App | Same-head test/prod deployment proof; enroll after controller installation and real live validation |
+| `Governance Promotion` | Trusted main controller and dedicated App | Same-head test/prod deployment proof; required in other repositories only, retired for `bootstrap-infrastructure` |
 | `Ruff` | `make test-ruff` | Lint, import-order, formatting drift, and McCabe complexity |
 | `Ty` | `make test-ty` | Fast static typing diagnostics |
 | `Maintainability` | `make test-maintainability` | Radon/Xenon complexity and maintainability gates |
@@ -23,7 +23,7 @@ These checks should be required in branch protection:
 | `Structural` | `make test-pulumi && make test-repository-catalogs && make test-repository-fanout` | Pulumi project, workflow, catalog, and static fanout checks |
 | `Dependency Hygiene` | `make test-dependency-hygiene` | `uv lock --check` plus Deptry for missing, misplaced, and unused dependencies |
 | `Coverage` | `make test-coverage` after unit, policy, and integration suites | Combined branch-coverage gate; uses `make test-integration-unprivileged` when AWS-backed automation tests are not enabled |
-| `Local Battery` | `make ci-pr` or `make ci-pr-unprivileged` | Dockerized PR battery including image build and local gate composition |
+| `Local Battery` | `make ci-pr-unprivileged`; `make ci-pr` only when `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true` | Dockerized PR battery including image build and local gate composition; `make ci-pr` is the credentialed local variant (runs a real AWS-backed preview; omits IAM-input extraction) |
 | `Mutation` | `make test-mutation` | Mutation analysis of the Pulumi component layer |
 | `Run Bats Tests` | `make test-cli` | Makefile and CLI front-end regression suite |
 | `Secrets Scan` | `make test-secrets` | Gitleaks against tracked Git content |
@@ -33,28 +33,32 @@ These checks should be required in branch protection:
 | `Actionlint` | `make test-actionlint` | Workflow syntax and common GitHub Actions mistakes |
 | `Yamllint` | `make test-yaml` | GitHub workflow YAML, Pulumi stack YAML, and operational YAML hygiene |
 | `Hadolint` | `make test-dockerfile` | Dockerfile quality and safety linting |
-| `Preview` | `make test-preview` or `make test-preview-unprivileged` | Non-destructive Pulumi preview artifact generation, with an unprivileged artifact fallback when AWS variables are absent |
+| `Preview` | `make test-preview` (push to `main`); `make test-preview-unprivileged` on pull requests | Non-destructive Pulumi preview artifact generation, selected by event type: on pull requests the `Preview` context is skipped and the unprivileged placeholder runs under `Preview (Unprivileged)`; push to `main` uses AWS credentials |
 | `Destructive Diff Gate` | `make test-destructive-diff` | Blocks risky deletes and replacements |
-| `IAM Validation` | `make test-iam-validation` or `make test-iam-validation-unprivileged` | AWS IAM Access Analyzer validation when credentials are configured; offline IAM-input extraction otherwise |
+| `IAM Validation` | `make test-iam-validation` (push to `main`); `make test-iam-validation-unprivileged` on pull requests | AWS IAM Access Analyzer validation on push to `main`; on pull requests the `IAM Validation` context is skipped and offline IAM-input extraction on the placeholder runs under `IAM Validation (Unprivileged)` |
 | `Policy` | `make test-policy` | Custom Pulumi CrossGuard policy pack enforcement |
 | `CodeQL (python)` | GitHub-native | Static security/code scanning for Python |
 | `CodeQL (actions)` | GitHub-native | Static security/code scanning for workflows |
-| `Test Account Evidence` | Protected trusted publisher; complete live collector | App-pinned exact-head acceptance, separate from advisory PR data checks |
+| `Test Account Evidence` | Protected trusted publisher; complete live collector | Required by name in governed repositories (only `Governance Promotion` is App-bound there); retired as a merge requirement for `bootstrap-infrastructure`, separate from advisory PR data checks |
 
 For `VilnaCRM-Org/bootstrap-infrastructure`, the `main` ruleset requires the 23
 standard CI checks. `Infrastructure Promotion` and `Test Account Evidence` are
 not merge requirements; the repository-controls reconciler removes them if
 present. Other repositories retain their existing `Governance Promotion` and
-evidence requirements. The trusted publishers and evidence audits remain unchanged.
+evidence requirements. The trusted publisher code is unchanged, but its `verify_issuer()` check stops it while `Test Account Evidence` is retired here (issue #290).
 
-`make ci-pr` is the canonical local equivalent of the real non-mutation
-pull-request battery and backs the required `Local Battery` check.
-Repositories without live AWS credentials or AWS-backed Pulumi variables can
-run `make ci-pr-unprivileged`, which swaps in
-`make test-integration-unprivileged`, `make test-preview-unprivileged`, and
-`make test-iam-validation-unprivileged`. `make test-iam-validation` remains a
-separate privileged step and is intentionally excluded from `make ci-pr`;
-`make ci` adds the slower required mutation layer on top.
+`make ci-pr-unprivileged` runs without live AWS credentials and mirrors the
+required `Local Battery` check on pull requests: `pulumi-local.yml` runs it
+unless the `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` repository variable is
+`true`, and it swaps in `make test-integration-unprivileged` and
+`make test-guardrails-unprivileged` (placeholder preview plus
+`make test-iam-validation-unprivileged`). `make ci-pr` is the credentialed
+local variant: it runs `make test-guardrails`, which generates a real
+AWS-backed preview, so it needs AWS credentials, but it does not run
+`make test-iam-validation-unprivileged`. `make test-iam-validation`
+remains a separate privileged step, excluded from `make ci-pr` and from
+`make ci-pr-unprivileged`; `make ci` adds the mutation suite on top of
+`make ci-pr` and needs AWS credentials.
 
 ## Scheduled quality monitoring
 
@@ -204,4 +208,4 @@ After pulling these workflows into a downstream repo:
   usefulness of the report, and local worktrees without a resolvable `HEAD`
   write an advisory note instead of failing the scheduled report battery
 
-The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher retains the complete live collector and the evidence context with its pinned App issuer.
+The Well-Architected Data Validation (Advisory) job checks selected committed evidence schemas and receipt hashes without cloud or GitHub API credentials. Its success does not satisfy `Test Account Evidence`, renew owner acceptance, or assert all questions are resolved. The protected main publisher is the only producer of `Test Account Evidence` and is hard-wired to `bootstrap-infrastructure`. Before collecting it runs `verify_issuer()`, which stops unless an active `main` ruleset requires that context pinned to the publisher App. Because the context is retired for `bootstrap-infrastructure`, the publisher currently stops before collecting or publishing; issue #290 tracks reconciling the publisher with the retired contract.

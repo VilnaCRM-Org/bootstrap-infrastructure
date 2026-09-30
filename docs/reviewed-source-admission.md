@@ -1,8 +1,12 @@
 # Independently reviewed source admission (#185)
 
-After activation, the central bootstrap repository runs ordinary PR guardrails
-without AWS credentials. Source installation preserves the existing same-repository
-PR checks until the operator completes the staged cutover below.
+The central bootstrap repository runs ordinary PR guardrails without AWS
+credentials, before and after the staged cutover below: its rendered TEST PR
+configuration-reader and preview-role trust no longer admit `pull_request`
+subjects. Until that cutover is enrolled, same-repository PR `Preview`,
+`Destructive Diff Gate` and `IAM Validation` results are placeholder-input checks,
+not preview, destructive-diff or IAM evidence; real saved-plan evidence comes
+from the exact-head `/pulumi <env> plan` comment path.
 `Reviewed PR Preview` is an automatic `workflow_run` workflow loaded from protected
 main. A completed PR check or submitted/edited/dismissed review supplies a signal;
 its artifacts and output values do not authorize execution. The runner fetches the
@@ -80,8 +84,9 @@ After the Stage 2 owner audit, set `REVIEWED_SOURCE_RULESET_ID` to the separate,
 active, no-bypass default-branch ruleset for the three reviewed-source contexts,
 and `REVIEWED_SOURCE_RULESET_UPDATED_AT` to that exact audited ruleset revision.
 The current general `main` ruleset has an administrator bypass and cannot serve
-as the reviewed-source ruleset. Keep `REVIEWED_SOURCE_PREVIEW_ACTIVE` a repository
-variable shared by the ordinary workflow and clean publisher jobs.
+as the reviewed-source ruleset. `REVIEWED_SOURCE_PREVIEW_ACTIVE` is a repository variable
+read only by the trusted Reviewed PR Preview jobs; the ordinary workflow selects
+its mode from the event type and ignores it.
 
 Both clean jobs read back the main-only key boundary before minting an App token.
 Publication resolves the App's public numeric identity and organization owner,
@@ -103,9 +108,10 @@ no repository/organization copy; a workflow cannot prove absence of another copy
 
 The source can be installed in one independently reviewed PR without changing any
 currently required check context. Source installation alone does **not** close
-#185: it leaves the legacy credentialed PR path in place until the following
-source/trust rollout and activation are complete. Merging source does not apply
-the IAM trust changes or update the ruleset.
+#185. Ordinary PR guardrails no longer select the legacy credentialed path, so
+until the following trust rollout and activation are complete no PR check
+supplies real AWS preview evidence. Merging source does not apply the IAM trust
+changes or update the ruleset.
 
 ### Stage 1: install the trusted source
 
@@ -116,10 +122,15 @@ so a fork with the same branch name cannot cancel a same-repository run.
 Provision and verify the dedicated publisher prerequisite before relying on new
 statuses. Missing configuration blocks those new clean jobs and leaves existing
 required checks intact; it does not authorize a shared-token fallback.
-The legacy `Preview`, `Destructive Diff Gate`, and `IAM Validation` jobs retain
-their existing names and behavior, allowing the installation PR to pass the
-currently required checks. Independent review and every existing required check
-remain mandatory. The new trusted-main workflow publishes different contexts and
+The legacy `Preview`, `Destructive Diff Gate`, and `IAM Validation` contexts keep
+their names, so the installation PR passes the currently required checks. On a
+pull request those results are placeholder-input checks: the credentialed
+`Preview` and `IAM Validation` jobs skip, while `Destructive Diff Gate` and
+`IAM Validation (Unprivileged)` read the credential-free placeholder and emit
+`unprivileged placeholder - not preview evidence`. Take preview, destructive-diff
+and IAM evidence from an exact-head `/pulumi <env> plan` saved-plan run.
+Independent review and every existing required check remain mandatory. The new
+trusted-main workflow publishes different contexts and
 cannot supply its own installation evidence from the PR branch. Record the
 installed main SHA; a waiting runner using an older policy SHA fails closed.
 
@@ -135,6 +146,10 @@ admission as soon as the source is installed, in addition to its existing protec
 environments and request authentication.
 
 ### Stage 2: retire trust and enroll the reviewed-source contexts
+
+Stage 2 requires a separate reviewed source change to the bootstrap trust and
+configuration (tracked in issue #289); this documentation change does not
+implement it.
 
 1. Create the `reviewed-pr-preview` GitHub environment with only `main` allowed,
    no tags or wildcards, and administrator bypass disabled. Through the
@@ -159,9 +174,9 @@ environments and request authentication.
    variable, AWS trust or credentialed route; the remaining Stage 2 checks below
    still apply.
 2. Record live negative STS tests for both retired PR subjects. A new submitted,
-   edited or dismissed review provides a trusted signal even while the legacy
-   PR credential attempts fail after trust retirement. Failed or skipped source
-   checks cannot substitute for review approval or successful trusted jobs.
+   edited or dismissed review provides a trusted signal; ordinary PR guardrails
+   no longer attempt the retired credentials. Failed, skipped or placeholder
+   source checks cannot substitute for review approval or successful trusted jobs.
 3. The branch-protection owner creates a separate active default-branch ruleset
    with **no bypass actors** and strict required status checks for `Reviewed
    Preview`, `Reviewed Destructive Diff Gate`, and `Reviewed IAM Validation`.
@@ -178,22 +193,30 @@ environments and request authentication.
    real success. The additive cutover is retained alongside the existing
    repository control baseline.
 4. Only after the issuer-bound requirements are installed, set
-   `REVIEWED_SOURCE_PREVIEW_ACTIVE=true`. Ordinary PR guardrails then select the
-   credential-free path; the legacy privileged jobs skip while the distinct
-   reviewed-source contexts remain mandatory. Run a newly approved exact head
-   and read back genuine results from the dedicated App. Prove that an
-   identically named success from `GITHUB_TOKEN` or another App does not satisfy
-   those requirements. Verify an unreviewed head cannot merge or obtain either
-   TEST role, and an independently approved head completes the real guardrails.
+   `REVIEWED_SOURCE_PREVIEW_ACTIVE=true`. The flag enables the trusted admission
+   and credentialed `Reviewed PR Preview` jobs. Ordinary PR guardrails already
+   use the credential-free path, and the legacy privileged jobs keep skipping
+   while the distinct reviewed-source contexts remain mandatory. Run a newly
+   approved exact head and read back genuine results from the dedicated App.
+   Prove that an identically named success from `GITHUB_TOKEN` or another App
+   does not satisfy those requirements. Verify an unreviewed head cannot merge
+   or obtain either TEST role, and an independently approved head completes the
+   real guardrails.
 
-The activation flag controls workflow availability, not credential authorization.
-A PR can change its own workflow or ignore the flag; only installed IAM trust
-retirement blocks that bypass. Never enable the flag before enrolling the new
-required contexts: skipped legacy checks alone do not prove a real AWS preview.
-The rollout can temporarily block merges between trust retirement and completed
-status/flag cutover. Do not restore generic PR trust, publish synthetic success,
-remove required checks, or grant a bypass to recover availability. Keep #185 open
-and downstream workload activation blocked until the complete evidence exists.
+The activation flag controls trusted workflow availability, not credential
+authorization; it no longer changes ordinary PR guardrail selection. A PR can
+change its own workflow or ignore the flag; installed IAM trust retirement and
+the GitHub main-only deployment-branch policies on the protected environments
+are both required to block that bypass. Never enable the flag before enrolling the new required
+contexts: skipped legacy checks and placeholder-input results do not prove a
+real AWS preview. Until enrollment, same-repository PR `Preview`,
+`Destructive Diff Gate` and `IAM Validation` results are not preview,
+destructive-diff or IAM evidence; use the exact-head `/pulumi <env> plan`
+saved-plan run. Enrolling the new required contexts in step 3 can temporarily
+block merges until the trusted workflow produces real success. Do not restore
+generic PR trust, publish synthetic success, remove required checks, or grant a
+bypass to recover availability. Keep #185 open and downstream workload
+activation blocked until the complete evidence exists.
 Record role policy hashes, source SHA, ruleset readback and sanitized run IDs;
 never record session credentials or CI configuration payloads.
 
@@ -229,8 +252,10 @@ activation rather than claiming the live revocation rehearsal succeeded.
 
 ## Downstream boundary
 
-IAM generator changes deliberately retire generic PR subjects only for
-`VilnaCRM-Org/bootstrap-infrastructure`. Generated/installed service PR preview
+IAM generator changes deliberately retire generic PR subjects from the
+`VilnaCRM-Org/bootstrap-infrastructure` config reader and preview role, and #276
+removed them from the `user-service-infrastructure` preview role; that
+repository's `test-pr` config reader still accepts `pull_request` subjects. Generated/installed service PR preview
 paths still require equivalent trusted admission and a coordinated trust change
 before issue #219 grants workload access. Do not treat central admission or green
 central tests as service admission evidence. A service implementation must pin its

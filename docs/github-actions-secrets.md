@@ -148,11 +148,16 @@ current-head deployment/manual acceptance remain separate prerequisites.
 
 After central bootstrap activation, `AWS_TEST_PR_CI_CONFIG_ROLE_ARN` belongs to
 the trusted main `Reviewed PR Preview` workflow, following independent exact-head
-review admission. Source installation retains legacy PR checks. Retire the generic
-PR OIDC subject from both this reader and the runtime preview role, enroll all
+review admission. Source installation already makes ordinary PR guardrails unprivileged, and the
+rendered reader and TEST preview role already omit the generic PR OIDC subject.
+Today the reader trusts only the `main` ref subject with the `Reviewed PR Preview`
+workflow claim, so the workflow's `environment:reviewed-pr-preview` jobs fail
+closed. Install the Stage 2 trust (a dedicated TEST reviewed-preview role, with
+it and this reader accepting only that environment subject; this needs a
+separate reviewed source change, tracked in issue #289), enroll all
 three distinct reviewed-source statuses pinned to a new dedicated GitHub App while
 preserving existing required checks, and then set
-`REVIEWED_SOURCE_PREVIEW_ACTIVE=true` before declaring activation. The App key must
+`REVIEWED_SOURCE_PREVIEW_ACTIVE=true` (read only by the trusted Reviewed PR Preview workflow) before declaring activation. The App key must
 exist only in the main-only `reviewed-source-publisher` environment; neither
 `GITHUB_TOKEN` nor the existing promotion App is an allowed publisher fallback. See
 [reviewed-source admission](reviewed-source-admission.md) for rollout and the

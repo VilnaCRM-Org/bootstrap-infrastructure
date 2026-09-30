@@ -1,5 +1,16 @@
 # Research — Multi-Repo IAM/OIDC Governance Stack (GitHub issue #77)
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today `bootstrap-infrastructure` pull requests receive no AWS
+> credentials; its real preview and IAM Access Analyzer validation run on push
+> to `main`, in the `main`-dispatched `Pulumi Production` preview and in
+> exact-head `/pulumi <env> plan` saved-plan runs. Governed repositories'
+> `test-pr` config readers still accept their `pull_request` subject (see
+> [CI config trust contract](../../docs/ci-config-trust-contract.md)). See
+> [CI guardrails](../../docs/ci-guardrails.md) and
+> [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 ## PR78 successor amendment — 2026-09-06
 
 This document retains historical requirements and evidence. The active

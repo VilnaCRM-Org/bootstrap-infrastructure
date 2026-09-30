@@ -1,5 +1,16 @@
 # PRD: Issue 20 AWS Secrets Manager CI Configuration
 
+> Historical record: pull-request credential, preview and `test-pr` statements
+> below predate the unprivileged pull-request model and are not the current
+> contract. Today `bootstrap-infrastructure` pull requests receive no AWS
+> credentials; its real preview and IAM Access Analyzer validation run on push
+> to `main`, in the `main`-dispatched `Pulumi Production` preview and in
+> exact-head `/pulumi <env> plan` saved-plan runs. Governed repositories'
+> `test-pr` config readers still accept their `pull_request` subject (see
+> [CI config trust contract](../../docs/ci-config-trust-contract.md)). See
+> [CI guardrails](../../docs/ci-guardrails.md) and
+> [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+
 > **Historical design, amended for the PR57 successor (2026-09-06).**
 > The September [successor verification](pr57-successor-verification.md) is the
 > current implementation contract. Earlier references to a sole `prod`
