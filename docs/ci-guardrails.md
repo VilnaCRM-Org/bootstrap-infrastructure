@@ -32,9 +32,9 @@ These checks are intended to be marked as required in branch protection:
 | `Actionlint` | `make test-actionlint` | Lints GitHub Actions workflow syntax and common security issues |
 | `Yamllint` | `make test-yaml` | Lints GitHub workflow, Pulumi stack, and operational YAML |
 | `Hadolint` | `make test-dockerfile` | Lints Dockerfile quality and safety rules |
-| `Preview` | `make test-preview` | Produces a non-destructive Pulumi preview artifact for every configured stack |
-| `Destructive Diff Gate` | `make test-destructive-diff` | Blocks deletes and replacements of critical infrastructure unless explicitly approved |
-| `IAM Validation` | `make test-iam-validation` | Validates previewed IAM policies with AWS IAM Access Analyzer |
+| `Preview` | `make test-preview` (push to `main`); `make test-preview-unprivileged` on pull requests | Produces a non-destructive Pulumi preview artifact; on pull requests the required context is skipped and the placeholder runs under `Preview (Unprivileged)` |
+| `Destructive Diff Gate` | `make test-destructive-diff` | Blocks deletes and replacements of critical infrastructure; labels do not authorize overrides |
+| `IAM Validation` | `make test-iam-validation` (push to `main`); `make test-iam-validation-unprivileged` on pull requests | Validates previewed IAM policies with AWS IAM Access Analyzer on `main`; on pull requests the required context is skipped and offline extraction runs under `IAM Validation (Unprivileged)` |
 | `Policy` | `make test-policy` | Enforces the custom Pulumi CrossGuard policy pack |
 | `CodeQL (python)` | GitHub-native | Scans Python code for security issues |
 | `CodeQL (actions)` | GitHub-native | Scans workflow code for insecure patterns |

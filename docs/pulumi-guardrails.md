@@ -67,9 +67,9 @@ That command enforces 100% line coverage for the Python policy-pack code.
 under the same 100% line-coverage contract, so both runtime guardrails and
 policy guardrails fail fast when tests drift.
 
-The PR preview workflow also runs the same policy pack during `make test-preview`
-before the destructive diff and IAM validation steps inspect the resulting
-preview artifact.
+On pull requests `make test-preview` never runs, and the `Policy` check runs only
+the policy pack's unit tests (`make test-policy`). The pack evaluates real
+changes only at saved-plan time (`make pulumi-plan` and `make pulumi-up-plan`).
 
 `make pulumi-preview`, `make pulumi-plan`, and `make pulumi-up-plan` also
 enable the policy pack by default. Before Pulumi starts, the repository checks

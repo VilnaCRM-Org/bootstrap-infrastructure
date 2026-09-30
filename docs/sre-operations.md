@@ -153,8 +153,11 @@ keeps the logging and state replica changes ordered together.
 
 The deployment boundary is the GitHub environment:
 
-- `test-preview` handles protected command previews and the future Reviewed PR
-  Preview; ordinary pull-request guardrails are unprivileged and use no AWS role
+- `test-preview` handles protected command previews; ordinary pull-request
+  guardrails are unprivileged and use no AWS role
+- `reviewed-pr-preview` handles the credentialed Reviewed PR Preview jobs and
+  assumes the `test-pr` CI configuration
+- `reviewed-source-publisher` handles reviewed-source publication and admission
 - `test` handles main-branch test applies and test drift
 - `prod-preview` handles production preview and drift without production apply
   permissions
@@ -418,10 +421,10 @@ Map failures back to their local commands:
 - `Mutation` -> `make test-mutation`
 - `Run Bats Tests` -> `make test-cli`
 - `Local Battery` -> `make ci-pr-unprivileged` by default, or `make ci-pr` when AWS-backed automation tests are enabled
-- `Preview` -> `make test-preview-unprivileged` by default, on pull requests, or `make test-preview` on push to `main`
+- `Preview` -> `make test-preview` on push to `main`; on pull requests this required context is skipped and `make test-preview-unprivileged` runs under `Preview (Unprivileged)`
 - `Destructive Diff Gate` -> `make test-destructive-diff`
 - `Cost Proxy` -> `make test-cost-proxy` (placeholder input on pull requests; not run by apply workflows)
-- `IAM Validation` -> `make test-iam-validation-unprivileged` by default, on pull requests, or `make test-iam-validation` on push to `main`
+- `IAM Validation` -> `make test-iam-validation` on push to `main`; on pull requests this required context is skipped and `make test-iam-validation-unprivileged` runs under `IAM Validation (Unprivileged)`
 - `Secrets Scan` -> `make test-secrets`
 - `Dependency Audit` -> `make test-deps-security`
 - `Bandit` -> `make test-bandit`

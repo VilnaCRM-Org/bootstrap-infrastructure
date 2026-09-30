@@ -614,6 +614,7 @@ def _run_cost_proxy(
         {
             "path": str(preview_file),
             **cost_proxy_report(load_preview(preview_file)),
+            **({"placeholder": True} if str(preview_file) in placeholders else {}),
         }
         for preview_file in input_files
     ]
