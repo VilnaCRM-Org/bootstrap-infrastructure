@@ -337,7 +337,9 @@ def test_docs_map_reviewed_pr_preview_to_its_own_environment() -> None:
     )
 
 
-def test_docs_do_not_grant_pull_request_guardrails_aws_roles_or_policy_previews() -> None:
+def test_docs_do_not_grant_pull_request_guardrails_aws_roles_or_policy_previews() -> (
+    None
+):
     """Keep stale PR-credential and policy-on-preview claims out of the docs."""
     architecture = _doc("ci-architecture.md")
     assert "make test-iam-validation-unprivileged" in architecture  # nosec B101

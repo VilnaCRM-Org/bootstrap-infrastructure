@@ -892,7 +892,9 @@ def test_placeholder_cost_proxy_json_is_flagged_and_real_json_is_not(
         == 0
     )
     assert (
-        guardrails_module.cli(["cost-proxy", str(real), "--output-json", str(real_json)])
+        guardrails_module.cli(
+            ["cost-proxy", str(real), "--output-json", str(real_json)]
+        )
         == 0
     )
     assert json.loads(placeholder_json.read_text(encoding="utf-8"))[0]["placeholder"]
