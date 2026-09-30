@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import re
 import sys
 from pathlib import Path
@@ -11,7 +12,7 @@ SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-import render_runtime_seed_policies as renderer
+renderer = importlib.import_module("render_runtime_seed_policies")
 
 DOCS = (
     ROOT / "specs/219-test-workload-capability/runtime-enrollment.md",
