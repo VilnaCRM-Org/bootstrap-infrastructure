@@ -182,3 +182,55 @@ def test_malformed_observation_rejected(broken):
     observed = None if broken == "missing" else replace(observed_stack(), role=None)
     with pytest.raises(RegistryError, match="Complete publisher stack observation"):
         verification.verify_publisher_stack(observed)
+
+
+def amended_stack():
+    """Synthetic UPDATE_COMPLETE state after the disabled-trust amendment."""
+    return replace(
+        observed_stack(),
+        stack_status="UPDATE_COMPLETE",
+        template_json=verification._amended_packet().template_json,
+        role=replace(observed_stack().role, trust_json=runtime.disabled_trust()),
+    )
+
+
+AMENDED_EDITS = {
+    **EDITS,
+    "stack_status": (_stack(stack_status="CREATE_COMPLETE"), "UPDATE_COMPLETE"),
+    "trust": (
+        _role(trust_json=runtime.publisher_trust(runtime.PUBLISHER_SUBJECT)),
+        "trust",
+    ),
+}
+
+
+def test_amended_stack_accepted_and_differs_only_in_trust():
+    result = verification.verify_amended_publisher_stack(amended_stack())
+    base = json.loads(fences.build_fence_stack_packet().template_json)
+    amended = json.loads(verification._amended_packet().template_json)
+    changed = [
+        key
+        for key, resource in base["Resources"].items()
+        if resource != amended["Resources"][key]
+    ]
+    assert changed == [fences._logical_id(PUBLISHER.arn)]
+    assert base["Metadata"] == amended["Metadata"]
+    assert result.template_sha256 != fences.build_fence_stack_packet().template_sha256
+    assert result.activation_authorized is False
+
+
+@pytest.mark.parametrize("field", sorted(AMENDED_EDITS))
+def test_each_post_amendment_field_fails_closed(field):
+    edit, message = AMENDED_EDITS[field]
+    with pytest.raises(RegistryError, match=message):
+        verification.verify_amended_publisher_stack(edit(amended_stack()))
+
+
+def test_create_and_amended_verifiers_are_not_interchangeable():
+    with pytest.raises(RegistryError, match="CREATE_COMPLETE"):
+        verification.verify_publisher_stack(amended_stack())
+    with pytest.raises(RegistryError, match="UPDATE_COMPLETE"):
+        verification.verify_amended_publisher_stack(observed_stack())
+    enabled_update = replace(observed_stack(), stack_status="UPDATE_COMPLETE")
+    with pytest.raises(RegistryError, match="template"):
+        verification.verify_amended_publisher_stack(enabled_update)

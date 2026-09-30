@@ -31,13 +31,22 @@ termination protection and the permanent deny-update stack policy.
 
 ### Obsolete staged change sets
 
-Change set `poc-runtime-seed-seven-e8930dd-20260928` (six fences plus the
-publisher) and the earlier six-policy change set (six fences, no role) are
-obsolete. Delete them through a reviewed operator `DeleteChangeSet`; never
-execute them. `validate_fence_create_changes` rejects both row sets. A CREATE
-change set leaves the stack in `REVIEW_IN_PROGRESS`: after deleting both, confirm
-the stack has no resources and delete the empty stack record before staging the
-new change set, otherwise the absent-stack precondition fails.
+Two staged change sets on the `REVIEW_IN_PROGRESS` stack
+`issue219-runtime-fences-test` are obsolete and must never be executed:
+
+- `poc-runtime-fences-six-add-203c41e-20260928`: the earlier six-policy change
+  set (six fences, no role), staged from source revision `203c41e`.
+- `poc-runtime-seed-seven-e8930dd-20260928`: six fences plus the publisher role,
+  staged from source revision `e8930dd`.
+
+`validate_fence_create_changes` rejects both row sets. The required disposal is
+`DeleteStack` on the `REVIEW_IN_PROGRESS` stack `issue219-runtime-fences-test`
+through a reviewed operator call: deleting that stack removes every change set
+attached to it, including both above, so no per-change-set `DeleteChangeSet` is
+needed. Before deleting, confirm the stack has no resources (a CREATE change set
+never created any). Afterwards confirm the stack name is absent (`DescribeStacks`
+fails) before staging the new change set, otherwise the absent-stack
+precondition fails.
 
 `PocRuntimeRoles` requires the `governance` project and the same target checks.
 Before role registration, it reads every exact policy ARN and compares the native
@@ -125,15 +134,17 @@ ECS roles and fences are neither required nor accepted. Inputs must be
 authenticated, fully paginated and URL-decoded: DescribeStacks, GetTemplate,
 GetStackPolicy, ListStackResources, GetPolicy/GetPolicyVersion, GetRole,
 ListAttachedRolePolicies, ListRolePolicies/GetRolePolicy and ListRoleTags. It
-returns `activation_authorized=False`.
+returns `activation_authorized=False`. After the break-glass amendment,
+`verify_amended_publisher_stack` applies the same checks with `UPDATE_COMPLETE`
+against the reviewed amended template (disabled role trust only).
 
 ## Local rendering and optional AWS validation
 
 `make validate-runtime-seed-policies` renders `template.json`, `stack-policy.json`,
 every IAM document and `manifest.json` to `.artifacts/runtime-seed-policies/`;
 the `template.json` SHA-256 equals the packet digest. Only when a credential
-variable (`AWS_ACCESS_KEY_ID`, `AWS_PROFILE`, `AWS_WEB_IDENTITY_TOKEN_FILE` or a
-container-credentials URI) is set does it call read-only IAM Access Analyzer
+variable that Compose forwards into the container (`AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` or `AWS_PROFILE`) is set does it call read-only IAM Access Analyzer
 `validate-policy` per identity policy (trust documents with `RESOURCE_POLICY` /
 `AWS::IAM::AssumeRolePolicyDocument`) and CloudFormation `validate-template`.
 Exit code 1 means ERROR or SECURITY_WARNING findings; 2 means a missing CLI or
@@ -183,16 +194,37 @@ GitHub CI.
    Stack policies do not restrict direct IAM calls; this step intentionally
    creates drift.
 2. **Reviewed amendment.** Disable trust in source, regenerate the packet and
-   review the digest. Stage an UPDATE change set that only modifies the publisher
-   role in place (`Modify`, `Replacement: False`). Execute it with a one-time
-   `--stack-policy-during-update-body` that allows `Update:Modify` only on the
-   publisher role logical ID and denies `Update:Replace` and `Update:Delete`. The
-   permanent deny-update policy and termination protection stay; read both back
-   afterwards.
+   review the digest. The amended template must differ from the reviewed one only
+   in the publisher role's `AssumeRolePolicyDocument` (it becomes
+   `disabled_trust()`); the change set must show a single `Modify` row with
+   `Replacement: False` on the publisher logical ID. `ExecuteChangeSet` has no
+   temporary stack-policy parameter and the permanent policy denies `Update:*`,
+   so a change set cannot be executed under it. Use one of these reviewed
+   sequences:
+   - Preferred: `aws cloudformation update-stack --stack-name
+     issue219-runtime-fences-test --template-body file://<reviewed-amended>.json
+     --stack-policy-during-update-body file://<narrow-allow>.json` where the
+     narrow policy allows only `Update:Modify` on
+     `LogicalResourceId/<publisher logical id>` and denies `Update:Replace` and
+     `Update:Delete` on `*`. This override applies to that update only; the
+     permanent deny-update policy is not modified.
+   - Alternative: `SetStackPolicy` to that same temporary narrow allow, execute
+     the reviewed change set, then immediately `SetStackPolicy` back to the
+     permanent deny (`Deny Update:* Principal * Resource *`). Treat an
+     interruption before the restore as an incident.
+
+   Afterwards read back `GetStackPolicy` and `DescribeStacks` and record the
+   canonical policy digest (it must equal the permanent deny-update policy) and
+   `EnableTerminationProtection=true`. Termination protection is never lowered.
 3. **Reconcile.** After at least `MaxSessionDuration` (3600 s), remove the
-   revocation inline policy. Run `detect-stack-drift` and require `IN_SYNC` for
-   all three resources. Run the post-create verifier against the regenerated
-   packet and retain the evidence.
+   revocation inline policy. The step-1 direct `UpdateAssumeRolePolicy` created
+   drift; the amendment sets the same disabled document in the template, so run
+   `detect-stack-drift` and require `IN_SYNC` for all three resources. Do not
+   run `verify_publisher_stack` (it requires `CREATE_COMPLETE` and the enabled
+   trust). Instead collect the authenticated reads listed above and run
+   `verify_amended_publisher_stack`, which requires `UPDATE_COMPLETE`, checks the
+   same per-field state against the reviewed amended template (only the role
+   trust differs) and rejects the enabled trust. Retain the evidence.
 4. **Removal** is a separate reviewed amendment: because resources are Retain,
    stack deletion leaves the role and policies behind.
 
@@ -221,8 +253,9 @@ native image digests. The proposed role ARN matches that workflow.
 Trust uses only AWS-supported issuer `aud` and `sub` keys. The exact subject must
 include `repo`, `repository_id=646535009`, `repository_owner_id=114362548`,
 `environment=poc-test-images`, `ref=refs/heads/main`, the exact ordinary
-`workflow_ref`, and `event_name=workflow_dispatch`. Both documented legacy and
-immutable repo spellings are supported; key order is preserved. Missing, extra,
+`workflow_ref`, and `event_name=workflow_dispatch`. Only the pinned legacy `repo:` subject spelling is accepted (exact match to
+`PUBLISHER_SUBJECT`); an immutable-form token stops execution pending a reviewed
+amendment. Key order is preserved. Missing, extra,
 duplicate, foreign, PR, or reusable-workflow claims reject.
 
 The 2026-09-28 GitHub API read returned `use_default=false` with exactly the
@@ -235,7 +268,7 @@ supports the proposed claims, but source validation is not token authentication.
 
 Before connecting these components to protected deployment entrypoints:
 
-1. Delete the obsolete change sets, then review/install the three-resource
+1. Delete the obsolete stack record (and with it both change sets), then review/install the three-resource
    publisher stack, preserving all existing records. The ordinary
    three-executor seed activation validator is not a runtime-enrollment route.
 2. Install the four ECS fences only through the later reviewed runtime

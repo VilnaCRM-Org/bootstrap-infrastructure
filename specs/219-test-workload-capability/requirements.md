@@ -1,6 +1,6 @@
 # TEST workload capability: requirements traceability
 
-Scope: source proposal for PR #281 (publisher-only runtime seed stack). This is
+Scope: source proposal for PR #285 (publisher-only runtime seed stack; supersedes #281). This is
 not installation evidence; every test is an offline fixture. Related documents:
 [runtime enrollment](runtime-enrollment.md) and [installer stop](installability-stop.md).
 

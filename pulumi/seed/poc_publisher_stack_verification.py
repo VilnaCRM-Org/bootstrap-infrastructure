@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from .poc_runtime import ACCOUNT_ID, REGION
+from .poc_runtime import ACCOUNT_ID, REGION, disabled_trust
 from .poc_runtime_fence_stack import (
     PUBLISHER,
     FenceStackPacket,
@@ -79,14 +79,16 @@ def _physical_id(resource: dict) -> str:
     )
 
 
-def _verify_stack(observed: ObservedPublisherStack, packet: FenceStackPacket) -> None:
+def _verify_stack(
+    observed: ObservedPublisherStack, packet: FenceStackPacket, status: str
+) -> None:
     """Bind target, name, status, template and both protection controls."""
     if (observed.account_id, observed.region) != (ACCOUNT_ID, REGION):
         raise RegistryError("Publisher stack target differs")
     if observed.stack_name != packet.stack_name:
         raise RegistryError("Publisher stack name differs")
-    if observed.stack_status != "CREATE_COMPLETE":
-        raise RegistryError("Publisher stack status is not CREATE_COMPLETE")
+    if observed.stack_status != status:
+        raise RegistryError(f"Publisher stack status is not {status}")
     if _canonical(observed.template_json) != packet.template_json:
         raise RegistryError("Publisher stack template differs from reviewed packet")
     if observed.termination_protection is not True:
@@ -157,6 +159,41 @@ def _verify_role_documents(role: ObservedPublisherRole, properties: dict) -> Non
         raise RegistryError("Publisher trust document differs")
 
 
+def _verify(
+    observed: ObservedPublisherStack, packet: FenceStackPacket, status: str
+) -> PublisherStackVerification:
+    """Run every per-field comparison against one explicit expected packet."""
+    if not isinstance(observed, ObservedPublisherStack) or not isinstance(
+        observed.role, ObservedPublisherRole
+    ):
+        raise RegistryError("Complete publisher stack observation required")
+    resources = json.loads(packet.template_json)["Resources"]
+    _verify_stack(observed, packet, status)
+    _verify_inventory(observed, resources)
+    _verify_policies(observed, resources)
+    role = next(row for row in resources.values() if row["Type"] == ROLE_TYPE)
+    _verify_role(observed.role, role["Properties"])
+    return PublisherStackVerification(packet.template_sha256)
+
+
+def _amended_packet() -> FenceStackPacket:
+    """Reviewed break-glass amendment: only the role trust becomes disabled."""
+    base = build_fence_stack_packet()
+    template = json.loads(base.template_json)
+    for resource in template["Resources"].values():
+        if resource["Type"] == ROLE_TYPE:
+            resource["Properties"]["AssumeRolePolicyDocument"] = json.loads(
+                disabled_trust()
+            )
+    return FenceStackPacket(
+        base.stack_name,
+        canonical_json(template),
+        base.deny_update_policy_json,
+        base.absent_policy_arns,
+        base.absent_role_arns,
+    )
+
+
 def verify_publisher_stack(
     observed: ObservedPublisherStack,
 ) -> PublisherStackVerification:
@@ -166,15 +203,17 @@ def verify_publisher_stack(
     DescribeStacks/GetStackPolicy reads. A match proves neither authentication,
     authority nor atomicity and never authorizes activation.
     """
-    if not isinstance(observed, ObservedPublisherStack) or not isinstance(
-        observed.role, ObservedPublisherRole
-    ):
-        raise RegistryError("Complete publisher stack observation required")
-    packet = build_fence_stack_packet()
-    resources = json.loads(packet.template_json)["Resources"]
-    _verify_stack(observed, packet)
-    _verify_inventory(observed, resources)
-    _verify_policies(observed, resources)
-    role = next(row for row in resources.values() if row["Type"] == ROLE_TYPE)
-    _verify_role(observed.role, role["Properties"])
-    return PublisherStackVerification(packet.template_sha256)
+    return _verify(observed, build_fence_stack_packet(), "CREATE_COMPLETE")
+
+
+def verify_amended_publisher_stack(
+    observed: ObservedPublisherStack,
+) -> PublisherStackVerification:
+    """Require exact UPDATE_COMPLETE state after the break-glass trust amendment.
+
+    Identical per-field checks, but against the reviewed amended template whose
+    only difference is the disabled role trust; the caller supplies no expected
+    packet, and the original enabled trust is rejected. Never authorizes
+    activation.
+    """
+    return _verify(observed, _amended_packet(), "UPDATE_COMPLETE")

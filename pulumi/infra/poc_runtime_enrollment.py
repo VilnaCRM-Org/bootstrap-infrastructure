@@ -43,25 +43,25 @@ def _verify_fences(target: pulumi.InvokeOptions) -> None:
     """Read every independent fence before registering any runtime role."""
     policies, _ = enrollment_records()
     for record in policies:
-        observed = aws.iam.get_policy(arn=record.arn, opts=target)
+        try:
+            observed = aws.iam.get_policy(arn=record.arn, opts=target)
+        except Exception as error:
+            raise RegistryError(
+                "Independently installed runtime fence missing"
+            ) from error
         if (
-            observed.arn != record.arn
+            observed is None
+            or observed.arn != record.arn
             or canonical_json(json.loads(observed.policy)) != record.document_json
         ):
             raise RegistryError("Independently installed runtime fence differs")
 
 
-def _inline_grants(purpose: str) -> list[aws.iam.RoleInlinePolicyArgs]:
-    """Keep the disabled task empty and select only fixed pull grants."""
+def _inline_grants(purpose: str) -> dict[str, str]:
+    """Select only fixed pull grants; the disabled task has none."""
     if purpose == "execution":
-        return [
-            aws.iam.RoleInlinePolicyArgs(
-                name="Issue219TestImagePull", policy=execution_policy()
-            )
-        ]
-    # One empty block enforces an exclusive empty set; an empty list leaves
-    # inline policies unmanaged by the provider.
-    return [aws.iam.RoleInlinePolicyArgs()]
+        return {"Issue219TestImagePull": execution_policy()}
+    return {}
 
 
 def _role_trust(purpose: str) -> str:
@@ -78,6 +78,39 @@ class PocRuntimeRoles(pulumi.ComponentResource):
     This proposal is not wired into the current governor's entrypoint.
     """
 
+    def _close_grants(self, identity, provider: aws.Provider) -> None:
+        """Manage exactly the sole guard attachment and fixed inline policies."""
+        role = self.roles[identity.purpose]
+        opts = pulumi.ResourceOptions(parent=self, provider=provider, protect=True)
+        inline = _inline_grants(identity.purpose)
+        policies = [
+            aws.iam.RolePolicy(
+                f"{identity.name}-{name}",
+                role=role.name,
+                name=name,
+                policy=text,
+                opts=opts,
+            )
+            for name, text in inline.items()
+        ]
+        self.grants[identity.purpose] = [*policies]
+        attachments = aws.iam.RolePolicyAttachmentsExclusive(
+            f"{identity.name}-managed-policy-attachments-exclusive",
+            role_name=role.name,
+            policy_arns=[identity.policy_arn("guard")],
+            opts=opts,
+        )
+        # An empty name set still enforces that no inline policy exists.
+        exclusive = aws.iam.RolePoliciesExclusive(
+            f"{identity.name}-inline-policies-exclusive",
+            role_name=role.name,
+            policy_names=list(inline),
+            opts=pulumi.ResourceOptions(
+                parent=self, provider=provider, protect=True, depends_on=policies
+            ),
+        )
+        self.grants[identity.purpose] += [attachments, exclusive]
+
     def __init__(self, *, provider: aws.Provider) -> None:
         target = _target(provider, "governance")
         # Verify before registering any role. The governor never owns or edits
@@ -90,6 +123,7 @@ class PocRuntimeRoles(pulumi.ComponentResource):
             pulumi.ResourceOptions(provider=provider, protect=True),
         )
         self.roles = {}
+        self.grants = {}
         for identity in runtime_identities():
             if identity.purpose == "publisher":
                 continue
@@ -99,8 +133,6 @@ class PocRuntimeRoles(pulumi.ComponentResource):
                 path="/",
                 assume_role_policy=_role_trust(identity.purpose),
                 permissions_boundary=identity.policy_arn("boundary"),
-                managed_policy_arns=[identity.policy_arn("guard")],
-                inline_policies=_inline_grants(identity.purpose),
                 max_session_duration=3600,
                 tags={
                     "OwnerProject": "governance",
@@ -112,5 +144,6 @@ class PocRuntimeRoles(pulumi.ComponentResource):
                     parent=self, provider=provider, protect=True
                 ),
             )
+            self._close_grants(identity, provider)
         self.role_arns = {purpose: role.arn for purpose, role in self.roles.items()}
         self.register_outputs({"roleArns": self.role_arns})

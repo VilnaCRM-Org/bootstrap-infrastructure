@@ -62,6 +62,9 @@ GUARDS = {
     "pulumi/seed/poc_pass_role.py": {"propose_pass_role"},
     "pulumi/seed/poc_publisher_stack_verification.py": {
         "verify_publisher_stack",
+        "verify_amended_publisher_stack",
+        "_verify",
+        "_amended_packet",
         "_verify_stack",
         "_verify_inventory",
         "_verify_policies",

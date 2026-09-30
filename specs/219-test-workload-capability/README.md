@@ -12,9 +12,10 @@ and [requirements traceability](requirements.md).
 
 - Bootstrap main incorporated: `570fc727014d78d3a3e7d67f923e37f8873f6707`.
 - The refresh preserves main's TEST seed enrollment and PROD catalog. At this
-  head `pulumi/infra/test-poc-identity.json` declares `"enabled": true`, so the
+  head `pulumi/infra/test-poc-identity.json` declares `"state": "enabled"` (the
+  tri-state lifecycle from #284, see `pulumi/infra/governance.py`), so the
   earlier "disabled prerequisite capability gate" wording is stale. This change
-  does not alter that flag; the value is a source declaration, not evidence of an
+  does not alter that state; the value is a source declaration, not evidence of an
   installed or exercised capability. It does not refresh native AWS observations
   or activate the runtime components.
 - Current service contract checked: PR #19 `ed290e48cc0df74f3201337bc68162e632d9725b`.
