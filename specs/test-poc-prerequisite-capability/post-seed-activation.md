@@ -1,11 +1,18 @@
-# TEST capability activation (PR #280)
+# TEST capability activation (this PR)
 
-PR #280 is the reviewed source change that activates the TEST PoC prerequisite
-capability after the independent seed amendment is installed. It is rebased on
-main after PR #275 and the TEST preview-trust cutover in PR #276. It is not live
-seed-installation evidence, and merging it deploys nothing. Merge it only inside
-the freeze window below, after every [merge precondition](#merge-preconditions-nfr8)
-is recorded.
+This activation PR (#284, superseding #280) is the reviewed source change that
+activates the TEST PoC prerequisite capability after the independent seed
+amendment is installed. It is rebased on main after PR #275 and the TEST
+preview-trust cutover in PR #276. It is not live seed-installation evidence, and
+merging it deploys none of this capability. (`pulumi-test-deploy.yml` still
+applies the base project on every push to main; that is unrelated to this
+capability.) Merge it only inside the freeze window below, after every
+[merge precondition](#merge-preconditions-nfr8) is recorded.
+
+**Ordering precondition.** PR #283 merges first, through its own gate. Only then
+is this PR retargeted or rebased onto the resulting main with fresh required
+checks on the new head, and only then may the freeze window open. Do not open the
+window while this PR is stacked on an unmerged base.
 The separate trust prerequisite is installed: PR #276 merged as
 `bea52521c70e9842a898b6294f8cdcb5765b8217` after protected TEST run
 [36450787780](https://github.com/VilnaCRM-Org/bootstrap-infrastructure/actions/runs/36450787780)
@@ -24,14 +31,14 @@ disabled PR #255 state.
 | FR5 | Enabled packaged identity; [scope and offline proof](#scope-and-offline-proof-fr5-fr6-fr7-nfr5) |
 | FR6 | Boundary, governor and attachment parity; [scope and offline proof](#scope-and-offline-proof-fr5-fr6-fr7-nfr5) |
 | FR7 | TEST pin `ff2eaf29…`; the amendment cannot be replayed |
-| NFR5 | TEST-only scope, PROD unchanged, no AWS mutation on merge |
+| NFR5 | TEST-only scope, PROD unchanged, merge deploys none of this capability |
 | NFR6 | [Rollback and fail-forward](#rollback-and-fail-forward-nfr6) |
 | NFR7 | [Freeze window and merge sequence](#freeze-window-and-merge-sequence-nfr7) |
 | NFR8 | [Merge preconditions](#merge-preconditions-nfr8) |
 
 ## Ordered activation (FR5-FR7, NFR7)
 
-1. Make PR #280 merge-ready before touching AWS: exact head reviewed by
+1. Make this PR merge-ready before touching AWS: exact head reviewed by
    CodeRabbit and `@Kravalg`, every required check green on that head, no
    unresolved threads, branch current with main. Its TEST catalog is exactly the
    amendment result `ff2eaf296e5bd6e6bf8b02c7cdc31a2cfbcaef53fdea6173c64f77a3095effe7`;
@@ -50,7 +57,9 @@ disabled PR #255 state.
    documents, attachments, boundaries, guards and restored permanent deny-update
    stack policy. Retain the change-set ID, source SHA and readback digests. A
    successful CloudFormation status alone does not satisfy this prerequisite.
-4. Record the [merge preconditions](#merge-preconditions-nfr8) on PR #280, merge
+4. Record the [merge preconditions](#merge-preconditions-nfr8) as a PR comment
+   (`governance-promotion.yml` re-runs on `edited`, so keep the evidence in a
+   comment rather than editing the PR body after approvals), merge
    it through normal branch protection and close the freeze window as described
    below.
 5. Install any required TEST governor identity policy update through the existing
@@ -84,7 +93,7 @@ together:
   until the seed is installed.
 - Install before merge: AWS holds the `ff2eaf29…` documents while main still
   pins `ef419680…`. Every operator TEST run fails closed at enrollment until
-  PR #280 merges.
+  this PR merges.
 
 `/pulumi prod plan` and `/pulumi prod up` run the TEST sequence first, so both
 failure modes also stop PROD promotions that include the operator stack. Keep the
@@ -98,8 +107,9 @@ gap short and explicit:
 3. Install the seed amendment (ordered step 3). If installation fails or leaves a
    partial result, follow [rollback and fail-forward](#rollback-and-fail-forward-nfr6)
    and do not merge.
-4. Record the merge preconditions, then merge PR #280 immediately with normal
-   branch protection.
+4. Record the merge preconditions, then merge this PR immediately with normal
+   branch protection. If the seed is installed but the merge is blocked, follow
+   [the seed-installed decision](#rollback-and-fail-forward-nfr6).
 5. Close the window only after the first post-merge operator TEST plan passes its
    enrollment checks against the installed seed.
 
@@ -109,14 +119,14 @@ leave the PR unmerged and follow the rollback decisions.
 
 ## Merge preconditions (NFR8)
 
-Record sanitized metadata only (IDs, SHAs, digests, run links) on PR #280 before
-merging. Do not record credentials, stack exports or CI configuration payloads.
+Record sanitized metadata only (IDs, SHAs, digests, run links) on this PR (as a
+comment, never an edit of the PR body) before merging. Do not record credentials, stack exports or CI configuration payloads.
 
 - [ ] CloudFormation change-set ID executed on the TEST seed stack in account
       `891377212104`, `eu-central-1`, with the complete paginated change set
       accepted by `validate_test_poc_change_set` as exactly four non-replacing
       `PolicyDocument` modifications.
-- [ ] Source SHA of the reviewed amendment packet and the exact PR #280 head SHA
+- [ ] Source SHA of the reviewed amendment packet and the exact head SHA of this PR
       being merged.
 - [ ] Canonical SHA-256 of the complete installed stack template, equal to the
       packet's proposed template and its protected S3 `TemplateURL` artifact.
@@ -133,11 +143,38 @@ merging. Do not record credentials, stack exports or CI configuration payloads.
 - [ ] Attachments, permissions boundaries and guards of every catalog principal
       read back unchanged apart from the four documents.
 - [ ] The permanent deny-update stack policy is restored; record its digest.
-- [ ] `verify_active_enrollment` on the PR #280 TEST registry passes for an
+- [ ] `verify_active_enrollment` on this PR's TEST registry passes for an
       independently authenticated, non-root, read-only observation of the
-      installed account. Record the registry SHA-256 and verified counts.
-- [ ] PR #280 exact head still has current approvals, green required checks and
+      installed account, run as the installer with the checked-out candidate
+      source (see [active verification command](#active-verification-command)).
+      Record the registry SHA-256 and verified counts.
+- [ ] This PR's exact head still has current approvals, green required checks and
       no unresolved threads.
+
+### Active verification command
+
+Operator workflow sessions (`GitHubOperator{Purpose}-test`) exist only on main
+and check main's registry pin, so they cannot verify this PR's candidate
+registry before merge. Use the installer-authenticated active mode instead. From
+a clean checkout of the exact PR head, with an already-issued nonroot installer
+session and no other credentials:
+
+```text
+python3 -I scripts/operator_seed_observation.py --active \
+  --environment test --account-id 891377212104 \
+  --seed-key-binding '<public DescribeKey binding JSON>' \
+  --installer-role-arn <reviewed installer role ARN> \
+  --aws-executable <absolute aws CLI path>
+```
+
+It authenticates the installer by STS identity and immutable RoleId, reads only
+STS/IAM/KMS metadata (never `GetSecretValue`), builds the registry and catalog
+from the checked-out source, and calls `verify_active_enrollment`. It prints
+only the registry SHA-256 and verified counts; expected output is 55 policies,
+24 principals and 3 active executors with `activation_authorized: false`. Wrong
+pins, extra attachments, missing guards and trust mismatches exit non-zero. The
+same command without `--active` remains the disabled-trust initial check and
+rejects active executor trust.
 
 ## Rollback and fail-forward (NFR6)
 
@@ -150,9 +187,24 @@ to match live state, publish synthetic success or bypass branch protection.
 **Seed installation fails or is partial (before merge).** Restore the permanent
 deny-update stack policy. Read back the stack status, template and four
 default-version documents. If they still equal the `ef419680…` baseline, main
-stays valid: leave PR #280 unmerged and close the freeze. Any mixed or
+stays valid: leave this PR unmerged and close the freeze. Any mixed or
 `UPDATE_ROLLBACK_FAILED` state keeps the freeze. Reconcile it through a
 separately reviewed change set and never replay the executed one.
+
+**Seed installed, merge blocked.** AWS holds the `ff2eaf29…` documents while
+main pins `ef419680…`, so operator TEST runs fail closed. The only exits are:
+fix forward and merge this PR, or author, review and merge a reversal generator
+and restore the `ef419680…` seed (see withdrawal below). The freeze stays open
+until one of them completes. Do not edit the catalog to match live state, and do
+not bypass branch protection.
+
+**Operator governor identity update fails (ordered step 5).** The seed and merged
+source stay. Record the run ID, failed stage, saved-plan manifest hash and
+sanitized diagnostics, and read back the governor identity policy. Do not apply
+directly or retry the failed saved plan. Repair the cause through a reviewed
+change, then run a fresh exact-head saved plan, inspect it and apply it through
+the same protected path. Step 6 must not start, and the freeze stays open, until
+the governor identity policy is read back as reviewed.
 
 **Governance TEST apply fails (ordered step 6).** Stop before PROD. Keep the seed
 and the merged source. Record the run ID, failed stage, saved-plan manifest hash
@@ -178,7 +230,7 @@ boundary-parity tests against the `ff2eaf29…` pin. Complete withdrawal therefo
 also reverses the seed catalog through a new CloudFormation change set under the
 deny-update policy, in this order:
 
-1. Withdraw the identity grant first, while the seed guard still admits the exact
+1. Delete through governance first, while the seed guard still admits the exact
    policy ARN. A reviewed PR sets `enabled: false` and updates the parity tests to
    the withdrawn-identity/installed-ceiling state. Apply it through the protected
    governance saved-plan path. The plan may only delete the `poc-prerequisites`
@@ -186,8 +238,16 @@ deny-update policy, in this order:
    runner lacks a required delete or detach action, stop for review and do not
    use break-glass implicitly. Read back the service apply role attachments
    (`pulumi-backend`, `secret-read-deny` and guards only) and the absence of the
-   policy.
-2. Reverse the seed. Source contains no reversal generator today:
+   policy before continuing.
+2. Only after that readback, narrow the operator-stack governor identity policy.
+   Its allowance for the exact policy ARN depends on the same flag
+   (`governance_automation.py`), and it must remain until the governance delete
+   has completed, because the governor needs it to perform that delete. Apply the
+   narrowing through the protected operator saved-plan path and read it back.
+3. Then reverse the seed. Doing it earlier can leave an orphaned attachment: the
+   seed guard would no longer admit an attachment that still exists
+   (`policy_registry.py` mutable-attachment check), failing every active
+   enrollment. Source contains no reversal generator today:
    `build_catalog()` binds only to the pre-install baseline. A reviewed change
    must first add a reversal packet bound to `ff2eaf29…` that produces the
    `ef419680…` documents, plus a change-set validator for exactly those four
@@ -196,10 +256,10 @@ deny-update policy, in this order:
    permanent deny-update policy and read back the four documents against the
    `ef419680…` catalog. Then merge the reviewed source that restores the
    `ef419680…` pin and removes the TEST attachment allowlist entry.
-3. Health checks: the post-merge operator TEST plan passes its enrollment checks,
+4. Health checks: the post-merge operator TEST plan passes its enrollment checks,
    governance TEST drift is clean, and the service apply role still carries
    `Issue215CutoverSessions`.
-4. Evidence: both PR SHAs, governance run IDs, change-set ID, template digest,
+5. Evidence: both PR SHAs, governance run IDs, change-set ID, template digest,
    four document hashes, stack-policy digest, enrollment result and sanitized
    readbacks.
 

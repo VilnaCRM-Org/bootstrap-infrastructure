@@ -323,3 +323,128 @@ def test_script_entrypoint_fails_safely_without_arguments(monkeypatch, capsys):
         runpy.run_path(observation.__file__, run_name="__main__")
     assert result.value.code == 1
     assert capsys.readouterr().err == "Initial seed enrollment observation failed.\n"
+
+
+def activate(monkeypatch, reader):
+    """Serve exact active executor trust instead of the disabled initial trust."""
+    monkeypatch.setattr(
+        reader,
+        "role_metadata",
+        lambda principal: Reader.role_metadata(reader, principal),
+    )
+
+
+@pytest.fixture
+def active(native, monkeypatch):
+    """Model installed and activated executor trust behind the same transport."""
+    reader = native[1]
+    activate(monkeypatch, reader)
+    return native
+
+
+@pytest.mark.parametrize("native", ["test", "prod"], indirect=True)
+def test_active_mode_verifies_active_trust_with_installer_credentials_only(
+    native, monkeypatch
+):
+    expected, reader, _, _, calls = native
+    activate(monkeypatch, reader)
+    verified = observation.observe_active_enrollment(
+        expected.environment,
+        account_id=expected.account_id,
+        seed_key=expected.seed_key,
+        installer_role_arn=native[2]["Role"]["Arn"],
+        aws_executable=native[3],
+    )
+    assert verified == registry.ActiveEnrollmentVerification(expected.sha256, 55, 24, 3)
+    assert verified.activation_authorized is False
+    assert calls[0] == ("sts", "get_caller_identity", {})
+    assert not any("secret" in operation for _, operation, _ in calls)
+    assert all(service in {"sts", "iam", "kms"} for service, _, _ in calls)
+
+
+def test_active_mode_rejects_disabled_trust_and_initial_mode_rejects_active(
+    native, monkeypatch
+):
+    with pytest.raises(ValueError, match="Active executor trust changed"):
+        observation.observe_active_enrollment(
+            native[0].environment,
+            account_id=native[0].account_id,
+            seed_key=native[0].seed_key,
+            installer_role_arn=native[2]["Role"]["Arn"],
+            aws_executable=native[3],
+        )
+    reader = native[1]
+    activate(monkeypatch, reader)
+    with pytest.raises(ValueError, match="trust is not disabled"):
+        invoke(native)
+
+
+def invoke_active(native, **overrides):
+    """Call the active entry point with the same explicit public inputs."""
+    expected, _, installer, executable, _ = native
+    arguments = {
+        "account_id": expected.account_id,
+        "seed_key": expected.seed_key,
+        "installer_role_arn": installer["Role"]["Arn"],
+        "aws_executable": executable,
+    }
+    arguments.update(overrides)
+    return observation.observe_active_enrollment(expected.environment, **arguments)
+
+
+MESSAGES = {
+    "extra_attachment": "attachment set changed",
+    "missing_guard": "Required active guard missing",
+    "trust": "Active executor trust changed",
+    "pin": "key",
+}
+
+
+@pytest.mark.parametrize("kind", sorted(MESSAGES))
+def test_active_mode_rejects_changed_iam_or_wrong_registry_pin(active, kind):
+    expected, reader, _, _, _ = active
+    executor = next(p for p in expected.principals if not p.existing)
+    if kind == "extra_attachment":
+        reader.roles[executor.arn.rsplit("/", 1)[-1]] = type(executor)(
+            **{
+                **executor.__dict__,
+                "attachment_arns": executor.attachment_arns
+                + ("arn:aws:iam::aws:policy/AdministratorAccess",),
+            }
+        )
+    elif kind == "missing_guard":
+        existing = next(p for p in expected.principals if p.existing and p.guard_arns)
+        reader.roles[existing.arn.rsplit("/", 1)[-1]] = type(existing)(
+            **{**existing.__dict__, "attachment_arns": ()}
+        )
+    elif kind == "trust":
+        original = reader.role_metadata
+
+        def changed(principal):
+            """Return trust that differs from the candidate source's exact policy."""
+            value = original(principal)
+            if not principal.existing:
+                value["AssumeRolePolicyDocument"]["Statement"][0]["Effect"] = "Deny"
+            return value
+
+        reader.role_metadata = changed
+    else:
+        reader.key["KeyState"] = "Disabled"
+    with pytest.raises(ValueError, match=MESSAGES[kind]):
+        invoke_active(active)
+
+
+def test_active_mode_rejects_wrong_account_pin_without_reading_aws(native):
+    with pytest.raises(ValueError):
+        invoke_active(native, account_id="933245420672")
+    assert native[-1] == []
+
+
+def test_cli_active_flag_prints_active_digest_counts_only(active, capsys):
+    assert observation.main(cli_arguments(active) + ["--active"]) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert json.loads(output.out) == asdict(
+        registry.ActiveEnrollmentVerification(active[0].sha256, 55, 24, 3)
+    )
+    assert "arn:" not in output.out
