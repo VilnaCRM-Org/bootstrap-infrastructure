@@ -67,12 +67,17 @@ That command enforces 100% line coverage for the Python policy-pack code.
 under the same 100% line-coverage contract, so both runtime guardrails and
 policy guardrails fail fast when tests drift.
 
-On pull requests `make test-preview` never runs, and the `Policy` check runs only
-the policy pack's unit tests (`make test-policy`). For pull requests the pack
+`Pulumi PR Guardrails` never runs `make test-preview` on pull requests, and the
+`Policy` check runs only the policy pack's unit tests (`make test-policy`). For pull requests the pack
 evaluates real changes only at saved-plan time (`make pulumi-plan` and
 `make pulumi-up-plan` in the `/pulumi <env> plan` and apply paths). On push to
 `main`, the credentialed `Preview` job's `make test-preview` also passes
 `--policy-pack` (`scripts/run_pulumi_preview.py`).
+If the `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` repository variable is `true`,
+`Local Battery` runs `make ci-pr`, and so `make test-preview`, on pull requests
+without requesting AWS credentials; the committed `test` and `prod` stacks call
+`aws.get_caller_identity()` and use an AWS KMS secrets provider, so leave that
+variable unset for pull-request CI.
 
 `make pulumi-preview`, `make pulumi-plan`, and `make pulumi-up-plan` also
 enable the policy pack by default. Before Pulumi starts, the repository checks

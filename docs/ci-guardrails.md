@@ -66,7 +66,11 @@ workflow claim for this repository, and the TEST preview role omits the generic
 user-service preview role). Once that rendered trust is installed (see the
 installation steps in [reviewed-source-admission.md](reviewed-source-admission.md)),
 a `pull_request` run could not obtain TEST credentials even if it reached that
-branch. For pull requests:
+branch. The TEST preview role also trusts `environment:test` and
+`environment:test-preview` without a workflow or ref condition, so a
+pull-request-edited workflow is kept from it only by those environments'
+main-only deployment-branch policies, which live in GitHub rather than source.
+For pull requests:
 
 - `Pulumi PR Guardrails / Preview` and `Pulumi PR Guardrails / IAM Validation`
   skip. GitHub reports a skipped job as passing its required context.
@@ -77,9 +81,11 @@ branch. For pull requests:
   placeholder. They pass and emit the notice
   `unprivileged placeholder - not preview evidence`.
 
-Until the reviewed-source admission cutover is enrolled, meaning the three
-`Reviewed*` contexts below are required with the dedicated App's
-`integration_id` and `REVIEWED_SOURCE_PREVIEW_ACTIVE=true`, no pull-request check
+Until the reviewed-source admission cutover is enrolled (the Stage 2 dedicated
+role and `test-pr` reader trust for `environment:reviewed-pr-preview` installed,
+the three `Reviewed*` contexts below required with the dedicated App's
+`integration_id`, and `REVIEWED_SOURCE_PREVIEW_ACTIVE=true`), no pull-request
+check
 is preview, destructive-diff or IAM Access Analyzer evidence. Real saved-plan
 evidence comes from the protected `/pulumi <env> plan` comment path. It checks
 out the exact PR head, saves a plan and runs the destructive-diff and IAM
@@ -105,7 +111,8 @@ required and passing. Until then, reviewers need the exact-head
 substitution.
 The branch-protection owner adds all three reviewed-source contexts with their
 `integration_id` pinned to the new dedicated reviewed-source App, without removing
-any existing required context or issuer, before enabling
+any existing required context or issuer, and the Stage 2 dedicated role and
+`test-pr` reader trust must be installed, before enabling
 `REVIEWED_SOURCE_PREVIEW_ACTIVE=true`. Bare names or the shared GitHub Actions
 issuer cannot establish trusted publication. The destructive-diff gate rejects critical
 destructive changes on the PoC route; a pull-request label cannot authorize an override.
@@ -294,8 +301,9 @@ Fork pull requests always run the unprivileged artifact path and the
 destructive diff gate, and so do same-repository pull requests: every
 `pull_request` run is unprivileged. The AWS-backed preview and Access Analyzer
 validation paths run today only on push to `main` (the credentialed `Preview`
-and `IAM Validation` jobs and Test Deploy) and in the exact-head
-`/pulumi <env> plan` ChatOps saved-plan path. Reviewed PR Preview joins them only
+and `IAM Validation` jobs and Test Deploy), in the `main`-dispatched
+`Pulumi Production` preview and in the exact-head `/pulumi <env> plan` ChatOps
+saved-plan path. Reviewed PR Preview joins them only
 once its Stage 2 cutover is enrolled; until then its OIDC subject matches no
 source-rendered trust and the workflow stays gated off.
 

@@ -11,7 +11,8 @@ alongside the existing exact repository, audience, subject and identity claims.
 The workflow claim contains a name, not a repository file path. The separate
 repository claim pins the path. `test-pr` has no main-branch ref condition. For
 `VilnaCRM-Org/bootstrap-infrastructure` its only subject is
-`repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main` with the
+`repo:VilnaCRM-Org/bootstrap-infrastructure:ref:refs/heads/main` (plus its
+immutable-ID form when repository and owner IDs are configured) with the
 `Reviewed PR Preview` workflow claim, so no pull-request subject is trusted;
 other repositories' `test-pr` readers still accept their `pull_request` subject
 with the `Pulumi PR Guardrails` or `Well-Architected Evidence` workflow claim.

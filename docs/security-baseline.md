@@ -46,7 +46,12 @@ the safe path the easy path for normal day-to-day infrastructure work.
 - Pull requests receive no AWS credentials and produce only the unprivileged
   placeholder preview artifact, which is not preview evidence. Real preview
   artifacts come from push-to-`main` runs (`Pulumi PR Guardrails` and
-  `Pulumi Test Deploy`) and from exact-head `/pulumi <env> plan` saved-plan runs.
+  `Pulumi Test Deploy`), the `main`-dispatched `Pulumi Production` preview and
+  exact-head `/pulumi <env> plan` saved-plan runs. The TEST preview role trusts
+  the `main` ref, `environment:test` and `environment:test-preview` subjects
+  without a workflow or ref condition, so keeping pull-request-authored
+  workflows away from it also depends on those environments' main-only
+  deployment-branch policies in GitHub, which source cannot prove.
 - Critical deletes and replacements are blocked even when the pull request
   carries the legacy destructive-change label.
 - Gitleaks, `pip-audit`, `actionlint`, and CodeQL are part of the review gate.
@@ -70,7 +75,8 @@ the safe path the easy path for normal day-to-day infrastructure work.
 - On push to `main` and in saved-plan runs, the same real preview artifact is
   reused for destructive-change gating and AWS IAM Access Analyzer validation;
   pull requests feed those gates only the placeholder.
-- The push-to-`main` preview artifact also feeds a static cost and quota proxy
+- The `Pulumi PR Guardrails` push-to-`main` preview artifact also feeds a
+  static cost and quota proxy
   that highlights durable resource fanout; pull requests run the proxy only on
   the placeholder, and apply workflows do not run it.
 - Policy validation has a dedicated CI workflow and a focused local command:

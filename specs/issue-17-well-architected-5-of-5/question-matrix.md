@@ -2,10 +2,14 @@
 
 > Historical record: pull-request credential, preview and `test-pr` statements
 > below predate the unprivileged pull-request model and are not the current
-> contract. Today pull requests receive no AWS credentials; real preview and
-> IAM Access Analyzer validation run on push to `main` and in exact-head
-> `/pulumi <env> plan` saved-plan runs. See [CI guardrails](../../docs/ci-guardrails.md)
-> and [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
+> contract. Today `bootstrap-infrastructure` pull requests receive no AWS
+> credentials; its real preview and IAM Access Analyzer validation run on push
+> to `main`, in the `main`-dispatched `Pulumi Production` preview and in
+> exact-head `/pulumi <env> plan` saved-plan runs. Governed repositories'
+> `test-pr` config readers still accept their `pull_request` subject (see
+> [CI config trust contract](../../docs/ci-config-trust-contract.md)). See
+> [CI guardrails](../../docs/ci-guardrails.md) and
+> [GitHub CI bootstrap stack](../../docs/github-ci-bootstrap-stack.md).
 
 The planning rows and historical May claims below are retained. The [current technical review](../../docs/well-architected-current-review-2026-09-06.md) and `question-matrix-evidence-2026-09-06.json` supersede historical all-5 scores for current enforcement, with 47 passed / 10 unresolved and actual reviewer attribution.
 

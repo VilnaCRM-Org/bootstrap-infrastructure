@@ -94,8 +94,9 @@ make test-security
 make test-guardrails-unprivileged
 ```
 
-`make test-guardrails` runs the same sequence on a real preview and therefore
-needs AWS credentials.
+`make test-guardrails` runs a real `make test-preview`, then the
+destructive-diff and cost-proxy gates (no IAM step), and therefore needs AWS
+credentials.
 
 Coverage:
 
@@ -103,7 +104,7 @@ Coverage:
 - `make test-deps-security` runs `pip-audit --strict`
 - `make test-bandit` runs Bandit against repository Python code
 - `make test-preview` generates the Pulumi preview artifact consumed by later checks
-- `make test-preview-unprivileged` generates the placeholder artifact that every pull request uses (pull requests never run `make test-preview`)
+- `make test-preview-unprivileged` generates the placeholder artifact that every pull request uses (`Pulumi PR Guardrails` never runs `make test-preview` on pull requests; `Local Battery` reaches it through `make ci-pr` only when `PULUMI_ENABLE_AUTOMATION_STACK_TESTS` is `true`, and then needs AWS credentials that job does not request, so leave that variable unset for pull-request CI)
 - `make test-destructive-diff` blocks deletes and replacements of critical infrastructure regardless of PR labels
 - `make test-cost-proxy` flags unusual durable-resource fanout from preview JSON
 - `make test-guardrails` keeps the real preview, destructive-diff, and cost-proxy flow reproducible locally

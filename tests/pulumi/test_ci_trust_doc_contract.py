@@ -12,7 +12,9 @@ import inspect
 import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 import yaml
 from infra import ci_bootstrap, ci_config
 from infra.bootstrap_settings import BootstrapSettings
@@ -79,17 +81,50 @@ def _reader_condition(suffix: str) -> dict:
     return json.loads(document)["Statement"][0]["Condition"]["StringEquals"]
 
 
-def _preview_role_condition() -> dict:
-    settings = _settings()
-    document = ci_bootstrap._deployment_assume_role_policy(
-        PROVIDER,
-        REPO,
-        ci_bootstrap._deployment_role_subjects(settings, "preview"),
-        repository_id=settings.github_repository_id,
-        owner_id=settings.github_repository_owner_id,
-        branch_ref=None,
+class _RoleCaptured(Exception):
+    """Stop `_create_role` once the real trust policy has been rendered."""
+
+
+def _created_preview_role_condition(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Render the TEST preview role trust exactly as `_create_role` builds it."""
+    captured: dict = {}
+
+    def fake_role(_name: str, **kwargs: object) -> None:
+        captured.update(kwargs)
+        raise _RoleCaptured
+
+    monkeypatch.setattr(
+        ci_bootstrap.pulumi.Output, "from_input", staticmethod(lambda value: value)
     )
-    return json.loads(document)["Statement"][0]["Condition"]["StringEquals"]
+    monkeypatch.setattr(ci_bootstrap, "apply_output", lambda arn, fn: fn(arn))
+    monkeypatch.setattr(
+        ci_bootstrap, "_role_permissions_boundary", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(ci_bootstrap, "_iam_role_exists", lambda _name: False)
+    monkeypatch.setattr(ci_bootstrap.aws.iam, "Role", fake_role)
+    settings = _settings()
+    context = SimpleNamespace(
+        settings=settings,
+        repo=settings.repo,
+        project=None,
+        name="ci",
+        account_id="123456789012",
+        partition="aws",
+        external_role_boundaries=None,
+        provider_arn=PROVIDER,
+        parent=None,
+        protect_resources=False,
+    )
+    spec = ci_bootstrap._CiRoleSpec(
+        "preview",
+        "GitHubCiPreview-bootstrap-test",
+        ci_bootstrap._deployment_role_subjects(settings, "preview"),
+        [],
+    )
+    with pytest.raises(_RoleCaptured):
+        ci_bootstrap._create_role(context, spec)
+    document = json.loads(captured["assume_role_policy"])
+    return document["Statement"][0]["Condition"]["StringEquals"]
 
 
 def _make_recipe(target: str) -> list[str]:
@@ -103,15 +138,34 @@ def _make_recipe(target: str) -> list[str]:
     return recipe
 
 
+def _gated_targets(workflow_name: str) -> tuple[str, str]:
+    """Return (variable true, otherwise) make targets from the gated run block."""
+    gated = [
+        step["run"]
+        for job in _workflow(workflow_name)["jobs"].values()
+        for step in job["steps"]
+        if "PULUMI_ENABLE_AUTOMATION_STACK_TESTS" in step.get("run", "")
+    ]
+    assert len(gated) == 1, workflow_name  # nosec B101
+    lines = [line.strip() for line in gated[0].strip().splitlines()]
+    assert lines[0] == (  # nosec B101
+        'if [[ "${PULUMI_ENABLE_AUTOMATION_STACK_TESTS}" == "true" ]]; then'
+    )
+    assert lines[2] == "else" and lines[4] == "fi" and len(lines) == 5  # nosec B101
+    return lines[1], lines[3]
+
+
 def _all_docs() -> dict[str, str]:
-    paths = sorted(DOCS.glob("*.md")) + [ROOT / "README.md", ROOT / "AGENTS.md"]
+    paths = sorted(DOCS.rglob("*.md")) + [ROOT / "README.md", ROOT / "AGENTS.md"]
     return {path.name: " ".join(_raw(path).split()) for path in paths}
 
 
 # --- R3-1: Reviewed PR Preview row is tied to the rendered trust -------------
 
 
-def test_rendered_trust_rejects_reviewed_pr_preview_subject_today() -> None:
+def test_rendered_trust_rejects_reviewed_pr_preview_subject_today(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Stage 1: neither the test-pr reader nor the preview role accepts it."""
     settings = _settings()
     reader_subjects = ci_config._github_actions_subjects(settings, "test-pr")
@@ -122,11 +176,29 @@ def test_rendered_trust_rejects_reviewed_pr_preview_subject_today() -> None:
     assert not any(s.endswith(":pull_request") for s in reader_subjects + role_subjects)  # nosec B101
     reader = _reader_condition("test-pr")
     assert reader[PREFIX + "workflow"] == ["Reviewed PR Preview"]  # nosec B101
-    preview = _preview_role_condition()
+    preview = _created_preview_role_condition(monkeypatch)
     assert PREFIX + "workflow" not in preview  # nosec B101
     assert PREFIX + "ref" not in preview  # nosec B101
-    create_role = inspect.getsource(ci_bootstrap._create_role)
-    assert "workflow_name" not in create_role  # nosec B101
+    immutable = (
+        "repo:VilnaCRM-Org@114362548/bootstrap-infrastructure@1098568429:"
+        "environment:reviewed-pr-preview"
+    )
+    for subject in (REVIEWED_SUBJECT, immutable):
+        assert subject not in preview[PREFIX + "sub"]  # nosec B101
+        assert subject not in reader[PREFIX + "sub"]  # nosec B101
+    assert any("@1098568429:" in sub for sub in preview[PREFIX + "sub"])  # nosec B101
+    assert any("@1098568429:" in sub for sub in reader[PREFIX + "sub"])  # nosec B101
+
+
+def test_test_pr_payload_preview_role_is_the_shared_preview_role() -> None:
+    """The reviewed route would assume the shared role until Stage 2."""
+    source = inspect.getsource(ci_bootstrap)
+    assert '"AWS_PREVIEW_ROLE_ARN": overrides.role_arns["preview"],' in source  # nosec B101
+    assert re.search(r'"test-pr": \{\s*\*\*preview_common,', source)  # nosec B101
+    workflow = _raw(WORKFLOWS / "reviewed-pr-preview.yml")
+    assert "role-to-assume: ${{ steps.ci_config.outputs.aws-preview-role-arn }}" in (  # nosec B101
+        workflow
+    )
 
 
 def test_reviewed_workflow_presents_only_the_reviewed_environment_subject() -> None:
@@ -152,9 +224,12 @@ def test_bootstrap_reviewed_row_lists_exactly_the_rendered_subjects() -> None:
         "| Reviewed PR Preview (`reviewed-pr-preview` environment) | `test-pr` |",
     )
     cells = [cell.strip() for cell in row.strip("|").split("|")]
-    assert "AWS_PREVIEW_ROLE_ARN" not in cells[2]  # nosec B101
-    assert "none today" in cells[2]  # nosec B101
-    assert "dedicated" in cells[2]  # nosec B101
+    assert cells[2].startswith(  # nosec B101
+        "`AWS_PREVIEW_ROLE_ARN` from the `test-pr` payload"
+    )
+    assert "unreachable in Stage 1" in cells[2]  # nosec B101
+    assert "Stage 2: dedicated TEST reviewed-preview role" in cells[2]  # nosec B101
+    assert "immutable-ID form" in row  # nosec B101
     expected = {
         *ci_config._github_actions_subjects(settings, "test-pr"),
         *ci_bootstrap._deployment_role_subjects(settings, "preview"),
@@ -219,7 +294,10 @@ def test_ci_architecture_row_scopes_real_preview_to_main_and_saved_plans() -> No
     commands = row.split("|")[2]
     workflow_text = _raw(WORKFLOWS / "pulumi-pr-guardrails.yml")
     for command in re.findall(r"`(make [a-z-]+)`", commands):
-        assert command in workflow_text  # nosec B101
+        if command == "make test-preview":
+            continue  # reached through publish-pulumi-preview-summary below
+        exact = rf"(?<![-\w]){re.escape(command)}(?![-\w])"
+        assert re.search(exact, workflow_text), command  # nosec B101
     assert "Push to `main`:" in commands and "Pull requests:" in commands  # nosec B101
     summary = _raw(ROOT / "scripts" / "publish_pulumi_preview_summary.py")
     assert '["make", "test-preview"]' in summary  # nosec B101
@@ -297,8 +375,10 @@ def test_make_ci_pr_is_documented_as_credentialed_superset() -> None:
     assert "$(MAKE) test-guardrails" not in unprivileged  # nosec B101
     assert "$(MAKE) test-guardrails-unprivileged" in unprivileged  # nosec B101
     assert _make_recipe("test-guardrails")[0] == "$(MAKE) test-preview"  # nosec B101
-    local = _raw(WORKFLOWS / "pulumi-local.yml")
-    assert 'if [[ "${PULUMI_ENABLE_AUTOMATION_STACK_TESTS}" == "true" ]]; then' in local  # nosec B101
+    assert _gated_targets("pulumi-local.yml") == (  # nosec B101
+        "make ci-pr",
+        "make ci-pr-unprivileged",
+    )
     makefile = _raw(ROOT / "Makefile")
     assert "ci-pr: ## Run the credentialed local superset" in makefile  # nosec B101
     assert "Run the GitHub PR battery except" not in makefile  # nosec B101
@@ -323,8 +403,10 @@ def test_make_ci_pr_is_documented_as_credentialed_superset() -> None:
 def test_policy_pack_scope_matches_preview_and_integration_sources() -> None:
     preview_script = _raw(ROOT / "scripts" / "run_pulumi_preview.py")
     assert '"--policy-pack",' in preview_script  # nosec B101
-    integration = _raw(WORKFLOWS / "pulumi-integration.yml")
-    assert "make test-integration-unprivileged" in integration  # nosec B101
+    assert _gated_targets("pulumi-integration.yml") == (  # nosec B101
+        "make test-integration",
+        "make test-integration-unprivileged",
+    )
     unprivileged = " ".join(_make_recipe("test-integration-unprivileged"))
     assert "test_policy_pack_enforcement.py" not in unprivileged  # nosec B101
     doc = _doc("pulumi-guardrails.md")
@@ -393,7 +475,7 @@ def test_no_doc_maps_reviewed_preview_to_test_preview_or_a_pr_role() -> None:
         r"(?i)bounded PR role",
         r"(?i)\bPR (preview |config[a-z-]* )?role\b",
         r"(?i)\btrusted PRs\b",
-        r"Reviewed PR Preview[^|]{0,120}\| `test-pr` \| `AWS_PREVIEW_ROLE_ARN`",
+        r"Reviewed PR Preview[^|]{0,120}\| `test-pr` \| `AWS_PREVIEW_ROLE_ARN` \|",
     ]
     for name, text in _all_docs().items():
         for pattern in patterns:
@@ -409,3 +491,90 @@ def test_no_doc_maps_reviewed_preview_to_test_preview_or_a_pr_role() -> None:
     assert len(test_preview) == 1 and "Reviewed" not in test_preview[0]  # nosec B101
     assert len(reviewed) == 1 and "fail closed" in reviewed[0]  # nosec B101
     assert "assumes the `test-pr` CI configuration" not in reviewed[0]  # nosec B101
+
+
+# --- audit follow-ups: boundaries, "never runs" claims, specs banners ---------
+
+
+def test_preview_role_boundary_row_lists_every_rendered_test_subject() -> None:
+    row = _table_row(_raw(DOCS / "security-operating-evidence.md"), "| Preview role |")
+    for subject in ci_bootstrap._deployment_role_subjects(_settings(), "preview"):
+        suffix = subject.split(f"repo:{REPO}:", 1)[1]
+        label = "`main` ref" if suffix == "ref:refs/heads/main" else f"`{suffix}`"
+        assert label in row, suffix  # nosec B101
+    assert "no workflow or ref claim condition" in row  # nosec B101
+    assert "deployment-branch policies" in row  # nosec B101
+
+
+def test_test_preview_claims_name_the_workflow_and_local_battery_gate() -> None:
+    guardrails = _raw(WORKFLOWS / "pulumi-pr-guardrails.yml")
+    assert "make test-preview-unprivileged" in guardrails  # nosec B101
+    assert "make publish-pulumi-preview-summary" in guardrails  # nosec B101
+    for name, text in _all_docs().items():
+        assert "On pull requests `make test-preview` never runs" not in text, name  # nosec B101
+        assert "pull requests never run `make test-preview`" not in text, name  # nosec B101
+    for doc in ("pulumi-guardrails.md", "testing.md"):
+        text = _doc(doc)
+        assert "`Pulumi PR Guardrails` never runs `make test-preview`" in text  # nosec B101
+        assert "leave that variable unset for pull-request CI" in text  # nosec B101
+    main = _raw(ROOT / "pulumi" / "__main__.py")
+    assert "aws.get_caller_identity()" in main  # nosec B101
+    assert "awskms://" in _raw(ROOT / "pulumi" / "Pulumi.test.yaml")  # nosec B101
+
+
+def test_real_preview_lists_include_main_dispatched_production() -> None:
+    prod = _workflow("pulumi-prod.yml")
+    assert set(_triggers(prod)) == {"workflow_dispatch"}  # nosec B101
+    assert "make test-iam-validation" in _raw(WORKFLOWS / "pulumi-prod.yml")  # nosec B101
+    checks = {
+        "ci-guardrails.md": "`main`-dispatched `Pulumi Production` preview",
+        "ci-architecture.md": "`main`-dispatched `Pulumi Production` preview",
+        "security-baseline.md": "`main`-dispatched `Pulumi Production` preview",
+    }
+    for doc, phrase in checks.items():
+        assert phrase in _doc(doc), doc  # nosec B101
+    cost_proxy_users = [
+        path.name
+        for path in WORKFLOWS.glob("*.yml")
+        if "make test-cost-proxy" in _raw(path)
+    ]
+    assert "pulumi-test-deploy.yml" not in cost_proxy_users  # nosec B101
+    assert "`Pulumi PR Guardrails` push-to-`main` preview artifact also feeds" in (  # nosec B101
+        _doc("security-baseline.md")
+    )
+
+
+def test_test_guardrails_description_matches_recipe() -> None:
+    recipe = _make_recipe("test-guardrails")
+    assert not any("iam" in step for step in recipe)  # nosec B101
+    assert any("iam" in step for step in _make_recipe("test-guardrails-unprivileged"))  # nosec B101
+    assert "then the destructive-diff and cost-proxy gates (no IAM step)" in _doc(  # nosec B101
+        "testing.md"
+    )
+
+
+def test_activation_text_requires_stage_two_trust() -> None:
+    doc = _doc("ci-guardrails.md")
+    assert "meaning the three `Reviewed*` contexts below are required" not in doc  # nosec B101
+    assert doc.count("Stage 2 dedicated role and `test-pr` reader trust") >= 2  # nosec B101
+
+
+def test_specs_historical_banners_are_scoped_and_link_to_live_docs() -> None:
+    banner = "> Historical record: pull-request credential, preview and `test-pr`"
+    specs = [
+        path for path in sorted((ROOT / "specs").rglob("*.md")) if banner in _raw(path)
+    ]
+    assert len(specs) >= 14  # nosec B101
+    for path in specs:
+        text = " ".join(_raw(path).split())
+        assert "Today `bootstrap-infrastructure` pull requests receive no AWS" in text  # nosec B101
+        assert "Governed repositories' > `test-pr` config readers" in text  # nosec B101
+        assert "Today pull requests receive no AWS credentials" not in text  # nosec B101
+        for link in re.findall(r"\]\(([^)]+\.md)\)", text.split(banner, 1)[1][:900]):
+            assert (path.parent / link).resolve().is_file(), (path, link)  # nosec B101
+    governed = ci_config._github_actions_subjects(
+        _settings(), "test-pr", "user-service-infrastructure"
+    )
+    assert governed == [  # nosec B101
+        "repo:VilnaCRM-Org/user-service-infrastructure:pull_request"
+    ]
