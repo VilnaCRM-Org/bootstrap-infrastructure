@@ -84,8 +84,9 @@ After the Stage 2 owner audit, set `REVIEWED_SOURCE_RULESET_ID` to the separate,
 active, no-bypass default-branch ruleset for the three reviewed-source contexts,
 and `REVIEWED_SOURCE_RULESET_UPDATED_AT` to that exact audited ruleset revision.
 The current general `main` ruleset has an administrator bypass and cannot serve
-as the reviewed-source ruleset. Keep `REVIEWED_SOURCE_PREVIEW_ACTIVE` a repository
-variable shared by the ordinary workflow and clean publisher jobs.
+as the reviewed-source ruleset. `REVIEWED_SOURCE_PREVIEW_ACTIVE` is a repository variable
+read only by the trusted Reviewed PR Preview jobs; the ordinary workflow selects
+its mode from the event type and ignores it.
 
 Both clean jobs read back the main-only key boundary before minting an App token.
 Publication resolves the App's public numeric identity and organization owner,

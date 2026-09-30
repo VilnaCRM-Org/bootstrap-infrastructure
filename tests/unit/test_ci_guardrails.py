@@ -854,6 +854,41 @@ def test_unprivileged_placeholder_gates_pass_with_non_evidence_notice(
     assert json.loads(output_path.read_text(encoding="utf-8")) == []
 
 
+def test_placeholder_cost_proxy_and_summary_are_labelled_non_evidence(
+    guardrails_module, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Cost-proxy and summary output must not read as computed evidence."""
+    placeholder = _write_unprivileged_placeholder(tmp_path / "unprivileged.json")
+    output_md = tmp_path / "cost-proxy.md"
+
+    assert (
+        guardrails_module.cli(
+            ["cost-proxy", str(placeholder), "--output-md", str(output_md)]
+        )
+        == 0
+    )
+    out = capsys.readouterr().out
+    assert out.splitlines()[0] == PLACEHOLDER_NOTICE
+    assert guardrails_module.PLACEHOLDER_BANNER in out
+    assert guardrails_module.PLACEHOLDER_BANNER in output_md.read_text(encoding="utf-8")
+
+    assert guardrails_module.cli(["summarize", str(placeholder)]) == 0
+    assert guardrails_module.PLACEHOLDER_BANNER in capsys.readouterr().out
+
+
+def test_real_preview_cost_proxy_and_summary_have_no_placeholder_banner(
+    guardrails_module, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Real previews keep unlabelled cost-proxy and summary output."""
+    unchanged = _write_preview(tmp_path / "test.json", steps=[], summary={"same": 3})
+
+    assert guardrails_module.cli(["cost-proxy", str(unchanged)]) == 0
+    assert guardrails_module.cli(["summarize", str(unchanged)]) == 0
+    out = capsys.readouterr().out
+    assert "::notice::" not in out
+    assert guardrails_module.PLACEHOLDER_BANNER not in out
+
+
 def test_real_previews_do_not_receive_placeholder_notice(
     guardrails_module, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -63,6 +63,10 @@ COUNT_TABLE_SEPARATOR = "| --- | ---: |"
 # Exact object written by `make test-preview-unprivileged`; it carries no evidence.
 UNPRIVILEGED_PLACEHOLDER_PREVIEW: dict[str, Any] = {"changeSummary": {}, "steps": []}
 UNPRIVILEGED_PLACEHOLDER_NOTICE = "unprivileged placeholder - not preview evidence"
+PLACEHOLDER_BANNER = (
+    "**Not preview evidence:** this is the unprivileged placeholder; no Pulumi "
+    "preview, destructive-diff or cost result was computed."
+)
 
 
 def load_preview(path: Path) -> dict[str, Any]:
@@ -78,12 +82,17 @@ def preview_input_files(paths: Sequence[Path]) -> list[Path]:
     return [path for path in paths if path.name not in GENERATED_PREVIEW_ARTIFACT_NAMES]
 
 
+def is_placeholder_preview(preview: Mapping[str, Any]) -> bool:
+    """Return whether a loaded preview is the credential-free placeholder."""
+    return dict(preview) == UNPRIVILEGED_PLACEHOLDER_PREVIEW
+
+
 def placeholder_preview_files(paths: Sequence[Path]) -> list[Path]:
     """Return credential-free placeholder inputs that contain no Pulumi preview."""
     return [
         path
         for path in preview_input_files(paths)
-        if load_preview(path) == UNPRIVILEGED_PLACEHOLDER_PREVIEW
+        if is_placeholder_preview(load_preview(path))
     ]
 
 
@@ -117,6 +126,8 @@ def summarize_preview(path: Path, *, stack: str | None = None) -> str:
             lines.append(f"| {operation} | {summary[operation]} |")
     else:
         lines.append("| none | 0 |")
+    if is_placeholder_preview(preview):
+        lines.extend(["", f"> {PLACEHOLDER_BANNER}"])
 
     destructive = find_destructive_steps(preview_steps(preview))
     lines.extend(["", f"Destructive-step count: `{len(destructive)}`"])
@@ -179,13 +190,18 @@ def cost_proxy_report(preview: dict[str, Any]) -> dict[str, object]:
 
 
 def render_cost_proxy_markdown(
-    path: Path, report: Mapping[str, object], *, stack: str | None = None
+    path: Path,
+    report: Mapping[str, object],
+    *,
+    stack: str | None = None,
+    placeholder: bool = False,
 ) -> str:
     """Render a Markdown cost/quota proxy summary."""
     categories = cast(Mapping[str, int], report["categories"])
-    lines = [
-        f"### Pulumi Cost Proxy: {stack or path.stem}",
-        "",
+    lines = [f"### Pulumi Cost Proxy: {stack or path.stem}", ""]
+    if placeholder:
+        lines.extend([f"> {PLACEHOLDER_BANNER}", ""])
+    lines += [
         f"Weighted cost/quota change: `{report['weightedChange']}`",
         "",
     ]
@@ -567,6 +583,22 @@ def _run_validate_iam(preview_files: Sequence[Path]) -> int:
     return 0
 
 
+def _render_cost_proxy_reports(
+    reports: Sequence[Mapping[str, object]], placeholders: set[str]
+) -> str:
+    """Render cost-proxy Markdown, flagging placeholder inputs as non-evidence."""
+    if not reports:
+        return render_no_cost_proxy_inputs_markdown()
+    return "\n".join(
+        render_cost_proxy_markdown(
+            Path(cast(str, report["path"])),
+            report,
+            placeholder=report["path"] in placeholders,
+        )
+        for report in reports
+    )
+
+
 def _run_cost_proxy(
     preview_files: Sequence[Path],
     *,
@@ -575,6 +607,8 @@ def _run_cost_proxy(
     output_md: Path | None,
 ) -> int:
     """Summarize preview cost/quota proxy and fail on large unexpected fanout."""
+    emit_placeholder_notices(preview_files)
+    placeholders = {str(path) for path in placeholder_preview_files(preview_files)}
     input_files = preview_input_files(preview_files)
     reports = [
         {
@@ -583,17 +617,7 @@ def _run_cost_proxy(
         }
         for preview_file in input_files
     ]
-    markdown = (
-        "\n".join(
-            render_cost_proxy_markdown(
-                Path(cast(str, report["path"])),
-                report,
-            )
-            for report in reports
-        )
-        if reports
-        else render_no_cost_proxy_inputs_markdown()
-    )
+    markdown = _render_cost_proxy_reports(reports, placeholders)
     if output_json is not None:
         output_json.parent.mkdir(parents=True, exist_ok=True)
         output_json.write_text(
