@@ -203,8 +203,9 @@ permissions on the publisher role and stack: `iam:UpdateAssumeRolePolicy`,
 --stack-policy-during-update-body` and by the alternative path; AWS: "To update
 protected resources, you must have permission to use the CloudFormation
 SetStackPolicy action") and, for the alternative path only,
-`cloudformation:ExecuteChangeSet`. Read permissions for the wait, readback,
-drift and verifier steps: `cloudformation:DescribeChangeSet`,
+`cloudformation:ExecuteChangeSet`. Read permissions for the event record
+(step 1), wait, readback, drift and verifier steps: `cloudtrail:LookupEvents`,
+`cloudformation:DescribeChangeSet`,
 `cloudformation:DescribeStacks`, `cloudformation:GetStackPolicy`,
 `cloudformation:GetTemplate`, `cloudformation:ListStackResources`,
 `cloudformation:DetectStackDrift`, `cloudformation:DetectStackResourceDrift`,
@@ -244,8 +245,11 @@ improvise authority during an incident.
    Stack policies do not restrict direct IAM calls; this step intentionally
    creates drift.
 2. **Reviewed amendment.** Disable trust in source, regenerate the packet and
-   review the digest. Render the files with `make validate-runtime-seed-policies`
-   (or `RUNTIME_SEED_POLICY_ARGS=--render-only`): `amended-template.json` is the
+   review the digest. Render the files with
+   `RUNTIME_SEED_POLICY_ARGS=--render-only make validate-runtime-seed-policies`.
+   Render-only makes no AWS calls; do not run the validating form with the
+   break-glass identity, because it calls Access Analyzer and CloudFormation
+   template validation, which the holder list does not grant. `amended-template.json` is the
    template built by `_amended_packet()` and
    `break-glass-during-update-policy.json` is the narrow during-update policy
    from `break_glass_during_update_policy_json()`; record both SHA-256 values from

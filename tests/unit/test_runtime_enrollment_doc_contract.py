@@ -71,7 +71,11 @@ CLI_PERMISSIONS = {
 }
 # Runbook step -> APIs it uses that the bash block does not show (prose only).
 STEP_PERMISSIONS = {
-    "1 contain": {"iam:UpdateAssumeRolePolicy", "iam:PutRolePolicy"},
+    "1 contain": {
+        "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy",
+        "cloudtrail:LookupEvents",
+    },
     "2 amend": {
         "cloudformation:SetStackPolicy",
         "cloudformation:ExecuteChangeSet",
@@ -114,7 +118,7 @@ def _break_glass_section():
 def _holder_permissions():
     section = _break_glass_section()
     holder = section.split("Mutating")[1].split("Sources:")[0]
-    return set(re.findall(r"`((?:cloudformation|iam):[A-Za-z]+)`", holder))
+    return set(re.findall(r"`((?:cloudformation|cloudtrail|iam):[A-Za-z]+)`", holder))
 
 
 def _verifier_input_apis():
