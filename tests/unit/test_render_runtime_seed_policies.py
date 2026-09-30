@@ -11,6 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from seed import poc_publisher_stack_verification as verification
 from seed import poc_runtime as runtime
 from seed import poc_runtime_fence_stack as fences
 
@@ -78,10 +79,21 @@ def test_render_writes_exact_template_and_every_iam_document(tmp_path):
         "documents",
     }
     amended = (tmp_path / "amended-template.json").read_bytes()
-    assert amended == renderer._amended_packet().template_json.encode()
+    assert amended == verification._amended_packet().template_json.encode()
+    template = (tmp_path / "template.json").read_bytes()
+    assert amended != template
+    roles = [
+        r
+        for r in json.loads(amended)["Resources"].values()
+        if r["Type"] == "AWS::IAM::Role"
+    ]
+    assert len(roles) == 1
+    assert roles[0]["Properties"]["AssumeRolePolicyDocument"] == json.loads(
+        runtime.disabled_trust()
+    )
     assert hashlib.sha256(amended).hexdigest() == manifest["amended_template_sha256"]
     during_update = (tmp_path / "break-glass-during-update-policy.json").read_bytes()
-    assert during_update == renderer.break_glass_during_update_policy_json().encode()
+    assert during_update == fences.break_glass_during_update_policy_json().encode()
     assert (
         hashlib.sha256(during_update).hexdigest()
         == manifest["break_glass_during_update_policy_sha256"]

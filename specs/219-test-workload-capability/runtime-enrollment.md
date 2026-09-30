@@ -198,16 +198,27 @@ Before executing any change set:
 Run this only with an audited break-glass identity outside GitHub CI. Mutating
 permissions on the publisher role and stack: `iam:UpdateAssumeRolePolicy`,
 `iam:PutRolePolicy`, `iam:DeleteRolePolicy` (step 3), `cloudformation:CreateChangeSet`,
-`cloudformation:DeleteChangeSet`, `cloudformation:UpdateStack` and, for the
-alternative path only, `cloudformation:SetStackPolicy` and
-`cloudformation:ExecuteChangeSet`. Read permissions for the wait, readback, drift
-and verifier steps: `cloudformation:DescribeChangeSet`,
+`cloudformation:DeleteChangeSet`, `cloudformation:UpdateStack`,
+`cloudformation:SetStackPolicy` (required by `update-stack
+--stack-policy-during-update-body` and by the alternative path; AWS: "To update
+protected resources, you must have permission to use the CloudFormation
+SetStackPolicy action") and, for the alternative path only,
+`cloudformation:ExecuteChangeSet`. Read permissions for the wait, readback,
+drift and verifier steps: `cloudformation:DescribeChangeSet`,
 `cloudformation:DescribeStacks`, `cloudformation:GetStackPolicy`,
-`cloudformation:DetectStackDrift`,
+`cloudformation:GetTemplate`, `cloudformation:ListStackResources`,
+`cloudformation:DetectStackDrift`, `cloudformation:DetectStackResourceDrift`,
 `cloudformation:DescribeStackDriftDetectionStatus`,
-`cloudformation:DescribeStackResourceDrifts`, `cloudformation:GetTemplate`,
-`iam:GetRole`, `iam:GetRolePolicy`, `iam:ListRolePolicies` and
-`iam:ListAttachedRolePolicies`. `docs/governance-stack.md` defines no such publisher-specific
+`cloudformation:DescribeStackResourceDrifts`,
+`cloudformation:BatchDescribeTypeConfigurations`, `iam:GetRole`,
+`iam:GetRolePolicy`, `iam:ListRolePolicies`, `iam:ListAttachedRolePolicies`,
+`iam:ListRoleTags`, `iam:GetPolicy` and `iam:GetPolicyVersion`. Sources: AWS
+CloudFormation User Guide, "Detect unmanaged configuration changes to stacks and
+resources with drift detection" (`using-cfn-stack-drift.html`, which requires
+`DetectStackDrift`, `DetectStackResourceDrift`, `BatchDescribeTypeConfigurations`
+and read permission for each resource, here the role and managed-policy reads
+above) and "Prevent updates to stack resources" (`protect-stack-resources.html`).
+`docs/governance-stack.md` defines no such publisher-specific
 grant (the seed installer operator identity in that guide is not authorized for
 this stack), so the holder must be named and reviewed before use; do not
 improvise authority during an incident.
