@@ -138,7 +138,7 @@ CI checks are split into focused workflows that run inside the Docker workspace:
 - `python-quality.yml` runs Ruff, Ty, maintainability, architecture, dependency-hygiene, and coverage checks.
 - `security-scans.yml` runs secrets, Bandit, dependency audit/review, workflow linting, YAML linting, and Hadolint.
 - `bats-tests.yml` validates the Makefile CLI surface.
-- `pulumi-local.yml` runs `make ci-pr`, the non-mutation pull-request battery inside Docker.
+- `pulumi-local.yml` runs `make ci-pr-unprivileged` (or `make ci-pr` when AWS-backed automation tests are enabled), the non-mutation pull-request battery inside Docker.
 - `pulumi-pr-commands.yml` accepts trusted same-repository PR comments for Pulumi plan/apply requests.
 - `pulumi-pr-command-runner.yml` revalidates the PR SHA, runs test account plan/guardrails/apply first, and gates production promotion behind the successful test sequence.
 - `pulumi-test-deploy.yml` plans, validates, applies, and drift-checks the test account on `main`.
@@ -253,7 +253,7 @@ Continuous integration runs automatically on every pull request. You can also va
 - `make test-mutation` intentionally uses the focused `pulumi/app` unit-test surface by default so the PR mutation check stays fast; override `MUTATION_TEST_TARGETS` or `MUTATION_TESTS_DIR` only when you explicitly need a broader, slower mutation run.
 - `make pulumi-preview` and `make pulumi-up-plan` sync the shared `uv` environment if needed, refresh `policy/.venv`, and then run Pulumi with the repository policy pack enabled.
 - Run `make test` to execute the faster structural, policy, quality, repo-hygiene, unit, integration, coverage, and CLI checks together after a prerequisite sanity check.
-- Use `make ci-pr` to mirror the non-mutation GitHub pull-request battery, including the prerequisite check, image build, security scans, preview generation, and policy suite.
+- Use `make ci-pr-unprivileged` to mirror the non-mutation GitHub pull-request battery (prerequisite check, image build, security scans, placeholder preview, and policy suite); `make ci-pr` is the AWS-backed variant and does not mirror it.
 - Execute `make ci` to run the full local equivalent of all GitHub checks, including the prerequisite check, image build, and mutation suite.
 - Run `make report-quality` or `make nightly-quality` when you want the scheduled maintainability, dead-code, docstring, and SBOM reports locally.
 - If Pulumi plugin downloads hit GitHub rate limits locally, pass
@@ -261,7 +261,7 @@ Continuous integration runs automatically on every pull request. You can also va
   you are running instead of exporting it globally.
 - `make pulumi-preview` to review planned resources before applying.
 - `make pulumi-up-plan` followed by `pulumi stack output` to inspect applied results.
-- GitHub Actions mirrors `make ci-pr` through the `Pulumi Local Test Battery` workflow, while mutation remains isolated in `pulumi-mutation.yml`.
+- GitHub Actions mirrors `make ci-pr-unprivileged` through the `Pulumi Local Test Battery` workflow, while mutation remains isolated in `pulumi-mutation.yml`.
 - `Pulumi PR Guardrails` and `Security Scans` also expose their focused Make entrypoints as dedicated CI checks.
 
 ## SRE Operations

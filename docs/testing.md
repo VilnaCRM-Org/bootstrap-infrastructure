@@ -100,7 +100,7 @@ Coverage:
 - `make test-deps-security` runs `pip-audit --strict`
 - `make test-bandit` runs Bandit against repository Python code
 - `make test-preview` generates the Pulumi preview artifact consumed by later checks
-- `make test-preview-unprivileged` generates the fallback artifact used when AWS-backed preview variables are absent
+- `make test-preview-unprivileged` generates the placeholder artifact that every pull request uses (pull requests never run `make test-preview`)
 - `make test-destructive-diff` blocks deletes and replacements of critical infrastructure regardless of PR labels
 - `make test-cost-proxy` flags unusual durable-resource fanout from preview JSON
 - `make test-guardrails` keeps the real preview, destructive-diff, and cost-proxy flow reproducible locally
@@ -269,7 +269,7 @@ keeps mutation analysis isolated as a separate check.
 The `Pulumi Policy Tests` workflow runs the policy-pack coverage suite, and the
 `Python Quality Checks` workflow runs Ruff, Ty, maintainability, architecture,
 dependency-hygiene, and coverage gates. `Pulumi PR Guardrails` runs preview,
-destructive diff, the `make test-cost-proxy` gate, and IAM validation. The
+destructive diff, the `make test-cost-proxy` gate, and IAM validation; on pull requests the required `Preview` and `IAM Validation` contexts are skipped and the unprivileged targets run under the `(Unprivileged)` contexts. The
 `Security Scans` workflow runs
 Gitleaks, Bandit, dependency audit/review, workflow linting, YAML linting, and
 Hadolint. `Nightly Quality` publishes Wily, Vulture,

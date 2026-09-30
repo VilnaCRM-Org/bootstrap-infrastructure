@@ -36,8 +36,8 @@ state initialization, real TEST/PROD comment deployment and service acceptance.
 
 | Workflow job | CI suffix | Runtime role | Permission set |
 | --- | --- | --- | --- |
-| PR guardrails preview | `test-pr` | `AWS_PREVIEW_ROLE_ARN` | preview |
-| PR guardrails IAM validation | `test-pr` | `AWS_PREVIEW_ROLE_ARN` | preview plus IAM validation |
+| PR guardrails preview / IAM validation | none (unprivileged) | none | no AWS role; placeholder preview only |
+| Reviewed PR Preview (`reviewed-pr-preview` environment) | `test-pr` | `AWS_PREVIEW_ROLE_ARN` | preview plus IAM validation; trusts only a main-ref subject with the `Reviewed PR Preview` workflow claim, never `pull_request` or `PR Guardrails` |
 | Test deploy preview | `test` | `AWS_PREVIEW_ROLE_ARN` | preview |
 | Test deploy apply | `test` | `AWS_APPLY_ROLE_ARN` | apply |
 | Test deploy drift | `test` | `AWS_DRIFT_ROLE_ARN` | drift |

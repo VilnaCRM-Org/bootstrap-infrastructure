@@ -33,9 +33,9 @@ These checks should be required in branch protection:
 | `Actionlint` | `make test-actionlint` | Workflow syntax and common GitHub Actions mistakes |
 | `Yamllint` | `make test-yaml` | GitHub workflow YAML, Pulumi stack YAML, and operational YAML hygiene |
 | `Hadolint` | `make test-dockerfile` | Dockerfile quality and safety linting |
-| `Preview` | `make test-preview` or `make test-preview-unprivileged` | Non-destructive Pulumi preview artifact generation, selected by event type: pull requests always use the unprivileged placeholder, push to `main` uses AWS credentials |
+| `Preview` | `make test-preview` (push to `main`); `make test-preview-unprivileged` on pull requests | Non-destructive Pulumi preview artifact generation, selected by event type: on pull requests the `Preview` context is skipped and the unprivileged placeholder runs under `Preview (Unprivileged)`; push to `main` uses AWS credentials |
 | `Destructive Diff Gate` | `make test-destructive-diff` | Blocks risky deletes and replacements |
-| `IAM Validation` | `make test-iam-validation` or `make test-iam-validation-unprivileged` | AWS IAM Access Analyzer validation on push to `main`; pull requests run offline IAM-input extraction on the placeholder only |
+| `IAM Validation` | `make test-iam-validation` (push to `main`); `make test-iam-validation-unprivileged` on pull requests | AWS IAM Access Analyzer validation on push to `main`; on pull requests the `IAM Validation` context is skipped and offline IAM-input extraction on the placeholder runs under `IAM Validation (Unprivileged)` |
 | `Policy` | `make test-policy` | Custom Pulumi CrossGuard policy pack enforcement |
 | `CodeQL (python)` | GitHub-native | Static security/code scanning for Python |
 | `CodeQL (actions)` | GitHub-native | Static security/code scanning for workflows |

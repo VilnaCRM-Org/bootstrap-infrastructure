@@ -317,6 +317,44 @@ def test_guardrail_docs_define_required_privileged_check_contract() -> None:
     assert "branch-protection owner" in normalized_doc  # nosec B101
 
 
+def _doc(name: str) -> str:
+    """Return a docs page with whitespace normalized."""
+    return " ".join((PROJECT_ROOT / "docs" / name).read_text(encoding="utf-8").split())
+
+
+def test_docs_map_reviewed_pr_preview_to_its_own_environment() -> None:
+    """Reviewed PR Preview uses `reviewed-pr-preview`, not `test-preview`."""
+    workflow = _workflow("reviewed-pr-preview.yml")
+    environments = {
+        job["environment"] for job in workflow["jobs"].values() if "environment" in job
+    }
+    assert {"reviewed-pr-preview", "reviewed-source-publisher"} <= environments  # nosec B101
+    doc = _doc("sre-operations.md")
+    assert "`reviewed-pr-preview`" in doc  # nosec B101
+    assert "`reviewed-source-publisher`" in doc  # nosec B101
+    assert not re.search(  # nosec B101
+        r"`test-preview`[^-]{0,80}Reviewed PR Preview", doc
+    )
+
+
+def test_docs_do_not_grant_pull_request_guardrails_aws_roles_or_policy_previews() -> (
+    None
+):
+    """Keep stale PR-credential and policy-on-preview claims out of the docs."""
+    architecture = _doc("ci-architecture.md")
+    assert "make test-iam-validation-unprivileged" in architecture  # nosec B101
+    assert "`make test-iam-validation` |" not in architecture  # nosec B101
+    bootstrap = _doc("github-ci-bootstrap-stack.md")
+    assert "| PR guardrails preview | `test-pr`" not in bootstrap  # nosec B101
+    assert "| PR guardrails IAM validation | `test-pr`" not in bootstrap  # nosec B101
+    assert "Reviewed PR Preview (`reviewed-pr-preview` environment) | `test-pr`" in (  # nosec B101
+        bootstrap
+    )
+    assert "runs the same policy pack during `make test-preview`" not in _doc(  # nosec B101
+        "pulumi-guardrails.md"
+    )
+
+
 def test_security_scan_workflow_runs_repo_make_targets() -> None:
     """Keep the security-scan workflow easy to reproduce locally."""
     workflow = _workflow("security-scans.yml")
